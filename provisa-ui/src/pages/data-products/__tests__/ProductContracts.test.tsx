@@ -210,6 +210,7 @@ function panel(
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       lineageError=""
       lineageGraph={LINEAGE}

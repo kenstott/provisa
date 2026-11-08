@@ -97,7 +97,6 @@
         "customProperties": "Пользовательские свойства",
         "relatedTables": "Связанные таблицы",
         "relationships": "Связи",
-        "lineage": "Происхождение",
         "inputPorts": "Входные порты",
         "dataQuality": "Качество данных"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "Нет связей между таблицами этого продукта",
       "lineageEmpty": "Нет данных о происхождении",
       "lineageLoading": "Загрузка происхождения…",
-      "lineageHint": "Граф происхождения столбцов: таблицы этого продукта как опубликованная конечная точка и все вышестоящие таблицы, из которых они получены. Только для информации — требуется возможность view_governance.",
+      "lineageTitle": "Происхождение столбцов: откуда берётся этот продукт",
+      "lineageHint": "Каждый столбец, публикуемый этим продуктом, и входной столбец, из которого он получен, со всеми промежуточными шагами. Требуется право view_governance.",
       "outputPortsHint": "Доступная для запросов поверхность этого продукта: его таблицы-члены и команды. Примеры запросов к каждой — в разделе «Шаблоны доступа».",
       "customPropertiesEmpty": "Нет пользовательских свойств",
-      "lineageLaneUpstream": "Выше по потоку, шаг {{n}}",
-      "lineageLaneDownstream": "Ниже по потоку, шаг {{n}}"
+      "lineageLaneTables": "Таблицы этого продукта",
+      "lineageLaneInputs": "Входы",
+      "lineageLaneUpstream": "Выше по потоку, шаг {{n}} за входами",
+      "inputsLineageLink": "Показать происхождение столбцов"
     },
     "readOnly": "Только чтение",
     "readOnlyHint": "У вас только data_product_read — org_admin может выдать data_product_rw для изменения.",
@@ -210,6 +212,46 @@
         "description_changed": "Описание изменено",
         "terms_changed": "Условия изменены: {{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "Интерфейс",
+          "address": "Адрес",
+          "how": "Как использовать",
+          "link": "Пример"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Любой клиент PostgreSQL, например psql или DBeaver. База данных {{database}}, схема {{schema}}.",
+          "flight-sql": "Любой клиент Arrow Flight SQL, например драйвер ADBC. База данных {{database}}, схема {{schema}}.",
+          "grpc": "Любой клиент gRPC, для сервиса {{service}}, с метаданными authorization: Bearer <token>.",
+          "graphql": "Любой клиент GraphQL: отправьте запрос к этой таблице методом POST с заголовком Authorization: Bearer <token>.",
+          "rest": "Любой HTTP-клиент: GET по этому адресу с заголовком Authorization: Bearer <token>.",
+          "openapi": "Описание только этой таблицы: загрузите его в Swagger UI, Postman или генератор клиентов.",
+          "jsonapi": "Любой клиент JSON:API: GET по этому адресу с заголовком Authorization: Bearer <token>.",
+          "sparql": "Любой клиент SPARQL 1.1: отправьте запрос к классу этой таблицы методом POST с заголовком Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Работает только после предоставления доступа: его выдаёт {{approvers}}.",
+          "noApprover": "Работает только после предоставления доступа: его выдаёт обладатель {{roles}}. В этом контракте утверждающий не указан.",
+          "undeclared": "Работает только после предоставления доступа. В этом контракте не указаны ни роль, ни утверждающий."
+        },
+        "ask": {
+          "approvers": "Запросить доступ у {{approvers}}",
+          "roles": "Запросить доступ у обладателя {{roles}}",
+          "nobody": "В этом контракте не указано, к кому обратиться"
+        },
+        "open": "Открыть пример",
+        "openAria": "Открыть пример {{surface}} для {{table}}"
+      },
       "loadError": "Не удалось прочитать контракты: {{error}}",
       "notExported": "У {{member}} нет экспортированного контракта",
       "section": {
@@ -256,46 +298,6 @@
         "versions": "Версии и изменения",
         "roles": "Роли",
         "history": "История версий"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Интерфейс",
-          "address": "Адрес",
-          "how": "Как использовать",
-          "link": "Пример"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Любой клиент PostgreSQL, например psql или DBeaver. База данных {{database}}, схема {{schema}}.",
-          "flight-sql": "Любой клиент Arrow Flight SQL, например драйвер ADBC. База данных {{database}}, схема {{schema}}.",
-          "grpc": "Любой клиент gRPC, для сервиса {{service}}, с метаданными authorization: Bearer <token>.",
-          "graphql": "Любой клиент GraphQL: отправьте запрос к этой таблице методом POST с заголовком Authorization: Bearer <token>.",
-          "rest": "Любой HTTP-клиент: GET по этому адресу с заголовком Authorization: Bearer <token>.",
-          "openapi": "Описание только этой таблицы: загрузите его в Swagger UI, Postman или генератор клиентов.",
-          "jsonapi": "Любой клиент JSON:API: GET по этому адресу с заголовком Authorization: Bearer <token>.",
-          "sparql": "Любой клиент SPARQL 1.1: отправьте запрос к классу этой таблицы методом POST с заголовком Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Работает только после предоставления доступа: его выдаёт {{approvers}}.",
-          "noApprover": "Работает только после предоставления доступа: его выдаёт обладатель {{roles}}. В этом контракте утверждающий не указан.",
-          "undeclared": "Работает только после предоставления доступа. В этом контракте не указаны ни роль, ни утверждающий."
-        },
-        "ask": {
-          "approvers": "Запросить доступ у {{approvers}}",
-          "roles": "Запросить доступ у обладателя {{roles}}",
-          "nobody": "В этом контракте не указано, к кому обратиться"
-        },
-        "open": "Открыть пример",
-        "openAria": "Открыть пример {{surface}} для {{table}}"
       }
     }
   }

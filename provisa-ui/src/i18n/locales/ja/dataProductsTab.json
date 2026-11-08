@@ -97,7 +97,6 @@
         "customProperties": "カスタムプロパティ",
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
-        "lineage": "リネージ",
         "inputPorts": "入力ポート",
         "dataQuality": "データ品質"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "このプロダクトのテーブル間にリレーションシップはありません",
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
-      "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
+      "lineageTitle": "列リネージ: このプロダクトの出どころ",
+      "lineageHint": "このプロダクトが公開する各列と、その元になる入力列、およびその間のすべてのステップ。view_governance 権限が必要です。",
       "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません",
-      "lineageLaneUpstream": "上流、{{n}} ホップ",
-      "lineageLaneDownstream": "下流、{{n}} ホップ"
+      "lineageLaneTables": "このプロダクトのテーブル",
+      "lineageLaneInputs": "入力",
+      "lineageLaneUpstream": "上流、入力から {{n}} ホップ先",
+      "inputsLineageLink": "列リネージを表示"
     },
     "readOnly": "読み取り専用",
     "readOnlyHint": "data_product_read のみを持っています。編集するには、org_admin が data_product_rw を付与できます。",
@@ -210,6 +212,46 @@
         "description_changed": "説明を変更",
         "terms_changed": "条件を変更: {{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "インターフェース",
+          "address": "アドレス",
+          "how": "使い方",
+          "link": "例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "psql や DBeaver などの PostgreSQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "flight-sql": "ADBC ドライバーなどの Arrow Flight SQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "grpc": "gRPC クライアントなら何でも使えます。サービス {{service}} に対し、メタデータ authorization: Bearer <token> を付けます。",
+          "graphql": "GraphQL クライアントなら何でも使えます。このテーブルに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "rest": "HTTP クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "openapi": "このテーブルだけの記述です。Swagger UI、Postman、またはクライアントジェネレーターに読み込んでください。",
+          "jsonapi": "JSON:API クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "sparql": "SPARQL 1.1 クライアントなら何でも使えます。このテーブルのクラスに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。"
+        },
+        "access": {
+          "granted": "{{approvers}} がアクセスを許可して初めて使用できます。",
+          "noApprover": "{{roles}} の保持者がアクセスを許可して初めて使用できます。この契約には承認者が指定されていません。",
+          "undeclared": "アクセスが許可されて初めて使用できます。この契約にはロールも承認者も指定されていません。"
+        },
+        "ask": {
+          "approvers": "{{approvers}} にアクセスを依頼",
+          "roles": "{{roles}} の保持者にアクセスを依頼",
+          "nobody": "この契約には依頼先が指定されていません"
+        },
+        "open": "例を開く",
+        "openAria": "{{table}} の {{surface}} の例を開く"
+      },
       "loadError": "契約を読み込めませんでした: {{error}}",
       "notExported": "{{member}} にはエクスポートされた契約がありません",
       "section": {
@@ -256,46 +298,6 @@
         "versions": "バージョンと変更",
         "roles": "ロール",
         "history": "バージョン履歴"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "インターフェース",
-          "address": "アドレス",
-          "how": "使い方",
-          "link": "例"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "psql や DBeaver などの PostgreSQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
-          "flight-sql": "ADBC ドライバーなどの Arrow Flight SQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
-          "grpc": "gRPC クライアントなら何でも使えます。サービス {{service}} に対し、メタデータ authorization: Bearer <token> を付けます。",
-          "graphql": "GraphQL クライアントなら何でも使えます。このテーブルに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。",
-          "rest": "HTTP クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
-          "openapi": "このテーブルだけの記述です。Swagger UI、Postman、またはクライアントジェネレーターに読み込んでください。",
-          "jsonapi": "JSON:API クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
-          "sparql": "SPARQL 1.1 クライアントなら何でも使えます。このテーブルのクラスに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。"
-        },
-        "access": {
-          "granted": "{{approvers}} がアクセスを許可して初めて使用できます。",
-          "noApprover": "{{roles}} の保持者がアクセスを許可して初めて使用できます。この契約には承認者が指定されていません。",
-          "undeclared": "アクセスが許可されて初めて使用できます。この契約にはロールも承認者も指定されていません。"
-        },
-        "ask": {
-          "approvers": "{{approvers}} にアクセスを依頼",
-          "roles": "{{roles}} の保持者にアクセスを依頼",
-          "nobody": "この契約には依頼先が指定されていません"
-        },
-        "open": "例を開く",
-        "openAria": "{{table}} の {{surface}} の例を開く"
       }
     }
   }

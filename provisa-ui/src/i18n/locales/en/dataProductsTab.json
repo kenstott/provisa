@@ -97,7 +97,6 @@
         "customProperties": "Custom Properties",
         "relatedTables": "Related Tables",
         "relationships": "Relationships",
-        "lineage": "Lineage",
         "inputPorts": "Input Ports",
         "dataQuality": "Data Quality"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "No relationships between this product's tables",
       "lineageEmpty": "No lineage",
       "lineageLoading": "Loading lineage…",
-      "lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only. Requires the view_governance capability.",
+      "lineageTitle": "Column lineage: where this product comes from",
+      "lineageHint": "Each column this product publishes and the input column it comes from, with every step between them. Requires the view_governance capability.",
       "outputPortsHint": "This product's queryable surface: its member tables and commands. Example queries for each are under Access Patterns.",
       "customPropertiesEmpty": "No custom properties",
-      "lineageLaneUpstream": "Upstream, hop {{n}}",
-      "lineageLaneDownstream": "Downstream, hop {{n}}"
+      "lineageLaneTables": "This product's tables",
+      "lineageLaneInputs": "Inputs",
+      "lineageLaneUpstream": "Upstream, hop {{n}} beyond the inputs",
+      "inputsLineageLink": "See column lineage"
     },
     "readOnly": "Read-only",
     "readOnlyHint": "You have data_product_read only. An org_admin can grant data_product_rw to edit.",
