@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The CI side of the release lines (REQ-1989, amendments of 2026-11-08): what dev runs, the
-nightly alpha, an alpha shipping with its failures listed, and the merge the lead runs after
-publish. Workflows are read as YAML; the scripts run against real temporary Git repositories."""
+"""The CI side of the release lines (REQ-1989, amendments of 2026-11-08, last MAIN IS THE TRUNK):
+main is the trunk, what a release branch runs, the nightly alpha, an alpha shipping with its
+failures listed, and the merge the lead runs after publish. Workflows are read as YAML; the
+scripts run against real temporary Git repositories."""
 
 # Requirements: REQ-1989
 from __future__ import annotations
 
 import importlib.util
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -111,9 +113,16 @@ def test_an_alpha_is_gated_on_every_suite_except_requirements_ci():
 
 
 @pytest.mark.parametrize("version", ["v0.2.0", "v0.3.0-rc.1", "v0.3.0-beta.2"])
-def test_a_beta_or_production_release_keeps_the_requirements_gate(version):
+def test_a_beta_or_production_release_is_gated_on_every_suite_and_the_requirements(version):
     gate = _module("release_gate")
-    assert set(gate.gates(version)) == _UNIVERSAL | {"requirements-ci.yml"}
+    assert set(gate.gates(version)) == _UNIVERSAL | _FULL_SUITES | {"requirements-ci.yml"}
+
+
+def test_the_cut_offers_no_waiver_to_anyone():
+    # Beta and production ship at zero bugs; an alpha's failures are listed, not waived.
+    assert set(_on(_load("release-cut.yml"))["workflow_dispatch"]["inputs"]) == {"version"}
+    text = (_WORKFLOWS / "release-cut.yml").read_text().lower()
+    assert "ui_gate" not in text and "waive" not in text
 
 
 def test_an_alpha_with_failures_is_cut_and_every_failure_is_listed(tmp_path, monkeypatch, capsys):
@@ -275,7 +284,7 @@ _VERSION_5 = "v0.1.0-alpha.5"
 
 @pytest.fixture
 def lines(tmp_path) -> tuple[Path, Path]:
-    """origin with main at alpha.5, and dev one landing ahead of it; a clone of it."""
+    """origin with main one landing past the tag of alpha.5; a clone of it."""
     origin = tmp_path / "origin.git"
     _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
     work = tmp_path / "work"
@@ -285,29 +294,26 @@ def lines(tmp_path) -> tuple[Path, Path]:
     _git(work, "checkout", "-q", "-b", "main")
     _commit(work, "first", **{"a.txt": "1\n"})
     _git(work, "tag", "-a", _VERSION_5, "-m", _VERSION_5)
-    _git(work, "checkout", "-q", "-b", "dev")
     _commit(work, "feat: landed", **{"b.txt": "2\n"})
-    _git(work, "push", "-q", "origin", "main", "dev", f"refs/tags/{_VERSION_5}")
+    _git(work, "push", "-q", "origin", "main", f"refs/tags/{_VERSION_5}")
     return origin, work
 
 
-def _land_on_dev(work: Path, name: str) -> None:
-    _git(work, "checkout", "-q", "dev")
+def _land_on_main(work: Path, name: str) -> None:
+    _git(work, "checkout", "-q", "main")
     _commit(work, f"feat: {name}", **{name: "x\n"})
-    _git(work, "push", "-q", "origin", "dev")
+    _git(work, "push", "-q", "origin", "main")
 
 
-def test_a_moved_dev_gets_a_release_branch_from_main_with_dev_merged(lines, capsys):
+def test_a_moved_main_gets_a_release_branch_at_its_newest_commit(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
     main_tip = _remote(origin, "refs/heads/main")
     assert nightly.main(["--repo", str(work)]) == 0
     assert _output(capsys.readouterr().out) == {"version": "v0.1.0-alpha.6"}
-    branch = "refs/heads/release/v0.1.0-alpha.6"
-    assert _git(origin, "rev-parse", f"{branch}^1") == main_tip
-    assert _git(origin, "rev-parse", f"{branch}^2") == _remote(origin, "refs/heads/dev")
-    assert _git(origin, "show", f"{branch}:b.txt") == "2"
-    assert _remote(origin, "refs/heads/main") == main_tip  # main only ever takes a release
+    # A cut, not a merge: the branch is that commit of main, everything to that point.
+    assert _remote(origin, "refs/heads/release/v0.1.0-alpha.6") == main_tip
+    assert _remote(origin, "refs/heads/main") == main_tip
 
 
 def _skipped(nightly, work, capsys, origin) -> None:
@@ -317,53 +323,64 @@ def _skipped(nightly, work, capsys, origin) -> None:
     assert _git(origin, "for-each-ref") == before
 
 
-def test_a_dev_with_nothing_since_the_last_alpha_is_skipped(lines, capsys):
+def test_a_main_with_nothing_since_the_last_alpha_is_skipped(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
-    # The last alpha holds dev: it was tagged on a commit that merged it.
-    _git(work, "checkout", "-q", "dev")
-    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x")
+    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x", "main")
     _git(work, "push", "-q", "origin", "refs/tags/v0.1.0-alpha.6")
     _skipped(nightly, work, capsys, origin)
 
 
-def test_the_merge_back_of_a_release_does_not_count_as_dev_moving(lines, capsys):
+def test_the_merge_back_of_a_release_does_not_count_as_main_moving(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
-    # alpha.6 shipped; the merge to dev adds a commit dev did not have but changes nothing there.
-    _git(work, "checkout", "-q", "-b", "release/v0.1.0-alpha.6", "dev")
+    # alpha.6 shipped; the merge to main adds a commit main did not have but changes nothing there.
+    _git(work, "checkout", "-q", "-b", "release/v0.1.0-alpha.6", "main")
     _commit(work, "notes", **{"notes.md": "n\n"})
     _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x")
-    _git(work, "checkout", "-q", "dev")
+    _git(work, "checkout", "-q", "main")
     _git(work, "merge", "-q", "--no-ff", "-m", "merge", "v0.1.0-alpha.6")
-    _git(work, "push", "-q", "origin", "dev", "refs/tags/v0.1.0-alpha.6")
+    _git(work, "push", "-q", "origin", "main", "refs/tags/v0.1.0-alpha.6")
+    _skipped(nightly, work, capsys, origin)
+
+
+def test_a_fix_cascading_from_an_open_alpha_does_not_count_as_main_moving(lines, capsys):
+    origin, work = lines
+    nightly = _module("release_nightly")
+    _git(work, "checkout", "-q", "-b", "release/v0.1.0-alpha.6", "main")
+    _commit(work, "fix: on the branch", **{"fix.txt": "f\n"})
+    _git(work, "push", "-q", "origin", "release/v0.1.0-alpha.6")
+    _git(work, "checkout", "-q", "main")
+    _git(work, "merge", "-q", "--no-ff", "-m", "cascade", "release/v0.1.0-alpha.6")
+    _git(work, "push", "-q", "origin", "main")
     _skipped(nightly, work, capsys, origin)
 
 
 def test_a_landing_after_the_last_alpha_starts_the_next_one(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
-    _git(work, "checkout", "-q", "dev")
-    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x")
+    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x", "main")
     _git(work, "push", "-q", "origin", "refs/tags/v0.1.0-alpha.6")
-    _land_on_dev(work, "c.txt")
+    _land_on_main(work, "c.txt")
     assert nightly.main(["--repo", str(work)]) == 0
     assert _output(capsys.readouterr().out) == {"version": "v0.1.0-alpha.7"}
-    assert _remote(origin, "refs/heads/release/v0.1.0-alpha.7")
+    assert _remote(origin, "refs/heads/release/v0.1.0-alpha.7") == _remote(
+        origin, "refs/heads/main"
+    )
 
 
-def test_an_open_release_branch_holding_dev_means_nothing_new(lines, capsys):
+def test_an_open_release_branch_holding_main_means_nothing_new(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
-    _git(work, "push", "-q", "origin", "dev:refs/heads/release/v0.1.0-alpha.6")
+    _git(work, "push", "-q", "origin", "main:refs/heads/release/v0.1.0-alpha.6")
     _skipped(nightly, work, capsys, origin)
 
 
 def test_an_open_release_branch_takes_its_number_from_the_next_one(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
-    _git(work, "push", "-q", "origin", "dev:refs/heads/release/v0.1.0-alpha.6")
-    _land_on_dev(work, "c.txt")
+    _git(work, "push", "-q", "origin", "main:refs/heads/release/v0.1.0-alpha.6")
+    _land_on_main(work, "c.txt")
     assert nightly.main(["--repo", str(work)]) == 0
     assert _output(capsys.readouterr().out) == {"version": "v0.1.0-alpha.7"}
 
@@ -379,16 +396,17 @@ def test_a_scheduled_run_outside_its_offset_does_nothing(lines, capsys, monkeypa
     assert _git(origin, "for-each-ref") == before
 
 
-def test_a_conflict_between_main_and_dev_stops_and_pushes_nothing(lines, capsys):
+def test_a_refused_push_stops_the_night_and_says_why(lines, capsys):
+    # The cut is one push of main's tip, so the only way it fails is the push being refused.
     origin, work = lines
     nightly = _module("release_nightly")
-    _git(work, "checkout", "-q", "main")
-    _commit(work, "main's", **{"b.txt": "main\n"})
-    _git(work, "push", "-q", "origin", "main")
+    hook = origin / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho 'the push is refused' >&2\nexit 1\n")
+    hook.chmod(0o755)
     before = _git(origin, "for-each-ref")
     assert nightly.main(["--repo", str(work)]) == 2
     captured = capsys.readouterr()
-    assert "b.txt" in captured.err
+    assert "the push is refused" in captured.err
     assert "version=" not in captured.out
     assert _git(origin, "for-each-ref") == before
 
@@ -409,7 +427,7 @@ def test_the_nightly_never_force_pushes():
     assert '"--force"' not in text and '"-f"' not in text
 
 
-# ── 3. dev runs the fast checks only ────────────────────────────────────────────────────────
+# ── 3. main is the trunk; a release branch runs what gates it ───────────────────────────────
 
 
 def _pushed_on(branch: str) -> set[str]:
@@ -422,35 +440,73 @@ def _pushed_on(branch: str) -> set[str]:
     return names
 
 
-def test_dev_runs_unit_ui_unit_lint_requirements_and_the_site_only():
-    assert _pushed_on("dev") == {
+def test_no_workflow_starts_on_a_dev_branch():
+    assert _pushed_on("dev") == set()
+
+
+_NO_DEV_BRANCH = re.compile(r"\bdev\b(?! container| box|/null)")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".github/CI.md",
+        ".github/workflows/alpha-nightly.yml",
+        ".github/workflows/release-cut.yml",
+        ".github/workflows/release-publish.yml",
+        ".github/workflows/unit-tests.yml",
+        ".github/workflows/ui-unit-tests.yml",
+        ".github/workflows/lint.yml",
+        ".github/workflows/requirements-ci.yml",
+        "scripts/release_nightly.py",
+        "scripts/release_merge.py",
+        "scripts/release_gate.py",
+    ],
+)
+def test_nothing_in_the_release_path_names_a_dev_branch(path):
+    for number, line in enumerate((_ROOT / path).read_text().splitlines(), 1):
+        assert _NO_DEV_BRANCH.search(line) is None, f"{path}:{number}: {line}"
+
+
+def test_main_runs_the_fast_checks_and_publishes_the_demos_and_the_site():
+    assert _pushed_on("main") == {
         "unit-tests.yml",
         "ui-unit-tests.yml",
         "lint.yml",
         "requirements-ci.yml",
+        "cve-audit.yml",
+        "docker-image.yml",
+        "devcontainer-smoke.yml",
+        "demo-bundles.yml",
         "docs.yml",
     }
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["cve-audit.yml", "docker-image.yml", "devcontainer-smoke.yml"],
-)
-def test_what_left_dev_still_runs_on_a_release_branch(name):
-    assert "release/**" in _on(_load(name))["push"]["branches"]
+_PUSH_CHECKS = {
+    "unit-tests.yml",
+    "ui-unit-tests.yml",
+    "lint.yml",
+    "requirements-ci.yml",
+    "cve-audit.yml",
+    "docker-image.yml",
+    "devcontainer-smoke.yml",
+}
 
 
-# ── 4. Where the demos and the site publish from ────────────────────────────────────────────
+def test_a_release_branch_runs_every_suite_that_gates_it():
+    # Integration, e2e and conformance, the unit suites, and what a release needs besides.
+    assert _pushed_on("release/**") == _PUSH_CHECKS | _FULL_SUITES
 
 
-def test_demo_bundles_publish_from_main():
-    assert _on(_load("demo-bundles.yml"))["push"]["branches"] == ["main"]
+@pytest.mark.parametrize("name", sorted(_FULL_SUITES))
+def test_a_full_suite_is_not_started_by_a_push_to_main(name):
+    assert _on(_load(name))["push"]["branches"] == ["release/**"]
 
 
-def test_the_site_deploys_from_dev():
-    triggers = _on(_load("docs.yml"))
-    assert triggers["push"]["branches"] == ["dev"]
-    assert "site/**" in triggers["push"]["paths"]
+@pytest.mark.parametrize("name", ["demo-bundles.yml", "docs.yml"])
+def test_the_demos_and_the_site_stay_on_main(name):
+    triggers = _on(_load(name))
+    assert triggers["push"]["branches"] == ["main"]
 
 
 def test_the_site_still_deploys_to_cloudflares_production_branch():
@@ -482,7 +538,6 @@ _BRANCH_6 = f"release/{_VERSION_6}"
 def published(lines) -> tuple[Path, Path]:
     origin, work = lines
     _git(work, "checkout", "-q", "-b", _BRANCH_6, "main")
-    _git(work, "merge", "-q", "--no-ff", "-m", "dev", "dev")
     _commit(work, "notes", **{"notes.md": "n\n"})
     _git(work, "tag", "-a", _VERSION_6, "-m", _VERSION_6)
     _git(work, "push", "-q", "origin", _BRANCH_6, f"refs/tags/{_VERSION_6}")
@@ -493,15 +548,22 @@ def test_the_merge_prints_what_it_did(published, capsys):
     origin, work = published
     merging = _module("release_merge")
     old_main = _remote(origin, "refs/heads/main")
-    old_dev = _remote(origin, "refs/heads/dev")
     assert merging.main(["--version", _VERSION_6, "--repo", str(work)]) == 0
     out = capsys.readouterr().out
     new_main = _remote(origin, "refs/heads/main")
-    new_dev = _remote(origin, "refs/heads/dev")
     assert f"main: {old_main[:12]} -> {new_main[:12]}" in out
-    assert f"dev: {old_dev[:12]} -> {new_dev[:12]}" in out
     assert f"deleted {_BRANCH_6}" in out
     assert _remote(origin, f"refs/heads/{_BRANCH_6}") == ""
+
+
+def test_the_merge_takes_the_release_to_a_main_that_has_moved_on(published):
+    # main is the trunk: what landed since the cut stays, and the release's notes and fixes join it.
+    origin, work = published
+    merging = _module("release_merge")
+    _land_on_main(work, "newer.txt")
+    assert merging.main(["--version", _VERSION_6, "--repo", str(work)]) == 0
+    assert _git(origin, "show", "main:notes.md") == "n"
+    assert _git(origin, "show", "main:newer.txt") == "x"
 
 
 def test_the_merge_works_from_a_clone_with_main_checked_out_and_leaves_it_alone(published):
@@ -530,3 +592,39 @@ def test_a_nightly_alpha_version_reads_the_same_way_at_the_cut():
     assert _module("release_gate").gates("v0.1.0-alpha.1") == _module("release_gate").gates(
         "v9.9.9-alpha.99"
     )
+
+
+# ── 6. The verifier trains are gone ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".github/workflows/verify-surface.yml",
+        "scripts/ci/surface_map.py",
+        "scripts/ci/surfaces.toml",
+        "scripts/ci/verify_summary.py",
+    ],
+)
+def test_the_verifier_trains_left_nothing_behind(path):
+    assert not (_ROOT / path).exists()
+
+
+def test_no_workflow_keeps_a_door_only_the_verifier_used():
+    callers = set()
+    for path in _WORKFLOWS.glob("*.yml"):
+        text = path.read_text()
+        assert "verify-surface" not in text, path.name
+        callers |= set(re.findall(r"uses: \./\.github/workflows/([\w.-]+\.yml)", text))
+    for name in (
+        "lint.yml",
+        "unit-tests.yml",
+        "ui-unit-tests.yml",
+        "conformance-bolt.yml",
+        "conformance-cypher.yml",
+        "conformance-flight-sql.yml",
+        "conformance-graphql.yml",
+        "conformance-pgwire.yml",
+    ):
+        assert name not in callers
+        assert "workflow_call" not in _on(_load(name)), name

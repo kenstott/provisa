@@ -27,7 +27,7 @@ def _load(name: str) -> dict:
     return yaml.safe_load((WORKFLOWS / name).read_text())
 
 
-def test_a_push_to_dev_touching_a_demo_or_a_dispatch_naming_one_starts_it():
+def test_a_push_to_main_touching_a_demo_or_a_dispatch_naming_one_starts_it():
     on = _load("demo-bundles.yml")[True]
     assert on["push"] == {"branches": ["main"], "paths": ["demo/named/**"]}
     assert on["workflow_dispatch"]["inputs"]["demo"]["required"] is True
