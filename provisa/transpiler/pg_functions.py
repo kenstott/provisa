@@ -859,13 +859,27 @@ def _instant_to_json(value: str) -> str:
     """to_json(value): an instant as PostgreSQL's JSON writes it, the ISO form with a whole offset
     (2026-07-01T08:00:00.5-04:00), where DuckDB's is its text (REQ-2171). Which it is is the
     value's type, which DuckDB knows and the statement's text does not say."""
-    written = f"CAST(to_json({value}) AS VARCHAR)"
+    # The value is written once, as the one element of a list the lambda reads: its own to_json
+    # calls nest, and a form that wrote it three times grew as 3 to the depth of the nesting.
+    written = "CAST(to_json(x) AS VARCHAR)"
     iso = rf"""regexp_replace({written}, '^"(\d+-\d\d-\d\d) ', '"\1T')"""
     return (
-        f"CASE WHEN typeof({value}) = 'TIMESTAMP WITH TIME ZONE' "
+        f"list_transform([{value}], x -> CASE WHEN typeof(x) = 'TIMESTAMP WITH TIME ZONE' "
         rf"""THEN CAST(regexp_replace({iso}, '([+-]\d\d)"$', '\1:00"') AS JSON) """
-        f"ELSE to_json({value}) END"
+        "ELSE to_json(x) END)[1]"
     )
+
+
+def _typed_by_its_form(node: exp.Expr) -> bool:
+    """Whether this to_json is in a branch of the form ``pg_forms_json.json_encoded`` wrote
+    (``CASE WHEN typeof(v) IN ('TIMESTAMP', ...) THEN ... ELSE to_json(v) END``): the instant is
+    already told apart there. Written again, each to_json of the form's output would carry the
+    whole form, and a statement of nested objects grows past what can be parsed."""
+    case = node.find_ancestor(exp.Case)
+    if case is None or not case.args.get("ifs"):
+        return False
+    test = case.args["ifs"][0].this
+    return isinstance(test, exp.In) and isinstance(test.this, exp.Typeof)
 
 
 def after(sql: str) -> str:
@@ -888,13 +902,11 @@ def after(sql: str) -> str:
             if name == _ENCODE_ESCAPE:
                 value = node.expressions[0].transform(_written).sql(dialect="duckdb")
                 return sqlglot.parse_one(_encode_escape(value), read="duckdb")
-            if name == _TO_JSON and len(node.expressions) == 1:
-                value = node.expressions[0]
-                if value.find(exp.AggFunc, exp.Window) is None:  # written twice: never an aggregate
-                    # Its value's own placeholders written first: the form replacing the call is
-                    # not walked again.
-                    written = value.transform(_written).sql(dialect="duckdb")
-                    return sqlglot.parse_one(_instant_to_json(written), read="duckdb")
+            if name == _TO_JSON and len(node.expressions) == 1 and not _typed_by_its_form(node):
+                # Its value's own placeholders written first: the form replacing the call is
+                # not walked again.
+                written = node.expressions[0].transform(_written).sql(dialect="duckdb")
+                return sqlglot.parse_one(_instant_to_json(written), read="duckdb")
         return node
 
     return sqlglot.parse_one(sql, read="duckdb").transform(_written).sql(dialect="duckdb")
