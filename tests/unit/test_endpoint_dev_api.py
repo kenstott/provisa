@@ -377,7 +377,10 @@ class TestSqlEndpointStatsAndFormat:
         )
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=read)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=read)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=read),
+            ),
         ):
             sql = "SELECT id, amount, id + 0 AS computed FROM orders"
             resp = await sql_client.post("/data/sql", json={"sql": sql, "role": "org_admin"})
@@ -414,7 +417,10 @@ class TestSqlEndpointStatsAndFormat:
         )
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=read)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=read)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=read),
+            ),
         ):
             sql = "SELECT id, amount, id + 0 AS computed FROM orders"
             resp = await sql_client.post("/data/sql", json={"sql": sql, "role": "org_admin"})
