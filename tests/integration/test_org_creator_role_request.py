@@ -122,6 +122,7 @@ def planes(monkeypatch):
     # the deployment's own, whose org_admin may carry one (a single-tenant grant) — which the
     # tenant org's assignment must not be judged by.
     org_roles = {
+        # Reads nothing on purpose: no capability, no domain (J354).
         "admin": {"id": "admin", "capabilities": []},
         "analyst": {"id": "analyst", "capabilities": ["usage"]},
         "org_admin": {"id": "org_admin", "capabilities": ["user_management", "usage"]},
