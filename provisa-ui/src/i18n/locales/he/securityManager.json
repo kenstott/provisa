@@ -5,7 +5,8 @@
       "encryption": "הצפנה",
       "authentication": "אימות",
       "localUsers": "משתמשים מקומיים",
-      "secrets": "סודות"
+      "secrets": "סודות",
+      "secretsService": "שירות סודות"
     }
   }
 }

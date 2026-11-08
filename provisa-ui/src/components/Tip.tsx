@@ -14,14 +14,17 @@
 // carries a native `title`; tipGuard.test.ts holds that.
 //
 // It costs nothing until it is needed: the target is rendered as it is, with three listeners, and
-// the floating element is mounted the first time the pointer enters or the keyboard focuses it. A
-// list of two hundred rows with a hint in several cells therefore mounts no popover at all.
+// the floating element exists only while the hint is showing. A list of two hundred rows with a
+// hint in several cells therefore mounts no popover at all, and the rows the pointer has already
+// crossed keep none: a floating element tracks its target's position, and with one per row a
+// single scroll ran one synchronous commit per row, past React's limit of 50 nested updates.
 
 import {
   cloneElement,
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -33,6 +36,7 @@ import {
   type Ref,
   type TouchEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { Tooltip, type FloatingPosition } from "@mantine/core";
 import { useMergedRef } from "@mantine/hooks";
 
@@ -123,9 +127,11 @@ export function TipSurface({
 } & PassedOn) {
   const id = useId();
   const [target, setTarget] = useState<HTMLElement | null>(null);
-  // Mounted on first need and kept: the description stays attached to the target afterwards.
+  // Asked for at least once: from here on the target is described, and the Tooltip is ready for
+  // the next opening (mounted before it opens, so the first opening fades in like the others).
   const [armed, setArmed] = useState(false);
-  const [open, setOpen] = useState(false);
+  // The floating element exists while the hint is "open" and while it fades out ("closing").
+  const [phase, setPhase] = useState<"closed" | "open" | "closing">("closed");
   const timer = useRef<number | null>(null);
   const cancel = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -136,12 +142,12 @@ export function TipSurface({
   const show = (delay: number) => {
     cancel();
     setArmed(true);
-    if (delay === 0) setOpen(true);
-    else timer.current = window.setTimeout(() => setOpen(true), delay);
+    if (delay === 0) setPhase("open");
+    else timer.current = window.setTimeout(() => setPhase("open"), delay);
   };
   const hide = () => {
     cancel();
-    setOpen(false);
+    setPhase((p) => (p === "open" ? "closing" : p));
   };
 
   // What the target is given: its own props, with a wrapper's laid over them -- a handler both
@@ -152,6 +158,10 @@ export function TipSurface({
   const describedBy = [own["aria-describedby"], armed && !named ? id : undefined]
     .filter(Boolean)
     .join(" ");
+  const drawn = phase !== "closed" || opened === true;
+  // Mantine positions on an element only if it is an HTMLElement; through a ref it takes any
+  // element, and a hint on an icon's <svg> needs that or it opens at the corner of the page.
+  const anchor = useMemo(() => ({ current: target }), [target]);
   return (
     <>
       {/* eslint-disable-next-line react-hooks/refs --
@@ -199,14 +209,28 @@ export function TipSurface({
         },
         "aria-describedby": describedBy || undefined,
       })}
+      {/* While nothing is drawn the description still has to exist for aria-describedby to name
+          it. Hidden, and at the end of the document so that it takes no place among the target's
+          siblings. */}
+      {armed &&
+        !named &&
+        !drawn &&
+        createPortal(
+          <div id={id} hidden>
+            {content}
+          </div>,
+          document.body,
+        )}
       {/* The Tooltip is placed at the target, which is attached only once it has mounted: a hint
           held open from the first render (`opened`) waits for it, as Mantine refuses a Tooltip
           with neither a target nor a child. */}
       {(armed || opened) && target !== null && (
         <Tooltip
-          target={target}
-          opened={open || opened === true}
-          keepMounted
+          target={anchor}
+          opened={phase === "open" || opened === true}
+          transitionProps={{
+            onExited: () => setPhase((p) => (p === "closing" ? "closed" : p)),
+          }}
           withinPortal={!inPlace}
           // The floating element takes an id of its own from the library, so what describes the
           // target is the text inside it, under the id this component chose.

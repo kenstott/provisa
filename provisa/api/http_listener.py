@@ -79,7 +79,10 @@ class WorkerHttpListener:
             lifespan="off",
             proxy_headers=True,
             timeout_keep_alive=int(os.environ.get("PROVISA_HTTP_KEEP_ALIVE", "5")),
-            log_level="warning",
+            # No log_config / log_level: Config.__init__ would reset the process's uvicorn loggers
+            # that the worker's own server configured.
+            log_config=None,
+            log_level=None,
             ssl_certfile=cert if with_tls else None,
             ssl_keyfile=key if with_tls else None,
         )

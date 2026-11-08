@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
     from provisa.core.models import Source
     from provisa.kafka.window import KafkaTableConfig
+    from provisa.compiler.names_table import NamesTable
     from provisa.compiler.sql_gen import CompilationContext
     from provisa.core.database import Database
 
@@ -248,6 +249,9 @@ class OrgRuntime:
     # The model-wide REST/GraphQL path map, from the same input as view_context: a table's field
     # name without building any role's surface.
     view_path_map: dict | None = None
+    # REQ-194: this model version's names table -- every object's name on every surface -- built
+    # from view_context with the build (provisa.compiler.names_table).
+    names_table: "NamesTable | None" = None
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)
 

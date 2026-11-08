@@ -236,6 +236,7 @@ export function OntologySnippet({
           layers={snippetLayers(preset)}
           focus={preset.focus}
           depth={preset.depth}
+          opensFlat={preset.flat}
           snippet
           onExpand={() => setOpen(true)}
           settingsKey={settingsKey}

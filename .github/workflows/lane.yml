@@ -112,6 +112,12 @@ on:
       artifact-path:
         type: string
         required: true
+      failure-logs:
+        description: >-
+          Files the lane's command writes outside its results that explain a failure (a live
+          server's own log), uploaded as failure-logs-<lane> when the lane fails.
+        type: string
+        default: ''
       artifact-retention:
         description: Days; 0 keeps the repository's default.
         type: number
@@ -463,6 +469,17 @@ jobs:
           path: results/${{ steps.key.outputs.lane }}/server-logs/
           retention-days: ${{ inputs.artifact-retention }}
           if-no-files-found: ignore
+
+      - name: Upload the failure logs
+        if: failure() && inputs.failure-logs != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs-${{ steps.key.outputs.lane }}
+          path: ${{ inputs.failure-logs }}
+          retention-days: ${{ inputs.artifact-retention }}
+          if-no-files-found: ignore
+          # A pytest log sits under .pytest_cache, which the action skips unless told otherwise.
+          include-hidden-files: true
 
       - name: Upload the runner's samples
         if: always() && inputs.sampler
