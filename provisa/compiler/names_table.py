@@ -486,7 +486,9 @@ def _column_rows(ctx: CompilationContext, tm: TableMeta, t: Mapping) -> list[Nam
         gql = ctx.physical_to_gql.get((tm.table_id, physical))
         if sql is not None:
             out.append(row("sql", sql, ("sql_column", str(tm.table_id))))
-        if gql is not None:
+        # A field pointing at a registered type is a relationship, not data: the schema builds no
+        # column field for it (schema_inputs._build_column_fields), so it holds no name there.
+        if gql is not None and (tm.table_id, physical) not in ctx.gql_governed_object_cols:
             out.append(row("graphql_field", gql, ("graphql_type_field", tm.type_name)))
             out.append(row("cypher_property", naming.apply_cql_property(gql)))
             out.append(

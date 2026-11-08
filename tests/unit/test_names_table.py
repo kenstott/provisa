@@ -338,3 +338,34 @@ def test_two_sources_collapsing_to_one_org_scoped_catalog_are_refused():
 def test_a_user_source_taking_the_control_planes_catalog_name_is_refused():
     with pytest.raises(NamesClashRefused):
         _sources_table(("provisa-admin", "provisa_admin"), ("provisa_admin", "provisa_admin"))
+
+
+def _reference_model(*, governed: bool):
+    """Orders with a remote-style column ``customer`` and a relationship named ``customer``."""
+    ctx = CompilationContext()
+    orders = _orders()
+    ctx.tables = {"orders": orders}
+    ctx.physical_to_gql[(1, "customer")] = "customer"
+    ctx.physical_to_sql[(1, "customer")] = "customer"
+    if governed:
+        ctx.gql_governed_object_cols.add((1, "customer"))
+    ctx.joins[("Orders", "customer")] = JoinMeta(
+        source_column="customer",
+        target_column="id",
+        source_column_type="integer",
+        target_column_type="integer",
+        target=_customers(),
+        cardinality="many-to-one",
+    )
+    return ctx
+
+
+def test_a_field_pointing_at_a_registered_type_leaves_the_name_to_its_relationship():
+    table = build_names_table(model_name_rows(_reference_model(governed=True), []))
+    assert table.names_of("relationship", "Orders.customer")["graphql_field"] == "customer"
+    assert "graphql_field" not in table.names_of("column", "1:customer")
+
+
+def test_a_data_column_and_a_relationship_of_one_name_are_still_refused():
+    with pytest.raises(NamesClashRefused, match="relationship Orders.customer"):
+        build_names_table(model_name_rows(_reference_model(governed=False), []))
