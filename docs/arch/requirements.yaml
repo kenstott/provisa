@@ -11401,12 +11401,16 @@
   type: behavioral
   description: Large results above threshold redirect to blob storage with presigned URL and TTL. (Amended
     2026-09-30, the operator's threshold is a floor:) A request's redirect threshold (X-Provisa-Redirect-Threshold,
-    @redirect(threshold:), Bolt provisa_redirect_threshold) may only lower the operator's large-result
-    threshold (redirect sooner); a higher one would put a larger inline body through the platform than
-    the operator allows and is rejected with RedirectFloorViolation (REQ-030). executor.redirect.request_redirect_config
+    @redirect(threshold:), Bolt provisa_redirect_threshold) may only lower the operator's large-result threshold
+    (redirect sooner); a higher one would put a larger inline body through the platform than the operator
+    allows and is rejected with RedirectFloorViolation (REQ-030). executor.redirect.request_redirect_config
     is the one place a request threshold meets the operator's, used by the GraphQL endpoint and delivery_from_request.
-    With redirect disabled, a request threshold only makes that result redirect sooner than never. The
-    request config keeps every operator field (encrypt, local_dir); the GraphQL path previously rebuilt it and dropped them.
+    With redirect disabled, a request threshold only makes that result redirect sooner than never. The request
+    config keeps every operator field (encrypt, local_dir); the GraphQL path previously rebuilt it and dropped
+    them. (Amended 2026-11-08, THE DEFAULT THRESHOLD IS 100,000 ROWS:) A result is written to the results
+    store above 100,000 rows by default; the threshold stays editable in the settings UI. Where a result
+    lands in the store, the view that asked for it keeps its controls, so the person can change the query
+    or go back. (Maintainer 2026-11-08.)
   use_case: Large-result redirect to blob storage prevents memory exhaustion on the Provisa server for
     big datasets.
   code:
@@ -81356,7 +81360,34 @@
     CARRY UPGRADE CODE:) Maintainer 2026-10-31: from the first beta release, each release that changes stored
     structure or the meaning of stored data carries the code that upgrades an existing install, keeping
     what it holds, and an upgrade test proves it on an older install. Until then no migrations are written,
-    and the first beta release is the baseline they start from.'
+    and the first beta release is the baseline they start from. (Amended 2026-11-08, A RELEASE MOVES THROUGH
+    STAGES:) [SUPERSEDED by REQ-1989, 2026-11-08 -- main is the current release; work lands on dev and each
+    release has its own branch. Kept here for history; do not implement against it.] Work moves feature,
+    dev (main), test, pre-prod, prod. Each stage is a branch that only takes what passed the stage before,
+    so main is never frozen for a release and a landing on main cancels nothing on the others. [END SUPERSEDED
+    BLOCK] test runs the product''s suites on a commit chosen from main. pre-prod runs the whole release
+    build as a dry run, publishing nothing, and is where packaging and install are tested. A failure on
+    either stage is fixed on that branch and merged back to main, so a failed build costs no version. The
+    release is cut from pre-prod: its notes and tag are made on that commit, the release is published, prod
+    moves to it, and the notes merge back to main. (Maintainer 2026-11-08.) (Amended 2026-11-08, MAIN IS
+    THE CURRENT RELEASE:) main always matches the current release, and only a release merges to it. Work
+    moves feature, dev, release branch, main: landings go to dev and never stop for a release. Each release
+    has its own branch, release/<version>, cut from dev, so a release in flight and newer code being tested
+    never touch each other, and the next release can start while one is publishing. On its branch the release
+    passes the product''s suites and then the whole release build as a dry run, publishing nothing, where
+    packaging and install are tested. A failure is fixed on that branch and merged back to dev, and no version
+    is lost, because the tag is made last. The notes and the tag are made on the release branch, the release
+    is published, the branch merges to main and to dev, and it is deleted. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, THE RULE OF THE RELEASE LINES:) A feature lands on dev when its unit tests, its UI unit
+    tests when it touches the UI, and its own tests pass; dev runs no integration or end-to-end suite. While
+    in alpha a schedule cuts a release branch from dev every night; beta and production are cut deliberately.
+    A release branch never takes a feature. It runs integration, end-to-end and conformance, and each failure
+    becomes a bug fix branched from it and landed on it, so its bugs wind down. Then the release build runs
+    on it as a dry run, the pre-production step, where packaging and install are tested. An alpha ships
+    at the end of its time box with what is left listed; beta and production ship at zero bugs. Every fix
+    on a release branch cascades, by merging that branch forward, to every newer open release and to dev,
+    so the next release has it. When a release is published its branch merges to main, so main is always
+    the current release. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -93840,3 +93871,50 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1993
   - REQ-2098
   - REQ-2200
+
+- id: REQ-2222
+  value: The config is the change surface, and the CLI moves it, runs what are actions rather than state, and drives and explains a query in any language.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Command Line
+  feature: admin-console-surface
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-08. State (sources, tables, roles, products, settings) changes through
+    the config, so there is no command for each thing the UI can do. The CLI moves the config: validate,
+    diff (what would change against this instance), apply, export, and promotion between environments. A
+    secret stays a reference in the file, never a value. Everything changed in the UI comes back out in
+    export and goes back in with apply, with nothing lost, and a test exports every shipped model, applies
+    it to an empty store and compares. Actions, which are not state, have commands: running an instance,
+    the license, maintenance, building connectors (REQ-2221). One generic command, provisa api, calls anything
+    else the API offers, so the long tail needs no code per feature. provisa query drives a query in SQL,
+    GraphQL, Cypher or SPARQL, a gRPC method with its request, a REST call or an MCP tool call, through
+    the same front doors a client uses. It takes the role and the org as flags, and a person once entitlements
+    (REQ-2219) apply. Its output is machine-readable and stable, a refusal exits non-zero and prints its
+    error code, and an expected refusal can be asserted. provisa explain takes the same inputs and the same
+    flags and shows exactly what SQL is generated: the one semantic statement with views expanded, that
+    statement governed, the optimized statement with the rules that fired, the route, the native statement
+    in the target dialect, and the engine''s own plan, with an option to run it and report real timings.
+    A statement refused for that role prints the refusal and its code. Every language reaches explain where
+    it hands SQL to the one pipeline (REQ-1519), so explain describes what would run. There is no interactive
+    mode: pgwire and Bolt already give psql and cypher-shell. (Amended 2026-11-08, WHAT THE OTHER CLIS TAUGHT:)
+    apply takes a dry run that performs the whole model build and name checks on the server and saves nothing.
+    diff can write a plan that apply then applies exactly. diff can exit non-zero when the instance has
+    moved from the config, for a scheduled drift check. can-i answers whether a role or person may do something,
+    and why not. query takes a changed selection against a prior state, so a branch tests only what it affects
+    and what depends on it. Named contexts hold an instance and its credentials, and a production context
+    asks for confirmation. Every command shares one output option (json, yaml, table) and one filter. wait
+    blocks until an instance is ready or a replica is current. schema prints the config fields for a kind,
+    generated from the model. Generated help, shell completion and documented exit codes come with them.
+    (Maintainer 2026-11-08.)'
+  use_case: A CI pipeline validates a model branch, diffs it against test and applies it, then runs the same Cypher as two roles, compares the answers, and asserts that a third role is refused with the expected code. When an answer looks wrong, a developer runs provisa explain on the query and sees the exact SQL that ran.
+  scenario: 'Given a running instance and a Cypher statement
+    When provisa explain runs it for a role
+    Then it prints the semantic, governed, optimized and native SQL and the route for that role
+    And when provisa query runs a statement that role may not read
+    Then it exits non-zero and prints the refusal code'
+  related_reqs:
+  - REQ-1519
+  - REQ-2219
+  - REQ-2221

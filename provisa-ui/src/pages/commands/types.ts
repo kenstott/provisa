@@ -76,8 +76,6 @@ export interface FormState {
   writesTable: string;
   // REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection).
   outputColumns: DatasetColumn[];
-  // REQ-1634: optional data-product membership.
-  productId: string;
   // REQ-2168: the command's name per language; a language left out offers its own name.
   languageBindings: Record<string, LanguageBinding>;
 }
@@ -154,7 +152,6 @@ export const EMPTY_FORM: FormState = {
   requiresApproval: false,
   writesTable: "",
   outputColumns: [],
-  productId: "",
   languageBindings: {},
 };
 

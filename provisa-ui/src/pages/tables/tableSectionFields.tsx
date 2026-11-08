@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { Fragment } from "react";
+import { Link } from "react-router-dom";
 import { Text } from "@mantine/core";
 import type { TFunction } from "i18next";
 import type { DataProduct, RegisteredTable, Source } from "../../types/admin";
@@ -55,7 +57,8 @@ export function yesNo(t: TFunction, value: boolean) {
   return value ? t("detailFields.yes") : t("detailFields.no");
 }
 
-/** The data product line of Associations, read-only. */
+/** The data products line of Associations, read-only: each product the table belongs to, a link
+ * that opens it, or that it belongs to none. Membership is set on the product (REQ-1634). */
 export function dataProductField(
   t: TFunction,
   table: RegisteredTable,
@@ -65,8 +68,19 @@ export function dataProductField(
     label: t("tableEditForm.dataProductLabel"),
     testId: "table-read-view-product",
     value:
-      table.productId == null
-        ? unset(t("tableEditForm.dataProductNone"))
-        : (dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId),
+      table.productIds.length === 0 ? (
+        unset(t("tableEditForm.dataProductNone"))
+      ) : (
+        <>
+          {table.productIds.map((id, i) => (
+            <Fragment key={id}>
+              {i > 0 && ", "}
+              <Link to={`/data-products?product=${encodeURIComponent(id)}`}>
+                {dataProducts.find((p) => p.id === id)?.name ?? id}
+              </Link>
+            </Fragment>
+          ))}
+        </>
+      ),
   };
 }

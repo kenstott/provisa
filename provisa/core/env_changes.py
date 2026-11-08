@@ -15,7 +15,7 @@ own change log, in its relational store (the environment's schema on the control
 per table written. A log row is a version of one row of the table, keyed by its primary key:
 ``upsert`` with the row's values, or ``delete``; ``__seq`` orders the versions. A read of the
 table shows its rows with the log applied -- the latest version of each key, a deleted key left
-out (:func:`overlay_sql`). Reset mutations drops every log, returning the environment to its
+out (:func:`overlay`). Reset mutations drops every log, returning the environment to its
 baseline: the parent's real rows, the generated rows, or a database of its own.
 
 A log is runtime state of the environment that kept it: never copied, never registered, never
@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
+import sqlglot.expressions as exp
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -111,45 +112,119 @@ async def reset(conn: "Connection", schema: str) -> list[int]:
     return dropped
 
 
-def overlay_sql(
-    base: str,
-    log: str,
+def _q(name: str) -> exp.Identifier:
+    return exp.to_identifier(name, quoted=True)
+
+
+def _col(table: str, name: str) -> exp.Column:
+    return exp.Column(this=_q(name), table=exp.to_identifier(table))
+
+
+def _op_is(table: str | None, op: str, *, negated: bool = False) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    column = _col(table, OP) if table else exp.Column(this=_q(OP))
+    kind = exp.NEQ if negated else exp.EQ
+    return kind(this=column, expression=exp.Literal.string(op))
+
+
+def overlay(
+    base: exp.Query,
+    log: tuple[str, ...],
     key: list[str],
     columns: list[str],
-    log_filter: str | None = None,
-    carried: dict[str, str] | None = None,
-) -> str:
-    """``base`` -- a statement reading a table's rows -- with ``log`` -- the qualified address of
-    its change log -- applied in ``__seq`` order: after a truncate marker, the base and every
-    version before the latest marker count as deleted; otherwise a row whose key the log holds is
-    left out, and the latest version of each key in the log is added unless it is a delete. ``key`` the primary key's columns,
-    ``columns`` every column, in the order ``base`` gives them. ``log_filter``: the table's row
-    filter over the log's versions (alias ``l``), which ``base`` has applied to its own rows; None
-    for a table with none. ``carried``: further outputs, by name, that ``base`` gives after
-    ``columns``, each with the same expression over a log version (alias ``l``) -- a meta-role's
-    member flags and real values, computed alike on the base's rows and the log's (REQ-1620). In
-    the governed dialect."""
+    log_filter: exp.Expr | None = None,  # pyright: ignore[reportPrivateImportUsage]
+    carried: dict[str, exp.Expr] | None = None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Union:  # REQ-1942, REQ-913
+    """``base`` -- a statement reading a table's rows -- with ``log`` -- its change log's address,
+    by its name parts -- applied in ``__seq`` order, built on the AST: after a truncate marker,
+    the base and every version before the latest marker count as deleted; otherwise a row whose
+    key the log holds is left out, and the latest version of each key in the log is added unless
+    it is a delete. ``key`` the primary key's columns, ``columns`` every column, in the order
+    ``base`` gives them. ``log_filter``: the table's row filter over the log's versions (alias
+    ``l``), which ``base`` has applied to its own rows; None for a table with none. ``carried``:
+    further outputs, by name, that ``base`` gives after ``columns``, each with the same expression
+    over a log version (alias ``l``) -- a meta-role's member flags and real values, computed alike
+    on the base's rows and the log's (REQ-1620)."""
+    *qualifier, name = log
+    db = qualifier[-1] if qualifier else None
+    catalog = qualifier[-2] if len(qualifier) > 1 else None
 
-    def q(name: str) -> str:
-        return '"' + name.replace('"', '""') + '"'
+    def log_as(alias: str | None) -> exp.Table:
+        table = exp.table_(_q(name), db=db and _q(db), catalog=catalog and _q(catalog))
+        if alias is not None:
+            table.set("alias", exp.TableAlias(this=exp.to_identifier(alias)))
+        return table
 
     extra = carried or {}
-    cols = ", ".join([f"b.{q(c)}" for c in columns] + [f"b.{q(n)}" for n in extra])
-    latest_cols = ", ".join(
-        [f"l.{q(c)}" for c in columns] + [f"{e} AS {q(n)}" for n, e in extra.items()]
+    kept_rows = (
+        exp.select(*[_col("b", c) for c in columns], *[_col("b", n) for n in extra])
+        .from_(exp.Subquery(this=base.copy(), alias=exp.TableAlias(this=exp.to_identifier("b"))))
+        .where(
+            exp.Not(
+                this=exp.Exists(
+                    this=exp.select(exp.Literal.number(1))
+                    .from_(log_as("t"))
+                    .where(_op_is("t", TRUNCATE))
+                )
+            )
+        )
+        .where(
+            exp.Not(
+                this=exp.Exists(
+                    this=exp.select(exp.Literal.number(1))
+                    .from_(log_as("k"))
+                    .where(
+                        exp.and_(
+                            _op_is("k", TRUNCATE, negated=True),
+                            *(exp.EQ(this=_col("k", c), expression=_col("b", c)) for c in key),
+                        )
+                    )
+                )
+            )
+        )
     )
-    key_match = " AND ".join(f"k.{q(c)} = b.{q(c)}" for c in key)
-    partition = ", ".join(q(c) for c in key)
-    marked = f"{q(OP)} = '{TRUNCATE}'"
     # The latest truncate marker's position: versions at or before it went with the base.
-    cut = f"COALESCE((SELECT MAX(t.{q(SEQ)}) FROM {log} AS t WHERE t.{marked}), -1)"
-    return (
-        f"SELECT {cols} FROM ({base}) AS b WHERE NOT EXISTS "
-        f"(SELECT 1 FROM {log} AS t WHERE t.{marked}) AND NOT EXISTS "
-        f"(SELECT 1 FROM {log} AS k WHERE k.{q(OP)} <> '{TRUNCATE}' AND {key_match}) "
-        f"UNION ALL SELECT {latest_cols} FROM (SELECT *, ROW_NUMBER() OVER "
-        f"(PARTITION BY {partition} ORDER BY {q(SEQ)} DESC) AS {q('__rank')} FROM {log} "
-        f"WHERE {q(OP)} <> '{TRUNCATE}' AND {q(SEQ)} > {cut}) AS l "
-        f"WHERE l.{q('__rank')} = 1 AND l.{q(OP)} = '{UPSERT}'"
-        + (f" AND ({log_filter})" if log_filter is not None else "")
+    cut = exp.func(
+        "COALESCE",
+        exp.Subquery(
+            this=exp.select(exp.func("MAX", _col("t", SEQ)))
+            .from_(log_as("t"))
+            .where(_op_is("t", TRUNCATE))
+        ),
+        exp.Neg(this=exp.Literal.number(1)),
     )
+    ranked = (
+        exp.select(
+            exp.Star(),
+            exp.alias_(
+                exp.Window(
+                    this=exp.RowNumber(),
+                    partition_by=[exp.Column(this=_q(c)) for c in key],
+                    order=exp.Order(
+                        expressions=[
+                            exp.Ordered(this=exp.Column(this=_q(SEQ)), desc=True, nulls_first=True)
+                        ]
+                    ),
+                ),
+                _q("__rank"),
+            ),
+        )
+        .from_(log_as(None))
+        .where(
+            exp.and_(
+                _op_is(None, TRUNCATE, negated=True),
+                exp.GT(this=exp.Column(this=_q(SEQ)), expression=cut),
+            )
+        )
+    )
+    latest = exp.select(
+        *[_col("l", c) for c in columns],
+        *[exp.alias_(e.copy(), _q(n)) for n, e in extra.items()],
+    ).from_(exp.Subquery(this=ranked, alias=exp.TableAlias(this=exp.to_identifier("l"))))
+    conditions = [
+        exp.EQ(this=_col("l", "__rank"), expression=exp.Literal.number(1)),
+        _op_is("l", UPSERT),
+    ]
+    if log_filter is not None:
+        conditions.append(exp.Paren(this=log_filter.copy()))
+    latest = latest.where(exp.and_(*conditions))
+    return exp.union(kept_rows, latest, distinct=False)

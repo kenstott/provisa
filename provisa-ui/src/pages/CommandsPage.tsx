@@ -194,7 +194,6 @@ export function CommandsPage() {
         requiresApproval: fn.requiresApproval ?? false, // REQ-1924
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
-        productId: fn.productId ?? "", // REQ-1634
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
       });
       setExpandedFn(name);
@@ -224,7 +223,6 @@ export function CommandsPage() {
         requiresApproval: wh.requiresApproval, // REQ-209
         writesTable: "",
         outputColumns: [],
-        productId: "",
         languageBindings: {},
       });
       setExpandedWh(name);
@@ -273,7 +271,6 @@ export function CommandsPage() {
             materialize: form.materialize,
             requiresApproval: form.requiresApproval, // REQ-1924
             writesTable: isStatement || isTemplate ? undefined : form.writesTable || null, // REQ-1924, REQ-871
-            productId: form.productId || null, // REQ-1634
             languageBindings: form.languageBindings, // REQ-2168
           },
           editingName, // the open command is updated; a new one is created
@@ -345,7 +342,6 @@ export function CommandsPage() {
     domainHints,
     availableFunctions,
     loadingFunctions,
-    dataProducts,
     roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
@@ -565,11 +561,9 @@ export function CommandsPage() {
             ) : (
               <FunctionRead
                 fn={fn}
-                productName={
-                  fn.productId
-                    ? (dataProducts.find((dp) => dp.id === fn.productId)?.name ?? fn.productId)
-                    : null
-                }
+                productNames={(fn.productIds ?? []).map(
+                  (id) => dataProducts.find((dp) => dp.id === id)?.name ?? id,
+                )}
               />
             )}
             <PanelActions>

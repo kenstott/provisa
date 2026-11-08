@@ -56,6 +56,7 @@ from provisa.core.models import MetadataExportTarget
 from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     ORG_ID,
+    PROD,
     RLS_FILTER,
     governed_config,
     governed_snapshot,
@@ -95,7 +96,9 @@ def test_atlas_publishes_parents_before_the_children_that_reference_them(snapsho
     seen: set[str] = set()
     for entity in entities:
         for reference in entity.relationships.values():
-            assert reference["guid"] in seen
+            # A data product references its member tables as a list (REQ-1634).
+            for one in reference if isinstance(reference, list) else [reference]:
+                assert one["guid"] in seen
         seen.add(entity.guid)
 
 
@@ -216,7 +219,12 @@ def _snapshot_with_data_product():  # REQ-1634
     config = governed_config()
     config.data_products = [
         DataProduct(
-            id="prod", domain_id="sales", name="Sales 360", owner_role="alice", purpose="Unified"
+            id="prod",
+            domain_id="sales",
+            name="Sales 360",
+            owner_role="alice",
+            purpose="Unified",
+            tables=list(PROD.tables),
         )
     ]
     return build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
@@ -322,6 +330,7 @@ def test_datahub_owns_only_the_aspects_it_publishes(snapshot):
         "glossaryTerms",
         "ownership",
         "upstreamLineage",
+        "dataProductProperties",  # REQ-1634: the product the tables publish through
     }
 
 
@@ -362,6 +371,26 @@ def test_datahub_publishes_a_native_data_product_entity_with_its_assets():  # RE
         p for p in proposals if p.entity_type == "dataProduct" and p.aspect_name == "ownership"
     )
     assert ownership.aspect["owners"][0]["owner"] == "urn:li:corpuser:alice"
+
+
+def test_datahub_lists_a_dataset_in_every_product_it_belongs_to():  # REQ-1634
+    """Membership is many-to-many, and DataHub holds an asset in several Data Products at once
+    (its default, MULTIPLE_DATA_PRODUCTS_PER_ASSET=true): each product's assets name the dataset."""
+    from provisa.core.models import DataProduct
+
+    config = governed_config()
+    config.data_products = [
+        PROD,
+        DataProduct(id="audit", domain_id="sales", name="audit", tables=["orders"]),
+    ]
+    snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
+    assets = {
+        p.urn: {a["destinationUrn"] for a in p.aspect["assets"]}
+        for p in to_proposals(snapshot)
+        if p.aspect_name == "dataProductProperties"
+    }
+    assert len(assets) == 2
+    assert all(_urn(ORDERS) in members for members in assets.values())
 
 
 # REQ-1389: the globalTags read-merge — the one aspect where human and Provisa authorship
@@ -555,6 +584,7 @@ _PROVISA_OWNED_ATTRIBUTES = {
     LINEAGE_ATTRIBUTE,
     STEWARD_ATTRIBUTE,
     DATA_QUALITY_ATTRIBUTE,  # REQ-1443
+    DOMAIN_ATTRIBUTE,  # REQ-1634: a data product row's domain
 }
 
 
@@ -565,6 +595,7 @@ def test_collibra_mentions_only_provisa_authored_attribute_and_relation_types(ro
         assert set(row.get("relations", {})) <= {
             f"{COLUMN_TO_TABLE_RELATION}:TARGET",
             f"{TABLE_TO_DATABASE_RELATION}:TARGET",
+            f"{DATA_PRODUCT_TABLE_RELATION}:TARGET",  # REQ-1634
         }
 
 

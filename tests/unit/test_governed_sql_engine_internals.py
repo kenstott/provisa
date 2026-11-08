@@ -22,6 +22,7 @@ X-ClickHouse-Key) in clear text, and a quoted ``".../x.csv"`` reads a host file.
 
 from __future__ import annotations
 
+import copy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -59,15 +60,18 @@ _TABLES = [
 
 def _state(domain_access: list[str]) -> SimpleNamespace:
     ctx = CompilationContext()
+    # Each state holds its own copy of the registry: a test that adds a column to its state's
+    # table (test_embed_fn) must not add it to every later test's on the same worker.
+    orders = copy.deepcopy(_ORDERS)
     # Keyed by field name too: a domain_prefix schema exposes the table as ``sa__orders``.
-    ctx.tables = {"orders": _ORDERS, "sa__orders": _ORDERS}
+    ctx.tables = {"orders": orders, "sa__orders": orders}
     return RoleState(
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
         contexts={"analyst": ctx},
         rls_contexts={"analyst": RLSContext.empty()},
         roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": domain_access}},
         masking_rules={},
-        tables=_TABLES,
+        tables=copy.deepcopy(_TABLES),
         source_types={"pg": "postgresql"},
         source_catalogs={},
         relationships=[],

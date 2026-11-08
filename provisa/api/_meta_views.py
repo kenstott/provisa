@@ -18,21 +18,19 @@ and ``DROP VIEW`` takes no ``CASCADE``. Runs verbatim on PostgreSQL, SQLite, MyS
 
 from __future__ import annotations
 
-# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
-# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
-# for callers near the view definitions.
-from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
-from provisa.dq.contract import CHECKERS
-
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
 # table, so the meta view unions them in from the constants — the registry a query surface sees is
 # complete. Built at import time; never hand-edit the literals.
 import json as _json
 
-from provisa.compiler.sql_literals import sql_literal
+# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
+# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
+# for callers near the view definitions.
+import sqlglot.expressions as exp
+
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 from provisa.api._pg_catalog_views import (
+    COLUMNS_OF_TABLES as _COLUMNS_OF_TABLES,
     CATALOG_BASE_VIEWS,
     CATALOG_COLUMN_VIEWS,
     CATALOG_KEY_VIEWS,
@@ -41,8 +39,12 @@ from provisa.api._pg_catalog_views import (
     SERVED_COLUMN_NAMES,
     registered_column_sql_name,
 )
-from provisa.transpiler.metadata_settings import asked_sql
+from provisa.compiler.sql_literals import sql_literal
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
+from provisa.dq.contract import CHECKERS
+from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
 from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
+from provisa.transpiler.metadata_settings import asked_sql
 
 
 def _system_tag_rows_sql() -> str:
@@ -176,7 +178,9 @@ def _data_product_edges_sql() -> str:
     product's member, and the row targets that product; a table that belongs to no product is a
     target only where nothing reachable through it is another product's member (otherwise it
     supports that product's row). A related edge is a table one declared relationship from a
-    member, not one of the product's own. A product's lineage is no row here: it is cut to its
+    member, not one of the product's own: one row for each other product it is a member of
+    (REQ-1634: a table may be a member of several), its id naming that product, or one row when
+    it is a member of none. A product's lineage is no row here: it is cut to its
     caller's read rights, so it is served by the product lineage endpoint (REQ-2156).
 
     Everything is computed from reachability, never by enumerating routes: the path count is the
@@ -196,13 +200,17 @@ def _data_product_edges_sql() -> str:
             SELECT id AS table_id, domain_id || '.' || COALESCE(alias, table_name) AS model_name
             FROM registered_tables
         ),
+        -- One row per product and member; a table may be a member of several.
         members AS (
-            SELECT id AS table_id, product_id, dq_contract
-            FROM registered_tables
-            WHERE product_id IS NOT NULL AND NOT draft
+            SELECT m.table_id, m.product_id, rt.dq_contract
+            FROM data_product_tables m
+            JOIN registered_tables rt ON rt.id = m.table_id
+            WHERE NOT rt.draft
         ),
         free AS (
-            SELECT id AS table_id FROM registered_tables WHERE product_id IS NULL AND NOT draft
+            SELECT id AS table_id FROM registered_tables rt
+            WHERE NOT rt.draft
+              AND NOT EXISTS (SELECT 1 FROM data_product_tables m WHERE m.table_id = rt.id)
         ),
         links AS (
             SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
@@ -382,7 +390,9 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
+        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT)
+                   || CASE WHEN o.product_id IS NOT NULL
+                           THEN ':product:' || o.product_id ELSE '' END,
                rl.product_id, 'related', o.product_id, rl.table_id,
                TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL
         FROM related rl
@@ -486,8 +496,8 @@ def _column_details_sql() -> str:
                     ELSE COALESCE(NULLIF(tc.description, '') || ' ', '') || '['
                          || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
                END AS comment
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id AND NOT rt.draft
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id AND NOT rt.draft
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -510,10 +520,12 @@ def _table_keys_sql() -> str:
 
     A statement about some tables reads their keys alone, after the numbering, so a key has one
     number whatever a statement asks; each index goes by its own name as well as its table's."""
-    asked = asked_sql("t.table_name", "'pk_' || t.table_name", "k.key_name")
-    table_asked = asked_sql("t.table_name", "'pk_' || t.table_name")
-    unique_asked = asked_sql("u.key_name")
-    registration_asked = asked_sql("'uq_registered_tables_table_query_name'")
+    table_name = exp.column("table_name", table="t")
+    primary = exp.DPipe(this=exp.Literal.string("pk_"), expression=table_name, safe=True)
+    asked = asked_sql(table_name, primary, exp.column("key_name", table="k"))
+    table_asked = asked_sql(table_name, primary)
+    unique_asked = asked_sql(exp.column("key_name", table="u"))
+    registration_asked = asked_sql(exp.Literal.string("uq_registered_tables_table_query_name"))
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
         WITH tables AS (
@@ -655,9 +667,9 @@ def _table_keys_sql() -> str:
         FROM all_keys k
         JOIN tables t ON t.table_id = k.table_id
         JOIN tables r ON r.table_id = k.referenced_table_id
-        LEFT JOIN table_columns c
+        LEFT JOIN {_COLUMNS_OF_TABLES} c
           ON c.table_id = k.table_id AND c.column_name = k.column_name
-        LEFT JOIN table_columns rc
+        LEFT JOIN {_COLUMNS_OF_TABLES} rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
         WHERE (c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES})
           AND {asked}
@@ -796,7 +808,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
                rt.alias, rt.description, rt.cache_ttl, rt.gql_naming_convention,
                rt.watermark_column,
-               rt.view_sql, rt.product_id, rt.materialize, rt.mv_refresh_interval,
+               rt.view_sql, rt.materialize, rt.mv_refresh_interval,
                rt.l1_cluster, rt.l2_cluster, rt.l3_cluster, rt.clusters_computed_at,
                rt.tenant_id,
                rt.dq_contract,
@@ -852,21 +864,23 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
-        SELECT id, table_id, domain_id, column_name,
+        SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
                -- the stable column identity the glossary binds to, and the join key of
                -- the registered glossary_term_refs -> table_columns edge (relationships is
                -- single-column, and table_columns.id is replaced wholesale by the table upsert).
-               CAST(table_id AS TEXT) || ':' || column_name AS column_key,
-               data_type, is_primary_key,
-               alias, description, path, scope,
-               masks,
-               native_filter_type, is_foreign_key, is_alternate_key,
-               object_fields,
-               visible_to,
-               tenant_id
-        FROM table_columns
-        -- nor are a draft table's columns.
-        WHERE table_id IN (SELECT id FROM registered_tables WHERE NOT draft)
+               CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS column_key,
+               tc.data_type, tc.is_primary_key,
+               tc.alias, tc.description, tc.path, tc.scope,
+               tc.masks,
+               tc.native_filter_type, tc.is_foreign_key, tc.is_alternate_key,
+               tc.object_fields,
+               tc.visible_to,
+               tc.tenant_id
+        -- registered_tables first: schema.sql locks it before table_columns (lock order).
+        -- A draft table's columns are not listed.
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
+        WHERE NOT rt.draft
     """,
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
@@ -885,8 +899,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
                rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
                'meta' AS domain_id
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.scope = 'listed' AND NOT rt.draft
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
@@ -916,16 +930,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
                domain_id, description, created_at, updated_at
         FROM tracked_webhooks
     """,
-    # REQ-2125: product_id is the data product the command is a member of.
     "tracked_functions": """
         CREATE OR REPLACE VIEW tracked_functions_meta AS
         SELECT id, name, source_id, schema_name, function_name, returns, kind,
                arguments,
                return_schema,
                visible_to,
-               domain_id, description, created_at, updated_at,
-               product_id
+               domain_id, description, created_at, updated_at
         FROM tracked_functions
+    """,
+    # REQ-1634: data-product membership, many-to-many: one row per product and member table, and
+    # one per product and member command.
+    "data_product_tables": """
+        CREATE OR REPLACE VIEW data_product_tables_meta AS
+        SELECT product_id, table_id FROM data_product_tables
+    """,
+    "data_product_commands": """
+        CREATE OR REPLACE VIEW data_product_commands_meta AS
+        SELECT product_id, command_name FROM data_product_commands
     """,
     # REQ-2190: what pgwire's catalog presents that the views above do not list. SQL alone serves
     # these (security.rights.SQL_ONLY_TABLES), and a role reads their rows as it reads
@@ -1070,7 +1092,7 @@ def _judgment_review_sql() -> str:
         FROM judgment_findings f
         LEFT JOIN tag_assignments ta
           ON f.object_type = 'tag_assignment' AND ta.base_tag_id || '@' || ta.object_key = f.object_key
-        LEFT JOIN table_columns tc
+        LEFT JOIN {_COLUMNS_OF_TABLES} tc
           ON f.object_type IN ('column', 'mask_entry')
          AND CAST(tc.table_id AS TEXT) || ':' || tc.column_name = SPLIT_PART(f.object_key, '#', 1)
         LEFT JOIN rls_rules rr
@@ -1204,8 +1226,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'column:' || CAST(tc.id AS TEXT), 'column',
                rt.table_name || '.' || tc.column_name, rt.domain_id,
                'missing_description'
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.description IS NULL OR tc.description = ''
         UNION ALL
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,

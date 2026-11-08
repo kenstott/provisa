@@ -123,7 +123,7 @@ class OrgRuntime:
     unbound_sources: frozenset[str] = frozenset()
     # REQ-1942: per table with kept mutations (Reversible), its change log's address and primary
     # key. Set by each schema build; empty for prod.
-    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = field(default_factory=dict)
 
     # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
     # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine

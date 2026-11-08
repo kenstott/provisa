@@ -308,10 +308,47 @@ def governed_for_role(
     the role's :func:`governance_for_role` context."""
     from provisa.compiler.stage2 import apply_governance
 
+    if column_types is None:
+        column_types = _columns_read(sql, ctx, rls, masking_rules)
     gov = governance_for_role(
         ctx, role_id, rls=rls, masking_rules=masking_rules, column_types=column_types
     )
     return apply_governance(sql, gov)
+
+
+def _columns_read(sql: str, ctx, rls, masking_rules) -> dict[int, list[tuple[str, str]]]:
+    """Each table of ``ctx`` registering the columns ``sql``, its row rules and its masks name
+    (as varchar), for a test that registers none: governance reads a table through a relation of
+    its registered columns (REQ-039), so a table with none would be refused. A column the
+    statement qualifies is the qualified table's; an unqualified one every table's."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.rls import RLSContext, as_rule
+
+    metas = {m.table_id: m for m in ctx.tables.values()}
+    for join in ctx.joins.values():
+        metas.setdefault(join.target.table_id, join.target)
+    by_name = {m.table_name: tid for tid, m in metas.items()}
+    tree = sqlglot.parse_one(sql, read="postgres")
+    aliases = {
+        t.alias_or_name: by_name[t.name] for t in tree.find_all(exp.Table) if t.name in by_name
+    }
+    names: dict[int, set[str]] = {tid: set() for tid in metas}
+    for col in tree.find_all(exp.Column):
+        if isinstance(col.this, exp.Star) or not col.name:
+            continue
+        owners = [aliases[col.table]] if col.table in aliases else list(metas)
+        for tid in owners:
+            names[tid].add(col.name)
+    rules = rls.rules if isinstance(rls, RLSContext) else dict(rls or {})
+    for tid, predicate in rules.items():
+        if tid in names:
+            names[tid] |= {c.name for c in as_rule(predicate).find_all(exp.Column)}
+    for (tid, _role), columns in (masking_rules or {}).items():
+        if tid in names:
+            names[tid] |= set(columns)
+    return {tid: [(n, "varchar") for n in sorted(cols)] for tid, cols in names.items()}
 
 
 def assert_span_emitted(exporter, name_fragment: str) -> None:
@@ -408,6 +445,11 @@ def hold_registered_tables(
         ],
     )
     monkeypatch.setattr(state, "contexts", {})
+    # ... and no model-wide context: the index also reads every table's semantic names from it
+    # (provisa/mv/view_inputs.py ModelIndex), so one a build earlier in the process left behind
+    # makes `orders` name that model's table as well -- "a reference more than one table or view
+    # answers to" in test_preflight_refresh (Unit run 42516337461).
+    monkeypatch.setattr(state, "view_context", None)
     # ... and no model store: the readable-inputs check (provisa/mv/readable_inputs.py) also asks
     # the store which registered tables keep rows by key. A store an earlier test left on the
     # state is another model's -- or a database since dropped: core 1/6 of run 37874425906 failed
