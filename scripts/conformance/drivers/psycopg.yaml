@@ -267,15 +267,6 @@ reasons:
     defect: 'AssertionError: timestamp'
   assertionerror-timestamptz:
     defect: 'AssertionError: timestamptz'
-  assertionerror-assert-datetime-datetime-n-n-n-n:
-    defect: 'AssertionError: assert datetime.datetime(N, N, N, N, N, N, tzinfo=zoneinfo.ZoneInfo(key=''…''))
-      == datetime.datetime(N, N,'
-  assertionerror-assert-datetime-datetime-n-n-n-n-2:
-    defect: 'AssertionError: assert datetime.datetime(N, N, N, N, N, N, N, tzinfo=zoneinfo.ZoneInfo(key=''…''))
-      == datetime.datetime(N,'
-  psycopg-errors-featurenotsupported-a-timestamptz:
-    defect: 'psycopg.errors.FeatureNotSupported: a timestamptz cannot be written as text in the session
-      TimeZone unknown'
   psycopg-dataerror-timestamp-too-small-before-yea:
     defect: 'psycopg.DataError: timestamp too small (before year N): ''…'''
   psycopg-dataerror-timestamp-too-large-after-year:
@@ -2144,7 +2135,6 @@ expected:
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[DMY]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[MDY]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[YMD]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-1900,1,1~05:21:10-1900-01-01-Asia/Kolkata]: assertionerror-assert-datetime-datetime-n-n-n-n
   tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,1~2-2000-01-01--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,0,0,456789~-2-2000-01-02
     03:00:00.456789-+02:00]
@@ -2152,15 +2142,8 @@ expected:
   ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,0,0,456789~2-2000-01-02
     03:00:00.456789--02:00]
   : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,4,5,678~1-2000-01-02
-    03:04:05.000678-Europe/Rome]
-  : assertionerror-assert-datetime-datetime-n-n-n-n-2
   tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,4,5,6~2-2000-01-02 03:04:05.000006--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,12,31~2-2000-12-31--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,7,2,3,4,5,678~2-2000-07-02
-    03:04:05.000678-Europe/Rome]
-  : assertionerror-assert-datetime-datetime-n-n-n-n-2
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[1900,1,1~05:21:10-1900-01-01-Asia/Kolkata]: assertionerror-assert-datetime-datetime-n-n-n-n
   tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,1~2-2000-01-01--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,0,0,456789~-2-2000-01-02
     03:00:00.456789-+02:00]
@@ -2168,26 +2151,10 @@ expected:
   ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,0,0,456789~2-2000-01-02
     03:00:00.456789--02:00]
   : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,4,5,678~1-2000-01-02
-    03:04:05.000678-Europe/Rome]
-  : assertionerror-assert-datetime-datetime-n-n-n-n-2
   ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,4,5,6~2-2000-01-02
     03:04:05.000006--02:00]
   : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,12,31~2-2000-12-31--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,7,2,3,4,5,678~2-2000-07-02
-    03:04:05.000678-Europe/Rome]
-  : assertionerror-assert-datetime-datetime-n-n-n-n-2
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-0-2000-1-1-0]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-Europe/Rome-1000-1-1-2996]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-Europe/Rome-2000-1-1-3600]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-Europe/Rome-2000-7-1-7200]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-NOSUCH0-2000-1-1-0]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-UTC-2000-1-1-0]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[0-UTC-2000-7-1-0]: psycopg-errors-featurenotsupported-a-timestamptz
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[1-Europe/Rome-1000-1-1-2996]: assert-n-n-2
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[1-Europe/Rome-2000-1-1-3600]: assert-n-n-2
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_tz[1-Europe/Rome-2000-7-1-7200]: assert-n-n-2
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-min-+09:18:59-Asia/Tokyo]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[1-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
