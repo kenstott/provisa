@@ -28,16 +28,30 @@ from provisa.gql.assembler import register_node_ids, register_rel_ids
 
 
 class _Conn:
+    """The control-plane connection's API as ``_register_ids`` uses it: ``execute_core`` of a
+    SELECT answers the held rows by their composite ids (``fetchall``), ``execute_core_many``
+    inserts or updates a batch, ``transaction`` groups them."""
+
     def __init__(self, ids: dict[str, int]) -> None:
         self.ids = ids
         self.upserted: list[str] = []
 
-    async def execute_core(self, _stmt: Any) -> Any:
-        return SimpleNamespace(fetchone=lambda: None)
+    async def execute_core(self, stmt: Any) -> Any:
+        asked = next(v for k, v in stmt.compile().params.items() if k.startswith("composite_id"))
+        rows = [(self.ids[c], c, "kind", {}) for c in asked if c in self.ids]
+        # (composite_id, id, kind, properties), the select's column order
+        return SimpleNamespace(fetchall=lambda: [(c, i, kind, props) for i, c, kind, props in rows])
 
-    async def upsert_returning(self, _table: Any, values: dict, **_kw: Any) -> int:
-        self.upserted.append(values["composite_id"])
-        return self.ids.setdefault(values["composite_id"], 100 + len(self.ids))
+    async def execute_core_many(self, _stmt: Any, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            cid = row.get("composite_id")
+            if cid is not None and cid not in self.ids:
+                self.upserted.append(cid)
+                self.ids[cid] = 100 + len(self.ids)
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield
 
 
 class _ModelDb:

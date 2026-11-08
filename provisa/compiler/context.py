@@ -78,15 +78,17 @@ def _lookup_column_type(
     return "varchar"
 
 
-def _visible_unique_constraints(t, si) -> list[tuple[str, list[str]]]:  # REQ-1093
+def _visible_unique_constraints(
+    t, declared: dict[int, list[dict]]
+) -> list[tuple[str, list[str]]]:  # REQ-1093
     """Declared UNIQUE constraints for table ``t``, filtered to columns visible in this projection.
 
-    Sourced from the raw table config on SchemaInput (not _TableInfo) so schema_gen stays untouched.
+    Sourced from the raw table config on SchemaInput (not _TableInfo) so schema_gen stays untouched:
+    ``declared`` is each table's, by id, read from it once per context (a search of every table
+    for each table was quadratic in the model).
     """
     visible = {col["column_name"] for col in t.visible_columns}
-    raw = next(
-        (tbl.get("unique_constraints", []) for tbl in si.tables if tbl["id"] == t.table_id), []
-    )
+    raw = declared.get(t.table_id, [])
     return [
         (uc["name"], list(uc["columns"])) for uc in raw if all(c in visible for c in uc["columns"])
     ]
@@ -97,6 +99,7 @@ def _register_table_in_ctx(
     ctx: CompilationContext,
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     physical_map: dict[str, str],
+    declared_unique: dict[int, list[dict]],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
@@ -179,7 +182,7 @@ def _register_table_in_ctx(
     ctx.write_ops[t.table_id] = t.write_ops
 
     # REQ-1093: carry declared UNIQUE constraints (name + ordered columns) into ctx for pgwire.
-    ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, si)
+    ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, declared_unique)
 
     def _nfc_type(nfc: dict) -> str:
         if nfc.get("data_type"):
@@ -635,6 +638,41 @@ def _columns_of_subtypes(
     return out
 
 
+def _instant_columns(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+) -> SubtypeColumns:
+    """REQ-2171: every registered column whose type is timestamptz, keyed like
+    ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
+    import sqlglot.expressions as exp
+    from sqlglot.errors import SqlglotError
+
+    from provisa.compiler.json_instants import INSTANT
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    out: SubtypeColumns = {}
+    for td in si.tables:
+        typed = {m.column_name.lower(): m.data_type for m in si.column_types.get(td["id"]) or []}
+        for col in td.get("columns") or []:
+            phys = col["column_name"]
+            try:
+                kind = exp.DataType.build(typed.get(phys.lower()) or "", dialect="postgres")
+            except (SqlglotError, ValueError):
+                continue
+            if not kind.is_type(exp.DataType.Type.TIMESTAMPTZ):
+                continue
+            key = (
+                td["schema_name"].lower(),
+                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+            )
+            names = out.setdefault(key, {})
+            names[phys.lower()] = INSTANT
+            names[(col.get("alias") or apply_sql_name(phys)).lower()] = INSTANT
+    return out
+
+
 def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
@@ -665,14 +703,19 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     table_lookup = {t.table_id: t for t in tables}
     physical_map = getattr(si, "physical_table_map", None) or {}
 
+    # REQ-1093: each table's declared UNIQUE constraints, by id (_visible_unique_constraints).
+    declared_unique: dict[int, list[dict]] = {}
+    for tbl in si.tables:
+        declared_unique.setdefault(tbl["id"], tbl.get("unique_constraints", []))
     for t in tables:
-        _register_table_in_ctx(t, ctx, si, physical_map)
+        _register_table_in_ctx(t, ctx, si, physical_map, declared_unique)
 
     ctx.row_level_tables = si.row_level_tables
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)
     ctx.subtype_columns = _columns_of_subtypes(si, physical_map, lambda s: s.semantics is not None)
     ctx.read_columns = _columns_of_subtypes(si, physical_map, lambda s: s.base == "text")
+    ctx.instant_columns = _instant_columns(si, physical_map)
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 

@@ -41,6 +41,7 @@ import sqlglot
 from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
+from provisa.core.session_time_zone import zone_cache_key
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -159,6 +160,8 @@ class _Plan:
     # REQ-1163: the request-level as-of this plan was built for — part of the entry's identity
     # (a statement over a bitemporal view reads different rows at each as-of).
     cache_as_of: str | None = field(default=None)
+    # REQ-2171: the TimeZone the plan answers in, None on UTC: part of its cache entry's identity.
+    cache_zone: str | None = field(default=None)
     # The entry the planner read before routing, on a Route.CACHE plan: the client's pgwire
     # result format codes for a ``pg_datarows`` entry (None for a decoded one) and the store's
     # record. The terminal serves it; nothing was lowered, optimized or routed.
@@ -730,15 +733,17 @@ async def _kept_engine_form(
     the literal-predicate carry (REQ-1880), the catalog fold (REQ-1730) and the engine transpile —
     is a function of that text, the registry and the bound engine. The registry is fixed for a
     kept statement (it answers only within one schema generation), so the product is kept in the
-    statement's ``memo`` and answers only for the exact text it was derived from and the engine it
-    was derived for: an optimization that rewrites the text (a hot-table inline follows the data)
-    or a swapped engine derives it again. A refusal raises and is never kept."""
+    statement's ``memo`` and answers only for the exact text it was derived from, the engine it
+    was derived for and the session zone written into it (REQ-2171): an optimization that rewrites
+    the text (a hot-table inline follows the data), a swapped engine or a SET derives it again. A
+    refusal raises and is never kept."""
     engine = state.federation_engine
+    zone = zone_cache_key()
     kept = memo.get("engine_form")
-    if kept is not None and kept[0] == exec_sql and kept[1] is engine:
-        return kept[2]
+    if kept is not None and kept[0] == exec_sql and kept[1] is engine and kept[2] == zone:
+        return kept[3]
     form = await derive()
-    memo["engine_form"] = (exec_sql, engine, form)
+    memo["engine_form"] = (exec_sql, engine, zone, form)
     return form
 
 
@@ -3119,6 +3124,7 @@ async def route_governed(
             cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
             cache_as_of=_travel.single(),
+            cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -3150,7 +3156,9 @@ async def route_governed(
         # The unoptimized lowering is a function of the governed text, the role's compilation
         # context and the destination — not of the bound values — so it is kept with the governed
         # statement like its catalog-physical form (see _kept_lowering).
-        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct_key = (
+            f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}\x00{zone_cache_key()}"
+        )
         _direct = None if _optimized else governed.memo.get(_direct_key)
         if _direct is None:
             if _optimized:
@@ -3215,6 +3223,7 @@ async def route_governed(
             cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
             cache_as_of=_travel.single(),
+            cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -4153,7 +4162,9 @@ def _response_cache_key(plan: _Plan, *, wire_formats: list[int] | None) -> str |
         sql, params = plan.cache_sql, plan.cache_params or []
     else:
         sql, params = plan.sql, plan.exec_params or []
-    return _raw_cache_key(sql, params, plan.role_id, wire_formats, plan.cache_as_of)
+    return _raw_cache_key(
+        sql, params, plan.role_id, wire_formats, plan.cache_as_of, plan.cache_zone
+    )
 
 
 def _raw_cache_key(
@@ -4162,9 +4173,11 @@ def _raw_cache_key(
     role_id: str,
     wire_formats: list[int] | None,
     as_of: str | None = None,
+    zone: str | None = None,
 ) -> str | None:
-    """The raw-SQL namespace key for governed ``sql``, its bound values and the request's as-of,
-    or None when the text depends on unresolved session state (REQ-866)."""
+    """The raw-SQL namespace key for governed ``sql``, its bound values, the request's as-of, the
+    reader's entitlement mask (REQ-2219) and the zone it is answered in (REQ-2171), or None when
+    the text depends on unresolved session state (REQ-866)."""
     from provisa.api.app import state
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
     from provisa.entitlements.runtime import current_mask_hash
@@ -4185,6 +4198,7 @@ def _raw_cache_key(
         as_of=as_of,
         session=temp_tables.slot_key(),
         mask_hash=current_mask_hash(state, role_id),  # REQ-2219
+        zone=zone,
     )
 
 
@@ -4218,7 +4232,7 @@ async def _cached_before_routing(
     org_id = _response_cache_org_id(state)
     missed: list[tuple[int, ...] | None] = []
     for formats in [wire_formats, None] if wire_formats is not None else [None]:
-        key = _raw_cache_key(sql, params or [], role_id, formats, as_of)
+        key = _raw_cache_key(sql, params or [], role_id, formats, as_of, zone_cache_key())
         if key is None:
             return None, ()
         cached = await check_cache(store, key, org_id)
@@ -4270,6 +4284,7 @@ def _cached_plan(
         cache_sql=governed_sql,
         cache_params=list(params or []),
         cache_as_of=as_of,
+        cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
         cache_hit=hit,
     )
 
@@ -6091,7 +6106,9 @@ async def _route_compiled(
         # carried onto the direct path. With no optimization the lowering is a function of the
         # governed text, the role's compilation context and the destination — not of the bound
         # values — so it is kept with the governed statement (as route_governed keeps its own).
-        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct_key = (
+            f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}\x00{zone_cache_key()}"
+        )
         _direct = None if _optimized else memo.get(_direct_key)
         if _direct is None:
             if _optimized:

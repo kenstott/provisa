@@ -128,12 +128,38 @@ def _date(written: str) -> Any:
         raise _syntax("date", written) from None
 
 
+#: A date and time followed by a zone's name, as timestamptz_in reads it: ``2024-06-15 12:30:45
+#: UTC``, which a timestamptz literal is written as on Trino, Presto and Athena (REQ-2050).
+_NAMED_ZONE = re.compile(r"^(?P<local>\S+\s+\d[^\s]*)\s+(?P<zone>[A-Za-z][A-Za-z0-9_/+-]*)$")
+
+
+def _iso(written: str) -> datetime:
+    """``written`` as a date and time, its zone an offset or a zone's name (zoneinfo's)."""
+    text = written.strip()
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        named = _NAMED_ZONE.match(text)
+        if named is None:
+            raise
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        zone = ZoneInfo(named["zone"])
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError(text) from None
+    local = datetime.fromisoformat(named["local"])
+    if local.tzinfo is not None:
+        raise ValueError(text)
+    return local.replace(tzinfo=zone)
+
+
 def _timestamp(written: str, zoned: bool) -> Any:
     word = _INFINITE.get(written.strip().lower())
     if word is not None:
         return Infinite(word)
     try:
-        value = datetime.fromisoformat(written.strip())
+        value = _iso(written)
     except ValueError:
         name = "timestamp with time zone" if zoned else "timestamp"
         raise _syntax(name, written) from None

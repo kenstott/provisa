@@ -161,7 +161,8 @@ _MOST_ARGUMENTS = {
     "timestamp_trunc": 2,
     "date_trunc": 2,
 }
-#: A ClickHouse pattern of nothing is its error; PostgreSQL's answer is the value.
+#: A ClickHouse pattern (the second argument) of nothing is its error; PostgreSQL's answer is the
+#: value. A replacement of nothing is a deletion ClickHouse writes as PostgreSQL does.
 _NOT_EMPTY = frozenset({"replace", "trim", "btrim", "ltrim", "rtrim"})
 PLAIN_PARTS = frozenset({"year", "quarter", "month", "day", "hour", "minute", "dow", "doy"})
 #: The formats whose every element a dialect's own format writes as PostgreSQL's does.
@@ -248,6 +249,8 @@ def _plain_part(part: exp.Expr, engine: str) -> bool:
         return True
     if isinstance(literal, exp.Literal):
         return literal.this.lower() in PLAIN_PARTS
+    if isinstance(literal, exp.Var) and literal.name.lower() in PLAIN_PARTS:
+        return True  # extract(hour from c): its part a keyword, not a text
     return engine != _C
 
 
@@ -263,7 +266,7 @@ def refused_call(
         return None
     name, args = call
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
-    if engine == _C and name in _NOT_EMPTY and any(_is_empty(arg) for arg in args[1:]):
+    if engine == _C and name in _NOT_EMPTY and len(args) > 1 and _is_empty(args[1]):
         return name
     if isinstance(node, exp.TimeToStr) and not _plain_format(node, engine):
         return "to_char"
