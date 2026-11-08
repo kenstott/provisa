@@ -1,59 +1,50 @@
 {
-  "version": "v0.1.0-alpha.503",
-  "previous": "v0.1.0-alpha.502",
-  "date": "2026-11-05",
+  "version": "v0.1.0-alpha.507",
+  "previous": "v0.1.0-alpha.506",
+  "date": "2026-11-07",
   "features": [],
   "changes": [
     {
       "scope": "api",
       "entries": [
-        "region-lane rebuild skips schema DDL; row-materialize wiring failure raises"
+        "A TTL -1 API table with declared rows is read from its replica, never fetched",
+        "Resolve a table's TTL before asking whether it is kept for good"
       ]
     },
     {
-      "scope": "contract",
+      "scope": "demo",
       "entries": [
-        "Every remote call of a REST, GraphQL, gRPC or SPARQL connector is its contract's call",
-        "A remote GraphQL table's keyed fetch is its contract's call"
+        "Banksecrecy relationships get their own GraphQL field names"
       ]
     },
     {
-      "scope": "deploy",
+      "scope": "guard",
       "entries": [
-        "Refresh the node's control-plane compose; name the container a failed verify finds down"
+        "A union's branch choices are judged unexpanded, never listed as their product"
       ]
     },
     {
-      "scope": "graph3d",
+      "scope": "macos",
       "entries": [
-        "The one graph's product layers -- commands, quality, product links, lineage",
-        "A snippet holds its panel's place before it is seen"
+        "Allow only the container-image unpack warning in Apple's notarization log"
       ]
     },
     {
-      "scope": "kafka",
+      "scope": "packaging",
       "entries": [
-        "A Kafka source reaches a secured cluster over TLS and SASL",
-        "A sandbox's live landing reaches a secured Kafka source over its TLS and SASL"
+        "Retry a dropped staple connection and fail on Apple's notarization log"
       ]
     },
     {
-      "scope": "routing",
+      "scope": "tags",
       "entries": [
-        "A SPARQL or remote GraphQL source is an API source: it lands for want of a capability"
+        "Library document and section tags kept with the library"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "Observability says the ops traces table could not be checked, with the reason"
-      ]
-    },
-    {
-      "scope": "validator",
-      "entries": [
-        "A column is judged where it resolves; pg_catalog.unnest is a client table function",
-        "A hidden column is refused in every clause; unknown sources never end the check (J597b)"
+        "The tags scope bar wraps its twelve object kinds"
       ]
     }
   ]

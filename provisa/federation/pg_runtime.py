@@ -231,12 +231,17 @@ class _AdbcConnectionPool:
     ``transaction_status`` before reuse (see ``run_sync``'s pool below); ADBC exposes no equivalent
     state check. A dead pooled connection therefore surfaces as a real ``execute()`` failure to the
     caller, who must call ``discard()`` (closes it, lets the pool create a fresh one on the next
-    ``getconn()``) rather than this pool silently retrying or swallowing the error."""
+    ``getconn()``) rather than this pool silently retrying or swallowing the error.
+
+    Each connection is autocommit: ADBC's DB-API defaults to opening a transaction on a statement
+    and keeping it until commit, so a read given back to the pool sat idle in that transaction,
+    holding its lock on every table it read -- a session's ``DROP SCHEMA`` in this database then
+    waited on the pooled connection (DELETE /data/cypher/session on the pg engine)."""
 
     def __init__(self, dsn: str, *, minconn: int, maxconn: int) -> None:
         from adbc_driver_postgresql import dbapi as adbc_pg
 
-        self._connect = lambda: adbc_pg.connect(dsn)
+        self._connect = lambda: adbc_pg.connect(dsn, autocommit=True)
         self._maxconn = maxconn
         self._pool: list[Any] = [self._connect() for _ in range(minconn)]
         self._created = minconn

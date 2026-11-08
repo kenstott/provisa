@@ -139,10 +139,23 @@ jobs:
           control-plane-url: ${{ matrix.control-plane-url }}
           boot-attempts: ${{ matrix.boot-attempts || '90' }}
 
+      # The runner's memory, disk and largest processes each minute, in this step's own log: a leg
+      # the runner gives up on mid-step leaves no artifact, and its log is then the only record.
       - name: Measure every pg_catalog function
         timeout-minutes: 110
         run: |
           mkdir -p "$RUNNER_TEMP/report"
+          (
+            while sleep 60; do
+              echo "RESOURCES $(date -u +%T)" \
+                "$(free -m | awk '/^Mem:/ {print "mem_used_mb=" $3, "mem_available_mb=" $7} /^Swap:/ {print "swap_used_mb=" $3}' | paste -sd' ')" \
+                "$(df -m / | awk 'NR == 2 {print "disk_available_mb=" $4}')"
+              ps -eo rss=,args= --sort=-rss | head -n 6 | awk '{rss = $1; $1 = ""; printf "RESOURCES   rss_mb=%d%s\n", rss / 1024, substr($0, 1, 120)}'
+              docker stats --no-stream --format 'RESOURCES   {{.Name}} {{.MemUsage}} cpu={{.CPUPerc}}' 2>/dev/null || true
+            done
+          ) &
+          monitor=$!
+          trap 'kill "$monitor" 2>/dev/null || true' EXIT
           .venv/bin/python scripts/conformance/function_support.py measure \
             --engine "$PROVISA_ENGINE" \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \

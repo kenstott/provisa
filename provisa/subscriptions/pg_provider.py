@@ -30,6 +30,21 @@ log = logging.getLogger(__name__)
 CHANNEL_PREFIX = "provisa_"
 
 
+def table_channel(table: str) -> str:
+    """The LISTEN/NOTIFY channel a registered PostgreSQL table's notify trigger reports on."""
+    return f"{CHANNEL_PREFIX}{table}"
+
+
+def schema_channel(table: str, schema: str) -> str:  # REQ-2216
+    """The channel an ops table kept in each org schema reports on: one per schema, so one org's
+    changes never reach another org's subscribers. NOTIFY is database-wide and the org schemas
+    share a database. The schema enters as a digest, the rule schema.sql's trigger applies
+    (``substr(md5(TG_TABLE_SCHEMA), 1, 12)``), which keeps the name inside PostgreSQL's limit."""
+    import hashlib
+
+    return f"{CHANNEL_PREFIX}{table}_{hashlib.md5(schema.encode(), usedforsecurity=False).hexdigest()[:12]}"
+
+
 class PgNotificationProvider(NotificationProvider):  # REQ-258
     """Wraps PostgreSQL LISTEN/NOTIFY into the NotificationProvider interface.
 

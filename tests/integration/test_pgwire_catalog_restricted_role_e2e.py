@@ -25,6 +25,7 @@ from pathlib import Path
 
 import psycopg2
 import pytest
+import sqlalchemy
 import yaml
 
 from sqlalchemy.engine import make_url
@@ -180,6 +181,22 @@ def test_a_column_the_role_is_not_served_is_refused_on_read(server):
     assert refused.value.pgcode == "42501"
 
 
+@pytest.mark.parametrize("role", [_RESTRICTED, _EVERYTHING])
+def test_a_sqlalchemy_psycopg2_engine_connects(server, role):
+    # SQLAlchemy's psycopg2 dialect, at its default use_native_hstore=True, looks hstore up on
+    # every new connection: SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ... --
+    # typarray unqualified beside a relation that has no such column. Every SQLAlchemy client
+    # (pandas, Superset, great_expectations) connects through it (UI e2e run 42233953096).
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{role}:provisa@127.0.0.1:{server.pgwire_port}/provisa"
+    )
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(sqlalchemy.text("SELECT 1")).scalar() == 1
+    finally:
+        engine.dispose()
+
+
 def test_every_system_row_is_every_roles(server):
     assert _read(server, _RESTRICTED, "SELECT typname::text FROM pg_type WHERE oid = 23") == [
         ("int4",)
@@ -263,11 +280,13 @@ def test_a_statement_with_no_table_runs_on_the_engine(server):
 
 
 def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):
-    """The plane answered box(point, point) as '(1,1),(0,0)'; the engine has no such function."""
-    sql = "SELECT pg_database_size(1::oid), box('(0,0)'::point, '(1,1)'::point)"
+    """The plane would answer pg_notify('c', 'p'); no engine has a form of it (REQ-2167,
+    pg_forms_enum.NOT_SUPPORTED), so the statement is refused by name. box(point, point) was this
+    test's function until the geometric forms (J455) gave every engine one."""
+    sql = "SELECT pg_database_size(1::oid), pg_notify('c', 'p')"
     with pytest.raises(psycopg2.Error) as refused:
         _read(server, _RESTRICTED, sql)
-    assert "box" in str(refused.value)
+    assert "pg_notify" in str(refused.value)
 
 
 def test_a_server_function_beside_a_view_is_refused_by_name(server):
@@ -278,12 +297,14 @@ def test_a_server_function_beside_a_view_is_refused_by_name(server):
 
 
 def test_privilege_and_visibility_functions_are_the_catalogs(server):
+    # As PostgreSQL answers: oid 1 is no function, and the visibility of an object no catalog
+    # holds is NULL (metadata_functions._VISIBLE_IN); oid 23 is int4, on the search path.
     assert _read(
         server,
         _RESTRICTED,
         "SELECT has_schema_privilege('public', 'usage'), pg_type_is_visible(23), "
         "pg_function_is_visible(1), pg_has_role('x', 'member')",
-    ) == [(True, True, True, True)]
+    ) == [(True, True, None, True)]
 
 
 #: A table of meta of each kind: a catalog view, told who asks, and a table of the plane, which is

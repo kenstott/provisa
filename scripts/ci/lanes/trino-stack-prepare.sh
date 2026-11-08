@@ -52,9 +52,14 @@ case "$cert" in
     # 600 the plugin could not open the file at all, and Calcite reported only "Error
     # instantiating JsonCustomSchema(name=sharepoint)" — the schema list for the catalog
     # then failed forever and the spec's wait for the `sharepoint` schema could never
-    # succeed. Hand the file to Trino's uid instead of widening the mode.
+    # succeed. Hand the file to Trino's uid instead of widening the mode to everyone.
+    # Provisa itself reads it too: the source's pgwire server runs on the runner, as the runner's
+    # uid, for the source's writes and declared keys (REQ-1946, REQ-2170), and at mode 600 it died
+    # with the same "Error instantiating JsonCustomSchema(name=e2e_sharepoint)" (run 42409743565).
+    # The lane runs under Trino's group 1000 (lane.yml "Join Trino's group", REQ-2073), so the
+    # group bit, and only it, lets that server read the file.
     sudo chown 1000:1000 sharepoint.pfx
-    sudo chmod 600 sharepoint.pfx
+    sudo chmod 640 sharepoint.pfx
     ls -l sharepoint.pfx
     ;;
   placeholder-cert)

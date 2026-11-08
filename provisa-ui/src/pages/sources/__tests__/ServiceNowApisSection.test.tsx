@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { renderInForm, screen } from "../../../test-utils/render";
-import { ServicenowApis, SetServicenowApi } from "../../../hooks/admin.graphql";
+import { AvailableImportSets, ServicenowApis, SetServicenowApi } from "../../../hooks/admin.graphql";
 import { ServiceNowApisSection } from "../ServiceNowApisSection";
 
 const api = (namespace: string, name: string, route: string, added: boolean) => ({
@@ -126,5 +126,36 @@ describe("ServiceNowApisSection", () => {
     });
     expect(screen.queryByTestId("servicenow-api-now/import")).toBeNull();
     expect(screen.getByTestId("servicenow-api-sn_sc/servicecatalog")).toBeInTheDocument();
+  });
+  it("reads a table's import sets under the schema the naming authority gives the source", async () => {
+    let asked: Record<string, unknown> | null = null;
+    const mocks = [
+      {
+        request: {
+          query: ServicenowApis,
+          variables: { sourceId: "my-sn-prod" },
+        },
+        result: listed(false).result,
+      },
+      {
+        request: {
+          query: AvailableImportSets,
+          variables: { sourceId: "my-sn-prod", schemaName: "my_sn_prod", tableName: "sys_user" },
+        },
+        result: () => {
+          asked = { schemaName: "my_sn_prod" };
+          return { data: { availableImportSets: [] } };
+        },
+      },
+    ];
+    renderInForm(
+      <MockedProvider mocks={mocks}>
+        <ServiceNowApisSection sourceId="my-sn-prod" />
+      </MockedProvider>,
+    );
+    fireEvent.change(await screen.findByTestId("servicenow-import-set-table"), {
+      target: { value: "sys_user" },
+    });
+    await waitFor(() => expect(asked).not.toBeNull());
   });
 });

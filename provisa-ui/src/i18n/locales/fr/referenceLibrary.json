@@ -27,6 +27,7 @@
     "domainsHelp": "Les rôles qui lisent ces domaines s'appuient sur le document. Organisation entière s'emploie seule.",
     "fieldSource": "Source",
     "fieldStatus": "Statut",
+    "fieldTags": "Tags",
     "fieldPassages": "Passages",
     "fieldModel": "Modèle d'embedding",
     "fieldAdded": "Ajouté",

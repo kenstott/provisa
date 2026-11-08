@@ -70,11 +70,14 @@ function Edit() {
   return (
     <TableColumnsSection
       editingTable={{ id: 1, sourceId: "pg", columns } as unknown as RegisteredTable}
-      updateEditCol={((i: number, key: string, value: unknown) => {
-        if (key === "scope") held.scope = value as string;
-        setColumns((cols) => cols.map((c, n) => (n === i ? { ...c, [key]: value } : c)));
-      }) as never}
+      updateEditCol={
+        ((i: number, key: string, value: unknown) => {
+          if (key === "scope") held.scope = value as string;
+          setColumns((cols) => cols.map((c, n) => (n === i ? { ...c, [key]: value } : c)));
+        }) as never
+      }
       editSource={undefined}
+      writeGrants={null}
       roles={[{ id: "analyst" }] as never}
       hidingOnly={false}
     />

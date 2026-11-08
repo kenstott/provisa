@@ -351,7 +351,9 @@ async def _fill_columns(key, source_id: str, source_type: str, schema_name: str,
     from provisa.federation import pgwire_replica
 
     try:
-        columns = await fetch_schema_columns(source_id, source_type, schema_name, state)
+        # Off the request: a Register Table listing of the same server goes first.
+        with pgwire_replica.background_discovery():
+            columns = await fetch_schema_columns(source_id, source_type, schema_name, state)
     except pgwire_replica.SourceStillStartingError:
         _COLUMN_FILLS.pop(key, None)  # later: the next search of the schema asks again
         return
@@ -451,12 +453,20 @@ async def index_source(
     (``INDEX_STARTING_POLL_SECONDS``) until it has started, and reports it once, by name, if it
     has not within ``INDEX_STARTING_WAIT_SECONDS``.
     """
-    from provisa.federation.pgwire_replica import ServerNotServing, SourceStillStartingError
+    from provisa.federation.pgwire_replica import (
+        ServerNotServing,
+        SourceStillStartingError,
+        background_discovery,
+    )
 
     waited = 0.0
     while True:
         try:
-            await _index_source_once(source_id, pool, engine, source_pools, source_types, state)
+            # Its reads go after a Register Table listing of the same source's server: the walk
+            # takes a read per schema, and a listing refused while one held the server was
+            # refused again by the next, for the whole walk (``ConnectorReplica.discovery_read``).
+            with background_discovery():
+                await _index_source_once(source_id, pool, engine, source_pools, source_types, state)
             return
         except SourceStillStartingError:
             if waited >= INDEX_STARTING_WAIT_SECONDS:

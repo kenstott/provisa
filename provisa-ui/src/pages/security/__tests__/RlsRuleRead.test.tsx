@@ -46,6 +46,7 @@ describe("an RLS rule's read view", () => {
       ["Role", "analyst"],
       ["Right", "Read"],
       ["Filter Expression", "region = 'east'"],
+      ["Tags", ""],
     ]);
   });
 
@@ -65,6 +66,7 @@ describe("an RLS rule's read view", () => {
       ["Role", "analyst"],
       ["Right", "Read"],
       ["Filter Expression", "region = 'east'"],
+      ["Tags", ""],
     ]);
     unmount();
     render(
@@ -83,6 +85,7 @@ describe("an RLS rule's read view", () => {
       ["Action", "notify_ops"],
       ["Role", "analyst"],
       ["Filter Expression", "region = 'east'"],
+      ["Tags", ""],
     ]);
   });
 });

@@ -32,6 +32,7 @@ explicit org channels (``x-provisa-org`` metadata).
 
 from __future__ import annotations
 
+import os
 import ssl
 from typing import Protocol
 
@@ -92,21 +93,36 @@ def is_control_plane_host(host: str | None) -> bool:  # REQ-1276
     return _labels(host)[:1] == [_CONTROL_PLANE_LABEL]
 
 
-def org_from_host(host: str | None) -> str | None:  # REQ-1234, REQ-1276
-    """The org a hostname addresses — ``acme.provisa.dev`` → ``acme``.
+def declared_base_domain() -> str | None:
+    """The base domain this deployment addresses orgs under, or None when it declares none.
 
-    None for the control-plane host, and for anything with fewer than three labels: an apex domain
-    and ``localhost`` name no org, and reading their leftmost label as one would turn ``localhost``
-    into an org named ``localhost``.
-
-    None too when the leftmost label could not be an org id under REQ-1309 — ``127.0.0.1`` has
-    four labels and would otherwise be read as an org named ``127``. The id rule is the same one
-    org creation enforces, so a label that names an org here is a label that could have been
-    created there.
+    Read from ``VITE_ORG_BASE_DOMAIN`` — the value the UI server emits at /deployment-config.js —
+    so the UI and the server share one declaration. Unset or blank, no host names an org.
     """
+    declared = os.environ.get("VITE_ORG_BASE_DOMAIN", "").strip().lower().strip(".")
+    return declared or None
+
+
+def org_from_host(host: str | None) -> str | None:  # REQ-1234, REQ-1276
+    """The org a hostname addresses — ``acme.provisa.dev`` → ``acme`` when provisa.dev is declared.
+
+    An org is named only by a single label, other than the control plane's, directly in front of
+    the declared base domain (REQ-1276, amended 2026-11-05). With no declared base no host names
+    an org, and a host outside the base — a Codespace, ``localhost``, an IP — names none either:
+    the host's shape is never guessed at.
+
+    None too when the label could not be an org id under REQ-1309. The id rule is the same one org
+    creation enforces, so a label that names an org here is a label that could have been created
+    there.
+    """
+    base = declared_base_domain()
+    if base is None:
+        return None
     labels = _labels(host)
-    if labels[:1] == [_CONTROL_PLANE_LABEL]:
+    base_labels = base.split(".")
+    if len(labels) != len(base_labels) + 1 or labels[1:] != base_labels:
         return None
-    if len(labels) < 3:
+    label = labels[0]
+    if label == _CONTROL_PLANE_LABEL:
         return None
-    return labels[0] if is_org_id(labels[0]) else None
+    return label if is_org_id(label) else None

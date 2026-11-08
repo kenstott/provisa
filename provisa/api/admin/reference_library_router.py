@@ -13,7 +13,8 @@
 An admin lists the library's documents (title, source, status, domains, when each was added and
 last refreshed or replaced), adds one by file or URL, keeps or discards a proposed one, changes
 its domains, refreshes a URL document, uploads a new version of a file document, and removes one.
-The library is the org's, so the page asks ``org_settings``. A file travels as base64 in a JSON
+The library is curated with the glossary -- term finding adds its documents as proposed -- so the
+page asks the glossary's curation right, ``glossary_rw`` (REQ-1327: each surface its own right). A file travels as base64 in a JSON
 body, as every admin upload does (import_router.py). The page also shows and changes the library's
 retrieval setting, passage or graph (GRAPH RETRIEVAL), held in the org's settings.
 """
@@ -29,9 +30,10 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.reference_library import library, store
+from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -48,7 +50,7 @@ def _pool() -> Database:
 
 
 def _guard(request: Request) -> str:
-    require_org_settings(request)
+    require_capability_request(request, Capability.GLOSSARY_RW.value)
     return require_active_org_id(request)
 
 

@@ -1019,7 +1019,8 @@ def when_the_spec_is_registered(shared_data):
     """Parse the spec with the real mapper (shared by REQ-317 and REQ-601).
 
     When ``operation_id`` is present (REQ-601), also derive the consumer-facing
-    alias via the real register helper.
+    alias through the naming authority (REQ-194): a relationship-style name, the
+    leading verb stripped and the noun singular, in snake case.
     """
     spec = shared_data["spec"]
     queries, mutations = map_operations(spec)
@@ -1028,9 +1029,9 @@ def when_the_spec_is_registered(shared_data):
 
     op_id = shared_data.get("operation_id")
     if op_id is not None:
-        from provisa.openapi.register import _operation_id_to_alias
+        from provisa.core.relationship_names import derive_graphql_alias
 
-        shared_data["alias"] = _operation_id_to_alias(op_id)
+        shared_data["alias"] = derive_graphql_alias(op_id, "many-to-one", "snake")
 
 
 @then(

@@ -27,6 +27,7 @@
     "domainsHelp": "Papéis que leem estes domínios se baseiam no documento. Organização inteira fica sozinha.",
     "fieldSource": "Origem",
     "fieldStatus": "Status",
+    "fieldTags": "Tags",
     "fieldPassages": "Trechos",
     "fieldModel": "Modelo de embedding",
     "fieldAdded": "Adicionado",

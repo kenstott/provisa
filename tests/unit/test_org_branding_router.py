@@ -296,3 +296,9 @@ def test_a_logo_of_a_type_the_page_cannot_render_is_refused(admin_client, monkey
 
     assert refused.status_code == 422
     assert admin_client.get("/admin/orgs/acme/branding").json()["logo_media_type"] is None
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.dev")

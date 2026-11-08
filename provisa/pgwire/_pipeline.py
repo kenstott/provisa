@@ -4547,6 +4547,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # That store serves this source and no other: a statement for any other source reaching
         # it would be read from, or written into, the control plane.
         from provisa.transpiler.metadata_settings import (
+            WITHOUT_JIT,
             enter_client_role,
             refuse_client_settings,
             set_statement,
@@ -4577,18 +4578,21 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 col_oids: list[int] | None = None
                 # REQ-2190: every client statement here runs as the role that reaches no more than
                 # a client may, whatever it reads, and any settings last as long as its transaction.
+                # The client's statement is its own text, run once: neither prepared nor JIT
+                # compiled on the control plane (database._unprepared, WITHOUT_JIT).
                 async with _conn.transaction():
                     if plan.catalog_settings is not None:
                         _setting, _values = set_statement(plan.catalog_settings)
                         await _conn.fetch(_setting, *_values)
+                    await _conn.execute(WITHOUT_JIT)
                     await _conn.execute(enter_client_role())
                     if plan.catalog_settings is None:
                         col_names, _rows = await _conn.fetch_with_columns(
-                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True, prepared=False
                         )
                     else:
                         col_names, col_oids, _rows = await _conn.fetch_described(
-                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True, prepared=False
                         )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
@@ -4801,7 +4805,11 @@ async def _run_statements(
             buffered=buffered and answered,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
-        return await _execute_plan(plan, state)
+        result = await _execute_plan(plan, state)
+        # REQ-1961: the caller writes the rows without the plan; it types each registered
+        # column by the statement's result shape, derived only when it is asked for.
+        result.result_shape = plan.result_shape
+        return result
 
     outcomes: list[StatementOutcome] = []
     last = len(statements) - 1
