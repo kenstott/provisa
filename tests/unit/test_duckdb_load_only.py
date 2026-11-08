@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-import os
 import re
 import shutil
 import subprocess
@@ -208,11 +207,18 @@ def test_firebird_loads_from_a_staged_directory_with_the_network_blocked(tmp_pat
     (staged / blob.parent.parent.name / blob.parent.name).mkdir(parents=True)
     shutil.copy2(blob, staged / blob.parent.parent.name / blob.parent.name / blob.name)
     done = subprocess.run(
-        [*_without_network(), sys.executable, "-c", _OFFLINE_CHILD],
+        [
+            *_without_network(),
+            # Named on the command, not in env=: sudo, where the block needs it, drops the environment.
+            "env",
+            f"{engine_memory.EXT_DIR_ENV}={staged}",
+            sys.executable,
+            "-c",
+            _OFFLINE_CHILD,
+        ],
         capture_output=True,
         text=True,
         cwd=_REPO,
-        env={**os.environ, engine_memory.EXT_DIR_ENV: str(staged)},
         timeout=120,
     )
     assert done.returncode == 0, done.stdout + done.stderr
