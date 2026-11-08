@@ -165,6 +165,8 @@ _OPS: dict[str, str] = {
     "sla_breach_log": "One row per service-level breach — the latency or availability of the "
     "org's last hour past the operator's limit: when it opened, the worst and latest measure, "
     "the limit, and when it recovered",
+    "requests": "One row per request: what was asked, by whom, the environment it is for, the "
+    "roles it is addressed to and their members, its state, the decision, who decided and when",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
@@ -994,6 +996,28 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "started_at": "When the breach opened",
         "last_seen_at": "The latest evaluation that found it still in breach",
         "resolved_at": "When the measure came back within its limit; empty: still open",
+    },
+    "requests": {
+        "id": "The request's number",
+        "request_type": "What is asked for: view, relationship, webhook, source or table",
+        "capability": "The right that decides it",
+        "payload": "What was asked, as submitted",
+        "requested_by": "User id of the person who asked",
+        "requested_by_name": "Display name of the person who asked",
+        "environment": "The environment the request is for",
+        "addressed_roles": "The roles that hold the right the request names",
+        "addressed_members": "Those roles' members when it was raised: id, display_name, email, "
+        "and the roles each is reached through",
+        "unresolved_roles": "Addressed roles none of whose members could be resolved",
+        "state": "pending, executed or rejected",
+        "approvals": "The approvals recorded so far",
+        "required_approvals": "How many approvals carry it out",
+        "decision": "approved or rejected; empty while pending",
+        "decision_reason": "Why a rejected request was rejected",
+        "decided_by": "User id of the person who decided it",
+        "decided_by_name": "Display name of the person who decided it",
+        "decided_at": "When it was decided",
+        "created_at": "When it was raised",
     },
     "sensitive_column_coverage": {
         "id": "Synthesized column identity (table_id:column_name) of the sensitive column",
