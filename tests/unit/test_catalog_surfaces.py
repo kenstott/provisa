@@ -48,6 +48,7 @@ from provisa.security.rights import (
 )
 from provisa.sparql_query.vocabulary import Grounding, build_vocabulary
 from provisa.transpiler.metadata_oids import table_oid
+from tests.rules import mentions
 
 READER = "reader"
 ORDERS, PAYROLL, SECRETS, DRAFTS, CATALOG, QUERIES, PRODUCTS = 1, 2, 3, 4, 5, 6, 7
@@ -283,7 +284,7 @@ class TestListIsMetadataOnly:
 
     def test_the_meta_scope_predicates_name_the_listed_table(self):
         _, gov = self._gov()
-        assert str(PAYROLL) in gov.rls_rules[CATALOG]
+        assert mentions(gov.rls_rules[CATALOG], PAYROLL)
         assert gov.meta_scope == "{" + f"{ORDERS},{PAYROLL},{DRAFTS}" + "}"
 
 

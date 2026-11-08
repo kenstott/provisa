@@ -148,6 +148,8 @@ def _register_table_in_ctx(
             continue
         col_meta = t.column_metadata.get(col_name.lower())
         if col_meta:
+            # REQ-151: a SQL database's path column is text here already (schema_gen.
+            # _served_as_text), neither the JSON column it is read from nor a number.
             col_info.append((col_name, col_meta.data_type))
             if is_json_type(col_meta.data_type):
                 ctx.json_columns.add((t.table_id, col_name.lower()))
@@ -197,7 +199,6 @@ def _register_table_in_ctx(
     }
 
     for col in t.visible_columns:
-        col_path = col.get("path")
         phys = col["column_name"]
         gql = col.get("alias") or apply_gql_name(phys, getattr(t, "gql_convention_override", None))
         if gql != phys:
@@ -207,16 +208,9 @@ def _register_table_in_ctx(
             ctx.exposed_to_physical[(t.table_id, sql_name)] = phys
         ctx.physical_to_sql[(t.table_id, phys)] = sql_name
         ctx.physical_to_gql[(t.table_id, phys)] = gql
-        if col_path:
-            ctx.column_paths[(t.table_id, gql)] = col_path
         object_fields = col.get("object_fields")
         if object_fields and isinstance(object_fields, list):
-            convention = getattr(t, "gql_convention_override", None)
             ctx.gql_json_columns.add((t.table_id, gql))
-            for sf in object_fields:
-                sf_name = sf["name"]
-                sf_gql = sf.get("alias") or apply_gql_name(sf_name, convention)
-                ctx.column_paths[(t.table_id, sf_gql)] = f"{phys}.{sf_name}"
 
     for col_name in si.gql_object_columns.get(t.table_name) or {}:
         ctx.gql_json_columns.add((t.table_id, col_name))

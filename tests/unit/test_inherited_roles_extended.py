@@ -27,6 +27,8 @@ New coverage here:
 
 from __future__ import annotations
 
+import pytest
+
 
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.mask_inject import MaskingRules
@@ -35,7 +37,9 @@ from provisa.core.models import Role, flatten_roles
 from provisa.security.inheritance import materialize_rls
 from provisa.security.masking import MaskType, MaskingRule
 from provisa.security.row_filters import resolve_table_rules
+from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
+from tests.rules import rule_of
 
 # ---------------------------------------------------------------------------
 # Shared table IDs
@@ -63,6 +67,26 @@ def _role(
         domain_access=domains,
         parents=[parent] if parent else [],
     )
+
+
+#: What each governed read is answered over, on PostgreSQL (tests/governed_pg.py).
+_ROWS = {
+    "public.orders": [
+        {"id": 1, "amount": 50, "region": "eu-west", "customer_id": 10, "tier": "premium"},
+        {"id": 2, "amount": 150, "region": "eu-west", "customer_id": 11, "tier": "basic"},
+        {"id": 3, "amount": 150, "region": "us-west", "customer_id": 10, "tier": "premium"},
+        {"id": 4, "amount": 70, "region": "us-west", "customer_id": 11, "tier": "basic"},
+    ],
+    "public.customers": [
+        {"id": 10, "email": "ann@example.com", "active": True},
+        {"id": 11, "email": "bo@example.com", "active": False},
+    ],
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_inherited_roles_extended")
 
 
 def _make_ctx(*tables: tuple[int, str, str]) -> CompilationContext:
@@ -240,14 +264,14 @@ class TestRLSAccumulationThroughInheritance:
         ]
         rls = build_rls_context(raw_rules, "analyst")
 
-        assert rls.rules[ORDERS_TABLE_ID] == "\"region\" = 'us'"
-        assert rls.rules[CUSTOMERS_TABLE_ID] == "active = true"
-        assert rls.rules[PRODUCTS_TABLE_ID] == "visible = true"
+        assert rls.rules[ORDERS_TABLE_ID] == rule_of("\"region\" = 'us'")
+        assert rls.rules[CUSTOMERS_TABLE_ID] == rule_of("active = true")
+        assert rls.rules[PRODUCTS_TABLE_ID] == rule_of("visible = true")
         assert ORDERS_TABLE_ID in rls.rules
         # Admin rule must not appear in analyst context
         assert len(rls.rules) == 3
 
-    def test_inherited_rls_rules_applied_to_inherited_role(self):
+    def test_inherited_rls_rules_applied_to_inherited_role(self, pg):
         """A child role with no rule of its own reads each table under its parent's rule."""
         tables = [
             {"id": ORDERS_TABLE_ID, "domain_id": ""},
@@ -289,13 +313,14 @@ class TestRLSAccumulationThroughInheritance:
             "child",
             rls=inherited_rls,
         )
-        assert result == (
+        expected = (
             'SELECT "o"."id", "o"."amount" FROM "public"."orders" AS "o" '
             'JOIN "public"."customers" AS "c" ON "o"."customer_id" = "c"."id" '
-            'WHERE ("o"."region" = \'eu-west\') AND ("c"."active" = TRUE)'
+            'WHERE "o"."region" = \'eu-west\' AND "c"."active" = TRUE'
         )
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, 50)]
 
-    def test_child_s_own_rule_is_anded_with_its_parent_s_parent_reads_its_own(self):
+    def test_child_s_own_rule_is_anded_with_its_parent_s_parent_reads_its_own(self, pg):
         """REQ-1677: the child reads under its own rule AND its parent's; the parent under its own."""
         tables = [{"id": ORDERS_TABLE_ID, "domain_id": ""}]
         chains = {"parent": ["parent"], "child": ["child", "parent"]}
@@ -326,10 +351,10 @@ class TestRLSAccumulationThroughInheritance:
         sql = 'SELECT "id" FROM "public"."orders"'
         child = governed_for_role(sql, ctx, "child", rls=build_rls_context(resolved, "child"))
         parent = governed_for_role(sql, ctx, "parent", rls=build_rls_context(resolved, "parent"))
-        assert child == (
-            f'{sql} WHERE (("orders"."tier" = \'premium\') AND ("orders"."region" = \'us-west\'))'
-        )
-        assert parent == f'{sql} WHERE ("orders"."region" = \'us-west\')'
+        child_reads = f"{sql} WHERE \"tier\" = 'premium' AND \"region\" = 'us-west'"
+        assert assert_same_rows(pg, child, child_reads, _ROWS) == [(3,)]
+        parent_reads = f"{sql} WHERE \"region\" = 'us-west'"
+        assert assert_same_rows(pg, parent, parent_reads, _ROWS) == [(3,), (4,)]
 
     def test_rls_context_empty_when_role_has_no_rules(self):
         """A role not present in the rules list should produce an empty RLSContext."""
@@ -344,11 +369,12 @@ class TestRLSAccumulationThroughInheritance:
         rls = build_rls_context(raw_rules, "viewer")
         assert not rls.has_rules()
 
-    def test_inject_rls_no_op_for_empty_context(self):
+    def test_inject_rls_no_op_for_empty_context(self, pg):
         """An empty RLSContext leaves the governed query unchanged."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
         sql = 'SELECT "id" FROM "public"."orders"'
-        assert governed_for_role(sql, ctx, "viewer", rls=RLSContext.empty()) == sql
+        governed = governed_for_role(sql, ctx, "viewer", rls=RLSContext.empty())
+        assert assert_same_rows(pg, governed, sql, _ROWS) == [(1,), (2,), (3,), (4,)]
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +383,7 @@ class TestRLSAccumulationThroughInheritance:
 
 
 class TestMaskingInheritanceExtended:
-    def test_two_masked_columns_with_different_rules_applied(self):
+    def test_two_masked_columns_with_different_rules_applied(self, pg):
         """An inherited masking context with two column rules must mask both columns."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
         masking: MaskingRules = {
@@ -369,9 +395,10 @@ class TestMaskingInheritanceExtended:
         result = governed_for_role(
             'SELECT "amount", "region" FROM "public"."orders"', ctx, "viewer", masking_rules=masking
         )
-        assert result == ('SELECT 0 AS "amount", \'HIDDEN\' AS "region" FROM "public"."orders"')
+        expected = 'SELECT 0 AS "amount", \'HIDDEN\' AS "region" FROM "public"."orders"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(0, "HIDDEN")] * 4
 
-    def test_inherited_masking_not_applied_to_different_role(self):
+    def test_inherited_masking_not_applied_to_different_role(self, pg):
         """Masking rules for 'viewer' must not be applied when role is 'analyst'."""
         ctx = _make_ctx((ORDERS_TABLE_ID, "orders", "orders"))
         masking: MaskingRules = {
@@ -380,10 +407,11 @@ class TestMaskingInheritanceExtended:
             }
         }
         sql = 'SELECT "amount" FROM "public"."orders"'
-        # SQL must be unchanged for 'analyst'
-        assert governed_for_role(sql, ctx, "analyst", masking_rules=masking) == sql
+        # The analyst reads the values themselves
+        governed = governed_for_role(sql, ctx, "analyst", masking_rules=masking)
+        assert sorted(assert_same_rows(pg, governed, sql, _ROWS)) == [(50,), (70,), (150,), (150,)]
 
-    def test_regex_mask_inherited_via_assigned_role_id(self):
+    def test_regex_mask_inherited_via_assigned_role_id(self, pg):
         """A regex rule held by the child role is applied to its read."""
         ctx = _make_ctx((CUSTOMERS_TABLE_ID, "customers", "customers"))
         masking: MaskingRules = {
@@ -401,7 +429,11 @@ class TestMaskingInheritanceExtended:
         result = governed_for_role(
             'SELECT "email" FROM "public"."customers"', ctx, "child-role", masking_rules=masking
         )
-        assert result == (
+        expected = (
             "SELECT PROVISA_REGEX_REPLACE(\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****') AS \"email\" "
             'FROM "public"."customers"'
         )
+        assert assert_same_rows(pg, result, expected, _ROWS) == [
+            ("an***@example.com",),
+            ("bo***@example.com",),
+        ]
