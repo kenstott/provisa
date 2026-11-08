@@ -27,8 +27,9 @@ import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem, sandboxReadable } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { RegionReadableGate } from "./components/admin/RegionReadableGate";
 import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
-import { HIDING_RIGHTS, IMPORT_SURFACE } from "./lib/capabilities";
+import { HIDING_RIGHTS, IMPORT_SURFACE, routeRequirement } from "./lib/capabilities";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
@@ -638,10 +639,11 @@ function App() {
                                           <Route path="/docs" element={<DocsPage />} />
                                           <Route path="/admin" element={<AdminEntry />} />
                                           {/* REQ-1337: each admin route names the RIGHT it needs, never a role name. The
-                      deployment-wide settings surfaces (federation engine, cache storage,
-                      encryption/auth providers) require `platform_settings`; administering other
-                      orgs requires `cross_org`. The seed decides which role carries each, so a
-                      multitenant org_admin cannot reach these even by typing the URL.
+                      deployment-wide settings surfaces (encryption/auth providers, maintenance)
+                      are the rows naming `platform_settings`, each asking the deployment check
+                      with `cross_org` (routeRequirement, REQ-1327); administering other orgs
+                      requires `cross_org`. The seed decides which role carries each, so an
+                      org_admin cannot reach these even by typing the URL.
                       REQ-1349 adds the two org-scoped rights: `org_settings` for surfaces whose
                       subject is the acting org (its AI/NL provider, domains, scheduled tasks,
                       approvals) and `observability` for read-only performance and health. */}
@@ -655,17 +657,18 @@ function App() {
                                               ["/admin/my-secrets", "usage"],
                                               ["/admin/cache", "org_settings"],
                                               ["/admin/scheduled-tasks", "org_settings"],
-                                              ["/admin/federation-engine", "platform_settings"],
                                               ["/admin/org-engine", "org_settings"], // REQ-1412
                                               ["/admin/encryption", "platform_settings"],
                                               ["/admin/auth", "platform_settings"],
                                               ["/admin/system-health", "observability"],
                                               ["/admin/observability", "observability"],
+                                              [
+                                                "/admin/platform-observability",
+                                                "platform_settings",
+                                              ], // REQ-1327
                                               // Deep-links onto the dashboard beside system health
                                               // (REQ-1008), so it opens on the dashboard's own right.
                                               ["/admin/mcp-server", "observability"],
-                                              // The right the users surface is gated on server-side.
-                                              ["/admin/local-users", "user_management"],
                                               ["/admin/orgs", "cross_org"],
                                               ["/admin/ai-models", "org_settings"],
                                               ["/admin/package-registries", "org_settings"], // REQ-1984
@@ -694,14 +697,14 @@ function App() {
                                                 sandboxReadable(path) ? (
                                                   // REQ-1922: a demo sandbox reads it.
                                                   <SandboxReadableGate
-                                                    capability={capability}
+                                                    {...routeRequirement(capability)}
                                                     fallback={<NotAuthorized />}
                                                   >
                                                     <AdminPage />
                                                   </SandboxReadableGate>
                                                 ) : (
                                                   <CapabilityGate
-                                                    capability={capability}
+                                                    {...routeRequirement(capability)}
                                                     fallback={<NotAuthorized />}
                                                   >
                                                     <AdminPage />
@@ -710,6 +713,27 @@ function App() {
                                               }
                                             />
                                           ))}
+                                          {/* REQ-1327: local users are the org's people, on Team. */}
+                                          <Route
+                                            path="/admin/local-users"
+                                            element={
+                                              <Navigate to="/team?section=local-users" replace />
+                                            }
+                                          />
+                                          {/* REQ-1922, REQ-1327: the deployment's engine is the platform's; where the
+                                    org has regions, the engines assigned to it are read by the org. */}
+                                          <Route
+                                            path="/admin/federation-engine"
+                                            element={
+                                              <RegionReadableGate
+                                                requirement={routeRequirement("platform_settings")}
+                                                regionsCapability="org_settings"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <AdminPage />
+                                              </RegionReadableGate>
+                                            }
+                                          />
                                           {/* REQ-1573, REQ-2155: environments have their own rights --
                                     managing any (org_admin) or the ones the caller owns (a
                                     developer); either opens the page. */}

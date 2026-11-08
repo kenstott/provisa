@@ -170,10 +170,21 @@
   position: absolute;
   inset: 0 0 var(--g3d-legend-h) 0;
 }
-/* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed. */
-.p3d-tip.g3d-tip-live {
+/* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed: the
+   tip surface passes the pointer through, its content does not. */
+.g3d-tip-live {
   pointer-events: auto;
-  max-width: 320px;
+  display: grid;
+  gap: 2px;
+}
+.g3d-tip-live b {
+  font-family: var(--mantine-font-family-monospace);
+  font-weight: 500;
+}
+/* What the card is attached to: the node on the drawing, or a point on a line (LaneStage). */
+.g3d-tip-anchor {
+  position: absolute;
+  pointer-events: none;
 }
 /* A node's facts (nodeFacts): label and value per row, in the card and the detail panel. */
 .g3d-facts {

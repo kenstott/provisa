@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { NAV_GROUPS, labelKeyFor } from "../components/navGroups";
+import { NAV_GROUPS } from "../components/navGroups";
 import { meetsRequirement } from "../lib/capabilities";
 
 const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
@@ -32,16 +32,16 @@ describe("the Org Secrets nav entry", () => {
     }
   });
 
-  it("names the deployment's half for a caller who holds only platform authority", () => {
-    // platform_admin holds platform_settings and cross_org; the entry survives on the former.
-    const platformAdmin = ["platform_settings", "cross_org"];
-    expect(meetsRequirement(platformAdmin, secrets)).toBe(true);
-    expect(labelKeyFor(secrets, platformAdmin)).toBe("navBar.itemPlatformSecrets");
+  it("is not offered to a caller who holds only platform authority", () => {
+    // REQ-1327: the secrets service moved to the Security page, so nothing here is the platform's.
+    expect(meetsRequirement(["platform_settings", "cross_org"], secrets)).toBe(false);
   });
 
-  it("names the org's half for the administrator of that org", () => {
+  it("opens for the administrator of that org, whose route asks the same right", () => {
     expect(meetsRequirement(["org_settings"], secrets)).toBe(true);
-    expect(labelKeyFor(secrets, ["org_settings"])).toBe("navBar.itemOrgSecrets");
+    expect(secrets.orCapability).toBeUndefined();
+    const app = readFileSync(resolve(__dirname, "..", "App.tsx"), "utf-8");
+    expect(app).toContain('["/admin/secrets", "org_settings"]');
   });
 
   it("is absent entirely for a caller holding neither right", () => {
@@ -53,8 +53,8 @@ describe("the Org Secrets nav entry", () => {
     // entry, and each entry opens for a caller holding exactly its own right.
     for (const item of admin.items) {
       expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(false);
-      expect(meetsRequirement([item.capability], item), item.to).toBe(true);
-      expect(labelKeyFor(item, [item.capability]), item.to).toBe(item.labelKey);
+      const own = item.andCapability ? [item.capability, item.andCapability] : [item.capability];
+      expect(meetsRequirement(own, item), item.to).toBe(true);
     }
   });
 
@@ -73,15 +73,9 @@ describe("the Org Secrets nav entry", () => {
     }
   });
 
-  it("titles the page for the half the caller reaches", () => {
-    // The heading is the same statement as the menu label: a platform admin opening /admin/secrets
-    // is looking at the deployment's secrets service, and "Org Secrets" over it would name a thing
-    // that is not on the page.
+  it("titles the page for what it now holds, the org's vault alone", () => {
     const source = readFileSync(resolve(__dirname, "..", "pages/AdminPage.tsx"), "utf-8");
-    const at = source.indexOf("const heading =");
-    expect(at).toBeGreaterThan(-1);
-    const decl = source.slice(at, at + 300);
-    expect(decl).toContain('!capabilities.includes("org_settings")');
-    expect(decl).toContain('"Platform Secrets"');
+    expect(source).toContain('"/admin/secrets": "Org Secrets"');
+    expect(source).not.toContain('"Platform Secrets"');
   });
 });

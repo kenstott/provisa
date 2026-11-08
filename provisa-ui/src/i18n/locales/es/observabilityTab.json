@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "No se pudieron comprobar las tablas de trazas de Provisa ({{reason}}). No se sabe si están recibiendo filas; la comprobación se repite cada 30 segundos.",
     "tracesTableEmpty": "Hay un endpoint configurado, pero las tablas de trazas de Provisa aún no tienen filas. Si el endpoint es un proveedor externo y no el collector de Provisa, páselo a los exportadores del collector.",
-    "tracesTableStale": "Hay un endpoint configurado, pero las tablas de trazas de Provisa no han recibido filas en los últimos {{minutes}} minutos. Si Provisa ha estado inactivo, es lo esperado. Si no, compruebe que el endpoint es el collector de Provisa y no un proveedor externo."
+    "tracesTableStale": "Hay un endpoint configurado, pero las tablas de trazas de Provisa no han recibido filas en los últimos {{minutes}} minutos. Si Provisa ha estado inactivo, es lo esperado. Si no, compruebe que el endpoint es el collector de Provisa y no un proveedor externo.",
+    "schemaClustersTitle": "Clústeres de esquema"
   }
 }

@@ -17,9 +17,8 @@
 // satisfies every other gate in this UI — does not open the org's list of names.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { cleanup } from "@testing-library/react";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
-import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
+import { SecretsTab, MySecretsTab, SecretsServicePanel } from "../components/admin/SecretsTab";
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -264,48 +263,44 @@ describe("SecretsTab", () => {
   });
 });
 
-describe("SecretsTab secrets-service panel", () => {
+// REQ-1327: the deployment's secrets service is the platform's, so it lives on the Security page
+// (SecurityManager's "secretsService" tab renders SecretsServicePanel), not on Org Secrets.
+describe("SecretsServicePanel (the Security page's secrets-service tab)", () => {
   beforeEach(() => {
-    auth.capabilities = ["platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
     localStorage.clear();
   });
 
-  /** The panel starts collapsed; open it the way a person does. */
+  /** The panel is a tab body now, not a collapsible: it is simply there once rendered. */
   async function openService() {
-    render(<SecretsTab />);
-    fireEvent.click(await screen.findByTestId("secrets-service-toggle"));
-    // Mantine hides the collapsing region from the accessibility tree until the transition
-    // finishes, so wait for a control inside it rather than for the container.
+    render(<SecretsServicePanel />);
+    // Wait for a control the loaded state draws.
     await screen.findByRole("radio", { name: /Provisa/ });
   }
 
-  it("starts collapsed and reads nothing until it is opened", async () => {
-    render(<SecretsTab />);
-    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
-    expect(screen.queryByTestId("secrets-service")).toBeNull();
-    expect(mockService).not.toHaveBeenCalled();
+  it("reads the service state when it is shown, and is not a collapsible", async () => {
+    await openService();
+    expect(mockService).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("secrets-service")).toBeInTheDocument();
+    expect(screen.queryByTestId("secrets-service-toggle")).toBeNull();
   });
 
-  it("remembers that it was opened, and restores that on the next visit", async () => {
+  it("keeps no collapsible state of its own", async () => {
     await openService();
     expect(
       JSON.parse(localStorage.getItem(scopedKey("provisa.collapsibles")) ?? "{}")[
         "admin.secrets.service"
       ],
-    ).toEqual({ service: true });
-    cleanup();
-    render(<SecretsTab />);
-    await waitFor(() => expect(screen.getByTestId("secrets-service")).toBeInTheDocument());
+    ).toBeUndefined();
   });
 
-  it("remembers that it was closed again", async () => {
-    await openService();
-    fireEvent.click(screen.getByTestId("secrets-service-toggle"));
-    await waitFor(() => expect(screen.queryByTestId("secrets-service")).toBeNull());
-    cleanup();
+  it("is not on the Org Secrets page, whoever is looking", async () => {
+    auth.capabilities = ["platform_settings", "cross_org", "org_settings"];
     render(<SecretsTab />);
-    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("secrets-tab")).toBeInTheDocument());
+    expect(screen.queryByTestId("secrets-service-toggle")).toBeNull();
     expect(screen.queryByTestId("secrets-service")).toBeNull();
+    expect(mockService).not.toHaveBeenCalled();
   });
 
   it("lists every backend, greying out one whose library is missing", async () => {
@@ -420,11 +415,11 @@ describe("MySecretsTab", () => {
 // REQ-1560, REQ-1361, REQ-1327: the platform rights are over the deployment, never over an org's
 // data, and the names an org keeps are themselves a statement about what that org connects to.
 // The server refuses the same call — this asserts the browser does not even ask.
-describe("SecretsTab and the platform administrator", () => {
+describe("SecretsServicePanel and the platform administrator", () => {
   it("shows a platform admin the service chooser and none of the org's names", async () => {
     auth.capabilities = ["platform_settings", "cross_org"];
-    render(<SecretsTab />);
-    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    render(<SecretsServicePanel />);
+    expect(await screen.findByTestId("secrets-service")).toBeInTheDocument();
     expect(mockFetch).not.toHaveBeenCalled();
     expect(screen.queryByTestId("secrets-table")).toBeNull();
   });
@@ -455,8 +450,8 @@ describe("SecretsTab org-key panel", () => {
 
   it("never offers it to the platform administrator", async () => {
     auth.capabilities = ["platform_settings", "cross_org"];
-    render(<SecretsTab />);
-    expect(await screen.findByTestId("secrets-service-toggle")).toBeInTheDocument();
+    render(<SecretsServicePanel />);
+    expect(await screen.findByTestId("secrets-service")).toBeInTheDocument();
     expect(screen.queryByTestId("org-key-toggle")).toBeNull();
   });
 });

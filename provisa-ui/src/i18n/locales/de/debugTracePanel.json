@@ -27,6 +27,8 @@
     "permit": "Erlauben",
     "revoke": "Widerrufen",
     "noHintRoles": "Für keine Rolle ist der Hinweis erlaubt.",
-    "loadFailed": "Die Einstellungen für das Debug-Tracing konnten nicht geladen werden"
+    "loadFailed": "Die Einstellungen für das Debug-Tracing konnten nicht geladen werden",
+    "introPlatform": "Tracing erfasst standardmäßig einen Span pro Anfrage. Debug-Tracing fügt pro Pipeline-Stufe und pro Quellaufruf einen Span mit SQL-Text hinzu. Es erzeugt zusätzliche Last, schalten Sie es daher für eine Organisation als Ganzes für eine festgelegte Zeit ein; nach Ablauf der Zeit schaltet es sich selbst ab. Das Tracing einer bestimmten Rolle oder Quelle ist Sache des Administrators dieser Organisation.",
+    "introOrg": "Tracing erfasst standardmäßig einen Span pro Anfrage. Debug-Tracing fügt pro Pipeline-Stufe und pro Quellaufruf einen Span mit SQL-Text hinzu. Es erzeugt zusätzliche Last, schalten Sie es daher für eine Rolle oder Quelle für eine festgelegte Zeit ein; nach Ablauf der Zeit schaltet es sich selbst ab."
   }
 }
