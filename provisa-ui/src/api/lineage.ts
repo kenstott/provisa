@@ -66,6 +66,9 @@ export interface LineageEdge {
   target: string;
   transform: string;
   ops: LineageTransformOp[];
+  /** Set by the client when a view between an input and a member is folded into this edge: the
+   *  relations the column passes through (lineage-layout foldViewsOntoEdges). Never sent. */
+  via?: string[];
 }
 
 export interface LineageCycle {

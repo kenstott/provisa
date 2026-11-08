@@ -185,7 +185,13 @@ describe("the product panel in 2D", () => {
       within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
-    // Party, the term Customer is a kind of, heads the chain though the card draws no term edge.
+    // REQ-2174 (amended 2026-11-07): it opens at 1 hop, the product's tables alone.
+    expect(ids("node")).toEqual(["p:c360", "t:customers", "t:orders"]);
+    // At 4 hops: their columns, the terms tied to them, and Party a step across a term link.
+    fireEvent.click(
+      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "4" }),
+    );
+    await waitFor(() => expect(ids("node")).toContain("term:party"));
     expect(ids("node")).toEqual([
       "c:customers.email",
       "c:orders.total",
@@ -200,6 +206,8 @@ describe("the product panel in 2D", () => {
     expect(laneOf("c:customers.email")).toBe("column");
     expect(laneOf("t:orders")).toBe("table");
     expect(laneOf("p:c360")).toBe("product");
+    // Related tables is the 3D view's (REQ-2174, amended 2026-11-07).
+    expect(screen.queryByTestId("graph-panel-related")).not.toBeInTheDocument();
     // A 2D graph has one layout: no Force / Layered choice.
     expect(screen.queryByTestId("graph-panel-layout")).not.toBeInTheDocument();
     // A glance: no copy control on the card.
@@ -212,7 +220,10 @@ describe("the product panel in 2D", () => {
       within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
-    expect(ids("more")).toEqual(["more:t:orders"]);
+    fireEvent.click(
+      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "3" }),
+    );
+    await waitFor(() => expect(ids("more")).toEqual(["more:t:orders"]));
     tap("more:t:orders");
     await waitFor(() => expect(ids("more")).toEqual([]));
     expect(laneOf("c:orders.placed")).toBe("column");
@@ -262,7 +273,11 @@ describe("the full graph in 2D", () => {
     const text = (writeText.mock.calls[0] as unknown as [string])[0];
     expect(text.split("\n")[0]).toBe("flowchart LR");
     expect(text).toContain('subgraph lane_term["Terms"]');
-    expect(text).toContain('["+1 column"]');
+    expect(text).toContain('["1 column with no term in this view"]');
+    // A term link in its own direction, named by its type: Customer is a kind of Party.
+    const node = (name: string) =>
+      (new RegExp(`(n\\d+)\\["${name}"\\]`).exec(text) as RegExpExecArray)[1];
+    expect(text).toContain(`${node("Customer")} -.->|"KIND_OF"| ${node("Party")}`);
   });
 });
 
@@ -279,6 +294,17 @@ describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
     expect(within(full).queryByTestId("graph3d-layers-menu")).not.toBeInTheDocument();
     fireEvent.click(within(full).getByRole("radio", { name: "3D" }));
     expect(await within(full).findByTestId("graph3d-layers-menu")).toBeInTheDocument();
+  });
+
+  it("keeps the Term relationships filter in 2D, whose term links it filters, and in 3D", async () => {
+    const full = await explorer();
+    expect(within(full).getByTestId("graph3d-filter-edge-type")).toHaveTextContent(
+      "All term relationships",
+    );
+    fireEvent.click(within(full).getByRole("radio", { name: "3D" }));
+    expect(await within(full).findByTestId("graph3d-filter-edge-type")).toHaveTextContent(
+      "All term relationships",
+    );
   });
 });
 

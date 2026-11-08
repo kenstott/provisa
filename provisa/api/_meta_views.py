@@ -822,6 +822,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
+    # version built -- one row per model object and surface, the name it has there and the
+    # naming problems found in it. A row is read where the table it is about is
+    # (META_ROW_SCOPED_VIEWS).
+    "model_names": """
+        CREATE OR REPLACE VIEW model_names_meta AS
+        SELECT object_kind || ':' || object_id || ':' || surface AS id,
+               object_kind, object_id, surface, name, physical_name, label, domain_id,
+               table_id, is_alias, warnings
+        FROM model_names
+    """,
     # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
     # table's rules are parsed with. Its connection settings stay out of the catalog.
     "sources": """
@@ -946,7 +957,15 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "query_audit_log": "query_audit_log_ops",
     "replica_build_log": "replica_build_log_ops",
     "sla_breach_log": "sla_breach_log_ops",
+    # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
+    "requests": "requests_ops",
 }
+
+# An ops log whose exposed name is not a physical table, by the base table it shows one row per
+# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
+# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
+# ops.requests over creation_requests.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -975,6 +994,24 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         SELECT b.id, b.kind, b.observed, b.last_observed, b.limit_value, b.window_start,
                b.window_end, b.started_at, b.last_seen_at, b.resolved_at
         FROM sla_breach_log b
+    """,
+    # REQ-2216, REQ-2215, REQ-2217: one row per request -- what was asked, by whom, the
+    # environment it is for, the roles it is addressed to and their members as resolved when it
+    # was raised (and the roles none could be resolved for), its state, the decision, who decided
+    # and when. A workflow tool subscribes to it: a request raised is an insert, decided an update.
+    "requests": """
+        CREATE OR REPLACE VIEW requests_ops AS
+        SELECT r.id, r.request_type, r.capability, r.payload, r.requested_by,
+               rq.display_name AS requested_by_name, r.environment, r.addressed_roles,
+               r.addressed_members, r.unresolved_roles, r.status AS state, r.approvals,
+               r.required_approvals,
+               CASE r.status WHEN 'executed' THEN 'approved' WHEN 'rejected' THEN 'rejected'
+               END AS decision,
+               r.rejection_reason AS decision_reason, r.resolved_by AS decided_by,
+               rd.display_name AS decided_by_name, r.resolved_at AS decided_at, r.created_at
+        FROM creation_requests r
+        LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
+        LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
     """,
 }
 
@@ -1317,6 +1354,26 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # inside and that nothing restricts -- no sensitive tag and no mask (what a profile treats as
     # restricted) -- status hinted, its hints the reason. A hint is never a classification: the
     # column is listed for a person to decide on, and nothing is applied to it.
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): every model object with its name on
+    # each surface and the naming problems found in it, and every clash the last build refused,
+    # each naming both objects. Filtered by object kind, surface and domain in the report grid.
+    "names_report": """
+        CREATE OR REPLACE VIEW names_report AS
+        SELECT mn.object_kind || ':' || mn.object_id || ':' || mn.surface AS id,
+               mn.object_kind, mn.object_id, mn.surface, mn.name, mn.physical_name, mn.label,
+               mn.domain_id, mn.table_id,
+               CASE WHEN jsonb_array_length(mn.warnings) > 0 THEN 'warning' ELSE 'ok' END
+                   AS status,
+               (SELECT STRING_AGG(w ->> 'message', '; ')
+                FROM jsonb_array_elements(mn.warnings) w) AS problems
+        FROM model_names mn
+        UNION ALL
+        SELECT 'clash:' || c.surface || ':' || c.name || ':' || c.newcomer AS id,
+               'clash' AS object_kind, c.newcomer AS object_id, c.surface, c.name,
+               c.holder AS physical_name, c.newcomer AS label, '' AS domain_id,
+               CAST(NULL AS INTEGER) AS table_id, 'refused' AS status, c.message AS problems
+        FROM model_name_clashes c
+    """,
     "sensitive_column_coverage": """
         CREATE OR REPLACE VIEW sensitive_column_coverage AS
         SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,

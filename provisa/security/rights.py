@@ -722,6 +722,8 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_details": ("id",),
     "column_details": ("table_id",),
     "table_keys": ("table_id", "referenced_table_id"),
+    # REQ-194: a name is read where the table it names (or the table holding it) is.
+    "model_names_meta": ("table_id",),
 }
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).

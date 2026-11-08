@@ -18,6 +18,14 @@ from provisa.core.repositories import creation_request as cr_repo
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
+# REQ-2215..2217: what every request now records of where it is for and who it is addressed to.
+_ADDRESSED: dict = {
+    "environment": "prod",
+    "addressed_roles": [],
+    "addressed_members": [],
+    "unresolved_roles": [],
+}
+
 
 class _Conn:
     """Vanilla SQLAlchemy Core connection stub."""
@@ -57,7 +65,7 @@ class TestRepo:
     async def test_create_returns_id_and_serializes_payload(self):
         conn = _Conn(insert_returning=7)
         rid = await cr_repo.create(
-            conn, "relationship", "create_relationship", {"id": "r1"}, "alice"
+            conn, "relationship", "create_relationship", {"id": "r1"}, "alice", **_ADDRESSED
         )
         assert rid == 7
         # payload is a native dict passed straight to the JSON column (no manual encoding)
@@ -66,8 +74,10 @@ class TestRepo:
 
     async def test_every_queued_relationship_request_needs_two_approvals(self):  # REQ-1948
         conn = _Conn(insert_returning=7)
-        await cr_repo.create(conn, "relationship", "create_relationship", {"id": "r1"}, "alice")
-        await cr_repo.create(conn, "view", "create_view", {"id": "v1"}, "alice")
+        await cr_repo.create(
+            conn, "relationship", "create_relationship", {"id": "r1"}, "alice", **_ADDRESSED
+        )
+        await cr_repo.create(conn, "view", "create_view", {"id": "v1"}, "alice", **_ADDRESSED)
         assert conn.insert_calls[0][1]["required_approvals"] == 2
         # Any other type takes the column's own default of one.
         assert "required_approvals" not in conn.insert_calls[1][1]
