@@ -930,6 +930,99 @@ async def test_kafka_sources_round_trip_through_the_export(db, new_plane):
     assert await _model(fresh) == await _model(db)
 
 
+# --- a seeded table's names survive the export (REQ-1634) -----------------------------------------
+
+
+async def _a_seeded_table(db: Database, name: str = "assignments") -> None:
+    """A table the deployment seeds on its graphql-demo source, as the boot's registration leaves
+    it: in the store, never in a file."""
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(metadata.tables["sources"]).values(id="graphql-demo", type="graphql_remote")
+        )
+        await conn.execute_core(
+            insert(metadata.tables["domains"]).values(id="shelter", description="Shelter")
+        )
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="graphql-demo",
+                domain_id="shelter",
+                schema_name="graphql",
+                table_name=name,
+                columns=[Column(name="id", data_type="integer", visible_to=["seller"])],
+            ),
+        )
+
+
+def _a_product_and_a_relationship_on_a_seeded_table() -> dict:
+    return _raw(
+        tables=[_table("orders")],
+        relationships=[
+            {
+                "id": "orders-to-assignments",
+                "source_table_id": "orders",
+                "target_table_id": "assignments",
+                "source_column": "id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ],
+        data_products=[
+            {
+                "id": "workforce_ops",
+                "domain_id": "sales",
+                "name": "Workforce Ops",
+                "tables": ["assignments", "orders"],
+            }
+        ],
+    )
+
+
+async def test_the_export_keeps_a_seeded_member_and_a_relationship_to_a_seeded_table(db, new_plane):
+    """A product's member that is a seeded table, and a relationship to one, are exported, and
+    the export applied once the seeded table exists restores both."""
+    await _a_seeded_table(db)
+    await _boot(db, _a_product_and_a_relationship_on_a_seeded_table())
+    exported = with_store_model(_raw(), await _model(db))
+    assert exported["data_products"][0]["tables"] == ["assignments", "orders"]
+    assert [r["id"] for r in exported["relationships"]] == ["orders-to-assignments"]
+    assert "assignments" not in [t["table"] for t in exported["tables"]]
+
+    fresh = await new_plane()
+    await _a_seeded_table(fresh)
+    async with fresh.acquire() as conn:
+        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
+    model = await _model(fresh)
+    assert model["data_products"][0]["tables"] == ["assignments", "orders"]
+    assert [r["id"] for r in model["relationships"]] == ["orders-to-assignments"]
+
+
+async def test_a_seed_holds_a_seeded_member_until_its_table_exists(db):
+    """The boot seeds the file before the remote registration brings the seeded table: the seed
+    holds the name, and the retry once the table exists sets the member."""
+    raw = _a_product_and_a_relationship_on_a_seeded_table()
+    seeded, _ = await _boot(db, raw)
+    assert seeded is True
+    assert not (await _model(db))["data_products"][0].get("tables")
+    await _a_seeded_table(db)
+    async with db.acquire() as conn:
+        await config_loader.set_product_members(conn, parse_config_dict(raw))
+    assert (await _model(db))["data_products"][0]["tables"] == ["assignments", "orders"]
+
+
+async def test_a_member_no_registration_holds_is_refused_by_name(db):
+    raw = _a_product_and_a_relationship_on_a_seeded_table()
+    raw["data_products"][0]["tables"] = ["orders", "nowhere"]
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
+            await apply_config(parse_config_dict(raw), conn)
+    await _boot(db, raw)
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
+            await config_loader.set_product_members(conn, parse_config_dict(raw))
+
+
 # --- a named demo's whole config ------------------------------------------------------------------
 
 
