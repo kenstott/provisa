@@ -14,7 +14,7 @@ A relationship request is decided by the domains it touches (REQ-1948); the rule
 ``relationship_approvals``, asked here on every approve, reject, execute and list.
 """
 
-# Requirements: REQ-042, REQ-060, REQ-063, REQ-366, REQ-434, REQ-1948
+# Requirements: REQ-042, REQ-060, REQ-063, REQ-366, REQ-434, REQ-1948, REQ-2216
 
 from __future__ import annotations
 
@@ -26,7 +26,9 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, update
 
 from provisa.api.admin import relationship_approvals as approvals_rule
+from provisa.api.admin.request_queue import raise_request
 from provisa.api.errors import ApiError
+from provisa.api.idempotency import once
 from provisa.core.repositories import creation_request as cr_repo
 from provisa.core.repositories.creation_request import (
     REQUIRED_APPROVALS as _REQUIRED_APPROVALS,
@@ -84,9 +86,14 @@ _REJECTION_REASONS: dict[str, list[str]] = {
 }
 
 
-def _get_pool() -> "Database":
+def _state():
     from provisa.api.app import state
 
+    return state
+
+
+def _get_pool() -> "Database":
+    state = _state()
     assert state.model_db is not None
     return state.model_db
 
@@ -260,8 +267,8 @@ async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-43
     pool = _get_pool()
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
-        rid = await cr_repo.create(
-            conn, body.request_type, body.capability, payload, _user_id(request)
+        rid = await raise_request(
+            conn, body.request_type, body.capability, payload, _user_id(request), state=_state()
         )
     return {"id": rid, "status": "pending"}
 
@@ -361,7 +368,14 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
 
 
 @router.post("/{request_id}/approve")
-async def approve_request(request_id: int, request: Request):  # REQ-063, REQ-366, REQ-434, REQ-1948
+async def approve_request(
+    request_id: int, request: Request
+):  # REQ-063, REQ-366, REQ-434, REQ-1948, REQ-2216
+    """Approve; with an ``Idempotency-Key``, a repeat is answered with the first result."""
+    return await once(_get_pool(), request, lambda: _approve(request_id, request))
+
+
+async def _approve(request_id: int, request: Request) -> dict:
     user_id = _user_id(request)
     pool = _get_pool()
     async with pool.acquire() as _conn:
@@ -439,7 +453,12 @@ async def _approve_relationship(conn: "Connection", row: dict, request: Request)
 @router.post("/{request_id}/reject")
 async def reject_request(
     request_id: int, body: RejectBody, request: Request
-):  # REQ-063, REQ-366, REQ-434, REQ-1948
+):  # REQ-063, REQ-366, REQ-434, REQ-1948, REQ-2216
+    """Reject; with an ``Idempotency-Key``, a repeat is answered with the first result."""
+    return await once(_get_pool(), request, lambda: _reject(request_id, body, request))
+
+
+async def _reject(request_id: int, body: RejectBody, request: Request) -> dict:
     pool = _get_pool()
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)

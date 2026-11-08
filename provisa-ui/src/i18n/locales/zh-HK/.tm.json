@@ -9736,5 +9736,10 @@
   "zh-HK/team.json::teamPage.localUsersHeading": "Local users",
   "zh-HK/observabilityTab.json::observabilityTab.schemaClustersTitle": "Schema clusters",
   "zh-HK/debugTracePanel.json::debugTracePanel.introPlatform": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one organization as a whole for a set time; it turns itself off when the time is up. Tracing a named role or source is that organization's administrator's.",
-  "zh-HK/debugTracePanel.json::debugTracePanel.introOrg": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one role or source for a set time; it turns itself off when the time is up."
+  "zh-HK/debugTracePanel.json::debugTracePanel.introOrg": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one role or source for a set time; it turns itself off when the time is up.",
+  "zh-HK/requestsPage.json::requestsPage.delivery": "Notify by",
+  "zh-HK/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
+  "zh-HK/requestsPage.json::requestsPage.deliveryEmail": "Email",
+  "zh-HK/requestsPage.json::requestsPage.deliveryEvents": "Events only",
+  "zh-HK/requestsPage.json::requestsPage.deliveryBoth": "Both"
 }
