@@ -26739,3 +26739,17 @@ Maintainer 2026-11-08. A code source ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-199
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2222 · Command Line {#REQ-2222}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-08. State (sources, tables, roles, products, settings) changes through the config, so there is no command for each thing the UI can do. The CLI moves the config: validate, diff (what would change against this instance), apply, export, and promotion between environments. A secret stays a reference in the file, never a value. Everything changed in the UI comes back out in export and goes back in with apply, with nothing lost, and a test exports every shipped model, applies it to an empty store and compares. Actions, which are not state, have commands: running an instance, the license, maintenance, building connectors ([REQ-2221](#REQ-2221)). One generic command, provisa api, calls anything else the API offers, so the long tail needs no code per feature. provisa query drives a query in SQL, GraphQL, Cypher or SPARQL, a gRPC method with its request, a REST call or an MCP tool call, through the same front doors a client uses. It takes the role and the org as flags, and a person once entitlements ([REQ-2219](#REQ-2219)) apply. Its output is machine-readable and stable, a refusal exits non-zero and prints its error code, and an expected refusal can be asserted. provisa explain takes the same inputs and the same flags and shows exactly what SQL is generated: the one semantic statement with views expanded, that statement governed, the optimized statement with the rules that fired, the route, the native statement in the target dialect, and the engine's own plan, with an option to run it and report real timings. A statement refused for that role prints the refusal and its code. Every language reaches explain where it hands SQL to the one pipeline ([REQ-1519](#REQ-1519)), so explain describes what would run. There is no interactive mode: pgwire and Bolt already give psql and cypher-shell.
+
+**Use case:** A CI pipeline validates a model branch, diffs it against test and applies it, then runs the same Cypher as two roles, compares the answers, and asserts that a third role is refused with the expected code. When an answer looks wrong, a developer runs provisa explain on the query and sees the exact SQL that ran.
+
+**Code:** —
+
+**Tests:** —
