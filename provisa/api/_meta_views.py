@@ -198,7 +198,7 @@ def _data_product_edges_sql() -> str:
             SELECT id AS table_id, domain_id || '.' || COALESCE(alias, table_name) AS model_name
             FROM registered_tables
         ),
-        -- REQ-1634: one row per product and member; a table may be a member of several.
+        -- One row per product and member; a table may be a member of several.
         members AS (
             SELECT m.table_id, m.product_id, rt.dq_contract
             FROM data_product_tables m

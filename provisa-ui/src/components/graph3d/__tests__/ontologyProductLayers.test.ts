@@ -27,6 +27,7 @@ import {
   type QueryScope,
 } from "../graphModel";
 import {
+  memberTablesOf,
   ontologyQuery,
   productMapGraph,
   readsProducts,
@@ -81,8 +82,8 @@ describe("the product layers' reads", () => {
   it("read a product's commands only under Commands", () => {
     const off = ontologyQuery(m, scope(["data"])) as string;
     const on = ontologyQuery(m, scope(["data", "commands"])) as string;
-    expect(off).not.toContain("commands");
-    expect(on).toMatch(/commands \{[^}]*name[^}]*domainId/);
+    expect(off).not.toContain("dataProductCommands");
+    expect(on).toMatch(/dataProductCommands \{\s*trackedFunction \{[^}]*name[^}]*domainId/);
   });
 
   it("read a checker's checked table and the tables' profiles only under Quality", () => {
@@ -124,7 +125,7 @@ const PRODUCTS: ProductRow[] = [
     id: "p1",
     name: "P1",
     domainId: "sales",
-    commands: [{ name: "refund", domainId: "sales" }],
+    dataProductCommands: [{ trackedFunction: { name: "refund", domainId: "sales" } }],
     edges: [
       {
         kind: "relationship",
@@ -133,20 +134,24 @@ const PRODUCTS: ProductRow[] = [
         targetProduct: { id: "p2", name: "P2", domainId: "finance" },
       },
     ],
-    memberTables: [
+    dataProductTables: [
       {
-        id: 3,
-        domainId: "sales",
-        tableName: "pets",
-        tableColumns: [{ columnName: "name", columnKey: "3:name" }],
-        profileResults: [{ id: 40, tableName: "pets" }],
+        registeredTable: {
+          id: 3,
+          domainId: "sales",
+          tableName: "pets",
+          tableColumns: [{ columnName: "name", columnKey: "3:name" }],
+          profileResults: [{ id: 40, tableName: "pets" }],
+        },
       },
       {
-        id: 4,
-        domainId: "sales",
-        tableName: "pets_checks",
-        dqContract: "rules: []",
-        checks: { id: 3 },
+        registeredTable: {
+          id: 4,
+          domainId: "sales",
+          tableName: "pets_checks",
+          dqContract: "rules: []",
+          checks: { id: 3 },
+        },
       },
     ],
   },
@@ -289,7 +294,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
         ],
         inputs: [input({})],
       }),
-      PRODUCTS[0].memberTables ?? [],
+      memberTablesOf(PRODUCTS[0]),
     );
     expect(g.edges.filter((e) => e.kind === "column_lineage").map((e) => [e.a, e.b])).toEqual([
       ["lc:native:raw.d.Name", "c:9:name"],

@@ -85,7 +85,7 @@ function reader(): MetaReader {
           id: scalar,
           domainId: scalar,
           tableName: scalar,
-          product: one("M__DataProducts"),
+          dataProductTables: list("M__DataProductTables"),
           tableColumns: list("M__TableColumns"),
           sourceRelationships: list("M__Relationships"),
         }),
@@ -107,7 +107,12 @@ function reader(): MetaReader {
           id: scalar,
           name: scalar,
           domainId: scalar,
-          memberTables: list("M__RegisteredTables"),
+          dataProductTables: list("M__DataProductTables"),
+        }),
+        type("M__DataProductTables", {
+          productId: scalar,
+          dataProduct: one("M__DataProducts"),
+          registeredTable: one("M__RegisteredTables"),
         }),
       ],
     },
@@ -154,7 +159,7 @@ describe("the Ontology View's query", () => {
     expect(q).toContain("domains { domainId }");
     expect(q).toContain("refs {");
     // Data off: a column's product is read for its look alone, and no products are read.
-    expect(q).toContain("product { id }");
+    expect(q).toContain("dataProduct { id }");
     expect(q).not.toContain("data_products");
   });
 
