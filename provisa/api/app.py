@@ -3009,9 +3009,10 @@ _SLOW_REBUILD_S = 2.0
 
 
 def _rebuild_lock() -> CrossLoopLock:
-    """The rebuild lock of the runtime the current work is bound to."""
-    rt = state._active_runtime()
-    key = runtime_key(rt.org_id, rt.env)
+    """The rebuild lock of the runtime the current work is bound to: keyed by the org and the
+    environment bound, as the runtime is registered (``runtime_key``). Asking whether a rebuild is
+    in progress needs no runtime built -- a reader bound to an org asks before its runtime is."""
+    key = runtime_key(require_current_org(), current_env.get())
     with _rebuild_locks_guard:
         lock = _rebuild_locks.get(key)
         if lock is None:
