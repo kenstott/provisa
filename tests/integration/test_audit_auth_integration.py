@@ -604,7 +604,9 @@ class TestREQ596AuditLogWriterBoundary:
         from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 
         assert "no_update_audit" in AUDIT_SCHEMA_SQL
-        assert "ON UPDATE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
+        # REQ-1312: the one UPDATE it passes is an erasure's (test_audit_erasure_rule shows which).
+        assert "ON UPDATE TO query_audit_log" in AUDIT_SCHEMA_SQL
+        assert "DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL.split("ON UPDATE TO query_audit_log")[1]
 
     def test_schema_sql_has_tenant_time_index(self):
         # REQ-596: tenant-scoped time-range query index present

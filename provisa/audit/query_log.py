@@ -59,10 +59,19 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
-DO $$ BEGIN
-    CREATE RULE no_update_audit AS ON UPDATE TO query_audit_log DO INSTEAD NOTHING;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- An UPDATE does nothing, except the one an account's erasure makes: user_id, and only
+-- user_id, goes from a person's id to that id's tombstone (org_membership.tombstone_id, computed
+-- here the same way), so the entry stays and stops naming anyone. A tombstone is never rewritten.
+-- CREATE OR REPLACE, never only on create: a database made under the unconditional rule gets this
+-- one the next time its schema is initialized.
+CREATE OR REPLACE RULE no_update_audit AS ON UPDATE TO query_audit_log
+    WHERE NOT (
+        OLD.user_id NOT LIKE 'deleted-user-%'
+        AND NEW.user_id = 'deleted-user-'
+            || left(encode(sha256(convert_to(OLD.user_id, 'UTF8')), 'hex'), 16)
+        AND (to_jsonb(NEW) - 'user_id') = (to_jsonb(OLD) - 'user_id')
+    )
+    DO INSTEAD NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_audit_tenant_time ON query_audit_log (tenant_id, logged_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logged_at DESC);

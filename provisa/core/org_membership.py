@@ -572,10 +572,12 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     Refused (:class:`AccountRemovalRefused`) while they are the last org_admin of any org — every
     such org is named, not only the first — or the last platform_admin of the deployment. When
     it may go: they leave every org in both planes (their tokens for each are revoked with the
-    membership), their profile, credential row and SCRAM verifier are deleted, and every
-    remaining reference to their id — orgs and invites they created or used, audit entries —
-    carries a tombstone instead. Audit entries are never deleted. The orgs and everything
-    registered in them stay: they are the org's, not the person's.
+    membership), their profile, credential row and SCRAM verifier are deleted, as are each of
+    those orgs' own copies of who they are (its user directory entry, the attributes it records
+    and their identity provider's claims), and every remaining reference to their id — orgs
+    and invites they created or used, audit entries — carries a tombstone instead. Audit
+    entries are never deleted. The orgs and everything registered in them stay: they are the
+    org's, not the person's.
 
     ``platform_db`` is the model store that holds the platform_admin assignments;
     ``model_db_of`` returns one org's model store (its role assignments and admin trail) and
@@ -588,7 +590,12 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         superadmin_bootstrap,
         user_profiles,
     )
-    from provisa.core.schema_org import query_audit_log
+    from provisa.core.schema_org import (
+        query_audit_log,
+        user_attributes,
+        user_directory,
+        user_idp_attributes,
+    )
     from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
     async with admin_db.acquire() as conn:
@@ -660,6 +667,11 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
                 .values(user_id=tombstone)
             )
         async with model_dbs[org_id].acquire() as conn:
+            # The org's own copies of who they are (REQ-1439, REQ-1382, REQ-1383) go with the
+            # profile: a name and email left in user_directory would still label every audit row
+            # the tombstone was meant to stop identifying them on.
+            for identity in (user_directory, user_attributes, user_idp_attributes):
+                await conn.execute_core(delete(identity).where(identity.c.user_id == user_id))
             await conn.execute_core(
                 update(admin_audit_log)
                 .where(admin_audit_log.c.actor_id == user_id)
@@ -679,6 +691,9 @@ def tombstone_id(user_id: str) -> str:  # REQ-1312
     Derived by hash rather than randomly so every reference to one deleted account collapses to the
     same token — the record still shows that one person did these things, without saying who. It is
     one-way: the digest cannot be turned back into the id.
+
+    query_audit_log's no_update_audit rule (provisa/audit/query_log.py) computes this same token
+    in SQL: the one UPDATE it lets through is a user_id going to its tombstone. Change both.
     """
     return "deleted-user-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
 
