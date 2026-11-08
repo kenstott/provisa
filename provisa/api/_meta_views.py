@@ -829,6 +829,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
+    # version built -- one row per model object and surface, the name it has there and the
+    # naming problems found in it. A row is read where the table it is about is
+    # (META_ROW_SCOPED_VIEWS).
+    "model_names": """
+        CREATE OR REPLACE VIEW model_names_meta AS
+        SELECT object_kind || ':' || object_id || ':' || surface AS id,
+               object_kind, object_id, surface, name, physical_name, label, domain_id,
+               table_id, is_alias, warnings
+        FROM model_names
+    """,
     # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
     # table's rules are parsed with. Its connection settings stay out of the catalog.
     "sources": """
@@ -1356,6 +1367,26 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # inside and that nothing restricts -- no sensitive tag and no mask (what a profile treats as
     # restricted) -- status hinted, its hints the reason. A hint is never a classification: the
     # column is listed for a person to decide on, and nothing is applied to it.
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): every model object with its name on
+    # each surface and the naming problems found in it, and every clash the last build refused,
+    # each naming both objects. Filtered by object kind, surface and domain in the report grid.
+    "names_report": """
+        CREATE OR REPLACE VIEW names_report AS
+        SELECT mn.object_kind || ':' || mn.object_id || ':' || mn.surface AS id,
+               mn.object_kind, mn.object_id, mn.surface, mn.name, mn.physical_name, mn.label,
+               mn.domain_id, mn.table_id,
+               CASE WHEN jsonb_array_length(mn.warnings) > 0 THEN 'warning' ELSE 'ok' END
+                   AS status,
+               (SELECT STRING_AGG(w ->> 'message', '; ')
+                FROM jsonb_array_elements(mn.warnings) w) AS problems
+        FROM model_names mn
+        UNION ALL
+        SELECT 'clash:' || c.surface || ':' || c.name || ':' || c.newcomer AS id,
+               'clash' AS object_kind, c.newcomer AS object_id, c.surface, c.name,
+               c.holder AS physical_name, c.newcomer AS label, '' AS domain_id,
+               CAST(NULL AS INTEGER) AS table_id, 'refused' AS status, c.message AS problems
+        FROM model_name_clashes c
+    """,
     "sensitive_column_coverage": """
         CREATE OR REPLACE VIEW sensitive_column_coverage AS
         SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,

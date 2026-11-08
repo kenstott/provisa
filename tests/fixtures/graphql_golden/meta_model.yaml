@@ -10135,6 +10135,58 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: model_names
+  columns:
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: is_alias
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: label
+    data_type: text
+    visible_to:
+    - viewer
+  - name: name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: object_kind
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: physical_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: surface
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: warnings
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: registered_tables
   columns:
   - name: alias

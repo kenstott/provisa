@@ -951,6 +951,34 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-194: the names table of the last model version built
+# (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+model_names = Table(
+    "model_names",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("physical_name", Text, nullable=False),
+    Column("label", Text, nullable=False),
+    Column("domain_id", Text, nullable=False, server_default=""),
+    Column("table_id", Integer),
+    Column("is_alias", Boolean, nullable=False, server_default=false()),
+    Column("warnings", JSON, nullable=False, server_default="[]"),
+)
+
+# REQ-194: the name clashes the last model build refused, each naming both objects.
+model_name_clashes = Table(
+    "model_name_clashes",
+    metadata,
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("holder", Text, nullable=False),
+    Column("newcomer", Text, primary_key=True),
+    Column("message", Text, nullable=False),
+)
+
 # REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
 # check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
 # A table with no row has never run. The dry run writes none.

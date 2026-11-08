@@ -240,7 +240,7 @@ _NAMING_ORG_SUBKEYS = ("use_domains", "default_domain", "convention")
 
 # The PUT blocks an org administrator may write with ``org_settings`` alone. A body touching
 # anything else is checked against ``platform_settings`` as well.
-_ORG_BLOCKS = ("redirect", "cache", "federation")
+_ORG_BLOCKS = ("redirect", "cache", "federation", "names")
 
 
 @router.get("/admin/settings")
@@ -307,6 +307,8 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         },
         # REQ-259: the org's Apollo Federation subgraph and the role it serves as.
         "federation": _federation.subgraph(state).model_dump(),
+        # REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+        "names": {"clash_policy": _names_clash_policy(state.settings_overrides)},
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
@@ -439,6 +441,9 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
         updates["federation"] = _org_federation(state, body["federation"] or {})
         updated.extend(f"federation.{k}" for k in body["federation"] or {})
 
+    if "names" in body:
+        updates["names"] = _names_block(body["names"] or {}, overrides, updated)
+
     if not updates:
         return
     identity = getattr(request.state, "identity", None)
@@ -448,6 +453,47 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
     # The query path reads these off the bound runtime, so the cached copy is refreshed here —
     # otherwise the org's next query still redirects and caches on the pre-save values.
     state.settings_overrides = await read_org_overrides(state.model_db)
+    if "names" in updates:
+        # REQ-194: the policy settles the clashes of the next names table; built now.
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+
+
+def _names_clash_policy(overrides: dict) -> str:  # REQ-194
+    from provisa.compiler.names_table import clash_policy
+
+    return clash_policy(overrides)
+
+
+def _names_block(n: dict, overrides: dict, updated: list) -> dict | None:  # REQ-194
+    """The org's ``names`` override after this save: its clash policy, refuse or disambiguate
+    (REQ-194, CLASH POLICY). Null clears it back to refuse."""
+    from provisa.compiler.names_table import CLASH_POLICIES
+
+    unknown = set(n) - {"clash_policy"}
+    if unknown:
+        raise ApiError(
+            400,
+            "settings.names_unknown_key",
+            f"not a names setting: {', '.join(sorted(unknown))}",
+        )
+    merged = dict(overrides.get("names") or {})
+    if "clash_policy" in n:
+        policy = n["clash_policy"]
+        if policy is None:
+            merged.pop("clash_policy", None)
+        elif policy not in CLASH_POLICIES:
+            raise ApiError(
+                400,
+                "settings.names_clash_policy_invalid",
+                f"unknown clash policy {policy!r}; expected one of {', '.join(CLASH_POLICIES)}",
+                field="names.clash_policy",
+            )
+        else:
+            merged["clash_policy"] = policy
+        updated.append("names.clash_policy")
+    return merged or None
 
 
 # The `otel` block's fields, by the operator setting each one is (REQ-1913). A field left out of

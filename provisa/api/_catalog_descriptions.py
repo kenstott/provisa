@@ -57,6 +57,9 @@ _META: dict[str, str] = {
     "naming a value outside this set is refused",
     "tag_expiry": "Tag assignments carrying a planned end date, with expiring/expired state "
     "derived at query time — the governance review queue",
+    "model_names": "The names table of the last model version built — every model object's name "
+    "on every surface (SQL, GraphQL, Cypher, proto, pg constraint) with the naming problems "
+    "found in it",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
     # REQ-1443
@@ -176,6 +179,8 @@ _OPS: dict[str, str] = {
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
     "fake covers it, and the reason when none does",
+    "names_report": "Names: every model object with its name on each surface and the naming "
+    "problems found in it, and every name clash the last model build refused, naming both objects",
 }
 
 # A model reading the catalog took ops.query_audit_log -- its route, status_code and duration_ms
@@ -532,6 +537,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term": "That term's name",
         "reason": "Justification recorded with the assignment",
         "tenant_id": _TENANT,
+    },
+    "model_names": {
+        "id": "Synthesized row identity (kind:object:surface)",
+        "object_kind": "Kind of model object named (source, table, view, column, relationship, "
+        "command, enum, enum_value, metric)",
+        "object_id": "The object's identity within its kind (a table's id, table_id:column, "
+        "Type.field for a relationship, a command's or enum's name)",
+        "surface": "Surface the name is served on (sql, graphql_field, graphql_type, "
+        "cypher_label, cypher_rel_type, proto_message, proto_rpc, pg_constraint, ...)",
+        "name": "The object's name on that surface",
+        "physical_name": "The object's name at its source",
+        "label": "How a message names the object (source.schema.table[.column])",
+        "domain_id": "Domain the object is governed under",
+        "table_id": "Table the object is, or belongs to; who may read it may read this row",
+        "is_alias": "Whether the name is an alias an operator set (or the clash policy froze)",
+        "warnings": "Each naming problem found in the name, with its code and message",
     },
     "tag_expiry": {
         "id": "Assignment identifier",
@@ -1008,6 +1029,19 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "started_at": "When the breach opened",
         "last_seen_at": "The latest evaluation that found it still in breach",
         "resolved_at": "When the measure came back within its limit; empty: still open",
+    },
+    "names_report": {
+        "id": "Synthesized row identity (kind:object:surface, or clash:surface:name:object)",
+        "object_kind": "Kind of model object named, or clash for a refused clash",
+        "object_id": "The object's identity within its kind; for a clash, the object refused",
+        "surface": "Surface the name is served on",
+        "name": "The object's name on that surface; for a clash, the name both would take",
+        "physical_name": "The object's name at its source; for a clash, the object holding it",
+        "label": "How a message names the object",
+        "domain_id": "Domain the object is governed under",
+        "table_id": "Table the object is, or belongs to",
+        "status": "ok, warning (a naming problem was found), or refused (a clash)",
+        "problems": "Each naming problem found, or the refused clash, with its fix",
     },
     "requests": {
         "id": "The request's number",
