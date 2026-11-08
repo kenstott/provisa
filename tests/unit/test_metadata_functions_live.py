@@ -381,6 +381,34 @@ def test_a_table_privilege_is_the_real_one(live, relation, table_id, privilege):
         assert by_name == by_oid == for_user == expected
 
 
+@pytest.mark.parametrize("who", ("analyst", "pg_monitor", "pg_read_all_data"))
+@pytest.mark.parametrize("column", ("id", "region"))
+def test_a_column_privilege_of_a_user_is_the_real_one(live, who, column):
+    with live.begin() as conn:
+        call = f"has_column_privilege('{who}', 'sales.orders', '{column}', 'SELECT')"
+        assert _form(conn, call) == _real(conn, call)
+
+
+def test_a_computed_argument_answers_as_the_value_it_computes(live):
+    with live.begin() as conn:
+        for plain, computed in (
+            (
+                "has_table_privilege('sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Sales.Orders'), UPPER('select'))",
+            ),
+            (
+                "has_table_privilege('analyst', 'sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), 'select')",
+            ),
+            (
+                "has_column_privilege('analyst', 'sales.orders', 'id', 'SELECT')",
+                "has_column_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), LOWER('ID'), 'select')",
+            ),
+            ("pg_get_viewdef('pg_class')", "pg_get_viewdef(LOWER('PG_CLASS'))"),
+        ):
+            assert _form(conn, computed) == _form(conn, plain)
+
+
 def test_a_table_it_cannot_read_is_false_and_one_it_cannot_list_is_unknown(live):
     with live.begin() as conn:
         assert _form(conn, "has_table_privilege('sales.regions', 'SELECT')") is False

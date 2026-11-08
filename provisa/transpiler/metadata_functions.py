@@ -31,6 +31,7 @@ never sent to the control plane to answer about itself."""
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import cast
 
@@ -519,12 +520,15 @@ _WRITTEN_NAME = (
 )
 #: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
 #: its schema; the path's first where both hold the name.
-_NAMED_RELATION = (
-    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
-    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
+_RELATIONS = (
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace"
+)
+_NAMED = (
+    f"{_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
 )
+_NAMED_RELATION = f"{_RELATIONS} WHERE {_NAMED}"
 _PATH_FIRST = " ORDER BY _n.nspname = 'pg_catalog' DESC LIMIT 1"
 
 
@@ -549,23 +553,33 @@ def _held(privileges: str, of_role: str = "") -> str:
 _TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
 
 
-def _column_privilege(of_role: str = "") -> str:
-    """A listed column the role is not served is false: its table is read, and it is not. The
-    session role's, or the model role named ``of_role`` (SQL)."""
+def _column_served(of_role: str = "") -> str:
+    """Whether the role is served the column of ``_a`` and holds a privilege on its relation
+    ``_c``: a listed column the role is not served is false (its table is read, and it is not).
+    The session role's, or the model role named ``of_role`` (SQL)."""
     unserved = (
         f"{ROLE_UNSERVED} _u WHERE _u.role_name = {of_role} AND"
         if of_role
         else f"{UNSERVED} _u WHERE"
     )
     return (
-        f"(SELECT NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
-        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)} "
-        "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n "
-        "ON _n.oid = _c.relnamespace JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
-        "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
-        f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
-        "_n.nspname || '.' || _c.relname, "
-        f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
+        f"NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
+        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)}"
+    )
+
+
+_ATTRIBUTE_NAMED = (
+    "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
+    "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT))"
+)
+
+
+def _column_privilege(of_role: str = "") -> str:
+    """The privilege on a column, as ``_column_served`` reads it: NULL for a column no relation
+    the name gives has."""
+    return (
+        f"(SELECT {_column_served(of_role)} {_RELATIONS} {_ATTRIBUTE_NAMED} "
+        f"WHERE {_NAMED}{_PATH_FIRST})"
     )
 
 
@@ -1098,17 +1112,52 @@ def _object_identifier(value: exp.Expr) -> bool:
     )
 
 
+#: The names a binding of arguments goes by.
+_ARGUMENTS, _ROLE = "_arg", "_role"
+
+
+def _is_cheap(value: exp.Expr) -> bool:
+    """A column or a constant, which costs nothing to write again (and a planner reads through),
+    cast or not: a binding is for an argument that computes."""
+    while isinstance(value, (exp.Cast, exp.Paren)):
+        value = value.this
+    return isinstance(value, (exp.Column, exp.Literal, exp.Null, exp.Boolean))
+
+
+def _binding(values: dict[str, exp.Expr], alias: str) -> exp.Subquery:
+    """One row holding each of ``values`` under its name: the arguments of a form, evaluated once
+    wherever the form names them. Its LIMIT keeps a planner from folding the row back into each
+    use, which would plan the argument as many times as the form names it."""
+    row = exp.select(*(exp.alias_(value.copy(), name) for name, value in values.items())).limit(1)
+    return exp.Subquery(this=row, alias=exp.TableAlias(this=exp.to_identifier(alias)))
+
+
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
-    """The form with each parameter its argument, which is evaluated wherever the form names it."""
-    values = dict(zip(form.params, args))
+    """The form with each parameter its argument. An argument that computes and that the form names
+    more than once is bound once, in a row the form reads (``_arg``), so it is evaluated and
+    resolved once."""
     reads_as = dict(zip(form.params, form.reads_as))
+    values = {
+        param: _argument(arg, reads_as.get(param, "")) for param, arg in zip(form.params, args)
+    }
+    tree = sqlglot.parse_one(form.sql, read="postgres")
+    uses = Counter(c.name for c in tree.find_all(exp.Column) if not c.table)
+    once = {p for p, v in values.items() if uses[p] > 1 and not _is_cheap(v)}
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name], reads_as.get(node.name, "")).copy()
+            if node.name in once:
+                return exp.column(node.name, table=_ARGUMENTS)
+            return values[node.name].copy()
         return node
 
-    return sqlglot.parse_one(form.sql, read="postgres").transform(bound)
+    written = tree.transform(bound)
+    if not once:
+        return written
+    row = _binding({p: values[p] for p in values if p in once}, _ARGUMENTS)
+    if isinstance(written, exp.Select):
+        return written.join(row, join_type="cross")
+    return exp.Subquery(this=exp.select(written).from_(row))
 
 
 def _call(node: exp.Expr) -> exp.Anonymous | None:
@@ -1148,9 +1197,7 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
             return exp.alias_(sized, name) if _is_column(node) else sized
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
-            written = _of_session_role(
-                user, _expanded_form(name, args, rewrite, needed), facts, rewrite, args, needed
-            )
+            written = _of_session_role(user, name, args, facts, rewrite, needed)
         else:
             if (name, len(args)) not in FORMS:
                 if name in READS_THE_SERVER:
@@ -1330,70 +1377,115 @@ def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
     return _written(form, [a.transform(rewrite) for a in args])
 
 
-#: A predefined role's privilege on a relation: PostgreSQL's defaults and the role's own rights.
-_PREDEFINED_RELATION = Form(
-    "_predefined_relation_privilege",
-    ("who", "tbl", "priv"),
-    f"(SELECT {any_held('priv', predefined_relation_privileges('who'))} "
-    f"{_NAMED_RELATION}{_PATH_FIRST})",
-)
-
-
 #: Another model role's privilege on a relation, and on a column: from its grants in the model.
-_OTHER_RELATION = Form(
-    "_other_relation_privilege",
-    ("who", "tbl", "priv"),
-    f"(SELECT {_held('priv', role_name('who'))} {_NAMED_RELATION}{_PATH_FIRST})",
-    frozenset({ROLE_PRIVILEGES}),
+_OTHER_FACTS = {
+    False: frozenset({ROLE_PRIVILEGES}),
+    True: frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
+}
+#: The row a user form reads its arguments from, and the relation they name once resolved.
+_IN, _REL = "_in", "_rel"
+_RESOLVED = (
+    "SELECT _c.oid AS oid, _c.relnamespace AS relnamespace, _c.relname AS relname, "
+    "_n.nspname AS nspname"
 )
-_OTHER_COLUMN = Form(
-    "_other_column_privilege",
-    ("who", "tbl", "col", "priv"),
-    _column_privilege(role_name("who")),
-    frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
-)
+
+
+def _is_role_name(node: exp.Expr) -> bool:
+    """Whether ``node`` is the subquery ``role_name`` writes."""
+    if not isinstance(node, exp.Subquery):
+        return False
+    table = node.this.find(exp.Table)
+    return table is not None and table.name == "catalog_pg_roles"
+
+
+def _on_row(sql: str, names: list[str], resolved: bool) -> exp.Expr:
+    """``sql`` read from the row ``_role``: its parameters are the row's columns, the role's name
+    is the row's, and (``resolved``) the relation ``_c`` and ``_n`` and the column ``_a`` name are
+    the one ``_rel`` holds."""
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column):
+            if not node.table and node.name in names:
+                return exp.column(node.name, table=_ROLE)
+            if resolved and node.table in ("_c", "_n", "_a"):
+                return exp.column(node.name, table=_REL)
+        if resolved and _is_role_name(node):
+            return exp.column("rolname", table=_ROLE)
+        return node
+
+    return sqlglot.parse_one(sql, read="postgres").transform(bound)
 
 
 def _of_session_role(
     user: exp.Expr,
-    answer: exp.Expr,
+    name: str,
+    args: list[exp.Expr],
     facts: CatalogFacts,
     rewrite,
-    args: list[exp.Expr],
     needed: set[str],
 ) -> exp.Expr:
-    """``answer`` where ``user`` is the session role; for one of PostgreSQL's predefined roles,
-    or an oid no role has, what PostgreSQL grants it; for another model role, what its grants in
-    the model give it (REQ-2167, amended 2026-11-03); a name no role has is PostgreSQL's
-    refusal."""
-    user = user.transform(rewrite)
-    named = exp.cast(_argument(user), "TEXT")
+    """The form ``name`` of ``args`` where ``user`` is the session role; for one of PostgreSQL's
+    predefined roles, or an oid no role has, what PostgreSQL grants it; for another model role,
+    what its grants in the model give it (REQ-2167, amended 2026-11-03); a name no role has is
+    PostgreSQL's refusal. The user, each argument, the role's name and the relation the arguments
+    name are each evaluated once, in the row every arm reads."""
     given = [a.transform(rewrite) for a in args]
-    tbl, priv = given[0], given[-1]
-    predefined = _written(_PREDEFINED_RELATION, [user.copy(), tbl.copy(), priv.copy()])
-    other = _OTHER_COLUMN if len(given) == 3 else _OTHER_RELATION
-    needed.update(other.facts)
-    return exp.Case(
-        ifs=[
-            exp.If(
-                this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
-            ),
-            exp.If(
-                this=_parsed_condition(no_such_role_name("_who"), user),
-                true=_parsed_condition(refused_role("_who", "BOOLEAN"), user),
-            ),
-            exp.If(this=_parsed_condition(holds_public_alone("_who"), user), true=predefined),
-        ],
-        default=_written(other, [user.copy(), *(a.copy() for a in given)]),
+    column = len(given) == 3
+    names = ["who", "tbl", "col", "priv"] if column else ["who", "tbl", "priv"]
+    needed.update(FORMS[(name, len(given))].facts)
+    needed.update(_OTHER_FACTS[column])
+    inner = _binding(dict(zip(names, [_argument(user.transform(rewrite)), *given])), _IN)
+    role = (
+        exp.select(
+            *(exp.column(n, table=_IN) for n in names),
+            exp.alias_(_on_row(role_name("_in.who"), [], False), "rolname"),
+        )
+        .from_(inner)
+        .limit(1)
+    )
+    role_row = exp.Subquery(this=role, alias=exp.TableAlias(this=exp.to_identifier(_ROLE)))
+    resolve = (
+        f"{_RESOLVED}, _a.attname AS attname {_RELATIONS} LEFT {_ATTRIBUTE_NAMED} "
+        f"WHERE {_NAMED} ORDER BY _a.attname IS NULL, _n.nspname = 'pg_catalog' DESC LIMIT 1"
+        if column
+        else f"{_RESOLVED} {_NAMED_RELATION}{_PATH_FIRST}"
+    )
+    relation = exp.Lateral(
+        this=exp.Subquery(this=_on_row(resolve, ["tbl", "col"], False)),
+        alias=exp.TableAlias(this=exp.to_identifier(_REL)),
     )
 
+    def found(held: str, needs_column: bool = True) -> exp.Expr:
+        """``held``, NULL where no relation (or, of a column, no column) is named."""
+        missing = f"{_REL}.attname IS NULL" if column and needs_column else f"{_REL}.oid IS NULL"
+        return exp.Case(
+            ifs=[exp.If(this=sqlglot.parse_one(missing, read="postgres"), true=exp.null())],
+            default=_on_row(held, names, True),
+        )
 
-def _parsed_condition(sql: str, who: exp.Expr) -> exp.Expr:
-    """``sql`` with ``_who`` the expression ``who``."""
-
-    def bound(node: exp.Expr) -> exp.Expr:
-        if isinstance(node, exp.Column) and not node.table and node.name == "_who":
-            return _argument(who).copy()
-        return node
-
-    return sqlglot.parse_one(sql, read="postgres").transform(bound)
+    session = _column_served() if column else _held("priv")
+    other = _column_served(role_name("who")) if column else _held("priv", role_name("who"))
+    predefined = any_held("priv", predefined_relation_privileges("who"))
+    chosen = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(
+                    this=_on_row("CAST(who AS TEXT)", names, True),
+                    expression=exp.Literal.string(facts.role_id),
+                ),
+                true=found(session),
+            ),
+            exp.If(
+                this=_on_row(no_such_role_name("who"), names, True),
+                true=_on_row(refused_role("who", "BOOLEAN"), names, True),
+            ),
+            exp.If(
+                this=_on_row(holds_public_alone("who"), names, True),
+                true=found(predefined, needs_column=False),
+            ),
+        ],
+        default=found(other),
+    )
+    return exp.Subquery(
+        this=exp.select(chosen).from_(role_row).join(relation, join_type="left", on=exp.true())
+    )
