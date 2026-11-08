@@ -17,7 +17,7 @@
 // from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
 // a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
@@ -72,6 +72,7 @@ import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
 import { BreakableName } from "../list/BreakableName";
+import { TourRunningContext } from "../../tour/tourRunning";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -98,6 +99,7 @@ export function GraphExplorer({
   depth: initialDepth,
   layers: openingLayers,
   snippet = false,
+  opensFlat = false,
   onExpand,
   search,
   settingsKey,
@@ -121,6 +123,8 @@ export function GraphExplorer({
   /** A glance (a term's page, a product's panel): its 2D/3D and depth controls and its expand
    * button, no filters or detail panel. */
   snippet?: boolean;
+  /** Drawn in 2D until the reader has chosen otherwise (a term's graph). */
+  opensFlat?: boolean;
   /** Drawn in place: its expand button opens it at 95% of the viewport. */
   onExpand?: () => void;
   /** The page's search, focusing the graph in place of its own focus field: the terms and
@@ -190,7 +194,7 @@ export function GraphExplorer({
     attraction: 1 as number,
     grid: true as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
-    flat: false as boolean,
+    flat: opensFlat as boolean,
     // REQ-2174: auto opens in the preset's own layout, else Force; else the reader's Force or Layered.
     layout: "auto" as string,
     // REQ-2174 (ONE ONTOLOGY GRAPH): whether lateral term edges (related to, synonym of...) are drawn.
@@ -208,7 +212,11 @@ export function GraphExplorer({
   const presetOwn = scope.presets[preset]?.edgeTypes;
   const presetTypes = useMemo(() => presetOwn ?? edgeTypes, [presetOwn, edgeTypes]);
   const savedLayers = saved.layers as string[];
-  const flat = saved.flat as boolean;
+  // A tour shows the 2D graph, whatever the reader keeps for this graph, and leaves that choice
+  // as it was: a change made during a tour holds for the tour alone.
+  const touring = useContext(TourRunningContext);
+  const [tourFlat, setTourFlat] = useState(true);
+  const flat = touring ? tourFlat : (saved.flat as boolean);
   // A layer the graph always draws is on whatever was remembered (an old "ontology off" too).
   // REQ-2174 (2D SHOWS ONLY 2D CONTROLS): in 2D the lane diagram is the only layout and the
   // Layers control is not shown, so the preset's own layers are drawn.
@@ -287,7 +295,7 @@ export function GraphExplorer({
   const setRotate = (on: boolean) => save("rotate", on);
   const setAttraction = (v: number) => save("attraction", v);
   const setGrid = (on: boolean) => save("grid", on);
-  const setFlat = (on: boolean) => save("flat", on);
+  const setFlat = (on: boolean) => (touring ? setTourFlat(on) : save("flat", on));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
