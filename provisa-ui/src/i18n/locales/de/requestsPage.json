@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Governance-Verstoß",
     "reasonOutOfScope": "Außerhalb des Geltungsbereichs",
     "reasonEndpointUnreachable": "Endpunkt nicht erreichbar",
-    "reasonSchemaMismatch": "Schema-Abweichung"
+    "reasonSchemaMismatch": "Schema-Abweichung",
+    "delivery": "Benachrichtigen per",
+    "deliveryHelp": "Wie die Mitglieder der Rollen, an die eine Anfrage gerichtet ist, davon erfahren. E-Mail: Provisa sendet jedem von ihnen eine Benachrichtigung. Nur Events: Provisa sendet keine Benachrichtigung; Ihr Workflow-Tool abonniert ops.requests. Beides: E-Mail und Events.",
+    "deliveryEmail": "E-Mail",
+    "deliveryEvents": "Nur Events",
+    "deliveryBoth": "Beides"
   }
 }

@@ -9737,5 +9737,10 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "pt/requestsPage.json::requestsPage.delivery": "Notify by",
+  "pt/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
+  "pt/requestsPage.json::requestsPage.deliveryEmail": "Email",
+  "pt/requestsPage.json::requestsPage.deliveryEvents": "Events only",
+  "pt/requestsPage.json::requestsPage.deliveryBoth": "Both"
 }

@@ -37,6 +37,8 @@ def _state(control_plane) -> RoleState:
         roles={"analyst": {"id": "analyst", "domain_access": ["*"]}},
         model_db=control_plane.org(holds="model"),
         tenant_db=control_plane.org(holds="state"),
+        # REQ-2216: a request raised looks up the org's mail channel; none is configured here.
+        config=SimpleNamespace(mail=SimpleNamespace(provider="")),
     )
 
 

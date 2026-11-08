@@ -636,7 +636,8 @@ class _Resolver:
             for index, (branch, name) in enumerate(layout.by_position(column.name)):
                 for select in layout.named(index, name):
                     for inner in select.find_all(exp.Column):
-                        out |= self.touched(branch, inner, seen)
+                        if not _orders_a_window(inner, select):
+                            out |= self.touched(branch, inner, seen)
         return out
 
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
@@ -728,6 +729,21 @@ def unrelated_tables(
                 primary_keys or {},
             )
     return found
+
+
+def _orders_a_window(column: exp.Column, select: exp.Expr) -> bool:
+    """Whether ``column`` only partitions or orders a window function of ``select`` (REQ-603,
+    amended 2026-11-07). A filter on such a result -- ROW_NUMBER() ... = 1, the latest row per
+    group -- reads a rank of rows the window's own query already combined, where its joins are
+    held to the rule; it matches no rows of one table with another. A column the window function
+    takes as its argument (LAG(v.id)) is a value it gives, and still touches its table."""
+    node: exp.Expr = column
+    while node is not select and node.parent is not None:
+        parent = node.parent
+        if isinstance(parent, exp.Window) and node is not parent.this:
+            return True
+        node = parent
+    return False
 
 
 def _is_filter(query: exp.Expr) -> bool:

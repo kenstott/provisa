@@ -40,6 +40,7 @@ from sqlalchemy.exc import DBAPIError
 
 from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
+    _OPS_LOG_BASE_TABLE,
     _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
@@ -553,7 +554,9 @@ async def _seed_ops_domain(
         # PKs from the physical table; exposed columns from the curated view.
         pk_cols = {
             c["column_name"]
-            for c in await conn.reflect_columns(tbl, schema=schema_name)
+            for c in await conn.reflect_columns(
+                _OPS_LOG_BASE_TABLE.get(tbl, tbl), schema=schema_name
+            )
             if c["is_primary_key"]
         }
         cols = await conn.reflect_columns(view_name, schema=schema_name)
