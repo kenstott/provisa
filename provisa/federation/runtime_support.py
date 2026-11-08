@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from provisa.core.read_refusal import ReadRefused
 from provisa.core import request_deadline
+from provisa.core.session_time_zone import carrying_zone
 from provisa.core.ir_arrow import column_values
 from provisa.executor.result import (
     QueryResult,
@@ -487,7 +488,7 @@ async def run_async(
     """Run a runtime's synchronous ``run_sync`` on the default executor. The shared
     async wrapper for runtimes whose driver is blocking (pg / sqlalchemy / clickhouse)."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: run_sync(sql, params))
+    return await loop.run_in_executor(None, carrying_zone(lambda: run_sync(sql, params)))
 
 
 async def run_async_materialized(
@@ -509,4 +510,4 @@ async def run_async_materialized(
             column_types=rs.column_types,
         )
 
-    return await loop.run_in_executor(None, _drain)
+    return await loop.run_in_executor(None, carrying_zone(_drain))
