@@ -248,7 +248,8 @@ def test_a_lane_script_fails_loud(script):
     used = {
         word.removeprefix("../")
         for _w, _j, b in _lane_callers()
-        for h in ("prepare", "on-failure", "after")
+        # ``run``: the core UI job's opt-in py-spy recorder (ui-e2e-core.yml ``pyspy``).
+        for h in ("prepare", "on-failure", "after", "run")
         for word in str(b["with"].get(h, "")).split()
         if word.endswith(".sh")
     }
