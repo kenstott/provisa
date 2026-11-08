@@ -127,7 +127,12 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
     state.roles = {
-        role: {"description": "Test role.", "id": role, "capabilities": [], "domain_access": ["*"]}
+        role: {
+            "description": "Test role.",
+            "id": role,
+            "capabilities": ["usage"],
+            "domain_access": ["*"],
+        }
     }
     state.schema_build_cache = {"column_types": {}}
     state.auth_config = {"provider": provider, "default_role": role, "role_mapping": []}
