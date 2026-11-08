@@ -459,7 +459,7 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
         "analyst": {
             "description": "Test role.",
             "id": "analyst",
-            "capabilities": [],
+            "capabilities": ["usage"],
             "domain_access": ["*"],
         }
     }

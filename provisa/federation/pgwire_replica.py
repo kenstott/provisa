@@ -404,7 +404,9 @@ def _sharepoint_operand(source: Any) -> dict:
       ``authType`` and falls back to ``CLIENT_CREDENTIALS`` when it is absent, so a cert operand
       without it dies with "CLIENT_CREDENTIALS auth requires clientId, clientSecret, and tenantId".
     * ``certificatePath`` must be ABSOLUTE. The pgwire server runs with its bundle directory as cwd,
-      so a relative path resolves against the cache dir and the PFX is not found.
+      so a relative path resolves against the cache dir and the PFX is not found. It must also
+      EXIST on this host: the server is started here, even for a source an engine in a container
+      reads (writes and declared keys go through it, REQ-1946, REQ-2170).
     * ``certificatePassword`` must be PRESENT, even for a password-less PFX, where it is the empty
       string. ``createCertificateAuth`` rejects a null password and ``CertificateAuth`` calls
       ``certificatePassword.toCharArray()``. Absence of the mapping key is a config error, not an
@@ -430,6 +432,12 @@ def _sharepoint_operand(source: Any) -> dict:
             raise MissingConnectorConfig(
                 f"sharepoint source {source.id!r}: mapping.certificate_path must be an absolute "
                 f"path (the pgwire server's cwd is its bundle directory), got {cert_path!r}"
+            )
+        if not Path(cert_path).is_file():
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: mapping.certificate_path {cert_path} does "
+                "not exist on this host, where its pgwire server runs; a path that resolves only "
+                "inside an engine's container is not one this server can read"
             )
         cert_password = mapping.get("certificate_password")
         if not isinstance(cert_password, str):
