@@ -41,12 +41,14 @@ and passes each leg the same `version` and `publish`.
 
 | Trigger | Workflows |
 | --- | --- |
-| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Integration suite, Deploy Site, NixOS, amd64-only engines, windows-container-smoke |
-| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, amd64-only engines, windows-container-smoke |
-| tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds, the three UI e2e lanes |
-| push to `release/**` | the three UI e2e lanes |
-| nightly | the warehouse lane, CVE Audit, NixOS |
+| push to `dev` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, Demo bundles, devcontainer-smoke |
+| push to `main` (a release merging) | Deploy Site |
+| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
+| tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds |
+| push to `release/**` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke |
+| nightly | Integration suite, CVE Audit |
 | push to `ci/**` touching `.github/` or `scripts/ci/` | CI leaf check |
+| push to `ci/**` touching the dev container | devcontainer-smoke |
 
 The warehouse lane, the Salesforce lane and the core UI lane read live credentials. The core UI
 lane also resumes a paid Fabric capacity. They run on the triggers above and on a dispatch.
@@ -115,7 +117,7 @@ by review alone.
     `test_reusable_workflows_nest_no_deeper_than_github_allows`
 11. A workflow that costs money or reads live credentials runs only on the triggers in the
     table above. — `test_the_salesforce_lane_runs_only_when_a_dispatch_asks_for_it`; the others: *no test*
-12. A change to a leaf is proven on a `ci/**` branch before it reaches main. — *no test*
+12. A change to a leaf is proven on a `ci/**` branch before it reaches dev. — *no test*
 13. Teammates do not push, dispatch or re-run. The lead does, one suite at a time. — *no test*
 14. Unit failures are found locally, not in CI. Run the tests for what you changed, the tests
     that import it, and the guards it could trip. — *no test*
