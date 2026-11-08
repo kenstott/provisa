@@ -151,7 +151,7 @@ const table = (id: number, tableName: string, extra: Record<string, unknown> = {
   domainId: "pet-store",
   schemaName: "pet_store",
   tableName,
-  productId: "pet_health",
+  productIds: ["pet_health"],
   dqContract: null,
   columns: [{ columnName: "id" }, { columnName: "name" }, { columnName: "price" }],
   ...extra,
@@ -159,13 +159,14 @@ const table = (id: number, tableName: string, extra: Record<string, unknown> = {
 const tables = [
   table(1, "pets"),
   table(2, "pets_quality", { dqContract: "name: x", columns: [{ columnName: "scan_id" }] }),
-  table(3, "breeds", { productId: null, columns: [{ columnName: "name" }] }),
+  table(3, "breeds", { productIds: [], columns: [{ columnName: "name" }] }),
 ];
 const none: never[] = [];
 vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({

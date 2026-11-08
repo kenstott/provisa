@@ -26,7 +26,7 @@ const promise = (id: number, rules: ProductDqRule[]): ProductDqEntry => ({
   table_name: `pets_scan_${id}`,
   alias: null,
   description: `Scan ${id}`,
-  owner_product_id: "pet_health",
+  owner_product_ids: ["pet_health"],
   checked_table_id: 100,
   checked_table: { id: 100, domain_id: "pet-store", table_name: "pets", alias: null },
   rules,

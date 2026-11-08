@@ -547,7 +547,6 @@ export function SqlEditorPanel({
                     description: viewTable.description ?? undefined,
                     watermarkColumn: viewTable.watermarkColumn ?? null,
                     viewSql: sqlText.trim(),
-                    productId: viewTable.productId ?? null, // REQ-1634
                     columns: viewTable.columns.map((c) => ({
                       name: c.columnName,
                       visibleTo: c.visibleTo ?? [],

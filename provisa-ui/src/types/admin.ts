@@ -92,7 +92,7 @@ export interface ListedNames {
   columnNames: string[];
 }
 
-// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+// REQ-1634: a first-class DataProduct entity; a table or command is a member of any number of them, set on the product (REQ-1634).
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
 // individuals via the existing role machinery; tags, terms, inputs and output ports are read
 // from the meta domain (REQ-2125, REQ-2126) rather than stored here.
@@ -545,7 +545,7 @@ export interface RegisteredTable {
   mvAllowedLateness: number; // REQ-961: seal-deadline slack in seconds
   mvExpectedEvents: string[] | null; // REQ-961: preflight freshness inputs (null = all lineage inputs)
   mvBusinessDayGrain: boolean; // REQ-962: gate snapshot windows to business days
-  productId: string | null; // REQ-1634
+  productIds: string[]; // REQ-1634: the products it is a member of, read-only: set on the product
   enableAggregates: boolean;
   enableGroupBy: boolean;
   canDeployToDb: boolean;
@@ -571,7 +571,7 @@ export const LISTED_TABLE_FIELDS = [
   "draft",
   "viewSql",
   "materialize",
-  "productId",
+  "productIds",
   "dqContract",
   "dqDataset",
   "timeTravel",

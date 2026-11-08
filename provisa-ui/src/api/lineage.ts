@@ -114,7 +114,7 @@ export interface ProductDqEntry {
   table_name: string;
   alias: string | null;
   description: string | null;
-  owner_product_id: string | null; // the product owning the check; null for none
+  owner_product_ids: string[]; // the products owning the check, any number; none for none
   checked_table_id: number;
   checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
   rules: ProductDqRule[]; // its checks, in the order authored
@@ -140,8 +140,8 @@ export interface ProductConsumer {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the consumer belongs to, when it is another product's member.
-  product_id: string | null;
+  // The products the consumer belongs to, any number, when it is other products' member.
+  product_ids: string[];
   // REQ-2158: the member relations it reads, so each contract names its own port's consumers.
   reads: string[];
 }

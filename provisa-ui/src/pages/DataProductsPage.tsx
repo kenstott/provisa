@@ -18,24 +18,22 @@ import { notifications } from "@mantine/notifications";
 import { Plus, Package } from "lucide-react";
 import {
   useDomains,
-  useReadTableDetails,
   useTables,
-  useUpdateTable,
   useRoles,
 } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useSetDataProductMembers,
   useSaveDataContract,
   type DataContractInput,
   useDataProductFindings,
   useDataProductStatus,
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
-import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct, RegisteredTable } from "../types/admin";
-import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
+import type { DataProduct } from "../types/admin";
+import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
@@ -109,8 +107,7 @@ export function DataProductsPage() {
   const { updateDataProduct, loading: updatingProduct } = useUpdateDataProduct();
   const saving = creatingProduct || updatingProduct;
   const { deleteDataProduct } = useDeleteDataProduct();
-  const { updateTable } = useUpdateTable();
-  const readTableDetails = useReadTableDetails();
+  const { setDataProductMembers } = useSetDataProductMembers();
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
@@ -258,7 +255,8 @@ export function DataProductsPage() {
   }, [expanded, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
-  const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
+  // REQ-1634: a table is in any number of products; its membership is the list of them.
+  const memberTables = (id: string) => tables.filter((tb) => tb.productIds.includes(id));
   // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
   // consumer's column is as hoverable as a member's.
   const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
@@ -267,7 +265,8 @@ export function DataProductsPage() {
     const catalog = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
     return (relation: string) => lineageRelationLabel(relation, catalog);
   }, [tables]);
-  const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
+  const memberFunctions = (id: string) =>
+    functions.filter((fn) => (fn.productIds ?? []).includes(id));
 
   // REQ-1667: the relations the detail's swimlanes are built around -- the product's members as
   // its lineage names them.
@@ -342,73 +341,27 @@ export function DataProductsPage() {
       setMsg(result.message || t("dataProductsTab.saveFailed"));
       return;
     }
-    // REQ-1634: table -> product membership is owned by the table row; reconcile the
-    // multi-select against current membership by upserting only the tables that changed.
-    // form.id is known before save (user-typed on create, fixed on edit), so this applies
-    // in both modes once the save has confirmed the row exists.
+    // REQ-1634: membership is the product's own: the multi-select is saved as the product's whole
+    // member list, only when it differs from the current one. A checker table is a member as any
+    // other is (REQ-1443).
     const productId = form.id.trim();
-    const selected = new Set(selectedTableIds);
-    const changed = tables.filter(
-      // REQ-1443 clause 10: a checker table's membership is derived; it is never written.
-      (tb) => tb.dqContract == null && selected.has(String(tb.id)) !== (tb.productId === productId),
-    );
-    // The update takes the whole row; the list holds only what this page shows.
-    let rows = new Map<number, RegisteredTable>();
-    if (changed.length > 0) {
-      try {
-        rows = new Map((await readTableDetails()).map((tb) => [tb.id, tb]));
-      } catch (e) {
-        setMsg(e instanceof Error ? e.message : String(e));
+    const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+    const currentTables = memberTables(productId).map((tb) => String(tb.id));
+    const currentFns = memberFunctions(productId).map((fn) => fn.name);
+    const membersChanged =
+      !sameSet(currentTables, selectedTableIds) || !sameSet(currentFns, selectedFunctionNames);
+    if (membersChanged) {
+      const members = await setDataProductMembers(
+        productId,
+        selectedTableIds.map(Number),
+        selectedFunctionNames,
+      );
+      if (!members.success) {
+        setMsg(members.message || t("dataProductsTab.saveFailed"));
+        products.reload();
         return;
       }
-    }
-    for (const tb of changed) {
-      const row = rows.get(tb.id);
-      if (row === undefined) {
-        // Unregistered since the list was read.
-        setMsg(`${t("dataProductsTab.saveFailed")}: ${tb.tableName}`);
-        return;
-      }
-      await updateTable(
-        buildTableUpdateInput({
-          ...row,
-          productId: selected.has(String(tb.id)) ? productId : null,
-        }),
-      );
-    }
-    // REQ-1634: command -> product membership is owned by the function row; reconcile the
-    // multi-select against current membership. Each changed command is updated with its full
-    // existing field set and only productId toggled.
-    const selectedFns = new Set(selectedFunctionNames);
-    const changedFns = functions.filter(
-      (fn) => selectedFns.has(fn.name) !== (fn.productId === productId),
-    );
-    for (const fn of changedFns) {
-      await saveFunction(
-        {
-          name: fn.name,
-          sourceId: fn.sourceId,
-          schemaName: fn.schemaName,
-          functionName: fn.functionName,
-          returns: fn.returns,
-          arguments: fn.arguments,
-          visibleTo: fn.visibleTo,
-          domainId: fn.domainId,
-          description: fn.description,
-          kind: fn.kind,
-          returnSchema: fn.returnSchema,
-          outputColumns: fn.outputColumns,
-          implKind: fn.implKind,
-          binding: fn.binding,
-          materialize: fn.materialize,
-          requiresApproval: fn.requiresApproval, // REQ-1924
-          writesTable: fn.writesTable, // REQ-1924, REQ-871
-          productId: selectedFns.has(fn.name) ? productId : null,
-        },
-        fn.name,
-      );
-    }
-    if (changedFns.length > 0) {
+      await refetchTables();
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }

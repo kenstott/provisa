@@ -381,8 +381,8 @@ export function DataProductDetailPanel({
             {t("dataProductCore.scans", { table: restModelName(c.checked_table) })}
             {related &&
               ` · ${
-                c.owner_product_id
-                  ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
+                c.owner_product_ids.length > 0
+                  ? t("dataProductCore.assignedTo", { product: c.owner_product_ids.join(", ") })
                   : t("dataProductCore.unassigned")
               }`}
           </Text>

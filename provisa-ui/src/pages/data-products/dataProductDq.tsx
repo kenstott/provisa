@@ -249,7 +249,9 @@ export function ConsumersList({
           <Text component="span" c="var(--text-muted)" ff="text" size="xs">
             {" "}
             ({t(`dataProductCore.consumerKind_${c.kind}`)}
-            {c.product_id ? ` · ${t("dataProductCore.inProduct", { product: c.product_id })}` : ""})
+            {c.product_ids.length > 0
+              ? ` · ${t("dataProductCore.inProduct", { product: c.product_ids.join(", ") })}`
+              : ""})
           </Text>
           {ports && (
             <Text

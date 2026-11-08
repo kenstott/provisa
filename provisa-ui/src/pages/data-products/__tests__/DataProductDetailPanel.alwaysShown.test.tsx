@@ -65,7 +65,7 @@ const FULL: ProductLineage = {
       domain_id: "pet-store",
       table_name: "visit_report",
       alias: null,
-      product_id: null,
+      product_ids: [],
     },
   ],
 } as unknown as ProductLineage;
