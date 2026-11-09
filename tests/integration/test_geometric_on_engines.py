@@ -104,18 +104,34 @@ def test_geometric_forms_on_trino(trino_conn, function: str):
     _check(function, "trino", run)
 
 
-@pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_forms_on_clickhouse(function: str):
+def _clickhouse_client():
     import clickhouse_connect
 
-    client = clickhouse_connect.get_client(
+    return clickhouse_connect.get_client(
         host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
         port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(function, "clickhouse", lambda sql: client.query(sql).result_rows[0][0])
+
+
+def _on_every_function(check: Callable[[str], Any]) -> dict[str, str]:
+    """Every function's failure, reported together: requires_clickhouse starts and removes the
+    service for each test, 14 seconds that made one test a function take over an hour."""
+    failures: dict[str, str] = {}
+    for function in sorted(BY_FUNCTION):
+        try:
+            check(function)
+        except AssertionError as failed:
+            failures[function] = str(failed)[:2000]
+    return failures
+
+
+@pytest.mark.requires_clickhouse
+def test_geometric_forms_on_clickhouse():
+    client = _clickhouse_client()
+    run = lambda sql: client.query(sql).result_rows[0][0]  # noqa: E731
+    assert _on_every_function(lambda f: _check(f, "clickhouse", run)) == {}
 
 
 def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -> None:
@@ -146,14 +162,7 @@ def test_geometric_columns_on_trino(trino_conn, function: str):
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_columns_on_clickhouse(function: str):
-    import clickhouse_connect
-
-    client = clickhouse_connect.get_client(
-        host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
-        username=os.environ.get("CLICKHOUSE_USER", "default"),
-        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
-    )
-    _on_columns(function, "clickhouse", lambda sql: [r[0] for r in client.query(sql).result_rows])
+def test_geometric_columns_on_clickhouse():
+    client = _clickhouse_client()
+    rows = lambda sql: [r[0] for r in client.query(sql).result_rows]  # noqa: E731
+    assert _on_every_function(lambda f: _on_columns(f, "clickhouse", rows)) == {}

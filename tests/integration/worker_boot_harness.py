@@ -409,7 +409,11 @@ class WorkerBoot:
         return out
 
     def worker_pids(self) -> list[int]:
-        return [int(p) for p in re.findall(r"Started server process \[(\d+)\]", self.log_text())]
+        """Each worker's pid, once, in the order the workers started. uvicorn logs "Started server
+        process" per server, and a worker runs several (its main one, the in-thread MCP one, the
+        per-worker HTTP one), so the number of those lines is not the number of workers."""
+        lines = re.findall(r"Started server process \[(\d+)\]", self.log_text())
+        return [int(p) for p in dict.fromkeys(lines)]
 
     def listeners(self, port: int) -> set[int]:
         """PIDs holding a LISTEN socket on ``port``."""

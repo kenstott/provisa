@@ -11,6 +11,9 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 
+from sqlalchemy import text
+
+from provisa.core.pgvector import SCHEMA as PGVECTOR_SCHEMA
 from provisa.federation import store_writer
 from provisa.security.rights import PLATFORM_RIGHTS, Capability
 from tests.role_state import RoleState
@@ -558,6 +561,12 @@ def write_grants_field(table_id: int, roles: list[str], columns: list[str]) -> s
 def write_grants_mutation(table_id: int, roles: list[str], columns: list[str]) -> str:
     """:func:`write_grants_field` as a whole mutation document."""
     return f"mutation {{ {write_grants_field(table_id, roles, columns)} {{ success message }} }}"
+
+
+def create_pgvector(conn) -> None:
+    """pgvector in the database a sync SQLAlchemy ``conn`` reaches. An org's schema needs it
+    (REQ-2185); the production path creates it first, a fixture's direct ``create_all`` does not."""
+    conn.execute(text(f'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA "{PGVECTOR_SCHEMA}"'))
 
 
 def ready_org_folder(org_id: str | None = None):
