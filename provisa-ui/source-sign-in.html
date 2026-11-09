@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <!-- REQ-1923: the page an issuer sends the operator's browser back to after they approve a
          source's sign-in. Its address carries the issuer's one-time code, so before anything
-         else the script below takes the code out of the address. The page asks for nothing
-         else: no font, no image, no configuration, no call to any server. It hands what it
-         was given to the window that opened it and closes. -->
+         else the first script below takes the code out of the address. The page asks for one
+         other thing, the deployment's declared base domain (REQ-1276): no font, no image, no
+         call to any API. It hands what it was given to the window that opened it, on this
+         origin or a sibling under that base, and closes. -->
     <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Provisa</title>
@@ -17,5 +18,8 @@
   <body>
     <p id="status"></p>
     <script type="module" src="/src/sourceSignInPage.ts"></script>
+    <!-- Deferred and after the module, so it runs once the code is out of the address. A hello
+         that arrives before it is left unanswered, and the opener says hello again. -->
+    <script defer src="/deployment-config.js"></script>
   </body>
 </html>
