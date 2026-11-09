@@ -247,6 +247,9 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             # time — the service fetches them. The declared columns still travel as the contract the
             # service must honour; input-side enforcement happens only for the eager result_set kind.
             payload[name] = {"kind": "table_ref", "ref": value}
+            declared = columns_by_arg.get(name)
+            if declared:
+                payload[name]["columns"] = [c["name"] for c in declared]
             input_refs.append(str(value))
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
             declared = columns_by_arg.get(name)
@@ -506,6 +509,13 @@ def _rows_from_response(
     )
 
 
+async def _exec_code_command(fn: dict, _args, state, payload: dict, _session) -> list[dict]:
+    """REQ-2226: a code source's @command or @query, called in its source's worker."""
+    from provisa.codesource.commands import run
+
+    return await run(state, fn, payload)
+
+
 async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> list[dict]:
     """REQ-2001: a Provisa SQL statement, run through the one pipeline as the caller's role."""
     from provisa.executor.statement_command import run
@@ -540,6 +550,7 @@ _EXECUTORS = {
     "statement": _exec_statement,  # REQ-2001
     "sql_expression": _exec_sql_expression,  # REQ-2168
     "builtin": _exec_builtin,  # REQ-2168
+    "code_command": _exec_code_command,  # REQ-2226
 }
 
 

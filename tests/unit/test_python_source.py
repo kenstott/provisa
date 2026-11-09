@@ -38,6 +38,7 @@ from provisa.codesource.manifest import (
     ManifestRefused,
     Named,
     Scalar,
+    TableOf,
     read_manifest,
 )
 from provisa.core import request_deadline
@@ -448,3 +449,35 @@ def test_a_columns_call_answers_one_result_a_row_in_order(worker):
         {"street": "1 Main St", "city": "Springfield", "country": "US"},
         {"street": "2 Rue Haute", "city": "Lyon", "country": "FR"},
     ]
+
+
+def test_a_query_takes_a_table_and_a_command_is_a_mutation(tmp_path):  # REQ-2226
+    code = _code(
+        tmp_path,
+        """
+        from dataclasses import dataclass
+        from provisa_services import TableRef
+
+        @dataclass
+        class Order:
+            id: int
+            region: str
+
+        @dataclass
+        class Score:
+            region: str
+            score: float
+
+        def score(orders: TableRef[Order]) -> list[Score]:
+            '''@query'''
+            return []
+
+        def rescore(orders: TableRef[Order]) -> list[Score]:
+            '''@command'''
+            return []
+        """,
+    )
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert manifest.export("score").kind == "query"
+    assert manifest.export("rescore").kind == "command"
+    assert manifest.export("score").parameters[0].shape == TableOf(Named("Order"))

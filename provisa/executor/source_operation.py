@@ -439,11 +439,12 @@ def written_table(state, source_id: str, schema_table: str) -> dict | None:
 
 
 def _writes(command: dict) -> bool:
-    """Whether ``command`` is a source's write operation (one registered as a query reads)."""
+    """Whether ``command`` is a source's write operation or a code source's @command (REQ-2226);
+    one registered as a query reads."""
     from provisa.security.mutation_authz import MutationKind, classify_kind
 
     return (
-        command.get("impl_kind") == "source_operation"
+        command.get("impl_kind") in ("source_operation", "code_command")
         and classify_kind(command.get("kind")) is MutationKind.WRITE
     )
 
