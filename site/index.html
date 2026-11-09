@@ -38,7 +38,7 @@
       <nav class="nav-links" aria-label="Primary">
         <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
-        <a href="/compare">Compare</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -217,10 +217,11 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Why it holds up</p>
-          <h2>One model. Nothing to keep in sync.</h2>
+          <h2>Keep your tools. Add the part that connects them.</h2>
           <p class="section-sub">
-            Each tool usually keeps its own copy of what your data means: the catalog's
-            glossary, BI's metric definitions, every API's access checks, the agent's context.
+            One model, nothing to keep in sync, and every choice stays yours to change. Each tool
+            usually keeps its own copy of what your data means: the catalog's glossary, dbt's
+            models, BI's metric definitions, every API's access checks, the agent's context.
             When one changes, the rest are wrong until someone catches it. Here there is one
             description, and every surface is compiled from it.
           </p>
@@ -362,18 +363,18 @@
             <p>
               Neither. Provisa is a compiler and runtime that builds your data control plane
               and runs it on an engine you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
-              BigQuery, or the embedded DuckDB engine in the box. Your warehouse becomes a replaceable execution engine, and your semantics live in the model.
+              BigQuery, or the embedded DuckDB engine in the box. Your warehouse keeps running your queries, and your semantics live in the model, so you can change that choice later.
             </p>
             <a class="more" href="/how-it-works#not-a-database">How it works in depth</a>
           </details>
 
           <details>
-            <summary>How is this different from Starburst or Denodo?</summary>
+            <summary>Does it work with Starburst or Denodo?</summary>
             <p>
-              Starburst is a query engine; Provisa sits above one and can use Starburst as
-              its engine. Denodo is the closest data federation comparison. Provisa adds GraphQL and Cypher as peers to SQL, nine wire
-              protocols including pgwire and Bolt, engine choice, and a deployment that
-              starts at one <code>pip install</code>.
+              Yes. Provisa sits above an engine and can use Starburst as its engine, and it
+              registers Denodo's views as governed tables. Either way you keep what you run and add
+              GraphQL and Cypher as peers to SQL, nine wire protocols including pgwire and Bolt, and
+              one set of rules on all of them.
             </p>
             <a class="more" href="/vs/starburst">Provisa and Starburst</a>
           </details>
@@ -448,8 +449,8 @@
         <a href="/why/ontology">Ontology</a>
         <a href="https://codespaces.new/kenstott/provisa?quickstart=1" target="_blank" rel="noopener">Contribute (Codespaces)</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

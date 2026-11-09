@@ -94498,3 +94498,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then dbt builds that model and the call is recorded'
   stakeholders:
   - data-engineer
+- id: REQ-2233
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing pages with no in-process interface to unit test. Verified by rendering them.
+  description: 'Maintainer 2026-11-09. The site presents Provisa as additive and solving a problem. Its
+    pages about other products say what each does well and how Provisa works with and extends it, and do
+    not list that product''s shortcomings; the page is named Works with. They also state, as the customer''s
+    own choice, that the model lets you change or recover from a choice you have outgrown and scale back
+    a product that is not delivering value.'

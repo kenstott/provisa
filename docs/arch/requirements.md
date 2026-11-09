@@ -26865,3 +26865,13 @@ Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt sou
 **Code:** —
 
 **Tests:** —
+
+### REQ-2233 · Commercial Website {#REQ-2233}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Maintainer 2026-11-09. The site presents Provisa as additive and solving a problem. Its pages about other products say what each does well and how Provisa works with and extends it, and do not list that product's shortcomings; the page is named Works with. They also state, as the customer's own choice, that the model lets you change or recover from a choice you have outgrown and scale back a product that is not delivering value.
+
+**Code:** —
+
+**Tests:** —
