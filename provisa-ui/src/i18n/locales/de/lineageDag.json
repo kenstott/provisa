@@ -1,0 +1,7 @@
+{
+  "lineageDag": {
+    "job": "OpenLineage-Job",
+    "outsideModel": "außerhalb des Modells",
+    "reportedEdge": "von OpenLineage gemeldet"
+  }
+}

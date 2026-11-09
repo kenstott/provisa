@@ -72,9 +72,14 @@ def rates(inputs: RateInputs) -> list[Rate]:
     ]
 
 
-def currencies() -> list[dict]:
+@dataclass
+class Currency:
+    code: str
+
+
+def currencies() -> list[Currency]:
     """@table"""
-    return [{"code": code} for code in sorted(_TABLE)]
+    return [Currency(code) for code in sorted(_TABLE)]
 ''',
 }
 

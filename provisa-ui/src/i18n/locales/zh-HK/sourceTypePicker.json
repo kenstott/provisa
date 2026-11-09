@@ -11,6 +11,7 @@
     "reachLiveOn": "僅在 {{engines}} 上即時",
     "reachNone": "此引擎無法存取",
     "categories": {
+      "Connectors": "您組織的連接器",
       "Subscriptions": "訂閱",
       "RDBMS": "RDBMS",
       "Cloud DW": "雲端數據倉庫",

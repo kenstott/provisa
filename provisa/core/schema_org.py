@@ -987,6 +987,34 @@ lineage_edges = Table(
     CheckConstraint("via_kind IN ('view', 'command')", name="lineage_edges_via_kind_check"),
 )
 
+# REQ-2229: what OpenLineage events reported: one row per dataset of a job's latest run. Kept apart
+# from lineage_edges, which each model build replaces whole.
+openlineage_run_datasets = Table(
+    "openlineage_run_datasets",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("job_namespace", Text, nullable=False),
+    Column("job_name", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("dataset_namespace", Text, nullable=False),
+    Column("dataset_name", Text, nullable=False),
+    Column("column_lineage", JSON, nullable=False, default=dict, server_default="{}"),
+    CheckConstraint(
+        "direction IN ('input', 'output')", name="openlineage_run_datasets_direction_check"
+    ),
+    UniqueConstraint(
+        "job_namespace",
+        "job_name",
+        "run_id",
+        "direction",
+        "dataset_namespace",
+        "dataset_name",
+        name="openlineage_run_datasets_key",
+    ),
+)
+
 # REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
 # (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
 checker_targets = Table(
@@ -1058,6 +1086,27 @@ relationship_candidates = Table(
         "status IN ('suggested', 'accepted', 'rejected', 'expired')",
         name="relationship_candidates_status_check",
     ),
+)
+
+# REQ-2221: the connectors this organization offers: the model's ``connectors:`` block, promoted
+# with the model. path and build_command are the CLI's; the server keeps them and acts on neither.
+connectors = Table(
+    "connectors",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("git", Text, nullable=False),
+    Column("ref", Text, nullable=False),
+    Column("commit", Text, nullable=False, quote=True),
+    Column("path", Text, nullable=False, server_default=""),
+    Column("build_command", Text, nullable=False, server_default=""),
+    Column("language", Text, nullable=False),
+    Column("image", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    Column("arch", Text, nullable=False),
+    Column("requires", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
+    CheckConstraint("language IN ('node', 'python', 'go')", name="connectors_language_check"),
+    CheckConstraint("arch IN ('amd64', 'arm64')", name="connectors_arch_check"),
 )
 
 kafka_sources = Table(

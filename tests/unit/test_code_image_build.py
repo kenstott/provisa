@@ -38,6 +38,7 @@ import sqlglot
 
 from provisa.codesource import image_build, oci
 from provisa.codesource.bundle import content_hash
+from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.worker import PROTOCOL
 from provisa.runtime_deps.code_runtimes import RUNTIMES, LINUX_ARM64, LINUX_X64
 
@@ -124,6 +125,7 @@ def base(tmp_path: Path) -> oci.Registry:
 
 
 NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
+MANIFEST = {"exports": [{"name": "rates"}], "types": {}, "requires": []}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",
@@ -143,6 +145,7 @@ def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | Non
         entry=entry,
         exports=["rates"],
         names=NAMES,
+        manifest=MANIFEST,
         registries=[],
         cache_root=cache,
         version=VERSION,
@@ -178,7 +181,9 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     code = tmp_path / "src"
     code.mkdir()
     (code / "rates.py").write_text(
-        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
     )
     (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
     cache = tmp_path / "cache"
@@ -217,9 +222,13 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "dev.provisa.code_hash": content_hash(code),
         "dev.provisa.exports": "rates",
         "dev.provisa.names": json.dumps(NAMES, sort_keys=True, separators=(",", ":")),
+        # REQ-2221: what a host's handshake is checked by, against the image at its digest.
+        "dev.provisa.manifest_hash": manifest_hash(MANIFEST),
     }
     assert "PROVISA_CODE_HASH=" + content_hash(code) in config["Env"]
+    assert "PROVISA_MANIFEST_FILE=/opt/provisa/front/manifest.json" in config["Env"]
     paths = _layers_paths(built)
+    assert "opt/provisa/front/manifest.json" in paths
     assert {
         "usr/lib/libc.so.6",
         "opt/provisa/runtime/python/bin/python3.12",
@@ -255,7 +264,9 @@ def test_the_front_end_imports_its_postgres_protocol_from_the_image_alone(
     code = tmp_path / "src"
     code.mkdir()
     (code / "rates.py").write_text(
-        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
     )
     (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
     cache = tmp_path / "cache"
@@ -369,7 +380,9 @@ def test_a_go_source_is_its_host_compiled_for_the_images_platform(
     code.mkdir()
     (code / "go.mod").write_text("module example.com/rates\n\ngo 1.23\n")
     (code / "rates.go").write_text(
-        "package rates\n\n// @table\nfunc Rates() []map[string]any { return nil }\n"
+        "package rates\n\n"
+        'type Rate struct {\n\tCode string `json:"code"`\n}\n\n'
+        "// @table\nfunc Rates() []Rate { return nil }\n"
     )
     cache = tmp_path / "cache"
     _cache(cache, LINUX_ARM64)

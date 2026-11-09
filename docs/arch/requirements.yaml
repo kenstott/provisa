@@ -83503,6 +83503,7 @@
   status: complete
   tests:
   - tests/integration/test_streaming_demo.py
+  - tests/unit/test_streaming_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83615,6 +83616,8 @@
   tests:
   - tests/integration/test_retail_demo.py
   - tests/integration/test_retail_regions_tier_e2e.py
+  - tests/unit/test_retail_demo.py
+  - tests/unit/test_start_ui_install_named_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83736,6 +83739,8 @@
   status: complete
   tests:
   - tests/integration/test_insurance_demo.py
+  - tests/unit/test_insurance_glossary.py
+  - tests/unit/test_demo_bundle_setup.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85130,6 +85135,8 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   status: complete
   tests:
   - tests/integration/test_provisioning_demo.py
+  - tests/unit/test_provisioning_demo_consumer.py
+  - tests/unit/test_provisioning_setup_pulls.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -92229,6 +92236,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_jdbc_source_e2e.py
+  - tests/unit/jdbc_source/test_jdbc_source.py
+  - tests/unit/jdbc_source/test_jdbc_source_attach.py
+  - tests/unit/jdbc_source/test_jdbc_source_detect.py
+  - tests/unit/jdbc_source/test_jdbc_source_floor.py
   since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
@@ -92799,6 +92810,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_banksecrecy_demo.py
+  - tests/unit/test_term_scan_carry.py
+  - tests/unit/test_demo_template_scans.py
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -94230,14 +94243,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
     2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
     each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
-    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
+    (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on REQ-1921 and REQ-1922: a materialized
+    view''s build runs as the org''s admin role, so that is the calling role when a build reads a table
+    through a command.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
     And a materialized view over that command with a governed table as its input
 
 
-    When the view is built as a role that cannot see a column of the input
+    When the view is built, its build running as a role that cannot see a column of the input
 
 
     Then the code reads the table as that role and the column is not available to it
@@ -94327,7 +94343,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to connect to: the manifest and run results are files, uploaded or read from where the team publishes
     them, and commands run where dbt is installed. (Amended 2026-11-09, EVERYTHING THAT CAN BE A COMMAND
     IS ONE:) Maintainer 2026-11-09: anything dbt can run is surfaced as a command: beside models, tests,
-    snapshots and seeds, also build, source freshness, and each macro through run-operation.'
+    snapshots and seeds, also build, source freshness, and each macro through run-operation. (Amended 2026-11-09,
+    A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: a model the manifest marks public
+    with an enforced contract is offered as a candidate data product, its schema promise, tests, owner and
+    version carried from the manifest. A steward decides whether it becomes one.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
@@ -94413,5 +94432,65 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     Then the Dynamic Table is refreshed and the call is recorded'
+  stakeholders:
+  - data-engineer
+- id: REQ-2231
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing page with no in-process interface to unit test. Verified by rendering it.
+  description: 'Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one
+    job, and moves them to trying the product. It has five parts: a hero whose primary action opens a
+    live demo with no login; six job cards, each linking to its quick start; one statement of the single
+    model with the pains it removes and a same-query, two-roles proof; a short row of sources; and
+    download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a
+    why page answers opens that page.'
+- id: REQ-2232
+  value: A named demo shows a dbt project working with Provisa, with dbt still building.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type
+    (REQ-2228). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables
+    dbt built governed by role, lineage running through its models and on to a consumer, freshness and test
+    results from its run, and a model run from Provisa through its command. (Amended 2026-11-09, POINT TO
+    OPENLINEAGE:) Maintainer 2026-11-09: the demo''s words also say that a team with Flink, Airflow or another
+    tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver (REQ-2229). (Amended
+    2026-11-09, DBT BUILDS IT, PROVISA DELIVERS IT:) Maintainer 2026-11-09: the demo''s main thread is that
+    dbt builds a model and Provisa delivers it as a governed data product. (Amended 2026-11-09, A PRODUCT
+    INHERITS THE DOORS AND THE RULES:) Maintainer 2026-11-09: the demo shows that the data product built
+    from a dbt model inherits every access method Provisa offers (the APIs, the SQL drivers and the rest)
+    and every access control, with nothing added in dbt. (Amended 2026-11-09, IT ENDS WITH THE AGENT YOU
+    CHOOSE:) Maintainer 2026-11-09: the demo closes by joining the data product with the ontology and the
+    policies in the Library (REQ-2185), through Provisa''s MCP tool, used with whichever agent the visitor
+    chooses, the agent seeing only what its role can see.'
+  scenario: 'Given the dbt demo
+
+
+    When a visitor follows its tour
+
+
+    Then the tables dbt built are served with less to a restricted role
+
+
+    And lineage runs through the dbt models to what consumes them
+
+
+    And the run''s freshness and test results are shown
+
+
+    When the visitor runs a model through its command
+
+
+    Then dbt builds that model and the call is recorded'
   stakeholders:
   - data-engineer

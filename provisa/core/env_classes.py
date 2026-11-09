@@ -84,6 +84,8 @@ CARRIED: frozenset[str] = frozenset(
         # holding the model it was copied from, so it is seeded too; like ``roles``, only when
         # an environment is created.
         "model_seed",
+        # REQ-2221: the connectors an org offers: a version runs where the model's branches say.
+        "connectors",
         # REQ-1921/1922: the regions an org selects travel with its model; the stores they name
         # are bindings (IDENTITY_ONLY).
         "org_regions",
@@ -215,6 +217,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "judgment_findings",
         # REQ-2129: derived from its own compiled views by its own model build.
         "lineage_edges",
+        # REQ-2229: what the tools pointed at this environment reported to it.
+        "openlineage_run_datasets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
         # REQ-194: its own names table and refused clashes, from its own model build.

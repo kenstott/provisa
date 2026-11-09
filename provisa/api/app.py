@@ -5151,6 +5151,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.lineage_router import router as lineage_router  # REQ-1160
 
     app.include_router(lineage_router)
+    from provisa.api.admin.openlineage_router import router as openlineage_router  # REQ-2229
+
+    app.include_router(openlineage_router)
     from provisa.api.admin.crawl_router import router as crawl_router
 
     app.include_router(crawl_router)
@@ -5301,6 +5304,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
+    from provisa.api.admin.connectors_router import router as connectors_router
+
+    app.include_router(connectors_router)  # REQ-2221
     from provisa.api.admin.code_uploads_router import router as code_uploads_router
 
     app.include_router(code_uploads_router)  # REQ-1984, REQ-1993

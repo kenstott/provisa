@@ -34,8 +34,11 @@ export interface LineageNode {
   column: string;
   relation: string | null;
   // REQ-2116: native is the raw field a source reads, beneath a registered table's column.
-  kind: "source" | "derived" | "command" | "native";
+  // REQ-2229: job is a job an OpenLineage event reported; external a dataset outside the model.
+  kind: "source" | "derived" | "command" | "native" | "job" | "external";
   materialized: boolean;
+  // REQ-2229: what a job or a dataset outside the model is called. Absent on every other kind.
+  label?: string;
   // REQ-2116: a native node's source object -- its source, and the schema and table it is read
   // from where the source has them. Absent on every other kind.
   source_id?: string;
@@ -66,6 +69,8 @@ export interface LineageEdge {
   target: string;
   transform: string;
   ops: LineageTransformOp[];
+  /** REQ-2229: where the edge came from. Absent on one the client folded together. */
+  origin?: "definition" | "openlineage";
   /** Set by the client when a view between an input and a member is folded into this edge: the
    *  relations the column passes through (lineage-layout foldViewsOntoEdges). Never sent. */
   via?: string[];

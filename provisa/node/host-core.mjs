@@ -25,7 +25,6 @@ const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
 export const PROTOCOL = 4;
 const IR_KEY = "provisa.ir";
-const WHOLE_ROW = "$row";
 // REQ-2100: the field a loader call's row carries its key in.
 const KEY = "$key";
 let Arrow = null;
@@ -165,15 +164,14 @@ export class Connection {
   sendRows(id, rows, schema) {
     const A = arrow();
     const fields = schema.fields;
-    const values = fields.length === 1 && fields[0].name === WHOLE_ROW ? rows.map((r) => ({ [WHOLE_ROW]: r })) : rows;
     const children = fields.map((f) => {
       const builder = A.makeBuilder({ type: f.type, nullValues: [null, undefined] });
-      for (const row of values) builder.append(forField(row?.[f.name], f));
+      for (const row of rows) builder.append(forField(row?.[f.name], f));
       return builder.finish().toVector().data[0];
     });
     const batch = new A.RecordBatch(
       schema,
-      A.makeData({ type: new A.Struct(fields), length: values.length, nullCount: 0, children }),
+      A.makeData({ type: new A.Struct(fields), length: rows.length, nullCount: 0, children }),
     );
     return this.sendTable(id, new A.Table(batch));
   }

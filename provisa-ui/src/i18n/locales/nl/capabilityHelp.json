@@ -29,6 +29,7 @@
     "org_glossary_rw": "Elke term in de woordenlijst van de organisatie bewerken.",
     "data_product_read": "Dataproducten zien.",
     "data_product_rw": "Dataproducten maken, bewerken en verwijderen.",
+    "lineage_report": "OpenLineage-runevents verzenden vanuit tools zoals Airflow, Spark, dbt en Flink.",
     "dq_read": "Gegevenskwaliteitscontroles en hun resultaten lezen.",
     "dq_rw": "Gegevenskwaliteitscontroles, verwachtingen en toezeggingen beheren.",
     "ignore_relationships": "Tabellen samenvoegen waarvoor geen goedgekeurde relatie bestaat.",
