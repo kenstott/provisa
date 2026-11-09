@@ -28,6 +28,7 @@ from provisa.api.role_surface import role_surface
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
 
 
+from dataclasses import dataclass
 import json
 import logging
 import time as _time
@@ -851,6 +852,36 @@ async def _answer(
             content={"affected_rows": affected, "type": "cypher", **_counters(counted, body.query)}
         )
 
+    planned = await planned_read(body, request)
+    if isinstance(planned, Response):
+        return planned
+    return await _answered_read(planned, body, x_provisa_stats, state, internal=internal)
+
+
+@dataclass(frozen=True)
+class PlannedRead:
+    """A Cypher read as the pipeline planned it, with what its answer is assembled from."""
+
+    plan: Any
+    graph_vars: Any
+    drawn: Any
+    involved: bool
+    label_map: Any
+    temp: Any
+
+
+async def planned_read(  # REQ-345, REQ-2222
+    body: CypherRequest, request: Request, *, explain: bool | None = None
+) -> PlannedRead | Response:
+    """A Cypher read, translated and handed to the one pipeline, or the refusal as this transport
+    answers it. Its one lowering: the route runs the plan, and an EXPLAIN stops here (REQ-2222).
+
+    ``explain``: as on ``_govern_and_route_compiled``. Nothing runs for an EXPLAIN: the statements
+    that do their work while they are translated (a registered CALL, a composed command, CALL
+    blocks with no MATCH) are refused by name rather than performed.
+    """
+    from provisa.api.app import state
+
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
         from provisa.gql.translator import cypher_to_sql
@@ -881,9 +912,10 @@ async def _answer(
     model_map = _build_label_map(ctx, role_id, state)
     label_map = seam.label_map(model_map, temp)
 
-    _pre = await intercept_precompile(body, state, role_id, model_map)  # procs + REQ-872 CALLs
-    if _pre is not None:
-        return _pre
+    if explain is None:
+        _pre = await intercept_precompile(body, state, role_id, model_map)  # procs, REQ-872 CALLs
+        if _pre is not None:
+            return _pre
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
@@ -926,6 +958,8 @@ async def _answer(
         # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
         _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
         if _non_corr_calls and not ast.match_clauses:
+            if explain is not None:
+                return _not_explainable("independent CALL blocks run one statement each")
             return await _execute_multi_call(
                 _non_corr_calls,
                 label_map,
@@ -959,6 +993,8 @@ async def _answer(
         from provisa.api.data.cypher_commands import calls_commands, put_command_rows
 
         composed = calls_commands(semantic_sql)
+        if composed and explain is not None:
+            return _not_explainable("a composed command runs while the statement is translated")
         if composed:
             semantic_sql = await put_command_rows(semantic_sql, role_id, state)
         _refusal = access_violations(semantic_sql, surface, role_id, state)
@@ -991,7 +1027,7 @@ async def _answer(
     # REQ-1194: a redirect the request forces (X-Provisa-Redirect*), landed by the pipeline's
     # materialize stage; else REQ-1224's threshold decides (a buffered transport), when the
     # operator has enabled it. A header that cannot be read is refused (400) here.
-    delivery = delivery_from_headers(request.headers, role_id)
+    delivery = None if explain is not None else delivery_from_headers(request.headers, role_id)
     # REQ-544: the request's `// @provisa cache` opt-in, its x-provisa-cache headers and its
     # Cache-Control header; two that disagree are refused (400), naming them.
     try:
@@ -1004,16 +1040,39 @@ async def _answer(
         exec_params=resolved_params or None,
         deliver=delivery,
         # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
-        buffered=not drawn,
+        buffered=not drawn and explain is None,
         cache_hint=cache_hint,
         # REQ-030: the statement's own `// @provisa route=...` comment.
         steward_hint=extract_directives_from_cypher_comments(body.query).steward_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
-        serve_cached=True,
+        serve_cached=explain is None,
         sdl_joins=False,
+        explain=explain,
     )
     if isinstance(plan, Response):
         return plan
+    return PlannedRead(plan, graph_vars, drawn, involved, label_map, temp)
+
+
+def _not_explainable(why: str) -> Response:
+    return cypher_error(400, "cypher.not_explainable", f"EXPLAIN cannot describe this: {why}")
+
+
+async def _answered_read(
+    planned: PlannedRead,
+    body: CypherRequest,
+    x_provisa_stats: str | None,
+    state: Any,
+    *,
+    internal: bool,
+) -> Response:
+    """Stage 5 of a read: the planned statement run and its rows answered."""
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
+    from provisa.gql.assembler import assemble_rows, to_serializable
+
+    plan, graph_vars, drawn = planned.plan, planned.graph_vars, planned.drawn
+    involved, label_map, temp = planned.involved, planned.label_map, planned.temp
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:

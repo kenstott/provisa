@@ -55,7 +55,11 @@ def _fn(**over):
 
 
 def _state(*, role_caps=(), visible_to=("ops",), connected=True, pools=None):
-    role = {"id": "ops", "capabilities": list(role_caps), "domain_access": ["sales"]}
+    role = {
+        "id": "ops",
+        "capabilities": [*role_caps, "command_execution"],  # REQ-870
+        "domain_access": ["sales"],
+    }
     pools = pools or _FakePools(connected=connected)
     return SimpleNamespace(
         roles={
@@ -85,11 +89,20 @@ async def test_an_assigned_role_with_write_calls_and_builds_sql():
 
 @pytest.mark.asyncio
 async def test_unauthorized_write_is_403():
-    # A role holding capabilities but not WRITE; one holding none runs what names it (REQ-2155).
+    # REQ-870, REQ-1758: a call without an acting role is refused; there is no role to admit.
     st = _state(role_caps=[Capability.USAGE.value], visible_to=["ops"])
     with pytest.raises(HTTPException) as ei:
-        await invoke_tracked_function("createOrder", {}, st, "ops")
+        await invoke_tracked_function("createOrder", {}, st, None)
     assert ei.value.status_code == 403
+    assert st.source_pools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_assigned_role_without_write_runs_the_mutation():
+    # REQ-870, THE ASSIGNMENT IS THE GRANT: holding command_execution, it needs no WRITE.
+    st = _state(role_caps=[Capability.USAGE.value], visible_to=["ops"])
+    rows = await invoke_tracked_function("createOrder", {}, st, "ops")
+    assert rows == [{"id": 1, "name": "ada"}]
 
 
 @pytest.mark.asyncio

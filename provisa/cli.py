@@ -707,6 +707,11 @@ def main(argv: list[str] | None = None) -> int:
 
     register_env(sub)
 
+    # REQ-2222: drive and explain a query in any language against a running instance.
+    from provisa.cli_query import register as register_query
+
+    register_query(sub)
+
     # REQ-2222: one generic call to anything else the API offers.
     from provisa.cli_api import register as register_api
 
@@ -716,6 +721,11 @@ def main(argv: list[str] | None = None) -> int:
     from provisa.cli_connector import register as register_connector
 
     register_connector(sub)
+
+    # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
+    from provisa.cli_config import register as register_config
+
+    register_config(sub)
 
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,

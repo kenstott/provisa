@@ -306,7 +306,8 @@ class DuckDBSqliteConnector(Connector):
     staged_needs = ("sqlite",)  # REQ-1142: a core wheel's, as postgres
 
     def capability(self) -> Capability:
-        return Capability(predicate_pushdown=True, write=True)
+        # REQ-863: measured on DuckDB 2.0, the sqlite extension pushes projections only.
+        return Capability(write=True)
 
     def details(self, source: Source) -> dict:
         # ``_src_`` alias: distinct from the physical catalog the runtime creates (see the postgres

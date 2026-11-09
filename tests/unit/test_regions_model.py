@@ -447,14 +447,20 @@ def test_the_engine_kinds_the_model_names_are_the_ones_built():
 def test_the_engine_kinds_that_read_other_regions_are_the_backends_that_do(monkeypatch):
     from provisa.core.engine_kinds import REGION_READERS
     from provisa.federation import engine as fe
-    from provisa.federation.engine import build_engine, engine_kinds
+    from provisa.federation.engine import _ENGINE_BUILDERS, build_engine, engine_kinds
 
     # A generic SQLAlchemy engine kind is built only with a URL; none is dialed.
     monkeypatch.setenv("PROVISA_ENGINE_URL", "postgresql://h/db")
     # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
     monkeypatch.setattr(fe, "require_engine_extra", lambda kind: None)
-    readers = {k for k in engine_kinds() if build_engine(k).backend.reads_other_regions}
-    assert readers == REGION_READERS
+    # REQ-1999: on DuckDB 2.0 the runtime refuses the MotherDuck engine by name. Its backend still
+    # answers for the kind REGION_READERS names, so it is read from the builder build_engine guards.
+    with pytest.raises(ValueError, match=r"MotherDuck engine .*DuckDB 2\.0\.0"):
+        build_engine("motherduck")
+    built = {k: build_engine(k) for k in engine_kinds() - {"motherduck"}}
+    built["motherduck"] = _ENGINE_BUILDERS["motherduck"]()
+    assert set(built) == set(engine_kinds())
+    assert {k for k, e in built.items() if e.backend.reads_other_regions} == REGION_READERS
 
 
 async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(model):

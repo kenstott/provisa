@@ -57,8 +57,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
-_SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
-
 
 def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
     """Resolve ``current_setting('provisa.<var>')`` to a SQL literal for engines
@@ -84,9 +82,13 @@ def resolve_settings(tree: sqlglot.exp.Expr, session_vars: dict[str, str]) -> sq
     NULL where it carries none (REQ-1682). The literal is a node, written in whatever dialect the
     tree is (REQ-913)."""
     from provisa.compiler.sql_literals import literal_expr
+    from provisa.core.session_terms import setting_name
 
     def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
-        named = _setting_named(node)
+        # Skip Cast nodes: the inner current_setting will be visited and resolved.
+        if isinstance(node, sqlglot.exp.Cast):
+            return node
+        named = setting_name(node)
         if named is None:
             return node
         return literal_expr(session_vars.get(named))
@@ -94,17 +96,16 @@ def resolve_settings(tree: sqlglot.exp.Expr, session_vars: dict[str, str]) -> sq
     return tree.transform(_resolved)
 
 
-def _setting_named(node: sqlglot.exp.Expr) -> str | None:
-    """The provisa.<var> ``node`` reads, where it is current_setting('provisa.<var>' [, true])."""
-    exp = sqlglot.exp
-    if not isinstance(node, exp.Anonymous) or node.name.lower() != "current_setting":
-        return None
-    args = node.expressions
-    missing_ok = len(args) == 2 and isinstance(args[1], exp.Boolean) and args[1].this is True
-    if not (len(args) == 1 or missing_ok) or not isinstance(args[0], exp.Literal):
-        return None
-    found = _SETTING_NAME_RE.fullmatch(args[0].this) if args[0].is_string else None
-    return found.group(1) if found else None
+@dataclass(frozen=True)
+class ExplainStages:  # REQ-2222
+    """What each stage of the one pipeline made of a statement, for an EXPLAIN of it: the
+    semantic statement with its views expanded, that statement governed, the optimized statement
+    the route was decided on, and the statement in the destination's own dialect."""
+
+    semantic: str
+    governed: str
+    optimized: str
+    native: str
 
 
 @dataclass
@@ -124,6 +125,8 @@ class _Plan:
     # catalogs, which _reject_physical_source_refs refuses on the way in. None when the statement
     # referenced no metric.
     semantic_sql: str | None = field(default=None)
+    # REQ-2222: what each stage made of the statement. Set only on a plan built to EXPLAIN it.
+    stages: ExplainStages | None = field(default=None)
     # Per-query the engine session overrides (e.g. retry_policy=NONE to bypass FTE).
     session_hints: dict[str, str] | None = field(default=None)
     # REQ-1194/REQ-1195: an IR-level directive to materialize this result to a sink (CTAS-to-object-
@@ -2123,6 +2126,7 @@ async def govern_statement(
 
     if _admitted_write is not None:
         _memo["admitted_write"] = _admitted_write
+    _memo["semantic_statement"] = normalized_sql  # REQ-2222: as an EXPLAIN reports it
     governed = _Governed(
         sql=sql,
         role_id=role_id,
@@ -2652,6 +2656,10 @@ async def route_governed(
             ),
         )
     _staged_read = governed.memo.get("staged")
+    if explain is not None and (_is_mutation or _staged_read is not None):
+        # REQ-1519: neither has one statement to describe, and EXPLAIN ANALYZE would perform a
+        # write: refused before any of the plans that carry them out is built.
+        raise ValueError("EXPLAIN is only supported for read statements")
     if _staged_read is not None:
         return _staged_plan(governed, _staged_read, params=params, as_of=as_of, audit=_audit)
     if _is_mutation and isinstance(_parsed_input, exp.Insert):
@@ -3091,16 +3099,21 @@ async def route_governed(
         physical_sql = await _kept_engine_form(
             governed.memo, _routed_sql, state, lambda: _engine_physical(_routed_sql)
         )
+        _stages = None
         if explain is not None:
             # REQ-1519: the ONE pipeline's own EXPLAIN — the engine describes the federated
             # statement it would have run, wrapped after transpile so nothing else changes.
             from provisa.executor.explain import wrap_explain
 
+            _stages = ExplainStages(  # REQ-2222
+                governed.memo["semantic_statement"], governed_semantic, _routed_sql, physical_sql
+            )
             physical_sql = wrap_explain(
                 physical_sql, state.federation_engine.dialect, analyze=explain
             )
         return _Plan(
             route=Route.ENGINE,
+            stages=_stages,
             sql=governed_semantic,
             result_shape=_kept_result_shape(
                 governed.memo, governed_semantic, gov_ctx.table_map, ctx, state
@@ -3197,13 +3210,18 @@ async def route_governed(
                 governed.memo, _routed_sql, state, lambda: _engine_physical(_routed_sql)
             )
 
+        _stages = None
         if explain is not None:
             # REQ-1519: the source describes the pushed-down statement in its own dialect.
             from provisa.executor.explain import wrap_explain
 
+            _stages = ExplainStages(  # REQ-2222
+                governed.memo["semantic_statement"], governed_semantic, _routed_sql, sql_to_run
+            )
             sql_to_run = wrap_explain(sql_to_run, dialect, analyze=explain)
         return _Plan(
             route=decision.route,
+            stages=_stages,
             sql=sql_to_run,
             result_shape=_kept_result_shape(
                 governed.memo, governed_semantic, gov_ctx.table_map, ctx, state
@@ -5148,8 +5166,13 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     session_props: dict[str, str] | None = None,
     extra_selections: dict | None = None,
     sdl_joins: bool,
+    explain: bool | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
+
+    ``explain`` (REQ-1519, REQ-2222): describe this statement instead of running it, as on
+    :func:`_govern_and_route`: False wraps the final routed SQL in the dialect's EXPLAIN, True in
+    its EXPLAIN ANALYZE.
 
     ``sdl_joins``: the statement was compiled from a GraphQL document (HTTP GraphQL, REST, JSON:API,
     gRPC, NL's GraphQL-shaped targets, GraphQL over Flight), whose joins the SDL defines — the one
@@ -5196,6 +5219,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
             api_compiled=compiled,
             extra_selections=extra_selections,
             sdl_joins=sdl_joins,
+            explain=explain,
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
@@ -5219,6 +5243,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     api_compiled: Any | None = None,
     extra_selections: dict | None = None,
     sdl_joins: bool,
+    explain: bool | None = None,
 ) -> _Plan:
     """Governance + routing for already-physical SQL. ``sdl_joins``: see
     :func:`_govern_and_route_compiled`.
@@ -5365,10 +5390,12 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             session_props=session_props,
             api_compiled=api_compiled,
             extra_selections=extra_selections,
+            explain=explain,
         )
     plan.scratch = tuple(_scratch)
-    plan.row_limit = gov_ctx.row_limit  # REQ-1949
-    plan.list_limit = gov_ctx.list_limit  # REQ-005
+    if explain is None:  # an EXPLAIN of the statement is no read of its rows and carries none
+        plan.row_limit = gov_ctx.row_limit  # REQ-1949
+        plan.list_limit = gov_ctx.list_limit  # REQ-005
     return plan
 
 
@@ -5721,6 +5748,7 @@ async def _route_compiled(
     session_props: dict[str, str] | None = None,
     api_compiled: Any | None = None,
     extra_selections: dict | None = None,
+    explain: bool | None = None,
 ) -> _Plan:
     """The per-call half of the compiled stage: optimization, routing and the plan. ``memo`` is
     the governed statement's own (see :func:`_kept_lowering`). ``as_of`` reads bitemporal views
@@ -5750,6 +5778,13 @@ async def _route_compiled(
     from provisa.compiler.write_admission import is_write
 
     _is_write = is_write(_compiled_tree)
+    if explain is not None:
+        # REQ-1519: as on the raw-SQL stage. A write is never explained (EXPLAIN ANALYZE would
+        # perform it), and an EXPLAIN has no result set to deliver.
+        if _is_write:
+            raise ValueError("EXPLAIN is only supported for read statements")
+        if deliver is not None or buffered:
+            raise ValueError("EXPLAIN cannot be combined with result delivery")
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
     from provisa.codesource.writes import is_code_table
 
@@ -6063,8 +6098,17 @@ async def _route_compiled(
         _hints = _engine_session_hints(
             state, sources, session_props, _exec_sql, writes=_is_write, tree=_compiled_tree
         )
+        _stages = None
+        if explain is not None:
+            from provisa.executor.explain import wrap_explain
+
+            _stages = ExplainStages(sql, governed_sql, _exec_sql, physical_sql)  # REQ-2222
+            physical_sql = wrap_explain(
+                physical_sql, state.federation_engine.dialect, analyze=explain
+            )
         return _Plan(
             route=Route.ENGINE,
+            stages=_stages,
             sql=governed_sql,
             result_shape=_kept_result_shape(memo, governed_sql, gov_ctx.table_map, ctx, state),
             source_id=None,
@@ -6086,7 +6130,7 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None and not _is_write,
+            response_cacheable=deliver is None and not _is_write and explain is None,
             writes_tables=_is_write,
             written_table_id=_written_table_id,
             cache_sql=travel.cache_sql(governed_sql),
@@ -6152,8 +6196,15 @@ async def _route_compiled(
         async def _engine_landing() -> str:
             return (await _engine_forms(_routed_sql))[1]
 
+        _stages = None
+        if explain is not None:
+            from provisa.executor.explain import wrap_explain
+
+            _stages = ExplainStages(sql, governed_sql, _routed_sql, sql_to_run)  # REQ-2222
+            sql_to_run = wrap_explain(sql_to_run, dialect, analyze=explain)
         return _Plan(
             route=decision.route,
+            stages=_stages,
             sql=sql_to_run,
             result_shape=_kept_result_shape(memo, governed_sql, gov_ctx.table_map, ctx, state),
             exec_sql=physical_sql,
@@ -6174,7 +6225,7 @@ async def _route_compiled(
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
-            response_cacheable=deliver is None and not _is_write,
+            response_cacheable=deliver is None and not _is_write and explain is None,
             writes_tables=_is_write,
             written_table_id=_written_table_id,
             cache_sql=travel.cache_sql(governed_sql),

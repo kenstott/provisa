@@ -31,7 +31,7 @@ from provisa.security.inheritance import (
     role_chain,
 )
 from provisa.security.meta_role import META_PREFIX, is_meta_role_id
-from provisa.security.rights import Capability
+from provisa.security.rights import Capability, reads_data
 
 DATA_RESIDENCY = Capability.DATA_RESIDENCY.value
 
@@ -194,8 +194,8 @@ def data_view_from_state(
     from provisa.security.meta_role import ensure_meta_role, reader_chain
 
     parents = dict(parents)
-    if not is_meta_role_id(role_id) and not state.roles[role_id].get("capabilities"):
-        return []  # REQ-2155: a role with no capabilities reads nothing
+    if not is_meta_role_id(role_id) and not reads_data(state.roles[role_id].get("capabilities")):
+        return []  # REQ-2155, REQ-870: no capabilities, or only command_execution, reads nothing
     if is_meta_role_id(role_id):
         members = role_id[len(META_PREFIX) :].split("+")
         role_id = ensure_meta_role(state, members)

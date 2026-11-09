@@ -28,6 +28,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -206,32 +208,11 @@ if [ "$SEED_DATA" = true ] && [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
 fi
 
-# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
-# before the dependency sync below (pip alone would look for it on PyPI). A failure leaves the
-# rest of the app running; the Data Science area then says the notebook assets are missing.
+# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built.
+# A failure leaves the rest of the app running; the Data Science area then says the notebook
+# assets are missing.
 "$SCRIPT_DIR/scripts/ensure-notebook.sh" "$SCRIPT_DIR" \
   || echo "Warning: provisa-notebook could not be prepared; the Data Science area will say so"
-
-# Ensure Python dependencies are installed (skip if lockfile unchanged; 30s timeout guards against hangs)
-if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
-  LOCK_HASH=$(md5 -q "$SCRIPT_DIR/pyproject.toml" "$SCRIPT_DIR/uv.lock" 2>/dev/null || echo "")
-  CACHED_HASH=$(cat "$SCRIPT_DIR/.venv/.dep-hash" 2>/dev/null || echo "none")
-  if [ "$LOCK_HASH" != "$CACHED_HASH" ]; then
-    echo "Syncing Python dependencies..."
-    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q &
-    PIP_PID=$!
-    for _i in $(seq 1 30); do
-      kill -0 $PIP_PID 2>/dev/null || break
-      sleep 1
-    done
-    if kill -0 $PIP_PID 2>/dev/null; then
-      kill $PIP_PID 2>/dev/null
-      echo "Warning: dependency sync timed out or failed — continuing"
-    else
-      wait $PIP_PID 2>/dev/null && echo "$LOCK_HASH" > "$SCRIPT_DIR/.venv/.dep-hash" || echo "Warning: dependency sync timed out or failed — continuing"
-    fi
-  fi
-fi
 
 # provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
 # this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when

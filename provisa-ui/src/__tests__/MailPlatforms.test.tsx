@@ -13,9 +13,12 @@
 // shown only to a holder of its own right. The platform section takes a client once, shows the
 // address to register ready to copy, and never shows a secret back.
 
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../test-utils/render";
 import en from "../i18n/locales/en/mailPlatforms.json";
+import { meetsRequirement } from "../lib/capabilities";
 
 const auth = vi.hoisted(() => ({
   capabilities: [] as string[],
@@ -105,9 +108,25 @@ describe("Admin › Email", () => {
     expect(screen.getByText(en.mailPlatforms.platformsHelp)).toBeInTheDocument();
   });
 
-  it("is reached from the menu by either right", () => {
+  it("is reached from the menu by either half's right", () => {
     const entry = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/email");
-    expect(entry).toMatchObject({ capability: "platform_settings", orCapability: "org_settings" });
+    expect(entry).toMatchObject({
+      capability: "org_settings",
+      orAllOf: ["platform_settings", "cross_org"],
+    });
+    expect(meetsRequirement(["org_settings"], entry!)).toBe(true);
+    expect(meetsRequirement(["platform_settings", "cross_org"], entry!)).toBe(true);
+  });
+
+  it("does not open on platform_settings alone, for which the page holds nothing", () => {
+    // A single-tenant org administrator without org_settings would land on an empty page.
+    const entry = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/email");
+    expect(meetsRequirement(["platform_settings"], entry!)).toBe(false);
+    expect(meetsRequirement(["cross_org"], entry!)).toBe(false);
+    const source = readFileSync(resolve(__dirname, "../App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/email"')).slice(0, 400);
+    expect(route).toContain('capability="org_settings"');
+    expect(route).toContain("orAllOf={[");
   });
 });
 

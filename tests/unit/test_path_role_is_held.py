@@ -81,7 +81,13 @@ def _own_session_vars():
 def _two_roles(monkeypatch):
     for name, value in (
         ("proto_files", {A: 'syntax = "proto3"; // a', B: 'syntax = "proto3"; // b'}),
-        ("roles", {r: {"id": r, "capabilities": [], "domain_access": ["*"]} for r in (A, B)}),
+        (
+            "roles",
+            {
+                r: {"id": r, "capabilities": ["command_execution"], "domain_access": ["*"]}
+                for r in (A, B)
+            },
+        ),
         ("schemas", {}),
         ("contexts", {}),
         (

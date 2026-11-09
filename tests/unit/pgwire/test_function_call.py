@@ -52,11 +52,11 @@ def _state(**over):
         "arguments": [{"name": "qty", "type": "Int"}],
     }
     return SimpleNamespace(
-        # Assigned the command, reaching its domain, holding WRITE: what a mutation call needs.
+        # Holding command_execution, assigned the command, reaching its domain (REQ-870).
         roles={
             "ops": {
                 "id": "ops",
-                "capabilities": [Capability.WRITE.value],
+                "capabilities": [Capability.COMMAND_EXECUTION.value],
                 "domain_access": ["sales"],
             }
         },

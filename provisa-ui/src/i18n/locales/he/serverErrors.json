@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains חייב להיות true, false או null",
       "claims_with_multitenancy": "פריסה מרובת דיירים אינה יכולה לקרוא הקצאות תפקידים מתוך claims של הכניסה: היא מעניקה תפקידים בעצמה, לכל ארגון, וה-claims היו דורסים אותם. הגדירו את מקור ההקצאות ל-Provisa.",
       "federation_unknown_field": "זו אינה הגדרת פדרציה: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "הגדרת פדרציה לא תקינה: {{error}}",
       "federation_role_unknown": "תפקיד הפדרציה '{{role}}' אינו תפקיד של ארגון זה"
     },
