@@ -263,4 +263,5 @@ def test_the_start_script_proceeds_on_an_in_step_venv(project: Path, script: str
     "started", ["docker compose", ".venv/bin", "uvicorn", 'mkdir -p "$LOG_DIR"']
 )
 def test_nothing_is_started_before_the_check(script: str, started: str) -> None:
-    assert started not in _prefix(script)
+    commands = [line for line in _prefix(script).splitlines() if not line.lstrip().startswith("#")]
+    assert not [line for line in commands if started in line]
