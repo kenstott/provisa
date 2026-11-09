@@ -960,6 +960,79 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
     assert "JSON_EXTRACT_SCALAR(r," not in sql
 
 
+def _with_junction_relationship() -> CypherLabelMap:
+    """The label map's relationships beside one junction-backed relationship, the only one with
+    properties of its own (since, note)."""
+    lm = _make_label_map()
+    lm.relationships["LITTERMATE"] = RelationshipMapping(
+        rel_type="LITTERMATE",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="littermates",
+        via=JunctionMapping(
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pet_companions",
+            type_name="PetCompanion",
+            source_columns=("pet_id",),
+            target_columns=("companion_pet_id",),
+            type_column="relation_type",
+            type_value="LITTERMATE",
+            attributes={"since": "since", "note": "note"},
+            label_source="column",
+        ),
+    )
+    return lm
+
+
+def _translated(cypher: str, lm: CypherLabelMap) -> str:
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(cypher), lm, {})
+    return sql_ast.sql(dialect="trino").lower()
+
+
+def test_unlabeled_rel_reads_only_relationships_holding_the_property_its_where_filters():
+    """A relationship without the property a MATCH's WHERE requires of it is never matched, so
+    its tables are not read: on the e2e model an unlabelled ()-[r]-() filtered on a property none
+    holds was one arm per relationship and direction, and outran the request's timeout (run
+    42542450279, e2e/cypher-union-all-email)."""
+    sql = _translated(
+        "MATCH ()-[r]-() WHERE r.since IS NOT NULL RETURN r.since LIMIT 25",
+        _with_junction_relationship(),
+    )
+    assert "pet_companions" in sql
+    assert "companies" not in sql
+
+
+def test_unlabeled_rel_filtered_on_a_property_no_relationship_holds_reads_no_table():
+    sql = _translated(
+        "MATCH ()-[r]-() WHERE r.email IS NOT NULL RETURN r.email AS email LIMIT 25",
+        _with_junction_relationship(),
+    )
+    assert "pet_companions" not in sql
+    assert "persons" not in sql
+    assert "companies" not in sql
+    assert "where false" in sql
+
+
+def test_unlabeled_rel_property_only_returned_keeps_every_relationship():
+    """A property read but not filtered on is null on a relationship without it: still matched."""
+    sql = _translated("MATCH ()-[r]-() RETURN r.since LIMIT 25", _with_junction_relationship())
+    assert "pet_companions" in sql
+    assert "companies" in sql
+
+
+def test_unlabeled_rel_optional_match_where_keeps_every_relationship():
+    """An OPTIONAL MATCH's WHERE removes no row (REQ-347)."""
+    sql = _translated(
+        "MATCH (p:Person) OPTIONAL MATCH (p)-[r]-() WHERE r.since IS NOT NULL RETURN r.since",
+        _with_junction_relationship(),
+    )
+    assert "pet_companions" in sql
+    assert "companies" in sql
+
+
 def test_domain_labeled_target_filters_rels_union():
     """MATCH (n)-[]->(m:Sales) with two domains — only Sales rels appear, not cross-domain ones;
     read undirected, a cross-domain relationship ending at a Sales node is read from that end."""

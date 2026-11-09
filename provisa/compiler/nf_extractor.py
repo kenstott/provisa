@@ -239,12 +239,16 @@ def _drop_unread_parameters(ast: exp.Expr, parameters: Collection[str]) -> bool:
     }
     dropped = False
     for relation in found:
-        body = relation.relation.this
-        for projection in list(body.expressions):
-            name = projection.alias_or_name.lower()
-            if name in names and name not in outside:
-                projection.pop()
-                dropped = True
+        level = relation.relation
+        # Down its chain too (the faked, kept and member projections, REQ-1494/1942/1620), each
+        # of which passes the parameter up (stage2._pass_up_chain).
+        while isinstance(level, exp.Subquery) and isinstance(level.this, exp.Select):
+            for projection in list(level.this.expressions):
+                name = projection.alias_or_name.lower()
+                if name in names and name not in outside:
+                    projection.pop()
+                    dropped = True
+            level = level.this.args["from_"].this
     return dropped
 
 
