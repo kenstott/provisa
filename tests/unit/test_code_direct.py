@@ -119,6 +119,51 @@ def test_its_columns_are_the_ones_the_statement_names_every_one_for_a_star():
     assert _context("region = 'EU'", select="*")["columns"] == COLUMNS
 
 
+# -- a read's arguments ----------------------------------------------------------------------------
+
+
+def test_an_argument_is_the_statements_condition_on_the_tables_parameter():
+    sql = "SELECT id FROM s.scores AS t WHERE t._nf_as_of = '2026' AND _nf_top = 3 AND id > 1"
+    assert residual.nf_given(sql, "duckdb", "scores") == {"as_of": "2026", "top": 3}
+
+
+def test_an_argument_is_read_through_the_governed_relation_it_stands_outside():
+    """Governance reads a table through a relation and leaves the statement's WHERE outside it
+    (REQ-039): the function took no argument, and its code failed for want of one (run 42547702417,
+    AskInputs.__init__() missing 2 required positional arguments: 'model' and 'prompt')."""
+    sql = (
+        'SELECT status FROM (SELECT "ask"."status" AS "status", "ask"."_nf_model" AS "_nf_model", '
+        '"ask"."_nf_prompt" AS "_nf_prompt" FROM ask AS "ask") AS "ask" '
+        'WHERE "_nf_model" = \'m\' AND "ask"."_nf_prompt" = \'p\''
+    )
+    assert residual.nf_given(sql, "duckdb", "ask") == {"model": "m", "prompt": "p"}
+
+
+def test_an_argument_is_read_through_every_level_of_the_relation():
+    sql = (
+        'SELECT a FROM (SELECT "t"."a" AS "a", "t"."_nf_x" AS "_nf_x" FROM '
+        '(SELECT "t"."a" AS "a", "t"."_nf_x" AS "_nf_x" FROM t AS "t") AS "t") AS "t" '
+        "WHERE \"_nf_x\" = '1'"
+    )
+    assert residual.nf_given(sql, "duckdb", "t") == {"x": "1"}
+
+
+def test_each_table_of_a_join_is_given_only_its_own_arguments():
+    sql = (
+        'SELECT a.id FROM (SELECT "a"."id" AS "id", "a"."_nf_x" AS "_nf_x" FROM a AS "a") AS "a" '
+        'JOIN (SELECT "b"."id" AS "id", "b"."_nf_x" AS "_nf_x", "b"."_nf_y" AS "_nf_y" '
+        'FROM b AS "b") AS "b" ON "a"."id" = "b"."id" '
+        'WHERE "a"."_nf_x" = \'1\' AND "b"."_nf_x" = \'2\' AND "_nf_y" = \'3\''
+    )
+    assert residual.nf_given(sql, "duckdb", "a") == {"x": "1"}
+    assert residual.nf_given(sql, "duckdb", "b") == {"x": "2", "y": "3"}
+
+
+def test_a_condition_on_a_parameter_the_relation_does_not_expose_is_not_its_argument():
+    sql = 'SELECT a FROM (SELECT "t"."a" AS "a" FROM t AS "t") AS "t" WHERE "t"."_nf_x" = \'1\''
+    assert residual.nf_given(sql, "duckdb", "t") == {}
+
+
 # -- the residual ----------------------------------------------------------------------------------
 
 
