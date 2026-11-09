@@ -412,7 +412,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         )
         return new_tbl
 
-    tree = tree.transform(_rewrite)
+    tree = tree.transform(_rewrite, copy=False)  # the parse above, no one else's
     _lower_column_aliases(tree, ctx)
     _lower_virtual_columns(tree, ctx)
 
@@ -421,7 +421,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         if isinstance(tbl_id, exp.Identifier) and tbl_id.this in quoted_aliases:
             tbl_id.set("quoted", True)
 
-    return tree.sql(dialect="postgres")
+    return tree.sql(dialect="postgres", copy=False)
 
 
 def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
