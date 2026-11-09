@@ -28,7 +28,7 @@ from __future__ import annotations
 import datetime
 import functools
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo, available_timezones
@@ -40,7 +40,7 @@ from provisa.core.session_time_zone import StatementZone
 from provisa.transpiler.pg_forms_type_io import zoned_call
 from provisa.transpiler.pg_forms_types import REFUSED
 
-#: A zone no statement of this session names: a set_config of a parameter, a ROLLBACK TO.
+#: A zone no statement of this session names: a set_config of an expression, a ROLLBACK TO.
 UNKNOWN_ZONE = "unknown"
 _UTC = frozenset({"utc", "etc/utc", "gmt", "etc/gmt"})
 _SET = re.compile(
@@ -53,9 +53,11 @@ _RESET = re.compile(
 )
 _ROLLED_BACK = re.compile(r"^\s*(?:ROLLBACK|ABORT)\b", re.IGNORECASE)
 _TO_SAVEPOINT = re.compile(r"^\s*ROLLBACK\s+(?:(?:WORK|TRANSACTION)\s+)?TO\b", re.IGNORECASE)
-_SET_CONFIG = re.compile(r"\bset_config\"?\s*\(\s*(?P<name>'(?:[^']|'')*')?", re.IGNORECASE)
+_ARGUMENT = r"'(?:[^']|'')*'|\$\d+"
+_CAST = r"(?:::\s*\w+\s*)?"
+_SET_CONFIG = re.compile(rf"\bset_config\"?\s*\(\s*(?P<name>{_ARGUMENT})?", re.IGNORECASE)
 _OF_ZONE = re.compile(
-    r"\s*(?:::\s*\w+\s*)?,\s*'(?P<value>(?:[^']|'')*)'\s*(?:::\s*\w+\s*)?,\s*(?P<local>\w+)\s*\)",
+    rf"\s*{_CAST},\s*(?P<value>{_ARGUMENT})\s*{_CAST},\s*(?P<local>\w+|\$\d+)\s*{_CAST}\)",
     re.IGNORECASE,
 )
 _HOURS = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
@@ -67,11 +69,14 @@ _INTERVAL_OFFSET = re.compile(
 )
 _POSIX_NAME = r"(?:<[A-Za-z0-9+-]+>|[A-Za-z]{3,})"
 _POSIX_OFFSET = r"[+-]?\d{1,3}(?::\d{1,2}(?::\d{1,2})?)?"
-_POSIX_FIXED = re.compile(rf"^{_POSIX_NAME}(?P<offset>{_POSIX_OFFSET})$")
+#: The standard abbreviation may be empty: PostgreSQL's tzparse allows it, unlike IANA's.
+_POSIX_STANDARD = rf"(?:{_POSIX_NAME})?"
+_POSIX_FIXED = re.compile(rf"^{_POSIX_STANDARD}(?P<offset>{_POSIX_OFFSET})$")
 _POSIX_RULED = re.compile(
-    rf"^{_POSIX_NAME}{_POSIX_OFFSET}{_POSIX_NAME}(?:{_POSIX_OFFSET})?(?:,.*)?$"
+    rf"^{_POSIX_STANDARD}{_POSIX_OFFSET}{_POSIX_NAME}(?:{_POSIX_OFFSET})?(?:,.*)?$"
 )
 _DAY_SECONDS = 86400
+_TRUE_WORDS = frozenset({"t", "tr", "tru", "true", "y", "ye", "yes", "on", "1"})
 
 
 @dataclass(frozen=True)
@@ -184,6 +189,29 @@ def on_utc(zone: str | None) -> bool:
     return zone is None or zone.lower() in _UTC
 
 
+def _holds(argument: str, params: Sequence[Any] | None) -> bool:
+    """Whether ``argument`` of a set_config has a value here: a placeholder has one once bound."""
+    return not argument.startswith("$") or (
+        params is not None and 1 <= int(argument[1:]) <= len(params)
+    )
+
+
+def _bound(argument: str, params: Sequence[Any] | None) -> Any:
+    """The value of ``argument`` of a set_config: what is bound to a placeholder, None where nothing
+    is, and any other word as it is written."""
+    if not argument.startswith("$"):
+        return argument
+    return params[int(argument[1:]) - 1] if params and _holds(argument, params) else None
+
+
+def _text_of(argument: str, params: Sequence[Any] | None) -> str | None:
+    """The text a literal or a placeholder of a set_config holds; None where it holds no text."""
+    if argument.startswith("'"):
+        return argument[1:-1].replace("''", "'")
+    value = _bound(argument, params)
+    return value if isinstance(value, str) else None
+
+
 class SessionZone:
     """The zone in force, ``current``, and the session's own, which a SET LOCAL leaves alone. None
     is the server's, which is UTC."""
@@ -242,22 +270,26 @@ class SessionZone:
             raise _unwritable(self.current)
         return zone.tz
 
-    def _set_config(self, sql: str, in_block: bool) -> None:
+    def _set_config(self, sql: str, in_block: bool, params: Sequence[Any] | None) -> None:
         for call in _SET_CONFIG.finditer(sql):
-            name = call.group("name")
-            if name is not None and name.lower() != "'timezone'":
+            written = call.group("name")
+            name = None if written is None else _text_of(written, params)
+            if name is not None and name.lower() != "timezone":
                 continue
             given = None if name is None else _OF_ZONE.match(sql, call.end())
-            if given is None:
+            value = None if given is None else _text_of(given.group("value"), params)
+            if given is None or value is None or not _holds(given.group("local"), params):
                 self._set(UNKNOWN_ZONE, False, in_block)
             else:
-                local = given.group("local").lower() == "true"
-                value = given.group("value").replace("''", "'")
+                local = _bound(given.group("local"), params)
                 read_zone(value)
-                self._set(value, local, in_block)
+                self._set(value, str(local).lower() in _TRUE_WORDS, in_block)
 
-    def note(self, sql: str, was_open: bool, is_open: bool) -> None:
-        """What ``sql`` does to the zone; the statement itself is answered as any is."""
+    def note(
+        self, sql: str, was_open: bool, is_open: bool, params: Sequence[Any] | None = None
+    ) -> None:
+        """What ``sql`` does to the zone; the statement itself is answered as any is. ``params`` are
+        the values bound to its placeholders."""
         if not was_open and is_open:
             self._at_begin = self._session
         elif was_open and not is_open:
@@ -272,7 +304,7 @@ class SessionZone:
             return
         written = _SET.match(sql)
         if written is None:
-            self._set_config(sql, was_open)
+            self._set_config(sql, was_open, params)
         elif written.group("value").strip("'\""):  # PostgreSQL refuses an empty one
             local = (written.group("scope") or "").upper() == "LOCAL"
             self._set(self._said(written.group("value")), local, was_open)
