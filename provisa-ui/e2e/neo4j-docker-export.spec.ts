@@ -15,6 +15,11 @@ const EXPORT_BATCH = 200;
 // The discovery queries run this many at a time: one per label and one per relationship type,
 // each a second or more on a CI runner, serially outgrew the test's budget as the e2e model grew.
 const DISCOVERY_CONCURRENCY = 8;
+// Rows read of each label and each relationship type. The spec proves every label and type reaches
+// Neo4j; it does not need every row. Unbounded, it read the model's own catalog: ModelNames alone
+// was 15,246 nodes and NamesReport 8,373 of the 28,000 a run had exported when it hit the limit,
+// at about a second per batch of 200, with four of the five minutes already spent on discovery.
+const DISCOVERY_ROWS = 25;
 
 /** ``fn`` over ``items``, ``limit`` at a time; results in the order of ``items``. */
 async function mapLimit<T, R>(
@@ -180,7 +185,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   const BASE = `${BACKEND_URL}`;
 
   const labelRows = await mapLimit(allLabels, DISCOVERY_CONCURRENCY, (label) =>
-    tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n`),
+    tryCypherQuery(BASE, `MATCH (n:${label}) RETURN n LIMIT ${DISCOVERY_ROWS}`),
   );
   for (const rows of labelRows) {
     if (rows !== null) extractNodesAndEdges(rows, nodesById, edgesMap);
@@ -192,7 +197,7 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   const relRowsAll = await mapLimit(relTypes, DISCOVERY_CONCURRENCY, (rel) =>
     tryCypherQuery(
       BASE,
-      `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b`,
+      `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b LIMIT ${DISCOVERY_ROWS}`,
     ),
   );
   for (const relRows of relRowsAll) {
