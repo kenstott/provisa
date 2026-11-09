@@ -26,12 +26,15 @@ import json
 import re
 import platform
 import shutil
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
 import httpx
 import pytest
+import sqlglot
 
 from provisa.codesource import image_build, oci
 from provisa.codesource.bundle import content_hash
@@ -241,6 +244,57 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/code/rates.py",
         "var/lib/provisa",
     } <= paths
+
+
+def test_the_front_end_imports_its_postgres_protocol_from_the_image_alone(
+    tmp_path: Path, pinned_base, monkeypatch
+):
+    """An engine attaches a built host over pgwire, and that face is imported on its first
+    connection: a module the protocol takes from provisa and the image lacks ends every attach. Run
+    with no site processing, so no editable provisa answers for what the image does not hold."""
+    code = tmp_path / "src"
+    code.mkdir()
+    (code / "rates.py").write_text(
+        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+    )
+    (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
+    cache = tmp_path / "cache"
+    _cache(cache, LINUX_X64)
+    monkeypatch.setattr(image_build, "_fetched", _fetched_from(code))
+
+    def run(argv, cwd, env):
+        Path(argv[argv.index("--target") + 1], "unused.py").write_text("")
+
+    built = image_build.assemble(
+        _plan(code, "python", "python", cache, "rates"), None, None, "amd64", tmp_path / "w",
+        run=run, base=pinned_base,
+    )  # fmt: skip
+    image = tmp_path / "image"
+    for layer in built.image.layers:
+        with gzip.open(layer.blob) as plain, tarfile.open(fileobj=io.BytesIO(plain.read())) as tar:
+            wanted = [
+                m
+                for m in tar.getmembers()
+                if m.name.startswith(("opt/provisa/front/", "opt/provisa/frontlib/"))
+            ]
+            tar.extractall(image, members=wanted, filter="data")
+    front, lib = image / "opt/provisa/front", image / "opt/provisa/frontlib"
+    third_party = Path(sqlglot.__file__).parent.parent
+    probe = (
+        "import sys\n"
+        f"sys.path[:0] = [{str(front)!r}, {str(lib)!r}]\n"
+        f"sys.path.append({str(third_party)!r})\n"
+        "import provisa, pgfront\n"
+        "print(provisa.__file__)\n"
+    )
+    done = subprocess.run(  # noqa: S603 -- the test's own interpreter and the image's programs
+        [sys.executable, "-I", "-S", "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == str(lib / "provisa" / "__init__.py")
 
 
 def test_a_node_source_installs_its_packages_for_the_images_platform(

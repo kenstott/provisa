@@ -582,10 +582,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         from provisa.core.request_context import current_acting_role
 
         ar_token = current_acting_role.set(getattr(request.state, "role", None))
+        # REQ-2219: the person's entitlement lists, read off the token. A list that cannot be
+        # read must not be taken for no list, which is the role's whole default.
+        from provisa.entitlements.lists import EntitlementClaimError
+        from provisa.entitlements.runtime import bind_entitlements, reset_entitlements
+
+        try:
+            ent_token = bind_entitlements(identity)
+        except EntitlementClaimError as exc:
+            reset_session_vars(sv_token)
+            current_acting_role.reset(ar_token)
+            await JSONResponse(
+                {"error": {"code": "entitlements.claim_invalid", "message": str(exc)}},
+                status_code=403,
+            )(scope, receive, send)
+            return
         try:
             with audit_identity_scope(identity.user_id, "http"):
                 await self.app(scope, receive, send)
         finally:
+            reset_entitlements(ent_token)
             reset_session_vars(sv_token)
             current_acting_role.reset(ar_token)
 
