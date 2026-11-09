@@ -26,7 +26,7 @@ Los orígenes de **materialización** tampoco tienen conector federado. Provisa 
 
 ## Todos los orígenes {: #all-sources }
 
-Provisa registra **77** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 77; el índice es el recuento.
+Provisa registra **78** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 78; el índice es el recuento.
 
 | # | Grupo | Tipos de origen |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registra **77** tipos de origen, los que ofrece el formulario de Orígen
 | 49–53 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [Orígenes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Perfilador de datos](#data-profiler) | `data_profiler` |
-| 76 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
+| 65–72 | [Orígenes de API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Perfilador de datos](#data-profiler) | `data_profiler` |
+| 77 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
 
 Referencia de todos los tipos de origen que soporta Provisa. "Controlador directo" significa que las consultas de un solo origen se ejecutan de forma nativa contra el origen (menos de 100 ms). "Nombre del conector" es el conector federado que se usa cuando el origen participa en JOIN entre varios orígenes.
 
