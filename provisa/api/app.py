@@ -3685,12 +3685,6 @@ async def _rebuild_schemas_impl(
 
         await write_checker_targets(conn, _checked)
 
-        # REQ-194: this build's names table, for the meta domain and the names report, and each
-        # name the disambiguate policy derived kept as its object's alias.
-        assert state.names_table is not None, "the build stores the names table it built"
-        await _model_names.write_names_table(conn, state.names_table.rows)
-        await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
-
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
     from datetime import UTC as _UTC, datetime as _datetime
@@ -3745,6 +3739,17 @@ async def _rebuild_schemas_impl(
     with _schema_version_guard:
         state.schema_version += 1
     _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
+    # REQ-194: the prod build's names table and frozen aliases, written after the schema version
+    # advances so a concurrent read cannot see a stale home-region for a table while the
+    # SHARE ROW EXCLUSIVE MODE lock write_names_table holds is in contention (REQ-1882,
+    # REQ-1915). An env build (a sandbox environment's runtime, REQ-2006) skips both: its model
+    # is the prod's, the prod has already written it, and the lock it acquires would delay
+    # unrelated env-runtime rebuilds for every concurrent sandbox open.
+    if _env == PROD:
+        assert state.names_table is not None, "the build stores the names table it built"
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_names_table(conn, state.names_table.rows)
+            await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
     await _finalize_rebuild_state(_rebuild_log)
     # REQ-1494: the measured values faked reads compute from, taken from the model just built.
     from provisa.fakes.measured import measure_model
