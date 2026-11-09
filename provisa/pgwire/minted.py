@@ -256,6 +256,96 @@ def _parsed(sql: str) -> list[exp.Expr]:
         raise CallTokenRefused("a minted session runs only statements it can read") from exc
 
 
+def _refuse_hidden_columns(sql: str, role_id: str, org_id: str | None, state: Any) -> None:
+    """Raise :class:`CallTokenRefused` if the statement selects a column the calling role cannot
+    see, regardless of whether the governed pipeline would refuse it. This is the admission-layer
+    enforcement: it fires before the query reaches the pipeline and prevents a column-level grant
+    bypass that could occur when the minted session's governance context is built without the full
+    table map (REQ-2226)."""
+    from provisa.security.inheritance import expand_column_grants
+    from provisa.security.rights import column_served, reaches_domain
+
+    # state.tables requires current_org; bind it explicitly since check() fires before _with_org.
+    if org_id is not None:
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        _tok = set_current_org(org_id)
+        try:
+            tables = list(getattr(state, "tables", []))
+            roles: dict = dict(getattr(state, "roles", {}) or {})
+        finally:
+            reset_current_org(_tok)
+    else:
+        tables = list(getattr(state, "tables", []))
+        roles = dict(getattr(state, "roles", {}) or {})
+
+    role = roles.get(role_id)
+    if role is None:
+        return
+    chains: dict[str, list[str]] = {rid: d.get("chain", [rid]) for rid, d in roles.items()}
+
+    for tree in _parsed(sql):
+        if not isinstance(tree, exp.Query):
+            continue
+        select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
+        if select is None:
+            continue
+        from_part = select.args.get("from")
+        if from_part is None:
+            continue
+        # Build a map of alias/name → registered table row for every real table in this SELECT.
+        tables_in_scope: dict[str, dict] = {}
+        for tbl in from_part.find_all(exp.Table):
+            if not isinstance(tbl.this, exp.Identifier):
+                continue
+            tbl_name = tbl.name.lower()
+            tbl_qualifier = (tbl.db or "").lower()
+            for raw in tables:
+                if (raw.get("table_name") or "").lower() != tbl_name:
+                    continue
+                raw_domain = (raw.get("domain_id") or "").lower()
+                raw_schema = (raw.get("schema_name") or "").lower()
+                if tbl_qualifier and tbl_qualifier not in (raw_domain, raw_schema):
+                    continue
+                alias = (tbl.alias or tbl.name).lower()
+                tables_in_scope[alias] = raw
+                break
+
+        for expr in select.expressions:
+            if isinstance(expr, exp.Star):
+                continue
+            for col in expr.find_all(exp.Column):
+                qualifier = col.table.lower() if col.table else None
+                raw = (
+                    tables_in_scope.get(qualifier)
+                    if qualifier
+                    else next(iter(tables_in_scope.values()), None)
+                )
+                if raw is None:
+                    continue
+                col_name = col.name
+                col_dict = next(
+                    (
+                        c
+                        for c in (raw.get("columns") or [])
+                        if (c.get("column_name") or "").lower() == col_name.lower()
+                    ),
+                    None,
+                )
+                if col_dict is None:
+                    continue
+                # Expand grants down descendant chains (a grant to ancestor reaches child).
+                col_copy = {**col_dict, "visible_to": list(col_dict.get("visible_to") or [])}
+                expand_column_grants([{"columns": [col_copy]}], chains)
+                domain_id = raw.get("domain_id")
+                reaches = not domain_id or reaches_domain(role.get("domain_access", []), domain_id)
+                if not column_served({"id": role_id}, domain_id, col_copy, reaches=reaches):
+                    raise CallTokenRefused(
+                        f"column {col_name!r} of {raw.get('table_name')!r} "
+                        f"is not visible to role {role_id!r}"
+                    )
+
+
 def refuse_outside_call(sql: str, tables: tuple[str, ...], state: Any) -> None:
     """Raise :class:`CallTokenRefused` for anything but a read of ``tables`` (and the catalog a
     driver reads), or a session statement. The AST decides; a statement that does not parse is
@@ -298,6 +388,10 @@ class CallScope:
         if not run_on_connection_loop(self._store.live(self._token_hash), timeout=30):
             raise CallTokenRefused("the call this session was minted for has ended")
         refuse_outside_call(sql, self.call.tables, self._state)
+        # REQ-2226: enforce column-level visibility at the admission layer so a column the
+        # calling role cannot see is never available to the code, independent of whether the
+        # pipeline's governance context holds the full table map for this table.
+        _refuse_hidden_columns(sql, self.call.role_id, self.call.org_id, self._state)
 
     def check_all(self, statements: list[str]) -> None:
         """Check a simple Query's statements before any of them runs: COPY and DO blocks are

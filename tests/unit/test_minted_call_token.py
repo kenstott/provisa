@@ -215,6 +215,65 @@ def test_the_read_statement_is_built_from_the_declared_columns():
     assert minted.read_statement(ORDERS, []) == "SELECT * FROM sales.orders"
 
 
+# -- column-level visibility enforcement (REQ-2226) -------------------------------------------
+
+
+def _orders_table(secret_visible_to: list[str]) -> dict:
+    return {
+        "id": 1,
+        "source_id": "sales-db",
+        "domain_id": "sales",
+        "schema_name": "default",
+        "table_name": "orders",
+        "columns": [
+            {"column_name": "id", "visible_to": ["analyst", "admin"]},
+            {"column_name": "region", "visible_to": ["analyst", "admin"]},
+            {"column_name": "secret", "visible_to": secret_visible_to},
+        ],
+    }
+
+
+def _col_state(secret_visible_to: list[str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        tables=[_orders_table(secret_visible_to)],
+        roles={
+            "analyst": {"id": "analyst", "chain": ["analyst", "viewer"], "domain_access": ["*"]},
+            "admin": {"id": "admin", "chain": ["admin"], "domain_access": ["*"]},
+        },
+        tracked_functions={},
+        tracked_webhooks={},
+    )
+
+
+def test_refuse_hidden_columns_raises_when_role_cannot_see_column():
+    # REQ-2226: a column marked visible_to only 'admin' must not be readable by 'analyst'
+    state = _col_state(["admin"])
+    sql = 'SELECT "secret" FROM sales.orders'
+    with pytest.raises(CallTokenRefused, match="secret"):
+        minted._refuse_hidden_columns(sql, "analyst", "sales", state)
+
+
+def test_refuse_hidden_columns_passes_when_role_can_see_column():
+    # REQ-2226: a column granted to 'analyst' is readable
+    state = _col_state(["analyst"])
+    sql = 'SELECT "secret" FROM sales.orders'
+    minted._refuse_hidden_columns(sql, "analyst", "sales", state)  # must not raise
+
+
+def test_refuse_hidden_columns_passes_for_star_select():
+    # SELECT * is not column-specific — column restriction is applied by governance, not here
+    state = _col_state(["admin"])
+    sql = "SELECT * FROM sales.orders"
+    minted._refuse_hidden_columns(sql, "analyst", "sales", state)  # must not raise
+
+
+def test_refuse_hidden_columns_ancestor_grant_reaches_child():
+    # REQ-2226: a grant to 'viewer' (an ancestor of 'analyst') is expanded down to 'analyst'
+    state = _col_state(["viewer"])
+    sql = 'SELECT "secret" FROM sales.orders'
+    minted._refuse_hidden_columns(sql, "analyst", "sales", state)  # must not raise
+
+
 # -- the listener, on a socket -----------------------------------------------------------------
 
 

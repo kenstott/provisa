@@ -78,6 +78,13 @@ def detect_sql_function_call(sql: str, state, role_id: str) -> tuple[str, list] 
         inner = tbl.this
         if not (isinstance(inner, exp.Anonymous) and inner.name in callables):
             return None  # a non-command table source is present → composed
+    # REQ-2226: a WHERE clause or a non-* projection means the caller is composing the result
+    # inline — that is localization's path (REQ-1159), not the standalone executor path.
+    if tree.args.get("where") is not None:
+        return None
+    exprs = tree.expressions
+    if not (len(exprs) == 1 and isinstance(exprs[0], exp.Star)):
+        return None
     node = cmd_nodes[0]
     # REQ-2168: written as its SQL command binding; answered as the command it names.
     return callables[node.name]["name"], [_literal_value(a) for a in node.expressions]
