@@ -33,6 +33,7 @@
     "dq_rw": "Gegevenskwaliteitscontroles, verwachtingen en toezeggingen beheren.",
     "ignore_relationships": "Tabellen samenvoegen waarvoor geen goedgekeurde relatie bestaat.",
     "write": "Gegevens schrijven, waar de rol een schrijfrecht heeft.",
+    "command_execution": "De aan deze rol toegewezen opdrachten uitvoeren, in de domeinen die de rol vermeldt.",
     "no_aggregations": "Deze rol geen aggregatiequery's laten uitvoeren.",
     "data_residency": "Instellen waar de gegevens van een tabel, bron of gematerialiseerde view staan, voor de vermelde regio's.",
     "notHeldByParent": "Geen enkele ouder van deze rol heeft dit recht.",
