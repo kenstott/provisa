@@ -587,6 +587,112 @@ async def test_a_ttl_outrun_asks_for_a_rebuild_and_waits_for_it(wiring, plane):
 
 
 @pytest.mark.asyncio
+async def test_a_gate_off_read_past_ttl_answers_from_the_replica_and_starts_one_build(
+    wiring, plane, deadline_clock, monkeypatch
+):
+    """REQ-860 (amended 2026-11-09): without the freshness guarantee a reader gets the current
+    copy, and a copy past its freshness triggers a background refresh the reader does not wait
+    for. The runner never finishes here: a read that waited would run into its deadline."""
+    from provisa.core import request_deadline
+
+    made: list[bool] = []
+    real = replica_state.request_build
+
+    async def counting(conn, key, reason, **kw):
+        asked = await real(conn, key, reason, **kw)
+        made.append(asked)
+        return asked
+
+    monkeypatch.setattr("provisa.federation.replica_state.request_build", counting)
+    wiring.hold = True
+    pets = _table("pets-db", "pets", cache_ttl=60)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    at = datetime.now(UTC) - timedelta(seconds=600)
+    await _built(plane, pets, at=at)
+    with request_deadline.within(1.0):
+        results = [await _residency(state, {"pets-db"}) for _ in range(3)]
+    for result in results:
+        assert result.built == []
+        # the copy's real age: as of its build, not of this read or the build it started
+        assert abs((result.replicas_read[_key(pets)] - at).total_seconds()) <= 1e-3
+    assert made.count(True) == 1
+    assert wiring.kicks >= 1
+    assert (await _record(plane, pets)).build_state == "requested"
+
+
+@pytest.mark.asyncio
+async def test_a_gate_on_read_past_ttl_waits_for_the_refresh(
+    wiring, plane, deadline_clock, monkeypatch
+):
+    """REQ-860: with the guarantee a reader never gets a copy past its freshness and waits."""
+    from provisa.core import request_deadline
+
+    monkeypatch.setattr(
+        "provisa.freshness.source_gate.gate_source",
+        lambda source, subject, now: SimpleNamespace(is_fresh=False),
+    )
+    wiring.hold = True
+    pets = _table("pets-db", "pets", cache_ttl=60)
+    state = _state([_source("pets-db", freshness_gate=True)], [pets], _Backend(), plane)
+    await _built(plane, pets, at=datetime.now(UTC) - timedelta(seconds=600))
+    with request_deadline.within(1.0):
+        with pytest.raises(ReplicaBuilding, match="pets-db.pet_store.pets"):
+            await _residency(state, {"pets-db"})
+
+
+async def _failed_rebuild(plane, table) -> None:
+    """``table`` holds a built replica and the build that last refreshed it failed."""
+    now = datetime.now(UTC)
+    async with plane.acquire() as conn:
+        await replica_state.request_build(conn, _key(table), "refresh", now=now)
+        await replica_state.claim(
+            conn, _key(table), holder="test:1", retry=RetryPolicy(60, 3600), now=now
+        )
+        await replica_state.record_failed(conn, _key(table), error="adapter down", now=now)
+
+
+@pytest.mark.asyncio
+async def test_a_gate_off_read_after_a_failed_refresh_still_fails_with_its_cause(wiring, plane):
+    """REQ-1661 is unchanged by REQ-860's amendment: the query never reads what a failed build
+    left, with or without the guarantee."""
+    pets = _table("pets-db", "pets", cache_ttl=60)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    await _built(plane, pets, at=datetime.now(UTC) - timedelta(seconds=600))
+    await _failed_rebuild(plane, pets)
+    with pytest.raises(ReplicaBuildFailed, match="pets-db.pet_store.pets.*adapter down"):
+        await _residency(state, {"pets-db"})
+
+
+@pytest.mark.asyncio
+async def test_a_gate_off_read_waits_on_the_retry_of_a_failed_refresh(
+    wiring, plane, deadline_clock, monkeypatch
+):
+    """The retry a read asks for after a failed build is still the last build's outcome pending:
+    the copy is what the failed build left, so the read waits for the retry rather than read it."""
+    from sqlalchemy import update
+
+    from provisa.core import request_deadline
+
+    monkeypatch.setattr(
+        "provisa.core.settings_registry.value",
+        lambda key: {"replication.retry_interval": 1, "replication.retry_interval_max": 3600}[key],
+    )
+    wiring.hold = True
+    pets = _table("pets-db", "pets", cache_ttl=60)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    await _built(plane, pets, at=datetime.now(UTC) - timedelta(seconds=600))
+    await _failed_rebuild(plane, pets)
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            update(replica_state_table).values(failed_at=datetime.now(UTC) - timedelta(seconds=5))
+        )
+    with request_deadline.within(1.0):
+        with pytest.raises(ReplicaBuilding, match="pets-db.pet_store.pets"):
+            await _residency(state, {"pets-db"})
+    assert (await _record(plane, pets)).build_state == "requested"
+
+
+@pytest.mark.asyncio
 async def test_a_read_of_a_table_with_a_ttl_of_0_is_answered_by_the_build_it_waited_for(
     wiring, plane
 ):
