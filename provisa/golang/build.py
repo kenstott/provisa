@@ -29,7 +29,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from provisa.codesource.bundle import BundleRefused
-from provisa.golang.reader import GoRunner, check_go_line, go_environment, run_go
+from provisa.golang.reader import (
+    SERVICES,
+    SERVICES_MODULE,
+    SERVICES_VERSION,
+    GoRunner,
+    check_go_line,
+    go_environment,
+    run_go,
+)
 
 HOST = Path(__file__).with_name("host")
 _HOST_SOURCES = ("go.mod", "go.sum", "host.go", "call.go", "values.go", "arrow.go")
@@ -139,7 +147,8 @@ def build_module(code: Path, package: str, exports: Sequence[str], into: Path) -
     ``exports.go``, and the go.mod and go.sum that join the host's and the code's. The go.mod
     requires every module either requires, at the higher version where both do (the go command
     needs each module a package of the build comes from named in the main module), the code's
-    module replaced by its directory, and the code's own replacements; the go.sum is both."""
+    module replaced by its directory, Provisa's services module (REQ-2106) by Provisa's, whatever
+    the code says of it, and the code's other replacements; the go.sum is both."""
     for name in _HOST_SOURCES[2:]:
         shutil.copyfile(HOST / name, into / name)
     module = module_path(code)
@@ -154,8 +163,13 @@ def build_module(code: Path, package: str, exports: Sequence[str], into: Path) -
         go_line = code_go.group(1)
     required = requirements(host_mod, code_mod)
     required[module] = _REPLACED
-    replaced = [f"{module} => {code}"]
-    replaced += [_replacement(words, code) for words in directives(code_mod, "replace")]
+    required[SERVICES_MODULE] = SERVICES_VERSION
+    replaced = [f"{module} => {code}", f"{SERVICES_MODULE} => {SERVICES}"]
+    replaced += [
+        _replacement(words, code)
+        for words in directives(code_mod, "replace")
+        if words[0] != SERVICES_MODULE
+    ]
     lines = [
         f"module {module_path(HOST)}",
         "",
