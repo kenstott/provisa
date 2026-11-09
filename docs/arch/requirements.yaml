@@ -94294,7 +94294,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     every model in the manifest is recorded as a command that runs dbt for that model (REQ-885 script):
     a mutation, so it is never composed in a view or a materialized view. Control is mixed: dbt can go on
     running on its own schedule, and Provisa can run any model through its command, by a call, a trigger
-    or a schedule. Nothing runs a command unless one of those does.'
+    or a schedule. Nothing runs a command unless one of those does. (Amended 2026-11-09, A CONTROL SURFACE
+    OVER DBT:) Maintainer 2026-11-09: this does not replace dbt; it adds a control surface. dbt stays what
+    builds. Tests, snapshots and seeds are recorded as commands as models are. A command''s target is wherever
+    dbt already runs: an http command for dbt Cloud''s API, a script command, or an operator-run connector
+    (REQ-885, REQ-2221). Provisa holds no dbt logic and no copy of the project.'
   scenario: 'Given a dbt manifest with a table model, an incremental model and tests
 
 
