@@ -424,6 +424,14 @@ def _two_table_state() -> RoleState:
             "admin": {"orders": meta("orders"), "customers": meta("customers")},
             "analyst": {"orders": meta("orders")},
         },
+        roles={  # As the real state: each role served a surface is a loaded role (REQ-042).
+            "admin": {
+                "id": "admin",
+                "capabilities": ["usage", "command_execution"],
+                "domain_access": ["*"],
+            },
+            "analyst": {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]},
+        },
     )
 
 

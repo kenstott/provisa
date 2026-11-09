@@ -217,10 +217,10 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
 def test_the_role_row_itself_authorizes_no_write():
     import pytest
 
-    from provisa.security.mutation_authz import CommandNotFound, MutationNotPermitted, admit_command
+    from provisa.security.mutation_authz import CommandNotFound, admit_command
 
     # Assigned a command in a domain it does not reach, the platform role finds no command; even
-    # where it is reached, being assigned grants no write.
+    # where it is reached, the role row holds no command_execution.
     with pytest.raises(CommandNotFound):
         admit_command(
             {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
@@ -235,13 +235,13 @@ def test_the_role_row_itself_authorizes_no_write():
             reaching,
             "refund",
         )
+    # Given command_execution, the assignment is the grant: that right, not the role row, admits it.
     reaching["capabilities"] = [*reaching["capabilities"], "command_execution"]
-    with pytest.raises(MutationNotPermitted, match="WRITE"):
-        admit_command(
-            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
-            reaching,
-            "refund",
-        )
+    admit_command(
+        {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+        reaching,
+        "refund",
+    )
 
 
 def test_platform_admin_alone_keeps_the_platform_plane():

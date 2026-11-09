@@ -92,8 +92,9 @@ def test_classify_kind_unknown_defaults_to_write():
 # --- admit_command: the one command admission (REQ-867/868/869, REQ-1758) ---------------------
 #
 # A command carries ONE role list, ``visible_to`` (empty assigns it to every role). A role calls it
-# when it is assigned, reaches the command's domain, and -- for a mutation -- holds WRITE. A
-# command the role may not use is "not found", the same as one never registered.
+# when it holds command_execution, is assigned and reaches the command's domain; a mutation asks
+# nothing more (REQ-870). A command the role may not use is "not found", the same as one never
+# registered.
 
 
 def _role(role_id, *caps, domains=("*",)):
@@ -112,14 +113,13 @@ def _command(kind="mutation", visible_to=(), domain="sales"):
 def test_no_role_is_refused():
     # REQ-1758: there is no call without a role, for a read as for a write.
     for kind in ("mutation", "query"):
-        with pytest.raises(MutationNotPermitted, match="no acting role"):
+        with pytest.raises(MutationNotPermitted, match="no acting role") as excinfo:
             admit_command(_command(kind), None, "thing")
+        assert excinfo.value.field_name == "thing"
 
 
-def test_a_mutation_needs_the_write_capability():
-    with pytest.raises(MutationNotPermitted, match="WRITE") as excinfo:
-        admit_command(_command(visible_to=["analyst"]), _role("analyst", "usage"), "editThing")
-    assert excinfo.value.field_name == "editThing"
+def test_a_mutation_needs_no_write_capability():  # REQ-870: the assignment is the grant
+    admit_command(_command(visible_to=["analyst"]), _role("analyst", "usage"), "editThing")
 
 
 def test_a_role_not_assigned_finds_no_command():
@@ -183,10 +183,9 @@ def test_no_capability_reaches_a_command_assigned_to_someone_else(held):
 
 
 @pytest.mark.parametrize("held", [["admin"], ["superadmin"], ["platform_settings", "cross_org"]])
-def test_an_assigned_role_still_needs_the_write_capability(held):
-    # Being assigned is half the answer; WRITE is the other, and nothing implies it.
-    with pytest.raises(MutationNotPermitted, match="WRITE"):
-        admit_command(_command(visible_to=["root"]), _role("root", *held), "editThing")
+def test_an_assigned_role_needs_no_write_capability(held):
+    # REQ-870: command_execution, the assignment and the domain are the whole answer.
+    admit_command(_command(visible_to=["root"]), _role("root", *held), "editThing")
 
 
 def test_api_renders_the_refusals():  # REQ-1678
@@ -206,8 +205,9 @@ def test_api_renders_the_refusals():  # REQ-1678
     assert hidden.value.status_code == 404
     assert "Unknown command: 'editThing'" in str(hidden.value)
     with pytest.raises(ApiError) as refused:
-        api_gate(_command(visible_to=["root"]), state, "root", "editThing")
+        api_gate(_command(visible_to=["root"]), state, None, "editThing")
     assert refused.value.status_code == 403
+    assert api_gate(_command(visible_to=["root"]), state, "root", "editThing")["id"] == "root"
     assert api_gate(_command(visible_to=["writer"]), state, "writer", "editThing")["id"] == "writer"
 
 

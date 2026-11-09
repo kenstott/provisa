@@ -48,7 +48,7 @@ def _role(rid, caps=(), domains=("a",)):
     }
 
 
-def _command(kind="mutation", domain="a", assigned=("runner",)):
+def _command(kind: str | None = "mutation", domain="a", assigned=("runner",)):
     return {"name": "archive", "kind": kind, "domain_id": domain, "visible_to": list(assigned)}
 
 
@@ -77,11 +77,16 @@ class TestTheRule:
     def test_a_role_holding_only_it_runs_a_mutation_it_is_assigned(self):
         admit_command(_command("mutation"), _role("runner", [RUN], ["a"]), "archive")
 
-    def test_a_role_holding_other_rights_still_needs_write_for_a_mutation(self):
-        from provisa.security.mutation_authz import MutationNotPermitted
+    def test_a_role_holding_other_rights_runs_a_mutation_it_is_assigned_without_write(self):
+        # REQ-870, THE ASSIGNMENT IS THE GRANT: whether the command writes or not.
+        admit_command(_command("mutation"), _role("runner", [RUN, "usage"], ["a"]), "archive")
 
-        with pytest.raises(MutationNotPermitted, match="WRITE"):
-            admit_command(_command("mutation"), _role("runner", [RUN, "usage"], ["a"]), "archive")
+    def test_a_command_of_unknown_kind_needs_no_write_either(self):
+        admit_command(_command(None), _role("runner", [RUN, "usage"], ["a"]), "archive")
+
+    def test_the_write_capability_opens_no_command(self):
+        with pytest.raises(CommandNotFound):
+            admit_command(_command(), _role("runner", ["usage", "write"], ["a"]), "archive")
 
 
 class TestCatalogCommands:
