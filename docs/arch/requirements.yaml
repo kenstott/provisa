@@ -27005,9 +27005,12 @@
   feature: replicas-and-freshness-freshness-gate
   priority: SHOULD
   type: behavioral
-  description: Freshness gating is now available at the Source level (provisa/core/models.py), not just
+  description: 'Freshness gating is now available at the Source level (provisa/core/models.py), not just
     on MV. A source can declare a freshness predicate; queries reading from that source are gated by freshness
-    before execution.
+    before execution. (Amended 2026-11-09, WITHOUT THE GUARANTEE A READER GETS THE CURRENT COPY:) Maintainer
+    2026-11-09: without the freshness guarantee a reader gets the current copy, and if it is past its freshness
+    the read triggers a background refresh; the reader does not wait for it. With the guarantee a reader
+    never gets a copy past its freshness and waits for the refresh.'
   use_case: Prevents serving stale data from pull-through sources. Stewards can enforce freshness without
     materializing into an MV, reducing latency and compute overhead.
   related_reqs:
@@ -93998,8 +94001,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - app-developer
 - id: REQ-2224
-  value: A table can say how long a read waits for its first landing, and can serve what it holds while
-    a refresh runs.
+  value: A table can say how long a read waits for its first landing.
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -94010,9 +94012,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   description: 'Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included.
     Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout.
     Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh.
-    Both are set on the table, and every setting has its UI.'
-  scenario: Given a code table with a read wait longer than its run, and lazy refresh\n\nWhen it is first
-    read\n\nThen the read waits for the rows\n\nWhen it is read past its TTL\n\nThen the held rows are
-    answered with their landing time and a refresh starts
+    Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS
+    GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table
+    does without the freshness guarantee (REQ-860). This requirement is the read wait alone: a read with
+    nothing landed waits up to that long, in place of the request timeout.'
+  scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
+    read waits for the rows
   stakeholders:
   - data-engineer

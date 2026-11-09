@@ -8740,7 +8740,7 @@ MV and the ad-hoc API/pg cache freshness checks (provisa/openapi/pg_cache.py) be
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Freshness gating is now available at the Source level (provisa/core/models.py), not just on MV. A source can declare a freshness predicate; queries reading from that source are gated by freshness before execution.
+Freshness gating is now available at the Source level (provisa/core/models.py), not just on MV. A source can declare a freshness predicate; queries reading from that source are gated by freshness before execution. (Amended 2026-11-09, WITHOUT THE GUARANTEE A READER GETS THE CURRENT COPY:) Maintainer 2026-11-09: without the freshness guarantee a reader gets the current copy, and if it is past its freshness the read triggers a background refresh; the reader does not wait for it. With the guarantee a reader never gets a copy past its freshness and waits for the refresh.
 
 **Use case:** Prevents serving stale data from pull-through sources. Stewards can enforce freshness without materializing into an MV, reducing latency and compute overhead.
 
@@ -26770,7 +26770,7 @@ Maintainer 2026-11-09. The start scripts compare the checkout's virtual environm
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included. Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout. Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh. Both are set on the table, and every setting has its UI.
+Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included. Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout. Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh. Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table does without the freshness guarantee ([REQ-860](#REQ-860)). This requirement is the read wait alone: a read with nothing landed waits up to that long, in place of the request timeout.
 
 **Code:** —
 
