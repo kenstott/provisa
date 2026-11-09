@@ -22,6 +22,7 @@ SQL."""
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -431,7 +432,14 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
             nodes[node.name].copy() if isinstance(node, exp.Column) and node.name in nodes else node
         )
 
-    return sqlglot.parse_one(sql, read=_D).transform(filled)
+    return _form(sql).transform(filled)
+
+
+@functools.lru_cache(maxsize=256)
+def _form(sql: str) -> exp.Expr:
+    """``sql`` as DuckDB reads it, once: a form is one of this module's own, and a statement
+    writes one for each member of each JSON it builds. ``transform`` copies it before filling."""
+    return sqlglot.parse_one(sql, read=_D)
 
 
 #: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
