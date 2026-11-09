@@ -64,6 +64,7 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources, user_role_assignments
+from tests.helpers import create_pgvector
 
 pytestmark = [pytest.mark.integration]
 
@@ -124,6 +125,7 @@ def _prepare_sync():
             )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
+        create_pgvector(conn)  # a fresh database: the org metadata has vector columns
         # The whole org metadata, not just the two role tables: provisioning ends by rebuilding the
         # root org-registry view (REQ-1301), which registers itself in registered_tables/
         # table_columns of the root tenant schema.
