@@ -40,6 +40,21 @@ DuckDBConfig = dict[str, str | bool | int | float | list[str]]
 #: How every database this process opens plans: as DuckDB 1.5.5 did, without 2.0's remote_pushdown.
 PLANNED: DuckDBConfig = {"disabled_optimizers": "remote_pushdown"}
 
+#: The newest DuckDB MotherDuck's extension loads on (its own refusal on 2.0.0, 2026-11-06:
+#: "Your DuckDB version (v2.0.0) is not yet supported by MotherDuck. The latest supported version
+#: is v1.5.6."). Raised when MotherDuck supports a later one.
+MOTHERDUCK_LATEST_DUCKDB = (1, 5, 6)
+
+
+def motherduck_extension_limit() -> str | None:  # REQ-1999
+    """Why MotherDuck's extension does not load on the DuckDB this install runs, or None where it
+    does."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    if running <= MOTHERDUCK_LATEST_DUCKDB:
+        return None
+    latest = ".".join(map(str, MOTHERDUCK_LATEST_DUCKDB))
+    return f"MotherDuck's extension supports DuckDB up to {latest} and this install runs DuckDB {duckdb.__version__}"
+
 
 def config(own: int | None = None) -> DuckDBConfig:
     """The ``memory_limit`` entry of a DuckDB config: ``own`` (a demo sandbox's cap) when given,

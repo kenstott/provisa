@@ -247,6 +247,30 @@ def test_a_zone_no_statement_names_can_be_told_to_nothing():
     assert told is not None and (told.name, told.offset, told.posix) == (None, None, None)
 
 
+@pytest.mark.parametrize("binary", [False, True])
+@pytest.mark.parametrize(
+    "word, value, offset",
+    [
+        ("UTC", "2000-1-1", 0),
+        ("UTC", "2000-7-1", 0),
+        ("Europe/Rome", "2000-1-1", 3600),
+        ("Europe/Rome", "2000-7-1", 7200),
+        ("Europe/Rome", "1000-1-1", 2996),
+        ("NOSUCH0", "2000-1-1", 0),
+        ("0", "2000-1-1", 0),
+    ],
+)
+def test_a_zone_given_to_set_config_as_a_bound_value_is_the_zone(
+    port, served, word, value, offset, binary
+):
+    """As psycopg's own test_load_datetimetz_tz: the zone is a bound value, so it can be told."""
+    with _connect(port) as connection, connection.transaction():
+        connection.execute("select set_config('TimeZone', %s, true)", [word])
+        cursor = connection.cursor(binary=binary)
+        got = cursor.execute(f"select '{value}'::timestamptz").fetchone()[0]
+        assert got.utcoffset().total_seconds() == offset
+
+
 def test_a_thread_is_given_the_zone_and_only_the_zone():
     seen: list[StatementZone | None] = []
     token = bind_zone(_TOKYO)

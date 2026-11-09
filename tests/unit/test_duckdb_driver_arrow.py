@@ -101,35 +101,20 @@ def test_a_stream_reads_past_one_arrow_batch(driver):
     assert last == (n - 1,)
 
 
-@pytest.fixture
-def single_threaded_driver(driver):
-    """The driver with its engine on one thread, for the test of an error met in a later batch.
-
-    DuckDB 1.5.5/1.5.6 race when the error is met while a streamed batch is fetched with more than
-    one engine thread: the task that hits the error interrupts its sibling pipelines, and about
-    1.6% of the time under load the fetch reports that internal ``INTERRUPT Error: Interrupted!``
-    instead of the error itself (no ``interrupt()`` call involved; 0/1200 with ``threads = 1``).
-    These tests check how Provisa answers the error DuckDB reports, so they read on one thread
-    until DuckDB fixes the race. The client-facing mis-answer is tracked in
-    https://github.com/kenstott/provisa/issues/324 (upstream DuckDB issue: see there)."""
-    driver._root.execute("SET threads = 1")
-    return driver
-
-
-def test_a_stream_raises_postgresqls_error_met_in_a_later_batch(single_threaded_driver):
+def test_a_stream_raises_postgresqls_error_met_in_a_later_batch(driver):
     """DuckDB's reader meets the engine's error only as it produces the batch that holds it: it is
     raised as PostgreSQL's own error (duckdb_arrow.answered_batches), and the driver goes on."""
     from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
 
-    # Past what DuckDB computes when the statement is run (about 128K rows).
-    late = 400_000
+    # Far enough that the first batches are read before it: DuckDB's threads run ahead of the
+    # reader, so at 400,000 rows about one read in thirteen under load met it before the first.
+    late = 2_000_000
     sql = (
         f"SELECT CASE WHEN range = {late} THEN error('postgresql-error 22003: integer out of "
         f"range<end of postgresql-error>') ELSE range END AS id FROM range({late + 1})"
     )
 
     async def run():
-        driver = single_threaded_driver
         stream = await driver.open_stream(sql)
         first = await stream.fetch(FETCH_CHUNK_ROWS)
         with pytest.raises(PostgresError) as raised:

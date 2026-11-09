@@ -311,8 +311,9 @@ def require_reachable_engine(region: str, store: StoreConfig, platform_regions: 
 
 
 def require_engine_kind(region: str, store: StoreConfig) -> None:
-    """Refuse a region's engine store that names no engine kind, or one no engine is built for."""
-    from provisa.core.engine_kinds import ENGINE_KINDS as kinds
+    """Refuse a region's engine store that names no engine kind, one no engine is built for, or
+    one this install cannot run."""
+    from provisa.core.engine_kinds import ENGINE_KINDS as kinds, unavailable_engine_kind
 
     if store.kind is None:
         raise ValueError(
@@ -324,6 +325,9 @@ def require_engine_kind(region: str, store: StoreConfig) -> None:
             f"region {region!r} engine store {store.id!r} names engine kind {store.kind!r}, which "
             f"is not one of {', '.join(sorted(kinds))}"
         )
+    unavailable = unavailable_engine_kind(store.kind)
+    if unavailable is not None:
+        raise ValueError(f"region {region!r} engine store {store.id!r}: {unavailable}")
 
 
 def _named_regions(config: "ProvisaConfig") -> list[tuple[str, str]]:
