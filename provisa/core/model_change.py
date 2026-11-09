@@ -32,15 +32,22 @@ A WRITE NO SCOPE OWNS IS A DEFECT. When a plane's repository is attached (the pl
 bound, :func:`attach`), a recorded write with no open scope raises :class:`ModelChangeOutsideScope`
 rather than leaving a model change with no commit. With no repository attached — a bare control
 plane, as in a unit test — there is no projection to keep, and nothing is recorded.
+
+A SAVE IS IN FLIGHT UNTIL ITS COMMIT HAS FLUSHED (REQ-1914). A write is recorded before its
+transaction commits, so a save is in flight before anyone can read the stamp it advances; the
+config watcher that reads that stamp waits for the save (:func:`saves_in_flight`).
 """
 
-# Requirements: REQ-1524, REQ-1526, REQ-1543
+# Requirements: REQ-1524, REQ-1526, REQ-1543, REQ-1914
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import contextvars
 import logging
 import re
+import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -93,6 +100,8 @@ class _Scope:
     )
     names: list[str] = field(default_factory=list)
     closed: bool = False
+    # REQ-1914: the save this scope is making of each plane it wrote, until that plane's commit.
+    saves: dict[ModelPlane, "concurrent.futures.Future[None]"] = field(default_factory=dict)
 
 
 _SCOPE: contextvars.ContextVar[_Scope | None] = contextvars.ContextVar(
@@ -100,6 +109,11 @@ _SCOPE: contextvars.ContextVar[_Scope | None] = contextvars.ContextVar(
 )
 
 _platform: "Database | None" = None
+
+# REQ-1914: the saves in flight of each plane. A save and the watcher waiting for it are on
+# different threads and event loops, so each save is a concurrent future.
+_saves: dict[ModelPlane, set["concurrent.futures.Future[None]"]] = {}
+_saves_guard = threading.Lock()
 
 # What commits a plane, and which tables a projection carries: handed in by :func:`attach`, so this
 # module (which the control-plane connection imports) depends on neither the repository nor the
@@ -150,6 +164,35 @@ def record(
         raise ModelChangeOutsideScope(plane, table)
     _database, writes = current.written.setdefault((plane, id(database)), (database, []))
     writes.append((verb, table))
+    if plane not in current.saves:
+        current.saves[plane] = save = concurrent.futures.Future()
+        with _saves_guard:
+            _saves.setdefault(plane, set()).add(save)
+
+
+def saves_in_flight(plane: ModelPlane) -> list["concurrent.futures.Future[None]"]:
+    """The saves of this process that have written ``plane`` and whose commit has not finished
+    (REQ-1914): those in flight now, so a save begun after this is not waited for."""
+    with _saves_guard:
+        return list(_saves.get(plane, ()))
+
+
+async def until_committed(saves: list["concurrent.futures.Future[None]"]) -> None:
+    """Wait for ``saves`` (from :func:`saves_in_flight`) to finish committing. Cancelling the wait
+    leaves the saves as they are: ``asyncio.wait`` does not cancel what it waits for."""
+    if saves:
+        await asyncio.wait([asyncio.wrap_future(save) for save in saves])
+
+
+def _end_saves(current: _Scope) -> None:
+    for plane, save in current.saves.items():
+        with _saves_guard:
+            in_flight = _saves[plane]
+            in_flight.discard(save)
+            if not in_flight:
+                del _saves[plane]
+        save.set_result(None)
+    current.saves.clear()
 
 
 def name(action: str, kind: str, ident: str | int) -> None:
@@ -246,7 +289,15 @@ def _message(current: _Scope, writes: list[tuple[str, str]]) -> str:
 
 async def flush(current: _Scope) -> None:
     """Commit every plane the scope wrote, once each, and forget them. Never raises: a projection
-    that does not land marks its environment drifted (``write_through``)."""
+    that does not land marks its environment drifted (``write_through``). Its saves are over when
+    this ends, however it ends: a watcher is waiting for them (REQ-1914)."""
+    try:
+        await _commit_written(current)
+    finally:
+        _end_saves(current)
+
+
+async def _commit_written(current: _Scope) -> None:
     if not current.written or _platform is None or _commit is None:
         current.written.clear()
         current.names.clear()

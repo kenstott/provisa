@@ -57,3 +57,29 @@ def test_a_node_star_read_of_an_aliased_table_is_lowered_inside_its_wrapper():
     )
     assert '"accounts"."billing_country"' not in lowered
     assert '"accounts"."BillingCountry"' in lowered
+
+
+def test_an_aliased_api_table_keeps_the_sql_names_it_is_materialized_under():
+    """REQ-301: an API-backed table's rows are held under the SQL names (a hot VALUES CTE, an
+    engine-cache table), so lowering its published columns to the field's own spelling asked the
+    relation for a column it does not have (Binder Error: Values list "n" does not have a column
+    named "photoUrls", run 42527446894)."""
+    ctx = CompilationContext()
+    ctx.tables["pet_store__pet_by_status"] = TableMeta(
+        table_id=2,
+        field_name="pet_store__pet_by_status",
+        type_name="PetStore_PetByStatus",
+        source_id="petstore-api",
+        catalog_name="petstore_api",
+        schema_name="default",
+        table_name="find_pets_by_status",
+        display_name="pet_by_status",
+        domain_id="pet_store",
+        source_type="openapi",
+    )
+    ctx.physical_to_sql[(2, "photoUrls")] = "photo_urls"
+    lowered = lower_to_catalog_physical(
+        'SELECT "n"."photo_urls" FROM "pet_store"."pet_by_status" AS "n"', ctx
+    )
+    assert '"n"."photo_urls"' in lowered
+    assert "photoUrls" not in lowered

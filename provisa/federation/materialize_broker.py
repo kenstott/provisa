@@ -652,10 +652,28 @@ class _SyncedStore:
                     )
                 )
                 if held is None:
+                    # DuckDB refuses a key on a table any index depends on, so a join index built
+                    # before the key (a failed earlier attempt built it, and the key then failed
+                    # on every later one) comes off for the ALTER and goes back as it was.
+                    standing = con.execute(
+                        "SELECT index_name, sql FROM duckdb_indexes() WHERE database_name = ? "
+                        "AND schema_name = ? AND table_name = ?",
+                        [_MAT_STORE_ALIAS, schema, table],
+                    ).fetchall()
+                    for index, _sql in standing:
+                        escaped = index.replace('"', '""')
+                        schema_part = schema.replace('"', '""')
+                        con.execute(f'DROP INDEX {_MAT_STORE_ALIAS}."{schema_part}"."{escaped}"')
                     try:
                         con.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({cols})")
                     except duckdb.ConstraintException as exc:
                         raise DuplicateKey(columns, str(exc).splitlines()[0]) from exc
+                    finally:
+                        if standing:
+                            # The catalog's own DDL names the table without its database.
+                            con.execute(f"USE {_MAT_STORE_ALIAS}")
+                            for _index, sql in standing:
+                                con.execute(sql)
                 return
             con.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON {replica} ({cols})')
 

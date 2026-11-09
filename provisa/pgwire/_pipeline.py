@@ -3116,11 +3116,16 @@ async def route_governed(
         dialect = decision.dialect or "postgres"
         # Direct route lowers the OPTIMIZED SQL when the optimization stage changed it (REQ-863),
         # carrying any inlined VALUES CTE onto the direct path; else the unchanged fast path.
-        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
+        from provisa.compiler.sql_rewrite import (
+            FLAT_NAMESPACE_SOURCES,
+            UPPER_FOLDING_SOURCES,
+            strip_schema,
+        )
 
         _direct_sid = decision.source_id
         assert _direct_sid is not None  # a DIRECT decision names its source (decide_route)
         _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
+        _quoted = state.source_types.get(_direct_sid) in UPPER_FOLDING_SOURCES  # REQ-1671
         # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
         # bound governance applies for a role's row ceiling (stage2.apply_row_cap).
         _cap = auto_deliver.config.threshold + 1 if _probe_direct and auto_deliver else None
@@ -3154,6 +3159,7 @@ async def route_governed(
                 dialect,
                 pgvector=_similarity.mentions(_physical)
                 and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                quote_identifiers=_quoted,
             )
             if not _optimized:
                 governed.memo[_direct_key] = _direct
@@ -6048,11 +6054,16 @@ async def _route_compiled(
         )
     else:
         dialect = decision.dialect or "postgres"
-        from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
+        from provisa.compiler.sql_rewrite import (
+            FLAT_NAMESPACE_SOURCES,
+            UPPER_FOLDING_SOURCES,
+            strip_schema,
+        )
 
         _direct_sid = decision.source_id
         assert _direct_sid is not None  # a DIRECT decision names its source (decide_route)
         _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
+        _quoted = state.source_types.get(_direct_sid) in UPPER_FOLDING_SOURCES  # REQ-1671
         # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
         # bound governance applies for a role's row ceiling (stage2.apply_row_cap).
         _cap = auto_deliver.config.threshold + 1 if _probe_direct and auto_deliver else None
@@ -6084,6 +6095,7 @@ async def _route_compiled(
                     dialect,
                     pgvector=_similarity.mentions(physical_sql)
                     and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                    quote_identifiers=_quoted,
                 ),
                 physical_sql,
             )

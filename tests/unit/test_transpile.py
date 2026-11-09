@@ -510,10 +510,44 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
             'SELECT "id" AS "id" FROM (SELECT "ID" AS "id" FROM "S"."T") AS "q"',
         ),
         ('SELECT "Mixed" FROM "S"."T"', 'SELECT "Mixed" FROM "S"."T"'),
+        # A statement written without quotes over the governed relation: its references name the
+        # relation's quoted lowercase outputs, which Exasol would otherwise read as ID and NAME.
+        (
+            'SELECT id, name FROM (SELECT "widgets"."ID" AS "id", "widgets"."NAME" AS "name" '
+            'FROM "PROVISA"."WIDGETS" AS "widgets") AS widgets ORDER BY id',
+            'SELECT "id" AS "id", "name" AS "name" FROM (SELECT "widgets"."ID" AS "id", '
+            '"widgets"."NAME" AS "name" FROM "PROVISA"."WIDGETS" AS "widgets") AS widgets '
+            'ORDER BY "id"',
+        ),
+        (
+            'SELECT q.id FROM (SELECT "ID" AS "id" FROM "S"."T") AS q',
+            'SELECT q."id" AS "id" FROM (SELECT "ID" AS "id" FROM "S"."T") AS q',
+        ),
+        (
+            'WITH c AS (SELECT "ID" AS "id" FROM "S"."T") SELECT id FROM c',
+            'WITH c AS (SELECT "ID" AS "id" FROM "S"."T") SELECT "id" AS "id" FROM c',
+        ),
+        # An output the derived relation names without quotes folds the same way on both sides.
+        (
+            'SELECT foo FROM (SELECT "A" AS foo FROM "S"."T") AS q',
+            'SELECT foo AS "foo" FROM (SELECT "A" AS foo FROM "S"."T") AS q',
+        ),
     ],
 )
 def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
     assert transpile(pg_sql, "exasol") == exasol_sql
+
+
+def test_every_identifier_can_be_quoted_for_a_source_without_its_own_dialect():
+    """REQ-1671: SAP HANA has no SQLGlot dialect, so its statements are written as PostgreSQL, and
+    it folds an unquoted name to upper case: ``id`` never met the governed relation's ``"id"``."""
+    assert transpile(
+        'SELECT id FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS w ORDER BY id',
+        "postgres",
+        quote_identifiers=True,
+    ) == (
+        'SELECT "id" FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS "w" ORDER BY "id"'
+    )
 
 
 def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():

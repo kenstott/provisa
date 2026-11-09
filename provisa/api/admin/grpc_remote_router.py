@@ -103,7 +103,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         proto_name=proto_pkg_name,
         import_paths=import_paths or None,
     )
-    pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+    pb2 = load_stubs(pb2_path)
 
     queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
@@ -568,7 +568,7 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
             proto_name=state.catalog_for(source_id),
             import_paths=reg.get("import_paths") or None,
         )
-        pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+        pb2 = load_stubs(pb2_path)
         proto_dict = parse_proto_text(proto_text)
         queries, mutations = map_proto(
             proto_dict,
