@@ -152,6 +152,8 @@ func Services_read(ctx context.Context, in UsedInputs) ([]Used, error) {
 }
 
 _CODE = {"python": _PYTHON, "node": _NODE, "go": _GO}
+#: A table is named for its function, and a Go function that is exported starts with a capital.
+_TABLE = {"python": "services_read", "node": "services_read", "go": "Services_read"}
 
 
 @pytest.fixture(scope="module")
@@ -207,7 +209,7 @@ def uses(server):
     registered = _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
-        f'schemaName: "default", tableName: "services_read", cacheTtl: 0, '
+        f'schemaName: "default", tableName: "{_TABLE[language]}", cacheTtl: 0, '
         f"columns: [{_column('name', 'text')}, {_column('setting', 'text')}, "
         f"{_column('cached', 'text')}, {_parameter('name', 'text', required=True)}]}})",
     )
