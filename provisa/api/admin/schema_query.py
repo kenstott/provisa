@@ -23,6 +23,7 @@ from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
 from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
+from provisa.api.admin.secret_redaction import redact_url_password
 
 import strawberry
 from sqlalchemy import func, or_, select
@@ -151,16 +152,26 @@ from provisa.core.secrets_store import bound_to_request_org as _bound_to_request
 
 
 def _safe_store_ref(engine: Any) -> str | None:
-    """The engine's materialization-store DSN, or None when unconfigured. ``engine`` is the
-    EngineRuntime, whose accessor is ``materialize_store_dsn`` (NOT ``materialize_store`` — that lives
-    on the wrapped FederationEngine). Best-effort so an unconfigured store still renders the engine +
-    MV count instead of the whole field failing (which blanked both tiles to "—")."""
+    """The engine's materialization-store DSN without its credential, or None when unconfigured.
+    ``engine`` is the EngineRuntime, whose accessor is ``materialize_store_dsn`` (NOT
+    ``materialize_store`` — that lives on the wrapped FederationEngine). Best-effort so an
+    unconfigured store still renders the engine + MV count instead of the whole field failing
+    (which blanked both tiles to "—")."""
     from provisa.federation.engine import MaterializeStoreUnconfigured
 
     try:
-        return engine.materialize_store_dsn()
+        return redact_url_password(engine.materialize_store_dsn())
     except MaterializeStoreUnconfigured:
         return None
+
+
+# REQ-1327: the Cache page's Materialized tab opens to either right.
+_MATERIALIZED_READERS = ("observability", "table_registration")
+
+
+def _require_materialized_read(info: StrawberryInfo) -> None:  # REQ-1327
+    if not any(has_capability(info, right) for right in _MATERIALIZED_READERS):
+        raise PermissionError(f"Missing capability: one of {', '.join(_MATERIALIZED_READERS)}")
 
 
 # Local-file store schemes: each running instance writes its OWN copy (no cross-instance coordination).
@@ -1697,7 +1708,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def mv_list(self, info: StrawberryInfo) -> list[MVType]:
         """List all materialized views with status."""
-        require_capability(info, "observability")
+        _require_materialized_read(info)
         from provisa.api.app import state
         from provisa.mv.bitemporal_capture import logged_table_id
 
@@ -2216,7 +2227,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
         """Identity of the durable materialization store (landed sources + MV cache)."""
-        require_capability(info, "observability")
+        _require_materialized_read(info)
         from provisa.api.app import state
 
         engine = state.federation_engine

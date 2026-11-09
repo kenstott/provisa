@@ -74,6 +74,8 @@ export type Capability =
   | "dq_rw"
   | "ignore_relationships"
   | "write"
+  // Run the commands the role is assigned, in the domains it lists.
+  | "command_execution"
   | "no_aggregations";
 
 /** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */

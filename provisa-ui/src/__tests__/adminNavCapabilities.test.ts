@@ -90,9 +90,9 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1469: the org's plan, running bill and next charge. Billing is the org's own commercial
   // relationship, so an org_admin owns it without holding anything deployment-wide.
   "/admin/billing": "org_settings",
-  // REQ-1349: the cache surface is the org's own cached results, response TTL and redirect policy.
-  // The one deployment-wide half of it — which store the node writes to — is gated inside the page
-  // on `platform_settings`, so the route itself belongs to the org.
+  // REQ-1349, REQ-1327: the org's own cached results, response TTL and redirect policy, and the
+  // operations on its materialized views, which table_registration also opens (asserted below).
+  // The deployment's stores are on the Platform page.
   "/admin/cache": "org_settings",
   // REQ-1922: the org's own stores and the platform regions it selects.
   "/admin/regions": "org_settings",
@@ -116,7 +116,13 @@ const DEPLOYMENT_WIDE = [
 ];
 
 // Surfaces whose gate is its own <Route> rather than a row of the route table.
-const OWN_ROUTE = ["/admin/requests", "/admin/environments", "/admin/import", "/admin/tags"];
+const OWN_ROUTE = [
+  "/admin/requests",
+  "/admin/environments",
+  "/admin/import",
+  "/admin/tags",
+  "/admin/cache",
+];
 
 describe("admin surface capabilities", () => {
   it("gates every org-scoped surface on the org-scoped right", () => {
@@ -145,6 +151,23 @@ describe("admin surface capabilities", () => {
       capability: "table_registration",
       orCapability: "sensitive_data",
     });
+  });
+
+  it("opens Cache to the org's settings or the views' operations, route and nav alike", () => {
+    // REQ-1327: a platform administrator holds neither, and has the stores on the Platform page.
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/cache"')).slice(0, 400);
+    expect(route).toContain('capability="org_settings"');
+    expect(route).toContain('orCapability="table_registration"');
+    expect(routeCapabilities()["/admin/cache"]).toBeUndefined();
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/cache");
+    expect(item).toMatchObject({
+      capability: "org_settings",
+      orCapability: "table_registration",
+    });
+    expect(meetsRequirement(["table_registration"], item!)).toBe(true);
+    expect(meetsRequirement(["org_settings"], item!)).toBe(true);
+    expect(meetsRequirement(["platform_settings", "cross_org"], item!)).toBe(false);
   });
 
   it("opens import on any imported object's right, route and nav alike", () => {

@@ -38,6 +38,9 @@ export interface CapabilityRequirement {
   anyOf?: Capability[];
   /** REQ-1327: a right needed besides whichever of the above opened the surface. */
   andCapability?: Capability;
+  /** REQ-1327: rights that, held together, also open the surface: a page with an org half beside
+   * a half on the deployment check, which is two rights. */
+  orAllOf?: Capability[];
 }
 
 /**
@@ -114,6 +117,7 @@ export function hidingDomains(
 export function isDemonstrated(demonstrated: string[], req: CapabilityRequirement): boolean {
   if (demonstrated.includes(req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => demonstrated.includes(c))) return true;
+  if (req.orAllOf !== undefined && req.orAllOf.every((c) => demonstrated.includes(c))) return true;
   return req.orCapability !== undefined && demonstrated.includes(req.orCapability);
 }
 
@@ -142,5 +146,8 @@ export function meetsRequirement(capabilities: string[], req: CapabilityRequirem
   }
   if (hasCapability(capabilities, req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => hasCapability(capabilities, c))) return true;
+  if (req.orAllOf !== undefined && req.orAllOf.every((c) => hasCapability(capabilities, c))) {
+    return true;
+  }
   return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
 }

@@ -14,12 +14,14 @@
 
 from __future__ import annotations
 
+import types
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import provisa.api.app as appmod
 from provisa.api.admin.schema_query import Query
-from tests.unit.gate_identity import grant
+from tests.unit.gate_identity import grant, serve_every_column
 
 
 class _Conn:
@@ -51,6 +53,56 @@ async def test_a_caller_without_the_capability_is_refused(monkeypatch, capabilit
     info, _ = grant(monkeypatch, "observability")
     with pytest.raises(PermissionError, match=capability):
         await getattr(Query(), name)(info, **kwargs)
+
+
+_MV_READS = ("mv_list", "materialize_store_info")
+
+
+def _install_mv_state(monkeypatch, store_dsn: str = "postgresql://store-host/provisa") -> None:
+    serve_every_column(monkeypatch)
+    monkeypatch.setattr(appmod.state, "tables", [], raising=False)
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(_mvs={}), raising=False)
+    monkeypatch.setattr(
+        appmod.state,
+        "federation_engine",
+        types.SimpleNamespace(name="duckdb", materialize_store_dsn=lambda: store_dsn),
+        raising=False,
+    )
+
+
+@pytest.mark.parametrize("right", ["observability", "table_registration"])
+@pytest.mark.parametrize("name", _MV_READS)
+async def test_either_right_reads_the_materialized_list_and_store(monkeypatch, right, name):
+    """REQ-1327 (2026-11-09): table_registration alone opens the Cache page's Materialized tab."""
+    _install_mv_state(monkeypatch)
+    info, _ = grant(monkeypatch, right)
+    await getattr(Query(), name)(info)
+
+
+@pytest.mark.parametrize("name", _MV_READS)
+async def test_a_caller_with_neither_right_is_refused_the_materialized_reads(monkeypatch, name):
+    _install_mv_state(monkeypatch)
+    info, _ = grant(monkeypatch, "query_development")
+    with pytest.raises(PermissionError, match="observability.*table_registration"):
+        await getattr(Query(), name)(info)
+
+
+@pytest.mark.parametrize(
+    "dsn,shown",
+    [
+        (
+            "postgresql://svc:s3cret@store-host:5432/provisa",
+            "postgresql://svc@store-host:5432/provisa",
+        ),
+        ("motherduck:///provisa?motherduck_token=s3cret", "motherduck:///provisa"),
+    ],
+)
+async def test_the_store_information_carries_no_credential(monkeypatch, dsn, shown):
+    """The store reference is read for where the store is; its credential stays on the server."""
+    _install_mv_state(monkeypatch, store_dsn=dsn)
+    info, _ = grant(monkeypatch, "table_registration")
+    assert (await Query().materialize_store_info(info)).store_ref == shown
 
 
 async def test_creation_requests_lists_only_those_the_caller_may_act_on(monkeypatch):

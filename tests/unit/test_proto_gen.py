@@ -169,7 +169,9 @@ class TestGenerateProto:
     def test_per_command_rpcs_generated(self):
         # REQ-1156: beyond the generic CallCommand, each visible command gets a typed request
         # message + its own RPC so a gRPC client discovers commands by name via reflection.
-        si = _make_si()
+        si = _make_si(
+            role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
+        )
         si.functions = [
             {
                 "name": "active_users",

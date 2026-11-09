@@ -828,7 +828,7 @@ roles:
 
 A role with `parents` holds what it lists of what they hold: its capabilities, its `domain_access` and its `residency_values` are each intersected with the union of what its parents hold. So list everything the role should hold, not only what it adds. A right no parent holds fails the load, naming the role and the right, as saving one in the role form does. Column and object grants still pass to the child. See [Inherited Roles](#inherited-roles).
 
-A role with no capabilities can do nothing, reads included. It may carry a name or session values for row rules, run a command that names it in `visible_to`, or be a parent that holds only grants.
+A role with no capabilities can do nothing, reads included, and runs no command. It may carry a name or session values for row rules, or be a parent that holds only grants.
 
 ### Capabilities
 
@@ -841,6 +841,7 @@ A role with no capabilities can do nothing, reads included. It may carry a name 
 | `query_development` | Use the query development features. Reading data does not need it. |
 | `full_results` | Get full results instead of a sample. |
 | `write` | Write data, where the role has a write grant. |
+| `command_execution` | Run the commands the role is assigned, in the domains it lists. Alone, it reads no data. The read-only catalog commands of the meta domain need `catalog_read` instead. |
 | `no_aggregations` | Take aggregate queries away from the role. |
 | `create_view` | Create views. |
 | `approve_view` | Approve views. |

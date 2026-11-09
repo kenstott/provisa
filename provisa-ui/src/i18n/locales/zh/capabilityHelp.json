@@ -33,6 +33,7 @@
     "dq_rw": "管理数据质量检查、期望和承诺。",
     "ignore_relationships": "联接没有已批准关系的表。",
     "write": "在角色拥有写入授权的位置写入数据。",
+    "command_execution": "在此角色列出的域中运行分配给它的命令。",
     "no_aggregations": "取消此角色的聚合查询。",
     "data_residency": "针对所列区域，设置表、来源或物化视图的数据所在位置。",
     "notHeldByParent": "此角色的任何父角色都不持有此能力。",

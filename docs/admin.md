@@ -312,14 +312,22 @@ POST /admin/ossie/import
 
 ### Object Storage
 
-Read or configure the org's materialization storage:
+An org administrator reads the org's storage footprint:
 
 ```http
 GET  /admin/org-storage
-PUT  /admin/org-storage
 ```
 
-`GET` reports how much of the platform storage allowance the org uses. `PUT` registers the org's own storage DSN (encrypted at rest; never returned by GET). Once set, the org's materializations land in its own bucket and are no longer counted against the platform allowance. Sending `storage_url: null` clears it and moves the org back to the platform store.
+`GET` reports how much of the platform storage allowance the org uses.
+
+A platform administrator assigns an organization's own store:
+
+```http
+GET  /admin/platform/orgs/{org_id}/storage
+PUT  /admin/platform/orgs/{org_id}/storage
+```
+
+`PUT` registers the org's own storage DSN (encrypted at rest; never returned by GET). Once set, the org's materializations land in its own bucket and are no longer counted against the platform allowance. Sending `storage_url: null` clears it and moves the org back to the platform store.
 
 ### Org Encryption
 

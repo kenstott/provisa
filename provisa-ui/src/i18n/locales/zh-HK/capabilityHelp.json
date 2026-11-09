@@ -33,6 +33,7 @@
     "dq_rw": "管理資料品質檢查、期望及承諾。",
     "ignore_relationships": "聯結沒有已批准關係的資料表。",
     "write": "在角色擁有寫入授權的位置寫入資料。",
+    "command_execution": "在此角色列出的網域中執行指派給它的命令。",
     "no_aggregations": "取消此角色的彙總查詢。",
     "data_residency": "針對所列區域，設定資料表、來源或實體化檢視的資料所在位置。",
     "notHeldByParent": "此角色的任何父角色都不持有此能力。",

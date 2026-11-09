@@ -261,7 +261,7 @@ def _command(name: str, domain: str) -> dict:
 
 @pytest.mark.parametrize("access", [["sales"], ["*"]], ids=["one-domain", "all-domains"])
 def test_a_stored_command_with_no_domain_is_shown_to_no_role(access):
-    role = {"id": "r", "capabilities": ["usage"], "domain_access": access}
+    role = {"id": "r", "capabilities": ["usage", "command_execution"], "domain_access": access}
     items = [_command("in_sales", "sales"), _command("in_none", "")]
     shown = _fields(role, items)
     assert any("in_sales" in f or "inSales" in f for f in shown), shown
