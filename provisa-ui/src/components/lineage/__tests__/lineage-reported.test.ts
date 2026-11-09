@@ -137,6 +137,6 @@ describe("what OpenLineage reported", () => {
     const edge = rolled.edges[0];
     expect(edge.count).toBe(2);
     expect(edge.reported).toBe(true);
-    expect(edgeText(edge, WORDS.reported)).toBe("2 columns · reported");
+    expect(edgeText(edge, WORDS.reported)).toBe("reported");
   });
 });

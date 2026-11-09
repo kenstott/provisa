@@ -520,3 +520,130 @@ class TestTheCapability:
 
     def test_the_role_that_registers_sources_holds_it(self):
         assert "lineage_report" in STANDARD_ROLES["source_admin"].capabilities
+
+
+# -- what the store keeps ------------------------------------------------------------------------
+
+
+async def _registered(db) -> None:
+    from sqlalchemy import insert
+
+    from provisa.core.schema_org import domains, registered_tables, sources, table_columns
+
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(
+            insert(sources).values(
+                id="wh", type="postgresql", host="db.internal", port=5432, database="warehouse"
+            )
+        )
+        for table_id, table, column in ((1, "orders", "amount"), (2, "mart", "total")):
+            await conn.execute_core(
+                insert(registered_tables).values(
+                    id=table_id,
+                    source_id="wh",
+                    domain_id="sales",
+                    schema_name="public",
+                    table_name=table,
+                )
+            )
+            await conn.execute_core(
+                insert(table_columns).values(table_id=table_id, column_name=column)
+            )
+
+
+async def _store_events(db, *events: dict) -> None:
+    for event in events:
+        async with db.acquire() as conn:
+            await openlineage_router.store_run_event(conn, parse_run_event(event))
+
+
+async def _read_back(db) -> LineageGraph:
+    state = SimpleNamespace(model_db=db)
+    async with db.acquire() as conn:
+        columns = await lineage_router._registry_columns(conn)
+    jobs, tables = await lineage_router._reported_lineage(state, columns)
+    graph = LineageGraph()
+    add_reported_lineage(graph, jobs, tables)
+    return graph
+
+
+def _run(run_id: str, when: str, inputs: list[dict], outputs: list[dict]) -> dict:
+    return _event(inputs, outputs, run={"runId": run_id}, eventTime=when)
+
+
+ORDERS_DS = _dataset("warehouse.public.orders")
+MART_DS = _dataset("warehouse.public.mart")
+OTHER_DS = _dataset("elsewhere", "s3://bucket")
+
+
+class TestTheStore:
+    async def test_a_stored_event_reads_back_as_the_edge_between_the_registered_tables(
+        self, control_plane
+    ):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(db, READS_AND_WRITES)
+        graph = await _read_back(db)
+        assert ("sales.orders.amount", f"{JOB}.*") in _pairs(graph)
+        assert (f"{JOB}.*", "sales.mart.total") in _pairs(graph)
+
+    async def test_events_of_one_run_add_to_each_other(self, control_plane):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(
+            db,
+            _run("r1", "2026-11-09T10:00:00Z", [ORDERS_DS], []),
+            _run("r1", "2026-11-09T10:05:00Z", [], [MART_DS]),
+        )
+        graph = await _read_back(db)
+        assert ("sales.orders.amount", f"{JOB}.*") in _pairs(graph)
+        assert (f"{JOB}.*", "sales.mart.total") in _pairs(graph)
+
+    async def test_an_event_with_no_facet_leaves_the_facet_another_sent(self, control_plane):
+        db = control_plane.org()
+        await _registered(db)
+        facet = _column_facet(total=[("warehouse.public.orders", "amount")])
+        await _store_events(
+            db,
+            _run(
+                "r1",
+                "2026-11-09T10:00:00Z",
+                [ORDERS_DS],
+                [_dataset("warehouse.public.mart", columnLineage=facet)],
+            ),
+            _run("r1", "2026-11-09T10:05:00Z", [ORDERS_DS], [MART_DS]),
+        )
+        assert f"{JOB}.sales.mart.total" in (await _read_back(db)).nodes
+
+    async def test_a_newer_run_replaces_the_older_runs_datasets(self, control_plane):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(
+            db,
+            _run("r1", "2026-11-09T10:00:00Z", [ORDERS_DS], [MART_DS]),
+            _run("r2", "2026-11-09T11:00:00Z", [OTHER_DS], [MART_DS]),
+        )
+        graph = await _read_back(db)
+        assert "sales.orders.amount" not in graph.nodes
+        assert "outside:s3://bucket/elsewhere.*" in graph.nodes
+
+    async def test_an_older_run_arriving_late_changes_nothing(self, control_plane):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(
+            db,
+            _run("r2", "2026-11-09T11:00:00Z", [OTHER_DS], [MART_DS]),
+            _run("r1", "2026-11-09T10:00:00Z", [ORDERS_DS], [MART_DS]),
+        )
+        assert "sales.orders.amount" not in (await _read_back(db)).nodes
+
+    async def test_a_start_event_naming_no_dataset_keeps_the_last_runs_lineage(self, control_plane):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(
+            db,
+            _run("r1", "2026-11-09T10:00:00Z", [ORDERS_DS], [MART_DS]),
+            _run("r2", "2026-11-09T11:00:00Z", [], []),
+        )
+        assert "sales.orders.amount" in (await _read_back(db)).nodes

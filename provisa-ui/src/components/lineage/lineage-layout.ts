@@ -592,7 +592,8 @@ export function edgeText(
   e: Pick<LineageDrawnEdge, "label" | "count" | "via" | "reported">,
   reportedWord = "",
 ): string {
-  const what = e.count > 1 ? `${e.count} columns` : e.label;
+  // A reported edge's own words fill the gap between two boxes; a count beside them is clipped.
+  const what = e.count > 1 ? (e.reported ? "" : `${e.count} columns`) : e.label;
   const text = e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
   return e.reported ? [text, reportedWord].filter(Boolean).join(" · ") : text;
 }
