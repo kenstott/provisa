@@ -712,6 +712,11 @@ def main(argv: list[str] | None = None) -> int:
 
     register_api(sub)
 
+    # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
+    from provisa.cli_config import register as register_config
+
+    register_config(sub)
+
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,
     # and neither step should need a browser.
