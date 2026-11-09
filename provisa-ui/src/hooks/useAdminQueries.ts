@@ -36,6 +36,7 @@ import type {
 } from "../types/admin";
 import type { CompileResult, TableMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+import { isAbort } from "./useOrgHas";
 export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import {
@@ -362,6 +363,21 @@ export function useRefreshPolicyPreview() {
     const res = await fetch({ variables: vars });
     return res.data?.refreshPolicyPreview ?? null;
   };
+}
+
+/**
+ * A one-off read's answer, or null when it was cut short. Apollo aborts a lazy query when its hook
+ * unmounts, and rejects the promise it handed out when no result had arrived: leaving the panel
+ * mid-read (a tour step moving on, a table closed) is the panel's own teardown, not a failure, and
+ * these reads' callers already treat null as "nothing to apply". Any other rejection is still theirs.
+ */
+async function nullWhenCutShort<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (e) {
+    if (isAbort(e)) return null;
+    throw e;
+  }
 }
 
 // REQ-1443: the contract builder's three server calls. The soda / Great Expectations dialects are
@@ -844,9 +860,10 @@ export function useKaggleDatasetsLazy() {
     kaggleDatasets: { ref: string; title: string; subtitle: string }[];
   }>(KaggleDatasets, { fetchPolicy: "no-cache" });
   return useCallback(
+    // Null, not an empty list, for a search a newer one replaced: it found nothing out.
     async (token: string, query: string) => {
-      const { data } = await run({ variables: { token, query } });
-      return data?.kaggleDatasets ?? [];
+      const answer = await nullWhenCutShort(() => run({ variables: { token, query } }));
+      return answer && (answer.data?.kaggleDatasets ?? []);
     },
     [run],
   );
