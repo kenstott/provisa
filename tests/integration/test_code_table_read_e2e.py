@@ -31,8 +31,8 @@ from tests.port_lease import lease_ports
 
 pytestmark = [pytest.mark.integration]
 
-# "analyst" itself is a standard role, which a config file cannot define (REQ-2155): this one
-# inherits from it.
+# "analyst" itself is a standard role, which a config file cannot define (REQ-2155): this role is
+# defined here, and is not an ancestor of org_admin.
 _ANALYST = "ledger_analyst"
 
 _CODE = {
@@ -177,8 +177,11 @@ def server(tmp_path_factory, minted_port):
         {
             "id": _ANALYST,
             "description": "Test role.",
-            "parents": ["analyst"],
-            "capabilities": ["full_results"],
+            # A child holds only what it is given of what its parents hold (REQ-2155). /data/sql
+            # needs query_development, a command needs command_execution, and of the standard
+            # roles developer is the one holding those with full_results.
+            "parents": ["developer"],
+            "capabilities": ["usage", "query_development", "command_execution", "full_results"],
             "domain_access": ["*"],
         }
     ]
