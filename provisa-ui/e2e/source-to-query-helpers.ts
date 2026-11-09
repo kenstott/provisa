@@ -96,7 +96,10 @@ export async function fillCheckerConnection(page: Page, backendUrl: string = BAC
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(pgwirePort));
   await page.getByLabel(/^Username/).fill("org_admin");
-  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
+  await page
+    .getByLabel(/^Database/)
+    .and(page.locator(FORM_FIELD))
+    .fill("provisa");
 }
 
 export async function submitSourceAndExpectListed(page: Page, sourceId: string) {

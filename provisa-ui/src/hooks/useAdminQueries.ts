@@ -414,7 +414,8 @@ export function useDqContract() {
     ),
     buildCheck: useCallback(
       async (vars: DqCheckDefinitionVars): Promise<DqCheckDefinition | null> =>
-        (await nullWhenCutShort(() => buildOne({ variables: vars })))?.data?.dqCheckDefinition ?? null,
+        (await nullWhenCutShort(() => buildOne({ variables: vars })))?.data?.dqCheckDefinition ??
+        null,
       [buildOne],
     ),
     parseContract: useCallback(

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: c455e3f2-ae79-49f2-b699-c881742038b0
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -30,7 +31,9 @@ const parseVars = { checker: "soda", contractText: "dataset: pets" };
 const catalogVars = { checker: "soda", dataset: "pets" };
 
 describe("useDqContract, a read still in flight when its panel goes", () => {
-  beforeEach(() => read.mockReset());
+  beforeEach(() => {
+    read.mockReset();
+  });
 
   it("answers null for a parse Apollo cut short", async () => {
     read.mockRejectedValue(aborted());
