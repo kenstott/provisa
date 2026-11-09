@@ -94314,7 +94314,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WAREHOUSE CREDENTIAL COMES FROM:) Maintainer 2026-11-09: when a registered warehouse source matches
     the manifest''s adapter and database, the dbt source uses it and needs no credential. Otherwise its
     setup form offers to create one, filled in with what the manifest knows and asking for the account or
-    host and the credential, held as any source''s credential is. dbt''s profiles file is not read.'
+    host and the credential, held as any source''s credential is. dbt''s profiles file is not read. (Amended
+    2026-11-09, DBT CLOUD''S TOKEN:) Maintainer 2026-11-09: with dbt Cloud, the dbt source holds a dbt Cloud
+    API token as its credential, held as any source''s credential is: it fetches the manifest and run results
+    through dbt Cloud''s API and runs its commands through the jobs API. With dbt Core there is no service
+    to connect to: the manifest and run results are files, uploaded or read from where the team publishes
+    them, and commands run where dbt is installed.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
