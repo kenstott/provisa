@@ -304,8 +304,10 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import tag as tag_repo
     from provisa.core.repositories import table as table_repo
 
-    # A seeded table is not the model's: only its id is used, to leave out what refers to it, so
-    # its columns are never read (the meta domain's SQL catalog views alone are hundreds).
+    # A seeded table is not the model's, so the file does not hold it and its columns are never
+    # read (the meta domain's SQL catalog views alone are hundreds); a data product's member and a
+    # relationship that name it are the model's, and keep its name (REQ-1634): the import holds
+    # that name until the seeded table exists.
     tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
     internal = {int(t["id"]) for t in tables if _internal_table(t)}
     # A table is named in a configuration by its virtual name: its alias when it has one.
@@ -317,8 +319,6 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     relationships = []
     for row in await rel_repo.list_all(conn):
-        if _refs_internal(row):
-            continue
         fields = _fields(Relationship, row)
         fields["source_table_id"] = name_of[int(row["source_table_id"])]
         if row.get("target_table_id") is not None:
@@ -372,13 +372,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
                         {
                             **row,
                             "successor": row["successor_id"],
-                            # A seeded table is not the model's (see ``internal``): the export
-                            # leaves it out, so a member list naming it would name a table the
-                            # file does not hold. As a relationship on one is left out.
                             "tables": sorted(
                                 name_of[t]
                                 for t in await data_product_repo.member_table_ids(conn, row["id"])
-                                if t not in internal
                             ),
                             "commands": await data_product_repo.member_command_names(
                                 conn, row["id"]
