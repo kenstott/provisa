@@ -33,6 +33,7 @@
     "dq_rw": "Gestire controlli di qualità dei dati, aspettative e promesse.",
     "ignore_relationships": "Unire tabelle non coperte da alcuna relazione approvata.",
     "write": "Scrivere dati, dove il ruolo ha un permesso di scrittura.",
+    "command_execution": "Eseguire i comandi assegnati a questo ruolo, nei domini che elenca.",
     "no_aggregations": "Togliere a questo ruolo le query di aggregazione.",
     "data_residency": "Impostare dove risiedono i dati di una tabella, un'origine o una vista materializzata, per le regioni elencate.",
     "notHeldByParent": "Nessun genitore di questo ruolo detiene questa capacità.",

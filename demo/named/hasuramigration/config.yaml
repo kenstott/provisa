@@ -240,7 +240,7 @@ roles:
 - id: support
   parents: []
   description: "Customer support: reads and updates customers and their orders to resolve requests."
-  capabilities: [data_product_read, glossary_read, query_development, write]
+  capabilities: [command_execution, data_product_read, glossary_read, query_development, write]
   domain_access: ["*"]
 - id: support_lead
   parents: []
