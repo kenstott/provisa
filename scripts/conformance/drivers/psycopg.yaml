@@ -397,7 +397,6 @@ expected:
   tests.pool.test_pool::test_grow[0-want_times1]: exceptiongroup-multiple-thread-exception-warning
   tests.pool.test_pool::test_grow[2-want_times0]: exceptiongroup-multiple-thread-exception-warning
   tests.pool.test_pool::test_intrans_rollback: psycopg-errors-featurenotsupported-create-table
-  tests.pool.test_pool::test_reset: psycopg-errors-invalidparametervalue-invalid-val
   tests.pool.test_pool::test_resize: assert-n-n-n-n-n-n-n-n-n-n-n-n
   tests.pool.test_pool::test_stats_check: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_async::test_configure[asyncio]: assertionerror-assert
@@ -410,7 +409,6 @@ expected:
   tests.pool.test_pool_async::test_grow[asyncio-0-want_times1]: psycopg-errors-insufficientprivilege-v006-table
   tests.pool.test_pool_async::test_grow[asyncio-2-want_times0]: psycopg-errors-insufficientprivilege-v006-table
   tests.pool.test_pool_async::test_intrans_rollback[asyncio]: psycopg-errors-featurenotsupported-create-table
-  tests.pool.test_pool_async::test_reset[asyncio]: psycopg-errors-invalidparametervalue-invalid-val
   tests.pool.test_pool_async::test_resize[asyncio]: psycopg-errors-internalerror
   tests.pool.test_pool_async::test_stats_check[asyncio]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common::test_check_connection[ConnectionPool-False]: psycopg-errors-internalerror-invalid-input-error
@@ -427,10 +425,8 @@ expected:
   tests.pool.test_pool_common_async::test_stats_usage[asyncio-AsyncNullConnectionPool]: assert-n-n
   tests.pool.test_pool_null::test_configure: assertionerror-assert-2
   tests.pool.test_pool_null::test_intrans_rollback: psycopg-errors-featurenotsupported-create-table
-  tests.pool.test_pool_null::test_reset: psycopg-errors-invalidparametervalue-invalid-val
   tests.pool.test_pool_null_async::test_configure[asyncio]: assertionerror-assert-2
   tests.pool.test_pool_null_async::test_intrans_rollback[asyncio]: psycopg-errors-featurenotsupported-create-table
-  tests.pool.test_pool_null_async::test_reset[asyncio]: psycopg-errors-invalidparametervalue-invalid-val
   tests.pq.test_async::test_send_describe_portal: assertionerror-b-error-portal-does-not-exist
   tests.pq.test_async::test_send_prepared_binary_in: assertionerror-assert-n-execstatus-tuples-ok-n
   tests.pq.test_async::test_send_prepared_binary_out[0-\x666f6f00626172]: assertionerror-assert-n-execstatus-tuples-ok-n
@@ -2072,18 +2068,8 @@ expected:
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2034,02,03,23,34,27,951357~-4:27-2034-02-03
-    23:34:27.951357-04:27]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-258,1,8,1,12,32,358261~1:2:3-0258-1-8
-    1:12:32.358261+01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-7000,1,1,0,0,0,1~-1:2:3-7000-01-01
-    00:00:00.000001-01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-max~2-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-1000,1,1,0,0~2-1000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
@@ -2095,18 +2081,8 @@ expected:
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2034,02,03,23,34,27,951357~-4:27-2034-02-03
-    23:34:27.951357-04:27]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-258,1,8,1,12,32,358261~1:2:3-0258-1-8
-    1:12:32.358261+01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-7000,1,1,0,0,0,1~-1:2:3-7000-01-01
-    00:00:00.000001-01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-max~2-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-1000,1,1,0,0~2-1000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
@@ -2118,43 +2094,10 @@ expected:
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2034,02,03,23,34,27,951357~-4:27-2034-02-03
-    23:34:27.951357-04:27]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-258,1,8,1,12,32,358261~1:2:3-0258-1-8
-    1:12:32.358261+01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-7000,1,1,0,0,0,1~-1:2:3-7000-01-01
-    00:00:00.000001-01:02:03]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-max~2-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[DMY]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[MDY]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz_datestyle[YMD]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,1~2-2000-01-01--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,0,0,456789~-2-2000-01-02
-    03:00:00.456789-+02:00]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,0,0,456789~2-2000-01-02
-    03:00:00.456789--02:00]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,1,2,3,4,5,6~2-2000-01-02 03:04:05.000006--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz[ISO-2000,12,31~2-2000-12-31--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,1~2-2000-01-01--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,0,0,456789~-2-2000-01-02
-    03:00:00.456789-+02:00]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,0,0,456789~2-2000-01-02
-    03:00:00.456789--02:00]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  ? tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,1,2,3,4,5,6~2-2000-01-02
-    03:04:05.000006--02:00]
-  : psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_load_datetimetz_binary[2000,12,31~2-2000-12-31--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-min-+09:18:59-Asia/Tokyo]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[1-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
@@ -2175,162 +2118,6 @@ expected:
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message[infinity-timestamp too large-SQL]: psycopg-dataerror-timestamp-too-large-after-year
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message_binary[1000-01-01 12:00+00 BC-timestamp too small]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDateTimeTz::test_overflow_message_binary[10000-01-01 12:00+00-timestamp too large]: psycopg-errors-invalidtextrepresentation-convers-4
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-1000,1,1,0,0-1000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2000,1,1,0,0,0,1-2000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2000,1,1,0,0-2000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2034,02,03,23,34,27,951357-2034-02-03 23:34:27.951357]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2200,1,1,0,0,0,1-2200-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-2300,1,1,0,0,0,1-2300-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-258,1,8,1,12,32,358261-0258-1-8 1:12:32.358261]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-7000,1,1,0,0,0,1-7000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[b-min-0001-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-1000,1,1,0,0-1000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2000,1,1,0,0,0,1-2000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2000,1,1,0,0-2000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2034,02,03,23,34,27,951357-2034-02-03 23:34:27.951357]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2200,1,1,0,0,0,1-2200-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-2300,1,1,0,0,0,1-2300-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-258,1,8,1,12,32,358261-0258-1-8 1:12:32.358261]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-7000,1,1,0,0,0,1-7000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[s-min-0001-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-1000,1,1,0,0-1000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2000,1,1,0,0,0,1-2000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2000,1,1,0,0-2000-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2034,02,03,23,34,27,951357-2034-02-03 23:34:27.951357]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2200,1,1,0,0,0,1-2200-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-2300,1,1,0,0,0,1-2300-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-258,1,8,1,12,32,358261-0258-1-8 1:12:32.358261]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-7000,1,1,0,0,0,1-7000-01-01 00:00:00.000001]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_dump_datetime[t-min-0001-01-01 00:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-German-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-ISO-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-Postgres-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[DMY-SQL-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-German-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-ISO-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-Postgres-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[MDY-SQL-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-German-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-ISO-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-Postgres-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime[YMD-SQL-min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[1000,1,1-1000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[2000,1,1-2000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[2000,1,2,3,0,0,456789-2000-01-02 03:00:00.456789]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[2000,1,2,3,4,5,6-2000-01-02 03:04:05.000006]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[2000,1,2,3,4,5,678-2000-01-02 03:04:05.000678]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[2000,12,31-2000-12-31]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[3000,1,1-3000-01-01]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[max-9999-12-31 23:59:59.999999]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDatetime::test_load_datetime_binary[min-0001-01-01]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[German-max]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[German-min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_load_datetime_overflow[ISO-max]: psycopg-errors-internalerror-year-is-out-of-rang
@@ -2401,25 +2188,11 @@ expected:
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[s-max~-12-23:59:59.999999-12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[s-min~+12-00:00+12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[s-min~-10-00:00-10:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-10,20,30,40~+2:30-10:20:30.000040+02:30]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-10,20,30,40~-2-10:20:30.000040-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-10,20,30,40~0-10:20:30.000040Z]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-max~+12-23:59:59.999999+12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-max~-12-23:59:59.999999-12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-min~+12-00:00+12:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_dump_timetz[t-min~-10-00:00-10:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_load_copy: psycopg-dataerror-can-n-n-n
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[0-0,0~-12-00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[0-0,0~12-00:00--12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[0-3,0,0,456789~-2-03:00:00.456789-+02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[0-3,0,0,456789~2-03:00:00.456789--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[0-3,4,5,6~2-03:04:05.000006--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_load_timetz[0-3,4,5,6~7:8-03:04:05.000006--07:08]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[1-0,0~-12-00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[1-0,0~12-00:00--12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[1-3,0,0,456789~-2-03:00:00.456789-+02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[1-3,0,0,456789~2-03:00:00.456789--02:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestTimeTz::test_load_timetz[1-3,4,5,6~2-03:04:05.000006--02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestTimeTz::test_load_timetz[1-3,4,5,6~7:8-03:04:05.000006--07:08]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_enum::test_enum_array_dumper[0-b]: failed-on-setup-with
   tests.types.test_enum::test_enum_array_dumper[0-s]: failed-on-setup-with
