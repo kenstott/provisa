@@ -2057,6 +2057,15 @@ CREATE TABLE IF NOT EXISTS reference_documents (
     terms_note      TEXT,
     tenant_id       UUID
 );
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_status TEXT NOT NULL DEFAULT 'ready';
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_error TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_step TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_done INTEGER;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_total INTEGER;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_launch TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_progress_at TIMESTAMPTZ;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS pending_content BYTEA;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS terms_note TEXT;
 
 CREATE TABLE IF NOT EXISTS reference_document_domains (
     id          SERIAL PRIMARY KEY,
