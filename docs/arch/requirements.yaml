@@ -94212,3 +94212,36 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And the view''s lineage runs from the input table through the command to its output columns'
   stakeholders:
   - data-engineer
+- id: REQ-2227
+  value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
+    or Go code source.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
+    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
+    the same manifest from the code's exported functions and types, a host program that speaks the worker
+    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
+    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
+    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
+    detects it from the project's standard files.
+  scenario: 'Given a Rust code source whose exported functions return rows
+
+
+    When it is registered
+
+
+    Then its exports are offered as tables, commands and streams with columns from their Rust types
+
+
+    When a query reads one of its tables
+
+
+    Then the function runs in the sandbox and its rows are returned'
+  stakeholders:
+  - data-engineer

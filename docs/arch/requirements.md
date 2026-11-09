@@ -26797,3 +26797,13 @@ Maintainer 2026-11-09. A @command of a code source, in any language ([REQ-1984](
 **Code:** —
 
 **Tests:** —
+
+### REQ-2227 · Source Connectors {#REQ-2227}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-09. A Rust code source is a further language for code sources ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993), [REQ-2200](#REQ-2200)), behind the same language-neutral worker protocol, manifest, sandbox and build image ([REQ-2098](#REQ-2098)); nothing in the shared layer names Rust. As for Go, it adds a reader that prints the same manifest from the code's exported functions and types, a host program that speaks the worker protocol and returns rows as Arrow, package fetch and install through the organisation's registries, the runtime (a static binary compiled once per code hash with the code linked in and cached like an install), the sandbox profile on macOS and Linux, and the remote image. The connector build ([REQ-2221](#REQ-2221)) detects it from the project's standard files.
+
+**Code:** —
+
+**Tests:** —
