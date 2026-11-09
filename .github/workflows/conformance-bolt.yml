@@ -21,14 +21,15 @@ name: Conformance (Bolt)
 # DELETE a cleanup empties their own graph and never reaches conformance.types_fixture.
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:
         description: "Commit or branch to test (default: the dispatched one)"
         required: false
         default: ""
-  # verification calls it (verify-surface.yml), on the run's own commit.
-  workflow_call:
 
 permissions:
   contents: read
