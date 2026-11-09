@@ -37,6 +37,7 @@ from tests.integration.test_code_sources_e2e import (
     _ROLE,
     _rows,
     _sql,
+    build_provisa_wheel,
     code_source,  # noqa: F401 -- the fixture: the source, its tables registered and released
     runtime_cache,  # noqa: F401 -- the fixture
     server,  # noqa: F401 -- the fixture: an isolated server per language
@@ -65,32 +66,10 @@ def _api(srv, method: str, path: str, **kw) -> httpx.Response:
     )
 
 
-_REPO = Path(__file__).parents[2]
-
-
 @pytest.fixture(scope="module")
 def provisa_wheel(runtime_cache):  # noqa: F811
-    """This checkout's Linux provisa wheel for the image's architecture, in the build cache's
-    wheelhouse (REQ-2194): a code image's front end carries the provisa._encoders compiled into
-    it. Built as the Provisa images build theirs, from the Dockerfile's provisa-wheel stage."""
-    house = runtime_cache / "wheels"
-    subprocess.run(
-        [
-            "docker",
-            "build",
-            "--platform",
-            f"linux/{_ARCH}",
-            "--target",
-            "provisa-wheel",
-            "--output",
-            f"type=local,dest={house}",
-            str(_REPO),
-        ],
-        check=True,
-    )
-    wheels = sorted(house.glob("provisa-*.whl"))
-    assert len(wheels) == 1, wheels
-    return wheels[0]
+    """This checkout's Linux provisa wheel, in the build cache's wheelhouse (REQ-2194)."""
+    return build_provisa_wheel(runtime_cache, _ARCH)
 
 
 @pytest.fixture(scope="module")

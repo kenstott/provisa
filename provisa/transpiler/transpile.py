@@ -455,6 +455,40 @@ def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino") if changed else sql
 
 
+def _utc_wall_outputs(
+    select: exp.Select, utc_wall: dict[tuple[str, str, str], set[str]]
+) -> dict[str, set[str]]:
+    """Each FROM or JOIN item of ``select`` that holds a UTC-wall instant, by its alias, with the
+    names it exposes them under: a table's declared columns, or the bare columns a derived table
+    passes on from one -- a governed read (REQ-039) is a table inside its relation. A derived
+    table's computed or masked output is no longer the column, and is not one of them."""
+    outputs: dict[str, set[str]] = {}
+    for source in [select.args.get("from_"), *(select.args.get("joins") or [])]:
+        item = source.this if source is not None else None
+        if isinstance(item, exp.Table) and item.args.get("catalog") is not None:
+            key = (item.catalog, item.db.lower(), item.name.lower())
+            if key in utc_wall:
+                outputs[item.alias_or_name] = utc_wall[key]
+        elif isinstance(item, exp.Subquery) and isinstance(item.this, exp.Select):
+            inner = item.this
+            below = _utc_wall_outputs(inner, utc_wall)
+            only = next(iter(below)) if len(below) == 1 else ""
+            passed = {
+                expression.alias_or_name
+                for expression in inner.expressions
+                if isinstance(
+                    column := (
+                        expression.this if isinstance(expression, exp.Alias) else expression
+                    ),
+                    exp.Column,
+                )
+                and column.name in below.get(column.table or only, ())
+            }
+            if passed:
+                outputs[item.alias_or_name] = passed
+    return outputs
+
+
 def rewrite_instants_for_trino(
     sql: str, utc_wall: dict[tuple[str, str, str], set[str]]
 ) -> str:  # REQ-2050
@@ -464,8 +498,9 @@ def rewrite_instants_for_trino(
 
     ``utc_wall`` maps ``(catalog, schema, table)`` to such a table's declared-timestamptz columns
     (trino_connectors.trino_utc_wall_columns). Only the statement's outputs -- the outermost
-    SELECT's items, each UNION branch's -- that are a bare column of such a table: a predicate, a
-    join or an inner query reads the column as the connector gives it, so its pushdown stands."""
+    SELECT's items, each UNION branch's -- that are a bare column of such a table, directly or
+    through a derived table that passes it on: a predicate, a join or an inner query reads the
+    column as the connector gives it, so its pushdown stands."""
     if not utc_wall:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -474,15 +509,8 @@ def rewrite_instants_for_trino(
         selects = [s for s in tree.find_all(exp.Select) if s.find_ancestor(exp.Select) is None]
     changed = False
     for select in selects:
-        tables: dict[str, set[str]] = {}
         sources = [select.args.get("from_")] + list(select.args.get("joins") or [])
-        for source in sources:
-            table = source.this if source is not None else None
-            if not isinstance(table, exp.Table) or table.args.get("catalog") is None:
-                continue
-            key = (table.catalog, table.db.lower(), table.name.lower())
-            if key in utc_wall:
-                tables[table.alias_or_name] = utc_wall[key]
+        tables = _utc_wall_outputs(select, utc_wall)
         if not tables:
             continue
         only = next(iter(tables)) if len(sources) == 1 else None
