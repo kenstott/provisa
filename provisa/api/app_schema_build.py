@@ -118,6 +118,7 @@ def _inject_gql_required_args(tables: list[dict], gql_remote_srcs: dict) -> None
     if not gql_remote_srcs:
         return
     from provisa.compiler.naming import apply_sql_name as _asn
+    from provisa.core.parameters import canonical_name, is_parameter, parameter_name
 
     _gql_req_args: dict[tuple, list[dict]] = {}
     for _reg in gql_remote_srcs.values():
@@ -131,8 +132,16 @@ def _inject_gql_required_args(tables: list[dict], gql_remote_srcs: dict) -> None
         for _tbl in tables:
             _key = (_tbl["source_id"], _tbl["table_name"])
             _req = _gql_req_args.get(_key, [])
+            if not _req:
+                continue
+            _tbl.setdefault("columns", [])
+            # REQ-1986: one parameter is one column. A registered table already holds its remote
+            # arguments as ``_nf_`` columns; a second spelling of one is a second gRPC field whose
+            # JSON name conflicts, and protoc refuses the role's whole service.
+            _held = {canonical_name(parameter_name(c)) for c in _tbl["columns"] if is_parameter(c)}
             for _arg in _req:
-                _tbl.setdefault("columns", [])
+                if canonical_name(parameter_name({"column_name": _arg["name"]})) in _held:
+                    continue
                 _tbl["columns"].append(
                     {
                         "name": _arg["name"],
