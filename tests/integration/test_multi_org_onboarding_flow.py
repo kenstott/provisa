@@ -53,6 +53,7 @@ from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.regions import PlatformConfig
 from provisa.core.schema_admin import (
     REGISTRY_TABLES,
     local_users,
@@ -180,7 +181,13 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        types.SimpleNamespace(
+            auth={"provider": "basic"},
+            derived_roles=[],
+            # Provisioning gives a new org the platform's default grant (REQ-1922), read from the
+            # config as written; this deployment declares no regions, so the grant is empty.
+            written=types.SimpleNamespace(platform=PlatformConfig()),
+        ),
         raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same

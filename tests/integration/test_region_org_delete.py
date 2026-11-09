@@ -199,10 +199,17 @@ class _Estate:
         """The org's model (prod and dev, each declaring both regions) on the control plane, and
         what each region keeps of each environment in its store, and in Redis."""
         from provisa.core.database import Database, create_engine_from_url
+        from provisa.core.pgvector import SCHEMA as PGVECTOR_SCHEMA
         from provisa.core.repositories import region as region_repo
         from provisa.core.schema_org import metadata
 
         sync = sa.create_engine(self.url(self.cp_db, "+psycopg"))
+        with sync.begin() as conn:
+            # A fresh control plane: laying out an org's schema requires pgvector (REQ-2185), which
+            # the production path creates first and this direct create_all does not.
+            conn.execute(
+                sa.text(f'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA "{PGVECTOR_SCHEMA}"')
+            )
         for org in (self.org, self.bystander):
             for env in _ENVS:
                 with sync.begin() as conn:
