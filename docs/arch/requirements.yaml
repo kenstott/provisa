@@ -81095,7 +81095,50 @@
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: 'Node is a source type. A source holds a Node bundle (TypeScript, or JavaScript with JSDoc types); each exported function tagged with the JSDoc tag @table is offered as a table and each tagged @command as a command; untagged exports are ignored. A table''s rows are its function''s return value; the function''s parameters are the table''s parameters (a non-optional parameter is required by the source, an optional one can be made required by a steward); its columns come from the function''s TypeScript return type, or, when the element type is loose (any, unknown or a Record), from a preview; every other type that cannot be mapped is refused by name. The JSDoc text is the description. No Provisa package is imported by the bundle. An unknown tag, or a tagged function whose types cannot be mapped, is reported by name when the bundle is loaded. Each exported async generator function tagged @stream is offered as a live table: each row it yields is delivered as it arrives, on the surfaces that serve subscriptions, and its parameters and columns follow the same rules as @table. The types a tagged function refers to (its parameters, its return type and every type they reference) become types on every surface; a type that cannot be mapped is refused by name when the bundle is loaded. A function tagged @table returns a collection (an array or an iterable, synchronous or asynchronous) whose elements are the table''s rows; one that returns a single object is reported by name when the bundle is loaded. The source names its runtime: Node, Bun or Deno; a bundle''s tables, commands and streams are the same on each. A bundle is JavaScript plus TypeScript declarations carrying the tags; any language that compiles to them can be used, TypeScript being the one tested and documented. A source names its code in one of three ways: an npm package at an exact version, from a public or private registry; a Git repository at a commit or tag, with a subdirectory; or an archive uploaded to Provisa. The reference is pinned, and the content''s hash is recorded with the source. The bundle carries a lockfile (or is a single pre-bundled file); its dependencies are installed with the runtime''s frozen-lockfile mode when the bundle is loaded, not per call, and cached by content hash. Package registries are an organization setting with its own admin page: npm registries, each with a URL, an optional scope and a credential, one of which may be marked the mirror every install goes through; and Git hosts, each with a host and a credential. Every Node install uses them, for the source''s own code and for its dependencies, through configuration written into that install''s isolated directory and removed after it; credentials never reach the bundle or its cache. The public npm registry needs no setup, and a single pre-bundled file needs no install. Every field of a registry or Git host, its URL and credential included, holds what was entered and is resolved at use with the standard resolution, so any of them can be a secret reference. Installs run with install scripts disabled. The worker is sandboxed: it has no file access beyond its bundle, and its network reaches only the egress allow-list, through Deno''s permissions on Deno and an OS-level sandbox on Node and Bun. Runtimes are fetched on demand, pinned and hashed, and cached as the pgwire bundles are. Each subscription to a @stream table starts its own generator with that subscriber''s arguments; its rows go only to that subscriber, governed by the subscriber''s role, and no key is required. The types become named types as REQ-1987 states. A Git host''s credential is an HTTPS token. An uploaded archive is kept in the platform plane by its content hash. A TypeScript number is a double, and any or unknown is json. Each Provisa process runs one worker per bundle. A command is a mutation unless a steward sets it as a query.'
+  description: 'Node is a source type. A source holds a Node bundle (TypeScript, or JavaScript with JSDoc
+    types); each exported function tagged with the JSDoc tag @table is offered as a table and each tagged
+    @command as a command; untagged exports are ignored. A table''s rows are its function''s return value;
+    the function''s parameters are the table''s parameters (a non-optional parameter is required by the
+    source, an optional one can be made required by a steward); its columns come from the function''s TypeScript
+    return type[SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types are dropped; the author returns a
+    typed array. Kept here for history; do not implement against it.] , or, when the element type is loose
+    (any, unknown or a Record), from a preview [END SUPERSEDED BLOCK]; every other type that cannot be mapped
+    is refused by name. The JSDoc text is the description. No Provisa package is imported by the bundle.
+    An unknown tag, or a tagged function whose types cannot be mapped, is reported by name when the bundle
+    is loaded. Each exported async generator function tagged @stream is offered as a live table: each row
+    it yields is delivered as it arrives, on the surfaces that serve subscriptions, and its parameters and
+    columns follow the same rules as @table. The types a tagged function refers to (its parameters, its
+    return type and every type they reference) become types on every surface; a type that cannot be mapped
+    is refused by name when the bundle is loaded. A function tagged @table returns a collection (an array
+    or an iterable, synchronous or asynchronous) whose elements are the table''s rows; one that returns
+    a single object is reported by name when the bundle is loaded. The source names its runtime: Node, Bun
+    or Deno; a bundle''s tables, commands and streams are the same on each. A bundle is JavaScript plus
+    TypeScript declarations carrying the tags; any language that compiles to them can be used, TypeScript
+    being the one tested and documented. A source names its code in one of three ways: an npm package at
+    an exact version, from a public or private registry; a Git repository at a commit or tag, with a subdirectory;
+    or an archive uploaded to Provisa. The reference is pinned, and the content''s hash is recorded with
+    the source. The bundle carries a lockfile (or is a single pre-bundled file); its dependencies are installed
+    with the runtime''s frozen-lockfile mode when the bundle is loaded, not per call, and cached by content
+    hash. Package registries are an organization setting with its own admin page: npm registries, each with
+    a URL, an optional scope and a credential, one of which may be marked the mirror every install goes
+    through; and Git hosts, each with a host and a credential. Every Node install uses them, for the source''s
+    own code and for its dependencies, through configuration written into that install''s isolated directory
+    and removed after it; credentials never reach the bundle or its cache. The public npm registry needs
+    no setup, and a single pre-bundled file needs no install. Every field of a registry or Git host, its
+    URL and credential included, holds what was entered and is resolved at use with the standard resolution,
+    so any of them can be a secret reference. Installs run with install scripts disabled. The worker is
+    sandboxed: it has no file access beyond its bundle, and its network reaches only the egress allow-list,
+    through Deno''s permissions on Deno and an OS-level sandbox on Node and Bun. Runtimes are fetched on
+    demand, pinned and hashed, and cached as the pgwire bundles are. Each subscription to a @stream table
+    starts its own generator with that subscriber''s arguments; its rows go only to that subscriber, governed
+    by the subscriber''s role, and no key is required. The types become named types as REQ-1987 states.
+    A Git host''s credential is an HTTPS token. An uploaded archive is kept in the platform plane by its
+    content hash. A TypeScript number is a double, and any or unknown is json. Each Provisa process runs
+    one worker per bundle. A command is a mutation unless a steward sets it as a query. (Amended 2026-11-09,
+    NO LOOSE ROW TYPES:) Maintainer 2026-11-09: in every language (REQ-1993, REQ-2200) a table''s row type
+    is declared. A function whose row type is loose (any, unknown, a Record, a dict) is refused by name
+    when the code is loaded: its author converts to a typed array. There is no preview. A single field of
+    a typed row may still be loose, as a json column.'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -94068,15 +94111,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     tags as a code source, and those tags are the source''s tables and commands, so a new job needs no build.
     The host reads the tags and sends that manifest in the handshake; the image''s digest and code hash
     prove the image, and the script is checked by its own hash, recorded in the source''s config. Each tagged
-    function runs against the configured cluster. A table''s columns come from its tags, or from the DataFrame''s
-    schema when the script does not declare them. (Amended 2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED
-    VALUES:) Maintainer 2026-11-09: a connector can declare values for the source it creates: a default,
-    applied when the source is created and changeable by a steward, or a fixed value, shown read-only, a
-    save that changes it refused. The Spark connector defaults replication on, so a long job is built and
-    refreshed without a query. A steward with a fast script can turn replication off; queries then run the
-    script live, held to the request timeout. (Amended 2026-11-09, THE DOCS SAY WHICH TO CHOOSE:) Maintainer
-    2026-11-09: the Spark connector''s documentation covers small jobs, big jobs, replication and caching,
-    and what each means for performance and timeliness.'
+    function runs against the configured cluster. [SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types
+    are dropped. Kept here for history; do not implement against it.] A table''s columns come from its tags,
+    or from the DataFrame''s schema when the script does not declare them. [END SUPERSEDED BLOCK] (Amended
+    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: a connector can declare
+    values for the source it creates: a default, applied when the source is created and changeable by a
+    steward, or a fixed value, shown read-only, a save that changes it refused. The Spark connector defaults
+    replication on, so a long job is built and refreshed without a query. A steward with a fast script can
+    turn replication off; queries then run the script live, held to the request timeout. (Amended 2026-11-09,
+    THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09: the Spark connector''s documentation covers small
+    jobs, big jobs, replication and caching, and what each means for performance and timeliness. (Amended
+    2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer 2026-11-09: the script declares each table''s
+    row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
