@@ -108,6 +108,14 @@ def cache(tmp_path_factory):
     return tmp_path_factory.mktemp("runtime-deps")
 
 
+@pytest.fixture(autouse=True)
+def _a_call_is_bounded():
+    """A host that never answers (run 42527445052, core 6/6: every test on one runtime held the
+    lane for its 15-minute per-test bound) fails here within the minute, naming the call."""
+    with request_deadline.within(60):
+        yield
+
+
 @pytest.fixture
 def bundle(tmp_path):
     (tmp_path / "package.json").write_text(json.dumps({"type": "module", "main": "orders.js"}))

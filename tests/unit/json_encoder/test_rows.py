@@ -57,7 +57,6 @@ DRIVER_VALUES: list[tuple[Any, str | None, str]] = [
     (Decimal("1E+3"), "numeric", "convert"),
     (Decimal("12345678901234567890.123456789012345678901234567890"), "numeric", "convert"),
     (7, "bigint", "integer"),
-    (dt.time(10, 30, 0, 500000, tzinfo=dt.timezone(dt.timedelta(hours=-3))), "timetz", "convert"),
     (dt.datetime(2024, 3, 1, 12, 0, tzinfo=dt.timezone.utc), "timestamptz", "convert"),
     (
         dt.datetime(2024, 3, 1, 12, 0, tzinfo=dt.timezone(dt.timedelta(hours=5))),
@@ -95,6 +94,14 @@ def test_a_driver_value_answers_as_before(value, kind, mode):
     arrow = je.rest([row_batch([(value,)], ["v"], [kind])], columns)
     rows = je.rest(encoders.RowBatches([[(value,)]], [kind]), columns)
     assert rows == arrow
+
+
+def test_a_zoned_time_row_is_its_time_of_day_with_no_date():
+    """A row's timetz is a time of day (GraphQL's and REST's Time, REQ-2171): the date of the
+    Arrow form ``row_batch`` holds it as (ir_arrow._clocks) is no part of the value."""
+    value = dt.time(3, 4, 5, tzinfo=dt.timezone(dt.timedelta(hours=2)))
+    answer = je.rest(encoders.RowBatches([[(value,)]], ["timetz"]), _columns("convert"))
+    assert json.loads(answer[0])["data"][0]["v"] == "03:04:05+02:00"
 
 
 def test_an_int_past_arrows_is_a_number():
