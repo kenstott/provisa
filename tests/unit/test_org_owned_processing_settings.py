@@ -450,6 +450,43 @@ class TestPlatformOnlyStaysPlatformOnly:
         assert written["cdc_consumer_group_id"] == "receiver"
         assert app_state.settings_overrides == {}
 
+    @pytest.mark.parametrize(
+        "rights,body",
+        [
+            (ORG_ADMIN, {"graphql_remote": {"max_rows": 500}}),  # the org's own row limit
+            ((), {"graphql_remote": {}}),  # names no field, so asks no right
+        ],
+    )
+    async def test_a_save_with_no_deployment_field_leaves_the_config_file(
+        self, caller, app_state, monkeypatch, rights, body
+    ):
+        """The deployment's file is written only for what the deployment right was asked for."""
+        from provisa.api.admin import settings_router as router
+
+        writes: list = []
+        monkeypatch.setattr(router, "read_config", lambda: {})
+        monkeypatch.setattr(router, "config_path", lambda: "p")
+        monkeypatch.setattr(router, "write_config", lambda _p, cfg: writes.append(cfg))
+        request = caller(*rights)
+        request.json = lambda: _coro(body)
+        await router.update_settings(request)
+        assert writes == []
+
+    async def test_a_platform_admin_keeps_the_traversal_limits(
+        self, caller, app_state, monkeypatch
+    ):
+        from provisa.api.admin import settings_router as router
+
+        written: dict = {}
+        monkeypatch.setattr(router, "read_config", lambda: {})
+        monkeypatch.setattr(router, "config_path", lambda: "p")
+        monkeypatch.setattr(router, "write_config", lambda _p, cfg: written.update(cfg))
+        request = caller(*PLATFORM_ADMIN)
+        request.json = lambda: _coro({"graphql_remote": {"max_list_items": 3}})
+        await router.update_settings(request)
+        assert written["graphql_remote"] == {"max_list_items": 3}
+        assert app_state.settings_overrides == {}
+
 
 class TestAppWiring:
     def test_the_runtime_of_the_bound_org_supplies_the_rows(self, monkeypatch):
