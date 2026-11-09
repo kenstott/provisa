@@ -86868,7 +86868,9 @@ And its prod source reads the shop's database with it, while the stored source k
     TO THE TRAIL:) Maintainer 2026-11-09: provisa_services gains an audit call beside log and metric: a
     structured event the code writes to the org''s trail, attached to the request the call serves. A Spark
     script can record its application id, a link to its UI, its input paths and its row counts, so the trail
-    shows what Provisa called and points to what Spark ran.'
+    shows what Provisa called and points to what Spark ran. (Amended 2026-11-09, GO HAS THE SERVICES TOO:)
+    Maintainer 2026-11-09: Go code sources (REQ-2200) get the provisa_services module with the same calls
+    as Python and Node, including audit.'
   use_case: "A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them."
   scenario: "Given a python source scorer with settings {threshold: 0.8} whose code calls ps.settings.get('threshold') and ps.cache.set('rates', r, ttl=3600)
 
@@ -94072,7 +94074,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     asks for confirmation. Every command shares one output option (json, yaml, table) and one filter. wait
     blocks until an instance is ready or a replica is current. schema prints the config fields for a kind,
     generated from the model. Generated help, shell completion and documented exit codes come with them.
-    (Maintainer 2026-11-08.)'
+    (Maintainer 2026-11-08.) (Amended 2026-11-09, DRY RUN AND CHANGED STATEMENTS:) Maintainer 2026-11-09:
+    provisa apply --dry-run is a real server dry run: the whole model build runs in a transaction that is
+    rolled back and nothing is saved. provisa query --changed --state FILE --dir DIR runs the statement
+    files that touch tables changed since the state file, or their dependents; the explain endpoint reports
+    which tables a statement reads.'
   use_case: A CI pipeline validates a model branch, diffs it against test and applies it, then runs the same Cypher as two roles, compares the answers, and asserts that a third role is refused with the expected code. When an answer looks wrong, a developer runs provisa explain on the query and sees the exact SQL that ran.
   scenario: 'Given a running instance and a Cypher statement
     When provisa explain runs it for a role
@@ -94221,7 +94227,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     function tagged @query is identical to one tagged @command, in its signature, its arguments and how
     it is called, except that within Provisa its kind is query and not mutation, with what that kind already
     means (REQ-1156, REQ-1928): it composes in a view or a materialized view and is called once per distinct
-    argument set. A @command is a mutation.'
+    argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
+    2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
+    each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
@@ -94307,7 +94316,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     steward registers it. A new manifest updates the descriptions, the lineage and the commands on offer.
     The rows live in the warehouse and are read through a warehouse source: the manifest names the adapter
     and each model''s database, schema and relation, so the warehouse source is identified from the manifest.
-    Credentials are not in the manifest and are the warehouse source''s.'
+    Credentials are not in the manifest and are the warehouse source''s. (Amended 2026-11-09, WHERE THE
+    WAREHOUSE CREDENTIAL COMES FROM:) Maintainer 2026-11-09: when a registered warehouse source matches
+    the manifest''s adapter and database, the dbt source uses it and needs no credential. Otherwise its
+    setup form offers to create one, filled in with what the manifest knows and asking for the account or
+    host and the credential, held as any source''s credential is. dbt''s profiles file is not read. (Amended
+    2026-11-09, DBT CLOUD''S TOKEN:) Maintainer 2026-11-09: with dbt Cloud, the dbt source holds a dbt Cloud
+    API token as its credential, held as any source''s credential is: it fetches the manifest and run results
+    through dbt Cloud''s API and runs its commands through the jobs API. With dbt Core there is no service
+    to connect to: the manifest and run results are files, uploaded or read from where the team publishes
+    them, and commands run where dbt is installed. (Amended 2026-11-09, EVERYTHING THAT CAN BE A COMMAND
+    IS ONE:) Maintainer 2026-11-09: anything dbt can run is surfaced as a command: beside models, tests,
+    snapshots and seeds, also build, source freshness, and each macro through run-operation.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
@@ -94333,5 +94353,65 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     Then the descriptions, lineage and commands on offer are updated'
+  stakeholders:
+  - data-engineer
+- id: REQ-2229
+  value: Provisa receives OpenLineage events, so lineage from Airflow, Spark, dbt and Flink joins its
+    own graph with no work per tool.
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Column-Level Lineage Graph
+  feature: lineage-and-provenance-column-lineage
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Provisa accepts OpenLineage run events on an authenticated endpoint.
+    Each event''s job, inputs, outputs and column lineage facet join the lineage graph (REQ-2116): a dataset
+    that names a registered table is that table''s node, and one that does not is shown as outside the
+    model. The graph shows where each edge came from.'
+  scenario: 'Given an Airflow job that reads one registered table and writes another
+
+
+    When its OpenLineage run event arrives
+
+
+    Then the lineage graph shows an edge between the two tables through that job, marked as reported by
+    OpenLineage
+
+
+    When an event names a dataset that is not registered
+
+
+    Then it is shown as outside the model'
+  stakeholders:
+  - data-engineer
+- id: REQ-2230
+  value: Snowflake Dynamic Tables and Tasks are surfaced as tables and commands on a Snowflake source.
+  status: proposed
+  target: 2026-Q4
+  group: 12. Migration & Compatibility (Hasura)
+  category: Hasura Migration
+  feature: hasura-migration-import
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A Snowflake source offers its Dynamic Tables as tables with their
+    definitions contributing to lineage, and surfaces what can be run as commands: refreshing, suspending
+    and resuming a Dynamic Table, and executing, suspending and resuming a Task. Each is a mutation command,
+    run with the source''s credential and recorded as any command is. Nothing is registered until a steward
+    registers it.'
+  scenario: 'Given a Snowflake source with a Dynamic Table and a Task
+
+
+    When a steward views what the source offers
+
+
+    Then the Dynamic Table is offered as a table and the refresh, suspend, resume and execute operations
+    as commands
+
+
+    When a role that holds the command runs the refresh
+
+
+    Then the Dynamic Table is refreshed and the call is recorded'
   stakeholders:
   - data-engineer

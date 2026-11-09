@@ -65,9 +65,16 @@ describe("the Org Secrets nav entry", () => {
       const opens = meetsRequirement(platformAdmin, item);
       const namesPlatformRight =
         platformAdmin.includes(item.capability) ||
-        (item.orCapability !== undefined && platformAdmin.includes(item.orCapability));
+        (item.orCapability !== undefined && platformAdmin.includes(item.orCapability)) ||
+        // REQ-1576, REQ-1327: /admin/email also holds the deployment's mail transport, and names
+        // the deployment check, both platform rights together, to open for it.
+        (item.orAllOf !== undefined && item.orAllOf.every((c) => platformAdmin.includes(c)));
       expect(opens, item.to).toBe(namesPlatformRight);
-      if (dataRights.includes(item.capability) && item.orCapability === undefined) {
+      if (
+        dataRights.includes(item.capability) &&
+        item.orCapability === undefined &&
+        item.orAllOf === undefined
+      ) {
         expect(opens, item.to).toBe(false);
       }
     }
