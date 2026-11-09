@@ -874,6 +874,12 @@ def fold_catalog_into_schema(sql: str) -> str:  # REQ-1730
 # convention and has nothing to resolve against on the wire (REQ-1361).
 FLAT_NAMESPACE_SOURCES: frozenset[str] = frozenset({"sqlite"})
 
+# REQ-1671: source types with no SQLGlot dialect of their own (their statements are written as
+# PostgreSQL) whose database folds an unquoted name to UPPER CASE. A statement's own unquoted
+# column reference reads the governed relation's quoted lowercase output, so every identifier is
+# sent quoted: unquoted, SAP HANA reads ``id`` as ``ID`` ("invalid column name: ID").
+UPPER_FOLDING_SOURCES: frozenset[str] = frozenset({"saphana"})
+
 
 def strip_schema(sql: str) -> str:  # REQ-1361
     """Drop the schema segment from every table ref: "schema"."table" → "table".
