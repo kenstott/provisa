@@ -34,6 +34,10 @@ table's own limit while nothing of it has landed (``read_wait``, REQ-2224).
 A build that fails is recorded on the replica and fails the query with the build's own cause;
 the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
 not ask again until the build's retry wait (``replica_state.RetryPolicy``) has passed.
+
+Only a source with ``freshness_gate`` waits for a refresh of a replica it already holds (REQ-860,
+amended 2026-11-09). Without the guarantee the reader is answered from the current copy, and the
+refresh it asked for runs in the background.
 """
 
 # Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915, REQ-2224
@@ -462,7 +466,9 @@ async def ensure_resident(
     it never copies a table on its own thread. A build that failed fails the read
     (:class:`ReplicaBuildFailed`); it is asked for again only after
     its retry wait (``replica_state.RetryPolicy``). A read whose deadline passes while the build is still
-    running raises :class:`ReplicaBuilding`; the build goes on.
+    running raises :class:`ReplicaBuilding`; the build goes on. A source without
+    ``freshness_gate`` that holds a built replica does not wait for its refresh (REQ-860): the
+    read asks for the build and is answered from the replica it holds.
 
     REQ-2224: a table's ``read_wait`` says what a read does while nothing of it has landed: waits
     up to that long, in place of the request's timeout, or (``READ_WAIT_NO_ROWS``) asks for the
@@ -672,9 +678,24 @@ async def ensure_resident(
         resident = state_ is not None and state_["last_refresh_at"] is not None
         return _plan(source, is_stale, lambda sid: resident)
 
+    def _answers_while_refreshing(source: Any, key_: ReplicaKey, record: Any) -> bool:
+        """Whether a read of a replica past its freshness is answered from the copy it holds
+        while the refresh runs (REQ-860): the source gives no freshness guarantee and there is a
+        built copy this engine can read and the model can use. Not one a failed build left, while
+        that failure stands, retry included (REQ-1661: ``last_error`` lasts until a build
+        completes)."""
+        return (
+            not source.freshness_gate
+            and record is not None
+            and record.last_error is None
+            and record.exists_in(_store())
+            and view.serves(org_id, key_, record)
+        )
+
     retry = replica_state.retry_policy()
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     replicas_read: dict[ReplicaKey, datetime] = {}
+    refreshing = False
     # REQ-2224: each table's limit of its own on this read's wait, and those read as empty.
     own_wait: dict[ReplicaKey, float] = {}
     empty: dict[str, list[tuple[str, str]]] = {}
@@ -747,6 +768,10 @@ async def ensure_resident(
                 raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
             if live_while_building(source, t, engine.engine):
                 continue  # read live while the build runs; the build is requested, not awaited
+            if _answers_while_refreshing(source, key, record):
+                _read_from(key, record)
+                refreshing = True
+                continue
             if t.read_wait is not None and _nothing_landed(key, record):
                 if t.read_wait == READ_WAIT_NO_ROWS:
                     address = backend.replica_address(
@@ -762,9 +787,10 @@ async def ensure_resident(
                 own_wait[key] = float(t.read_wait)
             waiting.append((source, t, key))
     no_rows = NoRows(engine.dialect, empty) if empty else None
+    if waiting or refreshing or no_rows is not None:
+        replica_builds.kick(org_id)
     if not waiting and no_rows is None:
         return Residency(replicas_read=replicas_read, answered_in=answered_in)
-    replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
     asked_at = datetime.now(UTC)

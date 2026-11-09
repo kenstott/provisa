@@ -108,6 +108,11 @@ class GovernanceRefused(PermissionError):
     def __init__(self, violations: list[ValidationViolation]) -> None:
         super().__init__("; ".join(f"[{v.code}] {v.message}" for v in violations))
         self.violations = violations
+        # REQ-2222: answered by the app's PermissionError handler under this stable code.
+        self.code = "data.governance_refused"
+        self.params: dict[str, object] = {
+            "violations": [{"code": v.code, "message": v.message} for v in violations]
+        }
 
 
 def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266

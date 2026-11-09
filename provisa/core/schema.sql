@@ -1585,8 +1585,8 @@ CREATE TABLE IF NOT EXISTS org_settings (
     updated_by  TEXT
 );
 
--- REQ-1914: the config stamp of this plane -- one row per kind ('model', 'settings'), advanced by
--- trigger in the same transaction as any write to a table of that kind. The rows and the triggers
+-- REQ-1914: the config stamp of this plane -- one row per kind ('model', 'build', 'settings'),
+-- advanced by trigger in the same transaction as any write to a table of that kind. The rows and the triggers
 -- are created by provisa/core/config_stamp.py once every table exists.
 CREATE TABLE IF NOT EXISTS config_stamp (
     kind   TEXT PRIMARY KEY,

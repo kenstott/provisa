@@ -15,17 +15,21 @@ Run by .github/workflows/alpha-nightly.yml, from a clone that can push. In order
 1. A scheduled run goes on only if its cron is the one for New York's current UTC offset: the
    workflow holds one cron for each offset, because a cron is in UTC and 17:00 in New York is not
    one hour of it all year.
-2. The last alpha is the highest one, tagged or still an open release branch. When it already
-   holds main, or matches main (a shipped release merged back, or a fix cascaded to main, adds a
-   commit and changes nothing), main has not moved and the night is skipped.
-3. The next alpha number is taken above every tag and every open branch, so an alpha nobody cut
-   keeps its number.
-4. release/<version> is pushed at origin/main's commit, everything on main to that point. It is
+2. One alpha at a time: an alpha is open until it ships or is abandoned, and while one is open the
+   night is skipped and the open branch is named in the log. release_merge.py deletes a release's
+   branch in the same push that merges it to main, and abandoning an alpha deletes its branch, so
+   any release/<alpha> branch still on origin is open, tagged or not.
+3. With no alpha open, the last alpha is the highest tag. When it already holds main, or matches
+   main (a shipped release merged back, or a fix cascaded to main, adds a commit and changes
+   nothing), main has not moved and the night is skipped.
+4. The next alpha number is taken above that tag.
+5. release/<version> is pushed at origin/main's commit, everything on main to that point. It is
    a cut: no commit is made and nothing is ever forced.
 
-Prints ``version=<tag>`` or ``skip=true`` for the step's outputs. Exits 2, pushing nothing, on a
-refused push, on a release above the last alpha (alpha numbering ends at the first beta release),
-or when no alpha can be found to number from.
+Prints ``version=<tag>`` or ``skip=true`` for the step's outputs, which is why the open branch is
+named on stderr: stdout is appended to $GITHUB_OUTPUT. Exits 2, pushing nothing, on a refused
+push, on a release above the last alpha (alpha numbering ends at the first beta release), or when
+no alpha can be found to number from.
 """
 
 # Requirements: REQ-1989
@@ -76,10 +80,13 @@ def _order(version: str) -> tuple[int, int, int, int, int]:
     return int(major), int(minor), int(patch), _STAGES[stage], int(number or 0)
 
 
-def _last_alpha(repo: Path) -> tuple[str, str]:
-    """The highest alpha, tagged or open, as (version, the ref holding it)."""
-    tags = [t for t in _required(repo, "tag", "--list", "v*").split() if _RELEASE.match(t)]
-    branches = [
+def _tags(repo: Path) -> list[str]:
+    return [t for t in _required(repo, "tag", "--list", "v*").split() if _RELEASE.match(t)]
+
+
+def _branches(repo: Path) -> list[str]:
+    """The versions with a release branch on origin."""
+    return [
         b
         for b in _required(
             repo,
@@ -89,7 +96,10 @@ def _last_alpha(repo: Path) -> tuple[str, str]:
         ).split()
         if _RELEASE.match(b)
     ]
-    releases = tags + branches
+
+
+def _last_alpha(releases: list[str]) -> str:
+    """The highest alpha among ``releases``, refused when a release stands above it."""
     alphas = [v for v in releases if "-alpha." in v]
     if not alphas:
         raise NightRefused("no alpha tag or open alpha branch to number the next alpha from")
@@ -100,8 +110,7 @@ def _last_alpha(repo: Path) -> tuple[str, str]:
             f"alpha numbering ends at the first beta release, and {max(above, key=_order)} "
             f"is above the last alpha {last}"
         )
-    ref = f"refs/tags/{last}" if last in tags else f"refs/remotes/origin/release/{last}"
-    return last, ref
+    return last
 
 
 def _main_moved(repo: Path, ref: str) -> bool:
@@ -124,12 +133,19 @@ def _cut(repo: Path, version: str) -> None:
 
 
 def start(repo: Path) -> str | None:
-    """The version started tonight, or None when main has not moved."""
+    """The version started tonight, or None when an alpha is open or main has not moved."""
     _required(
         repo, "fetch", "-q", "--prune", "--tags", "origin", "+refs/heads/*:refs/remotes/origin/*"
     )
-    last, ref = _last_alpha(repo)
-    if not _main_moved(repo, ref):
+    tags = _tags(repo)
+    branches = _branches(repo)
+    last = _last_alpha(tags + branches)
+    open_alphas = sorted((b for b in branches if "-alpha." in b), key=_order)
+    if open_alphas:
+        names = ", ".join(f"release/{b}" for b in open_alphas)
+        print(f"skipping the night: an alpha is still open: {names}", file=sys.stderr)
+        return None
+    if not _main_moved(repo, f"refs/tags/{last}"):
         return None
     version = _next(last)
     _cut(repo, version)

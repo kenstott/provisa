@@ -192,3 +192,46 @@ def test_a_url_posted_back_unchanged_keeps_its_token_and_a_new_database_does_not
     assert restore_url_password("motherduck:///other", STORE) == "motherduck:///other"
     changed = "motherduck:///shop?motherduck_token=tok-new"
     assert restore_url_password(changed, STORE) == changed
+
+
+# REQ-1999 (Amended 2026-11-06, UNAVAILABLE ON DUCKDB 2.0): refused by name when it is configured,
+# on every way of configuring it, never at a first query.
+
+
+def test_building_the_motherduck_engine_on_duckdb_2_is_refused_by_name():
+    from provisa.federation import engine as engine_mod
+
+    with pytest.raises(ValueError, match=r"MotherDuck engine .*DuckDB 2\.0\.0"):
+        engine_mod.build_engine("motherduck")
+
+
+async def test_choosing_the_motherduck_engine_on_duckdb_2_is_refused_and_nothing_is_stored(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from provisa.api.admin import settings_router
+    from provisa.api.errors import ApiError
+
+    async def body():
+        return {"engine": "motherduck"}
+
+    def stored(*_a, **_k):
+        raise AssertionError("the refused choice reached the config file")
+
+    monkeypatch.setattr(settings_router, "require_deployment_settings", lambda _request: None)
+    monkeypatch.setattr(settings_router, "read_config", stored)
+    with pytest.raises(ApiError) as raised:
+        await settings_router.set_federation_engine(SimpleNamespace(json=body))  # type: ignore[arg-type]
+    assert raised.value.status_code == 400
+    assert "MotherDuck engine" in str(raised.value.detail) and "2.0.0" in str(raised.value.detail)
+
+
+def test_a_region_on_the_motherduck_engine_is_refused_on_duckdb_2():
+    from types import SimpleNamespace
+
+    from provisa.core.regions import require_engine_kind
+
+    store = SimpleNamespace(id="md", kind="motherduck")
+    with pytest.raises(ValueError, match=r"MotherDuck engine .*DuckDB 2\.0\.0"):
+        require_engine_kind("eu", store)  # type: ignore[arg-type]

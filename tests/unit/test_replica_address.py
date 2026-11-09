@@ -57,7 +57,13 @@ def engine(request, monkeypatch):
     monkeypatch.setenv("PROVISA_ENGINE_URL", "mssql://user:secret@engine-host/warehouse")
     # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
     monkeypatch.setattr(engine_module, "require_engine_extra", lambda kind: None)
-    built = build_engine(request.param)
+    # REQ-1999: build_engine refuses MotherDuck on DuckDB 2.0 (test_motherduck_engine.py says so).
+    # Where its replica goes is the engine's address rule all the same, so its builder answers.
+    built = (
+        _ENGINE_BUILDERS["motherduck"]()
+        if request.param == "motherduck"
+        else build_engine(request.param)
+    )
     monkeypatch.setattr(type(built), "materialize_store", lambda _self: "postgresql:///store")
     return built
 

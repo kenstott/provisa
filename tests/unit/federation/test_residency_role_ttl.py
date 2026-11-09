@@ -351,6 +351,7 @@ def wiring(monkeypatch):
             completed_at=built,
             current_at=built,  # never verified by a probe since its build
             last_error=None,
+            partial=False,
             exists_in=lambda store: at is not None,
         )
 
@@ -413,10 +414,11 @@ async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeyp
     import time as _time
 
     monkeypatch.setattr(_time, "time", lambda: NOW + 170)
+    # No freshness guarantee on this source: the read asks for the build and does not wait (REQ-860).
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
-    ).built == [("s", "orders")]
-    assert backend.lands == 1
+    ).built == []
+    assert backend.plans == 1
 
 
 @pytest.mark.asyncio
@@ -427,9 +429,9 @@ async def test_two_concurrent_trader_reads_share_one_land(wiring):
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
     )
-    assert backend.lands == 1 and backend.plans == 1  # one request, one build
-    # both readers waited for that one build
-    assert first.built == second.built == [("s", "orders")]
+    assert backend.plans == 1  # one request, so one build
+    # no freshness guarantee: neither reader waited for it (REQ-860)
+    assert first.built == second.built == []
 
 
 @pytest.mark.asyncio
@@ -453,10 +455,12 @@ async def test_attach_capable_but_replicate_goes_through_the_replica_gate(wiring
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []  # 200 < 360
+    assert backend.plans == 0
+    # Past the trader's floor: the replica gate asks for the build; no guarantee, no wait (REQ-860).
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
-    ).built == [("s", "orders")]
-    assert backend.lands == 1
+    ).built == []
+    assert backend.plans == 1
 
 
 @pytest.mark.asyncio
@@ -751,7 +755,10 @@ async def test_a_stale_replica_is_still_bounded_by_the_request_not_the_read_wait
     from provisa.federation.replica_state import ReplicaBuilding
 
     monkeypatch.setattr("provisa.federation.replica_builds.kick", lambda org_id: None)
-    state = _state([_tbl("orders", read_wait=30)], _Backend(), {"s/sch.orders": _st(200)})
+    gated = _src(freshness_gate=True, change_signal="ttl", cache_ttl=100)  # it waits on a refresh
+    state = _state(
+        [_tbl("orders", read_wait=30)], _Backend(), {"s/sch.orders": _st(200)}, source=gated
+    )
     with request_deadline.within(0.2):
         with pytest.raises(ReplicaBuilding):
             await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
