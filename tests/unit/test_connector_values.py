@@ -222,3 +222,63 @@ async def test_a_mutation_of_one_setting_is_held_to_the_fixed_value(
 
     assert result is refusal and seen == [changes]
     conn.execute_core.assert_not_awaited()
+
+
+def _granted(monkeypatch):
+    import provisa.api.app as app_mod
+    from tests.unit.gate_identity import grant
+
+    return grant(monkeypatch, "source_registration", state=app_mod.state)[0]
+
+
+async def test_create_source_applies_the_connectors_values_first(monkeypatch):
+    from provisa.api.admin.schema_mutation import Mutation
+    from provisa.api.admin.types import MutationResult
+
+    refusal = MutationResult(success=False, message="fixed", code="schema.connector_value_fixed")
+    seen: list[SourceInput] = []
+
+    async def refused(given):
+        seen.append(given)
+        return refusal
+
+    monkeypatch.setattr(values, "settle_on_create", refused)
+    given = _input()
+
+    assert await Mutation().create_source(_granted(monkeypatch), given) is refusal
+    assert seen == [given]
+
+
+async def test_update_source_is_held_by_the_stored_mapping(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    import provisa.api.admin._change_feed as change_feed
+    import provisa.api.admin.schema_mutation as schema_mutation
+    from provisa.api.admin.schema_mutation import Mutation
+    from provisa.api.admin.types import MutationResult
+    from provisa.core.repositories import source as source_repo
+
+    refusal = MutationResult(success=False, message="fixed", code="schema.connector_value_fixed")
+    seen: list[tuple] = []
+
+    async def refused(conn, source_id, stored, changes, new_mapping):
+        seen.append((source_id, stored, changes["cache_ttl"], new_mapping))
+        return refusal
+
+    conn = MagicMock()
+    acquire = MagicMock()
+    acquire.__aenter__ = AsyncMock(return_value=conn)
+    acquire.__aexit__ = AsyncMock(return_value=None)
+    stored = {"connector": "crm"}
+    monkeypatch.setattr(values, "fixed_refusal", refused)
+    monkeypatch.setattr(
+        schema_mutation, "_get_pool", AsyncMock(return_value=MagicMock(acquire=lambda: acquire))
+    )
+    monkeypatch.setattr(source_repo, "get", AsyncMock(return_value={"mapping": stored}))
+    monkeypatch.setattr(schema_mutation, "engine_unreachable", lambda *a: None)
+    monkeypatch.setattr(schema_mutation, "landing_ttl_refusal", AsyncMock(return_value=None))
+    monkeypatch.setattr(change_feed, "source_change_feed_refusal", AsyncMock(return_value=None))
+    given = SourceInput(id="s", type="python", cache_ttl=5, mapping_json='{"settings": {}}')
+
+    assert await Mutation().update_source(_granted(monkeypatch), given) is refusal
+    assert seen == [("s", stored, 5, {"settings": {}})]
