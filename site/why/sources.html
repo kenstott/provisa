@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/compare">Compare</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -48,9 +44,14 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Sources</span></p>
-        <h1>Seventy-seven connectors, and one of them finds the rest of your data.</h1>
+        <h1>Skip the next discussion about data ingestion.</h1>
         <p class="lead">
-          Seventy-six of them connect to a system you already know you have. The seventy-seventh
+          Every new source usually starts a pipeline project: what to copy, where to land it,
+          how to keep it current. Here, 77 connectors reach over 200 data sources where the data
+          already lives, and you copy data only when you declare a copy.
+        </p>
+        <p class="lead">
+          Seventy-seven connectors, and one of them finds the rest of your data. Seventy-six of them connect to a system you already know you have. The seventy-seventh
           is a crawler, and it tends to find the half of your estate nobody put on the
           inventory.
         </p>
@@ -98,6 +99,33 @@
           you register lands under the same row-level security, masking and relationship
           rules as the databases.
         </p>
+
+        <h2 id="code-resolvers">If nobody makes a connector, write a function</h2>
+        <p>
+          Code resolvers are the contract for integrating any data source. A Python or Node
+          function returns typed rows, and that function becomes a table. It's governed like any
+          other, with visibility, masks and row rules applied to what it returns, you can join it
+          to the rest of the model, and it's served on every language and transport. A function
+          that takes a loader gets every key of a join in one call, and filters can reach it as
+          parameters. Its code is pinned by version, commit or hash, so it is promoted with the model.
+        </p>
+        <p>
+          In production, code resolvers don't sit in the control plane. Provisa builds each one its
+          own container image, with no Docker daemon. The image holds the code at its pinned hash
+          and its dependencies on a minimal base, and it's pushed to your registry or downloaded.
+          Run it wherever it belongs, beside the data, on a GPU box or inside another network, and
+          Provisa pairs with it over mutual TLS.
+        </p>
+        <p><a class="more" href="/docs/code-sources/">How code resolvers work</a></p>
+
+        <figure class="shot">
+          <div class="shot-frame">
+            <div class="term-bar"><span></span><span></span><span></span></div>
+            <img src="/assets/graph-view.png" width="1440" height="900" loading="lazy"
+                 alt="The model explored as a live graph: domain and node labels, relationship types, and variable-length traversals across sources." />
+          </div>
+          <figcaption>The model as a live graph you can explore, showing domains, node labels and relationships across every source.</figcaption>
+        </figure>
 
         <h2>Systems that aren't databases</h2>
         <p>
@@ -200,7 +228,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -209,6 +237,9 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>

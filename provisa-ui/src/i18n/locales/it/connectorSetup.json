@@ -1,0 +1,14 @@
+{
+  "connectorSetup": {
+    "identity": "Connettore {{name}}, segue {{ref}}.",
+    "missing": "Compila host, porta, codice di abbinamento del connettore e tutti i valori richiesti.",
+    "image": "Immagine",
+    "imageHint": "L'immagine eseguita dal tuo deployment. Provisa verifica l'host in base a essa durante la connessione.",
+    "host": "Host",
+    "hostHint": "L'host che esegue l'immagine, così come Provisa lo raggiunge.",
+    "port": "Porta",
+    "pairing": "Codice di abbinamento",
+    "pairingHint": "La riga stampata dal container al primo avvio, dopo \"pairing code:\". Viene usata una sola volta e non viene conservata.",
+    "secretHint": "Il segreto dell'organizzazione da usare. Il suo valore non viene mai inserito qui."
+  }
+}

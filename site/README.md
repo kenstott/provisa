@@ -4,7 +4,7 @@ Static, framework-free landing page for provisa.dev. No build step.
 
 ```text
 site/
-  index.html            hero, interfaces, governance, sources, download, CTA + signup
+  index.html            hero, job cards, one-model list and role proof, top sources, download, FAQ
   register.html         free license registration form (REQ-1793)
   start/                one page per home-page problem card: the pain, then a five-minute quick start
                          (the hero lines link to them; each carries the home page's navigation)
@@ -22,13 +22,14 @@ site/
 
 ## Source picker
 
-The source-type block on the home page and at the top of `/why/sources` is the product's source
-picker rendered as HTML and CSS. It is generated, not typed: `scripts/gen-site-source-picker.mjs`
+The source-type block at the top of `/why/sources` is the product's source picker rendered as HTML
+and CSS, and the one-line row on the home page is a short selection from it (`HOME_ROW`). It is generated, not typed: `scripts/gen-site-source-picker.mjs`
 reads `provisa-ui/src/pages/sources/constants.ts` (types, order, categories, the hosted Postgres
 services in `managed`) and `provisa-ui/src/components/SourceLogo.tsx` (which types have a
 simple-icons mark; the rest are lettered tiles), adds the requirement-only entries and tile
 sub-lists named at the top of the script, and writes the fragment between the
-`<!-- source-picker:start -->` and `<!-- source-picker:end -->` markers of both pages. The marks
+`<!-- source-picker:start -->` and `<!-- source-picker:end -->` markers of that page, and the row
+between the `source-row` markers of the home page. The marks
 are written once to `assets/source-marks.<hash>.svg` and referenced with `<use>`.
 
 ```bash

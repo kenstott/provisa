@@ -94243,14 +94243,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
     2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
     each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
-    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
+    (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on REQ-1921 and REQ-1922: a materialized
+    view''s build runs as the org''s admin role, so that is the calling role when a build reads a table
+    through a command.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
     And a materialized view over that command with a governed table as its input
 
 
-    When the view is built as a role that cannot see a column of the input
+    When the view is built, its build running as a role that cannot see a column of the input
 
 
     Then the code reads the table as that role and the column is not available to it
@@ -94428,3 +94431,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the Dynamic Table is refreshed and the call is recorded'
   stakeholders:
   - data-engineer
+- id: REQ-2231
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing page with no in-process interface to unit test. Verified by rendering it.
+  description: 'Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one
+    job, and moves them to trying the product. It has five parts: a hero whose primary action opens a
+    live demo with no login; six job cards, each linking to its quick start; one statement of the single
+    model with the pains it removes and a same-query, two-roles proof; a short row of sources; and
+    download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a
+    why page answers opens that page.'

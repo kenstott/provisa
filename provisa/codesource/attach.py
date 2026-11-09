@@ -69,17 +69,9 @@ def attached(state: Any, table: dict) -> bool:
     from provisa.codesource.remote_sources import remote_of
     from provisa.codesource.table import export_of
 
-    # A row type typed by a preview has no declared columns for the host to serve over pgwire
-    # (names.name_tables): its rows are read through Provisa, and landed.
-    export = next(
-        (
-            e
-            for e in manifest_from_json(remote_of(mapping)["manifest"]).exports
-            if e.name == export_of(table)
-        ),
-        None,
-    )
-    if export is None or export.preview:
+    # A function its kept manifest does not have is served by no pgwire catalog: it is landed.
+    exports = manifest_from_json(remote_of(mapping)["manifest"]).exports
+    if not any(e.name == export_of(table) for e in exports):
         return False
     return answered_live(state, table)
 

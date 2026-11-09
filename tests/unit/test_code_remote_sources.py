@@ -54,7 +54,14 @@ pytestmark = pytest.mark.unit
 
 _CODE = textwrap.dedent(
     '''
-    def orders(n: int) -> list[dict]:
+    from typing import TypedDict
+
+
+    class Order(TypedDict):
+        n: int
+
+
+    def orders(n: int) -> list[Order]:
         """Orders.
 
         @table
