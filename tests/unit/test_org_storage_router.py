@@ -22,6 +22,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from fastapi.routing import APIRoute
 from sqlalchemy import select
 
 from provisa.api.admin import org_storage_router as router_mod
@@ -65,6 +66,7 @@ def app_state(admin_db, monkeypatch):
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     # The guard and the acting-org resolution belong to the request pipeline, not to this surface.
     monkeypatch.setattr(router_mod, "require_org_settings", lambda request: None)
+    monkeypatch.setattr(router_mod, "require_deployment_settings", lambda request: None)
     monkeypatch.setattr(router_mod, "require_active_org_id", lambda request: "acme")
 
     async def _flags(org_id):
@@ -99,7 +101,7 @@ _PLATFORM_PATH = "/admin/platform/orgs/{org_id}/storage"
 
 def _endpoint(path: str, method: str):
     for route in router_mod.router.routes:
-        if getattr(route, "path", None) == path and method in getattr(route, "methods", ()):
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods:
             return route.endpoint
     raise AssertionError(f"no {method} {path} on the org storage router")
 
@@ -206,7 +208,7 @@ class TestPut:
         self, app_state, admin_db
     ):
         await _org(admin_db)
-        result = await put_org_storage(OrgStorageBody(storage_url=_ORG_STORE), _REQUEST)
+        result = await put_org_storage("acme", OrgStorageBody(storage_url=_ORG_STORE), _REQUEST)
 
         # The response says only that one is set — never what it is.
         assert result == {"success": True, "org_id": "acme", "storage_url_set": True}
@@ -218,9 +220,9 @@ class TestPut:
 
     async def test_clearing_returns_the_org_to_the_platform_store(self, app_state, admin_db):
         await _org(admin_db)
-        await put_org_storage(OrgStorageBody(storage_url=_ORG_STORE), _REQUEST)
+        await put_org_storage("acme", OrgStorageBody(storage_url=_ORG_STORE), _REQUEST)
 
-        result = await put_org_storage(OrgStorageBody(storage_url=None), _REQUEST)
+        result = await put_org_storage("acme", OrgStorageBody(storage_url=None), _REQUEST)
         assert result["storage_url_set"] is False
         assert await _stored_dsn(admin_db) is None
 
@@ -230,7 +232,7 @@ class TestPut:
     ):
         await _org(admin_db)
         try:
-            result = await put_org_storage(OrgStorageBody(storage_url=bad), _REQUEST)
+            result = await put_org_storage("acme", OrgStorageBody(storage_url=bad), _REQUEST)
         except ApiError as exc:
             assert exc.status_code == 400
             assert exc.code == "org_storage.invalid_url"
