@@ -75,6 +75,8 @@ STALLED = (
     f"the scan made no progress for {STALLED_AFTER.total_seconds():g} seconds; "
     "scan the document again"
 )
+INDEX_RESTARTED = "the server restarted while the document was being indexed; retry it"
+INDEX_STALLED = f"indexing made no progress for {STALLED_AFTER.total_seconds():g} seconds; retry it"
 
 
 def _pool() -> Database:
@@ -297,10 +299,41 @@ async def give_up_on_left_behind(pool: Database, launch: str) -> None:
     async with pool.acquire() as conn:
         restarted = await queue.fail_left_behind(conn, launch, RESTARTED)
         stalled = await queue.fail_stalled(conn, STALLED_AFTER, STALLED)
+        # REQ-2185: a library document's background job is watched the same way.
+        await store.fail_indexing_left_behind(conn, launch, INDEX_RESTARTED)
+        await store.fail_indexing_stalled(conn, STALLED_AFTER, INDEX_STALLED)
     if restarted or stalled:
         log.warning(
             "term-finding scans given up on: %d left by a restart, %d stalled", restarted, stalled
         )
+
+
+async def find_terms_in(
+    pool: Database, document: store.DocumentRow, role: str, started_by: str | None
+) -> None:
+    """Look for a newly indexed document's terms (REQ-2185, ADD NOW, INDEX IN THE BACKGROUND): a
+    scan like a steward's, in the document's own domains. With no model named for term finding the
+    document stays ready, and says why its terms were not looked for."""
+    from provisa.api.app import state
+
+    try:
+        call = await model.for_role(state, role)
+    except model.ModelRefused as exc:
+        async with pool.acquire() as conn:
+            await store.set_terms_note(conn, document.id, str(exc))
+        return
+    async with pool.acquire() as conn:
+        scan_id = await queue.start_scan(
+            conn,
+            document_id=document.id,
+            document_title=document.title,
+            document_source=document.source,
+            domains=sorted(document.domains),
+            started_by=started_by,
+            model=call.name,
+            launch=this_launch(),
+        )
+    await run_scan(pool, scan_id, document.id, document.title, call)
 
 
 async def keep(state: Any) -> None:
@@ -462,6 +495,7 @@ async def start_scan(request: Request) -> dict:
                     "auth.domain_denied",
                     f"{document.title!r} is in the reference library, outside your domains",
                 )
+            library.require_ready(document)
             scan_id = await queue.start_scan(
                 conn,
                 document_id=document.id,

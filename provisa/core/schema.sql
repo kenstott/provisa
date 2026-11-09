@@ -2238,8 +2238,26 @@ CREATE TABLE IF NOT EXISTS reference_documents (
     added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     refreshed_at    TIMESTAMPTZ,
     replaced_at     TIMESTAMPTZ,
+    index_status    TEXT NOT NULL DEFAULT 'ready',
+    index_error     TEXT,
+    index_step      TEXT,
+    index_done      INTEGER,
+    index_total     INTEGER,
+    index_launch    TEXT,
+    index_progress_at TIMESTAMPTZ,
+    pending_content BYTEA,
+    terms_note      TEXT,
     tenant_id       UUID
 );
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_status TEXT NOT NULL DEFAULT 'ready';
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_error TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_step TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_done INTEGER;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_total INTEGER;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_launch TEXT;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS index_progress_at TIMESTAMPTZ;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS pending_content BYTEA;
+ALTER TABLE reference_documents ADD COLUMN IF NOT EXISTS terms_note TEXT;
 
 CREATE TABLE IF NOT EXISTS reference_document_domains (
     id          SERIAL PRIMARY KEY,

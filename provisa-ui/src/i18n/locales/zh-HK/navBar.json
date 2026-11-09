@@ -80,7 +80,7 @@
     "itemContainerRegistries": "容器登錄庫",
     "itemSparql": "SPARQL",
     "itemCatalogs": "目錄",
-    "itemReferenceLibrary": "參考資料庫",
+    "itemLibrary": "資料庫",
     "itemPlatformObservability": "平台可觀測性"
   }
 }
