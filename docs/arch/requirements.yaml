@@ -60223,66 +60223,66 @@
   description: 'Before the execute terminal runs a plan, each MATERIALIZED source the plan reads is landed
     when it has never landed, its last land failed, its cache_ttl has been outrun, or its freshness gate
     (REQ-860) says stale; a load_protected source lands only when never landed (REQ-1141). The land runs
-    through EngineBackend.materialize_pending, now on every backend: the same loaders, landing address
-    and store write face as the event loop, so both paths converge on one replica; it stamps the node
-    freshness state the event loop reads. Both paths take one per-node land lock in the process, and a
-    Snowflake REPLACE is one atomic INSERT OVERWRITE, so a boot land and a first query never interleave
-    on one replica. [SUPERSEDED by REQ-1661, 2026-09-30 -- a failed land now fails the query. Kept here
-    for history; do not implement against it.] A land that fails is logged, stamped not ok, and the read
-    proceeds on the replica as it is. [END SUPERSEDED BLOCK]
-
-
-    (Amended 2026-09-27, ROW-MATERIALIZE BYPASS-SITE AUDIT: every ENGINE-route terminal that bypasses
-    _execute_plan/_execute_plan_in_org and calls the engine directly (a streaming surface with no materializing
-    terminal) must call ALL THREE row-materialize residency functions in order -- ensure_rows_resident,
-    then pushdown_row_materialize, then ensure_resident with pk_bounds and pushed_down threaded through
-    -- not ensure_resident alone. An audit across every such bypass site found two still calling only
-    ensure_resident, carrying a stale comment claiming to already mirror the pgwire/flight fix: provisa/grpc/server.py
-    (the ENGINE-route streaming terminal) and provisa/api/airport/query.py (both its row-streaming scan
-    and its schema-only probe). Fixed to match the pattern REQ-1865 established in pgwire/server.py, api/flight/server.py
-    and api/rest/cypher_router.py. Without this, a row_materialize table reached only via JOIN through
-    the gRPC ProvisaService or the Airport/ADBC surface silently read its own still-empty replica, the same failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.
-
-
-    Also found in the SAME audit, worse than the two above: provisa/api/data/endpoint_executors.py --
-    the PRIMARY GraphQL ENGINE-route terminal, _execute_engine_standard -- called EXECUTE_ENGINE directly
-    with ZERO residency calls at all, not even ensure_resident; its two siblings, _execute_api_source
-    (two call sites: the hot-table bypass and its own Phase 2) and _execute_grpc_remote_source, called
-    ensure_resident only, the same partial gap. Since GraphQL is the primary UI query surface, an ordinary
-    GraphQL query joining a MATERIALIZED table that had never landed read an empty replica outright (not
-    just a row_materialize/key-pushdown gap). All four call sites fixed to the full three-call pattern.)
-    (Amended 2026-09-30, a failed land fails the query:) A land the query path runs before a read that
-    fails is stamped not ok (so the next query retries it) and fails the query with the land''s own cause;
-    the query never reads the stale replica. The same holds on every query-serving fetch path: a row_materialize
-    key-pushdown probe or keyed fetch (REQ-1865), an API endpoint whose expired cache must be re-fetched
-    live, and an RSS feed whose fetch or parse fails (never read as an empty feed) all raise. Reproduced
-    before the change by tests/integration/test_failed_land_fails_query_e2e.py: an RSS source whose feed
-    went down kept answering GraphQL from its last land. (Amended 2026-09-30, no partial unions and no
-    cache-read fallback:) A remote GraphQL, gRPC or OpenAPI table whose fetch fails fails the whole query;
-    its UNION branch is never dropped so the other branches answer as if complete (reproduced by tests/integration/test_failed_remote_branch_fails_union_e2e.py:
-    a UNION over a reachable and a failing remote returned the reachable rows with HTTP 200). A branch
-    is dropped only for a table the query cannot address because it supplies none of the table''s required
-    filter or path parameters, and a lone such table raises that reason. A failed read of an API endpoint''s
-    Postgres cache raises; it is never a cue to fetch the rows from REST instead. An empty cache, or a
-    cache table that does not exist (checked explicitly), is a miss filled live; the read addresses the
-    table as the cache writer does (bare on a schema-less SQLite control plane, where the former "default"-qualified
-    read failed on every query and was silently sent to REST).
-
-
-    (Amended 2026-10-01, the staleness decision is made in memory:) The decision this requirement describes
-    is a pure function of each table''s persisted last_refresh_at / last_refresh_ok and the clock, and
-    it ran on every statement of every surface with a land lock and one control-plane read per table of every source the plan reads, including a source the engine reads in place, which never lands (measured
-    on /data/sql: 2.9 ms of a 10.4 ms cached request). It is now asked in memory first. (1) A source that
-    does not federate MATERIALIZED on the bound engine is skipped with no lock and no control-plane statement
-    (`EngineBackend.pending_lands` with every source taken as stale returns nothing). (2) For a landed
-    source, the tables'' freshness state is held per process in `federation/node_freshness_view.py`: what this process last read from, or stamped into, the control plane; keyed by org and schema generation;
-    reused for at most 5 s (the registry caches'' own backstop), which is how another process''s land
-    or failed land is seen. A FRESH answer from that state leaves the source alone. A STALE or unknown
-    answer is never acted on from memory: the read takes the land locks and reads the persisted state
-    exactly as before, and the refresh itself still runs inline in the request that needs it. The rules above are unchanged: never landed, last land failed, cache_ttl outrun, the REQ-860 gate, REQ-1141
-    load protection, the REQ-1730 first-touch signal and the REQ-1865 whole-table fallback all decide
-    as they did. Overlap: REQ-1907 (per-role tolerance, proposed) changes the same decision and must take
-    its inputs from the same in-memory state.'
+    through EngineBackend.materialize_pending, now on every backend: the same loaders, landing address and
+    store write face as the event loop, so both paths converge on one replica; it stamps the node freshness
+    state the event loop reads. Both paths take one per-node land lock in the process, and a Snowflake REPLACE
+    is one atomic INSERT OVERWRITE, so a boot land and a first query never interleave on one replica. [SUPERSEDED
+    by REQ-1661, 2026-09-30 -- a failed land now fails the query. Kept here for history; do not implement
+    against it.] A land that fails is logged, stamped not ok, and the read proceeds on the replica as it
+    is. [END SUPERSEDED BLOCK] (Amended 2026-09-27, ROW-MATERIALIZE BYPASS-SITE AUDIT: every ENGINE-route
+    terminal that bypasses _execute_plan/_execute_plan_in_org and calls the engine directly (a streaming
+    surface with no materializing terminal) must call ALL THREE row-materialize residency functions in order
+    -- ensure_rows_resident, then pushdown_row_materialize, then ensure_resident with pk_bounds and pushed_down
+    threaded through -- not ensure_resident alone. An audit across every such bypass site found two still
+    calling only ensure_resident, carrying a stale comment claiming to already mirror the pgwire/flight
+    fix: provisa/grpc/server.py (the ENGINE-route streaming terminal) and provisa/api/airport/query.py (both
+    its row-streaming scan and its schema-only probe). Fixed to match the pattern REQ-1865 established in
+    pgwire/server.py, api/flight/server.py and api/rest/cypher_router.py. Without this, a row_materialize
+    table reached only via JOIN through the gRPC ProvisaService or the Airport/ADBC surface silently read
+    its own still-empty replica, the same failure class cypher_cross_engine hit over the HTTP-cypher transport
+    before that fix. Also found in the SAME audit, worse than the two above: provisa/api/data/endpoint_executors.py
+    -- the PRIMARY GraphQL ENGINE-route terminal, _execute_engine_standard -- called EXECUTE_ENGINE directly
+    with ZERO residency calls at all, not even ensure_resident; its two siblings, _execute_api_source (two
+    call sites: the hot-table bypass and its own Phase 2) and _execute_grpc_remote_source, called ensure_resident
+    only, the same partial gap. Since GraphQL is the primary UI query surface, an ordinary GraphQL query
+    joining a MATERIALIZED table that had never landed read an empty replica outright (not just a row_materialize/key-pushdown
+    gap). All four call sites fixed to the full three-call pattern.) (Amended 2026-09-30, a failed land
+    fails the query:) A land the query path runs before a read that fails is stamped not ok (so the next
+    query retries it) and fails the query with the land''s own cause; the query never reads the stale replica.
+    The same holds on every query-serving fetch path: a row_materialize key-pushdown probe or keyed fetch
+    (REQ-1865), an API endpoint whose expired cache must be re-fetched live, and an RSS feed whose fetch
+    or parse fails (never read as an empty feed) all raise. Reproduced before the change by tests/integration/test_failed_land_fails_query_e2e.py:
+    an RSS source whose feed went down kept answering GraphQL from its last land. (Amended 2026-09-30, no
+    partial unions and no cache-read fallback:) A remote GraphQL, gRPC or OpenAPI table whose fetch fails
+    fails the whole query; its UNION branch is never dropped so the other branches answer as if complete
+    (reproduced by tests/integration/test_failed_remote_branch_fails_union_e2e.py: a UNION over a reachable
+    and a failing remote returned the reachable rows with HTTP 200). A branch is dropped only for a table
+    the query cannot address because it supplies none of the table''s required filter or path parameters,
+    and a lone such table raises that reason. A failed read of an API endpoint''s Postgres cache raises;
+    it is never a cue to fetch the rows from REST instead. An empty cache, or a cache table that does not
+    exist (checked explicitly), is a miss filled live; the read addresses the table as the cache writer
+    does (bare on a schema-less SQLite control plane, where the former "default"-qualified read failed on
+    every query and was silently sent to REST). (Amended 2026-10-01, the staleness decision is made in memory:)
+    The decision this requirement describes is a pure function of each table''s persisted last_refresh_at
+    / last_refresh_ok and the clock, and it ran on every statement of every surface with a land lock and
+    one control-plane read per table of every source the plan reads, including a source the engine reads
+    in place, which never lands (measured on /data/sql: 2.9 ms of a 10.4 ms cached request). It is now asked
+    in memory first. (1) A source that does not federate MATERIALIZED on the bound engine is skipped with
+    no lock and no control-plane statement (`EngineBackend.pending_lands` with every source taken as stale
+    returns nothing). (2) For a landed source, the tables'' freshness state is held per process in `federation/node_freshness_view.py`:
+    what this process last read from, or stamped into, the control plane; keyed by org and schema generation;
+    reused for at most 5 s (the registry caches'' own backstop), which is how another process''s land or
+    failed land is seen. A FRESH answer from that state leaves the source alone. A STALE or unknown answer
+    is never acted on from memory: the read takes the land locks and reads the persisted state exactly as
+    before, [SUPERSEDED by REQ-860, 2026-11-09 -- without the freshness guarantee a held copy past its freshness
+    is answered and refreshed in the background. Kept here for history; do not implement against it.] and
+    the refresh itself still runs inline in the request that needs it. [END SUPERSEDED BLOCK] The rules
+    above are unchanged: never landed, last land failed, cache_ttl outrun, the REQ-860 gate, REQ-1141 load
+    protection, the REQ-1730 first-touch signal and the REQ-1865 whole-table fallback all decide as they
+    did. Overlap: REQ-1907 (per-role tolerance, proposed) changes the same decision and must take its inputs
+    from the same in-memory state. (Amended 2026-11-09, WITHOUT THE GUARANTEE THE READ DOES NOT WAIT:) Maintainer
+    2026-11-09 (REQ-860): a source without the freshness guarantee is landed before the read only when nothing
+    usable is held; a held copy past its freshness is answered and the refresh runs in the background.'
   use_case: 'API-backed and other unreachable sources materialize lazily: a query that arrives before
     the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
     or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.'
