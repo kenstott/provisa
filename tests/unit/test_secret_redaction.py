@@ -188,3 +188,75 @@ def test_a_moved_address_does_not_inherit_a_query_credential():
     stored = "postgresql://h/db?password=hunter2"
     moved = "postgresql://other/db"
     assert restore_url_password(moved, stored) == moved
+
+
+# odbc_connect carries a whole connection string, so the parameter is the credential. A semicolon
+# separates parameters for detection, and the separators written in the DSN stay as written.
+
+ODBC = "mssql+pyodbc:///?odbc_connect=DRIVER%3Dx%3BUID%3Du%3BPWD%3Dhunter2"
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (ODBC, "mssql+pyodbc:///"),
+        (f"{ODBC}&autocommit=true", "mssql+pyodbc:///?autocommit=true"),
+        ("postgresql://h/db?a=1;password=hunter2", "postgresql://h/db?a=1"),
+        ("postgresql://h/db?password=hunter2;a=1", "postgresql://h/db?a=1"),
+        ("postgresql://h/db?a=1;password=hunter2;b=2", "postgresql://h/db?a=1;b=2"),
+        ("postgresql://h/db?a=1;b=2&password=hunter2", "postgresql://h/db?a=1;b=2"),
+        ("postgresql://h/db?a=1;password=hunter2&b=2", "postgresql://h/db?a=1&b=2"),
+        # A raw semicolon inside the password: the tail has no name, so it is still the password.
+        (
+            "postgresql://h/db?password=hun;ter2&sslmode=require",
+            "postgresql://h/db?sslmode=require",
+        ),
+    ],
+)
+def test_an_odbc_connect_or_semicolon_credential_is_stripped(url, expected):
+    assert redact_url_password(url) == expected
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "a=1;sslmode=require",
+        "a=1;b=2&c=3",
+        "options=-c%20a%3Db;keyspace=orders",
+        "odbc_timeout=5",
+        "flag;a=1",
+    ],
+)
+def test_a_query_with_semicolons_and_no_credential_is_left_as_written(query):
+    url = f"postgresql://h/db?{query}"
+    assert redact_url_password(url) == url
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        ODBC,
+        f"{ODBC}&autocommit=true",
+        "mssql+pyodbc:///?autocommit=true&odbc_connect=DRIVER%3Dx%3BPWD%3Dhunter2",
+        "postgresql://h/db?a=1;password=hunter2",
+        "postgresql://h/db?password=hunter2;a=1",
+        "postgresql://h/db?a=1;password=hunter2;b=2",
+        "postgresql://h/db?password=hun;ter2&sslmode=require",
+        "postgresql://svc:hunter2@h:5432/db?a=1;sslpassword=s3cr3t",
+    ],
+)
+def test_an_unchanged_save_restores_the_stored_dsn_exactly(stored):
+    assert restore_url_password(redact_url_password(stored), stored) == stored
+
+
+def test_a_restored_semicolon_credential_keeps_its_separator_when_another_parameter_changed():
+    stored = "postgresql://h/db?a=1;password=hunter2"
+    assert (
+        restore_url_password("postgresql://h/db?a=2", stored)
+        == "postgresql://h/db?a=2;password=hunter2"
+    )
+
+
+def test_a_submitted_odbc_connect_wins():
+    submitted = "mssql+pyodbc:///?odbc_connect=DRIVER%3Dy"
+    assert restore_url_password(submitted, ODBC) == submitted
