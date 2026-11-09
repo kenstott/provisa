@@ -42,6 +42,7 @@ from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
+from provisa.api.data.endpoint_explain import router as explain_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
@@ -5030,6 +5031,7 @@ def create_app() -> FastAPI:
     app.include_router(redirect_file_router)  # REQ-1191
     app.include_router(signal_router)  # REQ-1149: the signal change signal's webhook
     app.include_router(dev_router)
+    app.include_router(explain_router)  # REQ-2222
     app.include_router(grpc_proxy_router)
     app.include_router(sdl_router)
 
