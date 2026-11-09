@@ -24,11 +24,18 @@ what is only on the instance apart from what would change.
 
 THE CONTRACT WITH A SCRIPT is the exit code and ``--json``:
 
-* ``0`` -- valid, reported, applied, exported or promoted. A diff that finds changes is still ``0``.
+* ``0`` -- valid, reported, applied, exported or promoted. A diff that finds changes is still
+  ``0`` unless ``--exit-code`` asks otherwise.
 * ``1`` -- refused. The code is on stderr or, under ``--json``, in ``{"refused": {...}}`` on stdout.
   An instance that could not be reached also exits ``1``, with the reason on stderr.
 * ``2`` -- the command line is wrong; or, from ``promote`` alone, PROPOSED and not applied: the
   target is protected and the change waits for an approval (``provisa env``'s contract, REQ-1504).
+* ``3`` -- ``diff --exit-code`` only: the instance has moved from the config, for a scheduled drift
+  check. What only the instance holds counts, though an apply would leave it.
+
+A SAVED PLAN is what ``diff --out`` wrote: the file as it stood, references as written, and a
+digest of what the instance held. ``apply --plan`` sends exactly that file, and refuses
+(``plan.stale``) if the instance no longer holds what the plan was made against.
 """
 
 # Requirements: REQ-2222
@@ -37,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import sys
@@ -58,6 +66,10 @@ _REFERENCE = "${"
 _STAND_INS: dict[str, Any] = {"int_parsing": 1, "float_parsing": 1.0, "bool_parsing": True}
 
 _NAMING_RULES = "naming.rules"
+
+DRIFT = 3
+USAGE = 2
+_PLAN_FORMAT = 1
 
 
 class _Refused(Exception):
@@ -374,31 +386,91 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_diff(args: argparse.Namespace) -> int:
-    """`provisa diff` -- what applying this file would change on this instance. A GET."""
-    ours = _comparable(_read(args.file), "config.invalid")
+def _held(args: argparse.Namespace) -> dict[str, dict[str, dict[str, Any]]]:
+    """What the instance holds for the org, ready to compare."""
     try:
         held = yaml.safe_load(_exported(args)) or {}
     except yaml.YAMLError as exc:
         raise _Refused("config.instance_invalid", _yaml_problem(exc)) from exc
-    report = _report(ours, _comparable(held, "config.instance_invalid"))
+    return _comparable(held, "config.instance_invalid")
+
+
+def _digest(held: dict[str, dict[str, dict[str, Any]]]) -> str:
+    """One value for what the instance holds: compared through the model, so a reordering of an
+    export is not a move."""
+    return hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()
+
+
+def _write_plan(
+    args: argparse.Namespace,
+    raw: dict[str, Any],
+    held: dict[str, dict[str, dict[str, Any]]],
+    report: dict[str, Any],
+) -> None:
+    plan = {
+        "provisa_plan": _PLAN_FORMAT,
+        "org": args.org,
+        "instance": _digest(held),
+        "config_yaml": yaml.safe_dump(raw, sort_keys=False),
+        "report": report,
+    }
+    try:
+        Path(args.out).write_text(json.dumps(plan, indent=2))
+    except OSError as exc:
+        raise _Refused("plan.unwritable", f"cannot write {args.out}: {exc.strerror}") from exc
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    """`provisa diff` -- what applying this file would change on this instance. A GET."""
+    raw = _read(args.file)
+    ours = _comparable(raw, "config.invalid")
+    held = _held(args)
+    report = _report(ours, held)
+    if args.out is not None:
+        _write_plan(args, raw, held, report)
     if args.json:
         print(json.dumps(report))
     else:
         _print_report(report)
-    return 0
+    return DRIFT if args.exit_code and report["sections"] else 0
+
+
+def _planned(args: argparse.Namespace) -> str:
+    """The file a plan saved, once the instance is shown to be what the plan was made against."""
+    try:
+        plan = json.loads(Path(args.plan).read_text())
+    except OSError as exc:
+        raise _Refused("plan.unreadable", f"cannot read {args.plan}: {exc.strerror}") from exc
+    except json.JSONDecodeError as exc:
+        raise _Refused("plan.invalid", f"{args.plan} is not a plan") from exc
+    if not isinstance(plan, dict) or plan.get("provisa_plan") != _PLAN_FORMAT:
+        raise _Refused("plan.invalid", f"{args.plan} is not a plan")
+    if plan["org"] != args.org:
+        raise _Refused("plan.wrong_org", f"the plan was made for {plan['org']}, not {args.org}")
+    if _digest(_held(args)) != plan["instance"]:
+        raise _Refused(
+            "plan.stale", "the instance has moved since this plan was made; run diff again"
+        )
+    return plan["config_yaml"]
 
 
 def _cmd_apply(args: argparse.Namespace) -> int:
     """`provisa apply` -- apply this file to the org, as the UI's import does. Whether it may is
     the server's: it validates the file and asks each section's own right."""
-    # The includes are spliced in first: the instance cannot read the paths they name here.
-    body = json.dumps({"config_yaml": yaml.safe_dump(_read(args.file), sort_keys=False)})
+    if (args.file is None) == (args.plan is None):
+        print("provisa apply: give either a file or --plan", file=sys.stderr)
+        return USAGE
+    if args.plan is not None:
+        config_yaml = _planned(args)
+    else:
+        # The includes are spliced in first: the instance cannot read the paths they name here.
+        config_yaml = yaml.safe_dump(_read(args.file), sort_keys=False)
+    body = json.dumps({"config_yaml": config_yaml})
     result = json.loads(_send(args, "POST", "/admin/import/hasura/apply", body.encode()))
     if args.json:
         print(json.dumps(result))
         return 0
-    print(f"Applied {args.file} to {args.org}")
+    print(f"Applied {args.file or args.plan} to {args.org}")
     for name, value in result["summary"].items():
         if isinstance(value, int):
             print(f"  {name} {value}")
@@ -443,9 +515,16 @@ def register(sub: Any) -> None:
         sub, "diff", _reporting(_cmd_diff), "Report what applying a file would change on an org"
     )
     diff.add_argument("file", help="Configuration file")
+    diff.add_argument("--out", default=None, help="Save a plan that apply --plan applies exactly")
+    diff.add_argument(
+        "--exit-code",
+        action="store_true",
+        help="Exit 3 when the instance has moved from the config, for a scheduled drift check",
+    )
 
     apply = _command(sub, "apply", _reporting(_cmd_apply), "Apply a configuration file to an org")
-    apply.add_argument("file", help="Configuration file")
+    apply.add_argument("file", nargs="?", default=None, help="Configuration file")
+    apply.add_argument("--plan", default=None, help="Apply exactly what diff --out saved")
 
     export = _command(
         sub, "export", _reporting(_cmd_export), "Write an org's model as a configuration file"
