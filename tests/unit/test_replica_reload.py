@@ -202,7 +202,12 @@ async def test_a_model_change_to_a_boot_org_not_named_default_is_reloaded_by_ano
     state.org_id = "acme"  # what _init_control_planes does with ORG_ID=acme
     boot.model_db, boot.tenant_db = object(), object()
     boot.model_stamp = 4
-    stored = {config_stamp.MODEL: 5, config_stamp.SETTINGS: 0, config_stamp.REPLICA: 0}
+    stored = {
+        config_stamp.MODEL: 5,
+        config_stamp.BUILD: 5,
+        config_stamp.SETTINGS: 0,
+        config_stamp.REPLICA: 0,
+    }
     rebuilt_for: list[str | None] = []
 
     async def _read(_db):

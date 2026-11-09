@@ -685,9 +685,10 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     the DuckDB engine's ``connectors``, those whose every needed extension is staged for the
     running DuckDB version and platform (the staged directory's manifest), and, by source type,
     what is missing for each type left with no connector that no reader lands either. A type
-    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. With no
-    staged extension directory DuckDB installs from its own repositories (REQ-1142) and every
-    connector stays."""
+    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. A
+    server with no staged directory counts what it installed when it started (THE SERVER TIER
+    STAGES AT START); where neither is known DuckDB installs on first use and every connector
+    stays."""
     from provisa.federation.duckdb_extensions import (
         staged_extensions,
         unstaged_needs,
@@ -714,11 +715,8 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     return kept, unreachable
 
 
-def build_duckdb_engine(
-    name: str = "duckdb", default_store: Any = None
-) -> FederationEngine:  # REQ-840 partial federator
-    from provisa.federation.duckdb_backend import DuckDBBackend
-    from provisa.federation.runtime import EngineCapability
+def duckdb_engine_connectors() -> list[Connector]:
+    """The connectors of the DuckDB engine, before what this deployment can attach is known."""
     from provisa.federation.connector_duckdb import (
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
@@ -734,7 +732,6 @@ def build_duckdb_engine(
         DuckDBGsheetsConnector,
         DuckDBIcebergConnector,
         DuckDBMongoConnector,
-        DuckDBMotherDuckConnector,
         DuckDBMssqlConnector,
         DuckDBParquetConnector,
         DuckDBPostgresConnector,
@@ -748,48 +745,56 @@ def build_duckdb_engine(
     )
     from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
+
+    return [
+        DuckDBPostgresConnector(),
+        # REQ-2100: a built code host, attached as the Postgres server it speaks as.
+        *(DuckDBCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
+        DuckDBSqliteConnector(),
+        DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
+        DuckDBCsvConnector(),
+        DuckDBParquetConnector(),
+        DuckDBFilesConnector(),
+        # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
+        DuckDBMssqlConnector(),
+        # Fabric Warehouse and Synapse SQL: the same TDS, signed in with Microsoft Entra.
+        DuckDBMssqlConnector("fabric"),
+        DuckDBMssqlConnector("synapse"),
+        DuckDBMongoConnector(),
+        DuckDBSnowflakeConnector(),
+        # REQ-1998: md:<database>, where MotherDuck's extension loads on this DuckDB (below).
+        DuckDBBigQueryConnector(),
+        DuckDBFirebirdConnector(),
+        DuckDBGsheetsConnector(),
+        DuckDBAirportConnector(),
+        DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
+        # REQ-1867: a Databricks source read in place when its federation hints ask for it
+        DuckDBDatabricksIcebergConnector(),
+        DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
+        # core `httpfs` + read_parquet of ClickHouse's HTTP interface, rewritten per query (REQ-899)
+        DuckDBClickHouseConnector(),
+        # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
+        DuckDBSharepointConnector(),
+        DuckDBSalesforceConnector(),  # REQ-1946
+        DuckDBServicenowConnector(),  # REQ-1954
+        DuckDBJiraConnector(),  # REQ-2069
+        DuckDBCloudopsConnector(),  # REQ-1947
+        DuckDBGovdataConnector(),  # REQ-540: AskAmerica
+        DuckDBSplunkConnector(),
+        # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
+        *load_custom_connectors("duckdb"),
+    ]
+
+
+def build_duckdb_engine(
+    name: str = "duckdb", default_store: Any = None
+) -> FederationEngine:  # REQ-840 partial federator
+    from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
+    from provisa.federation.duckdb_backend import DuckDBBackend
+    from provisa.federation.runtime import EngineCapability
     from provisa.federation.duckdb_extensions import motherduck_reader_missing
 
-    connectors, unreachable = _attachable(
-        [
-            DuckDBPostgresConnector(),
-            # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-            *(DuckDBCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
-            DuckDBSqliteConnector(),
-            DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
-            DuckDBCsvConnector(),
-            DuckDBParquetConnector(),
-            DuckDBFilesConnector(),
-            # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
-            DuckDBMssqlConnector(),
-            # Fabric Warehouse and Synapse SQL: the same TDS, signed in with Microsoft Entra.
-            DuckDBMssqlConnector("fabric"),
-            DuckDBMssqlConnector("synapse"),
-            DuckDBMongoConnector(),
-            DuckDBSnowflakeConnector(),
-            # REQ-1998: md:<database>, where MotherDuck's extension loads on this DuckDB (below).
-            DuckDBBigQueryConnector(),
-            DuckDBFirebirdConnector(),
-            DuckDBGsheetsConnector(),
-            DuckDBAirportConnector(),
-            DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
-            # REQ-1867: a Databricks source read in place when its federation hints ask for it
-            DuckDBDatabricksIcebergConnector(),
-            DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
-            # core `httpfs` + read_parquet of ClickHouse's HTTP interface, rewritten per query (REQ-899)
-            DuckDBClickHouseConnector(),
-            # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
-            DuckDBSharepointConnector(),
-            DuckDBSalesforceConnector(),  # REQ-1946
-            DuckDBServicenowConnector(),  # REQ-1954
-            DuckDBJiraConnector(),  # REQ-2069
-            DuckDBCloudopsConnector(),  # REQ-1947
-            DuckDBGovdataConnector(),  # REQ-540: AskAmerica
-            DuckDBSplunkConnector(),
-            # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
-            *load_custom_connectors("duckdb"),
-        ]
-    )
+    connectors, unreachable = _attachable(duckdb_engine_connectors())
     # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH): attached where
     # MotherDuck's extension loads on this DuckDB; where it does not, no reader in this deployment
     # lands it either, so it is unreachable, naming what is missing.
@@ -2053,6 +2058,11 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     key = (name or configured_engine_kind()).lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
         raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
+    from provisa.core.engine_kinds import unavailable_engine_kind
+
+    unavailable = unavailable_engine_kind(key)
+    if unavailable is not None:
+        raise ValueError(unavailable)
     # Complete the reach so the runtime engine's connectors include every configurable type (REQ-947):
     # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
     # resolve landable sources from the registry directly rather than synthesizing per call.

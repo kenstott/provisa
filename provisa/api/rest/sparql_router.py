@@ -107,6 +107,48 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
     )
 
 
+async def compiled_query(query: str, surface: Any, role_id: str, state: Any) -> Any:
+    """``(compiled, vocabulary, graph)`` for a SPARQL query under the role, or the refusal."""
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.compiler import compile_sparql
+
+    ctx = surface.context
+    label_map = _build_label_map(ctx, role_id, state)
+    # REQ-2163: SPARQL lowers its RDFS/OWL/SKOS patterns to ontology._axioms, a table SQL alone
+    # serves and no Cypher label, so it reads through the map that holds the SQL-only tables.
+    graph = label_map.with_sql_only()
+    try:
+        vocab = await vocabulary_for(state, role_id, ctx, label_map)
+        return compile_sparql(query, vocab, graph), vocab, graph
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+
+
+def semantic_statement(  # REQ-2135, REQ-2222
+    compiled: Any, graph: Any, surface: Any, role_id: str, state: Any
+) -> tuple[str, Any] | Response:
+    """The semantic SQL a compiled query hands the one pipeline and its graph variables, or the
+    refusal. Its one lowering: the route runs it, and an EXPLAIN stops here (REQ-2222)."""
+    from provisa.api.rest.cypher_router import access_violations
+    from provisa.compiler.sql_rewrite import make_semantic_sql
+    from provisa.gql.graph_rewriter import apply_graph_rewrites
+    from provisa.gql.translator import cypher_to_sql
+    from provisa.gql.translator_types import CypherTranslateError
+
+    assert compiled.ast is not None
+    try:
+        sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, graph, {})
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, graph)
+    semantic_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), surface.context)
+    assert not ordered_params, "a SPARQL statement binds no parameters"
+    refusal = access_violations(semantic_sql, surface, role_id, state)
+    if refusal is not None:
+        return refusal
+    return semantic_sql, graph_vars
+
+
 @router.api_route("/data/sparql", methods=["GET", "POST"])
 async def sparql_query(request: Request) -> Response:  # REQ-2135
     """Answer a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE over the semantic model, for the
@@ -115,20 +157,14 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     from provisa.api.rest.cypher_router import (
         _dict_rows,
         _run_plan,
-        access_violations,
         statement_stats,
     )
     from provisa.api.role_surface import role_surface
     from provisa.cache.middleware import build_cache_headers
     from provisa.compiler.directives import cache_hint_for, request_cache_hint
     from provisa.executor import stats as query_stats
-    from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.gql.assembler import assemble_rows, take_cut
-    from provisa.gql.graph_rewriter import apply_graph_rewrites
-    from provisa.gql.translator import cypher_to_sql
-    from provisa.gql.translator_types import CypherTranslateError
     from provisa.pgwire._pipeline import _govern_and_route_compiled
-    from provisa.sparql_query.compiler import compile_sparql
     from provisa.sparql_query.results import (
         NotAcceptable,
         negotiate,
@@ -147,19 +183,14 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         return cypher_error(
             503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
         )
-    ctx = surface.context
-    label_map = _build_label_map(ctx, role_id, state)
-    # REQ-2163: SPARQL lowers its RDFS/OWL/SKOS patterns to ontology._axioms, a table SQL alone
-    # serves and no Cypher label, so it reads through the map that holds the SQL-only tables.
-    graph = label_map.with_sql_only()
+    made = await compiled_query(query, surface, role_id, state)
+    if isinstance(made, Response):
+        return made
+    compiled, vocab, graph = made
     try:
-        vocab = await vocabulary_for(state, role_id, ctx, label_map)
-        compiled = compile_sparql(query, vocab, graph)
         media, fmt = negotiate(request.headers.get("accept"), compiled.form)
     except NotAcceptable as exc:
         return cypher_error(406, "sparql.not_acceptable", str(exc), reason=str(exc))
-    except CypherTranslateError as exc:
-        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
 
     # REQ-544: the query's `# @provisa cache` opt-in, its x-provisa-cache headers and its
     # Cache-Control header; two that disagree are refused (400), naming them.
@@ -176,17 +207,10 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     cache_entry = None
     rows: list[dict] = [compiled.empty_row] if compiled.empty_row is not None else []
     if not compiled.empty:
-        assert compiled.ast is not None
-        try:
-            sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, graph, {})
-        except CypherTranslateError as exc:
-            return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
-        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, graph)
-        semantic_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
-        assert not ordered_params, "a SPARQL statement binds no parameters"
-        refusal = access_violations(semantic_sql, surface, role_id, state)
-        if refusal is not None:
-            return refusal
+        lowered = semantic_statement(compiled, graph, surface, role_id, state)
+        if isinstance(lowered, Response):
+            return lowered
+        semantic_sql, graph_vars = lowered
         try:
             # The one pipeline: governed whole (REQ-264's relationship guard, the role's rights,
             # masks and row filters), routed, executed and audited as every read is.

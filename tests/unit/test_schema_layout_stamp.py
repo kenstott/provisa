@@ -51,6 +51,16 @@ def ran(monkeypatch):
     return steps
 
 
+def test_the_digest_follows_what_the_build_ignores(monkeypatch):
+    """The trigger function is replaced only when the layout runs again, and the layout runs again
+    only when its digest changes (REQ-1914)."""
+    from provisa.core import config_stamp
+
+    laid_out = layout_digest(SCHEMA_SQL, AUDIT_SCHEMA_SQL)
+    monkeypatch.setattr(config_stamp, "NOT_READ_BY_THE_BUILD", {"data_products": ("status",)})
+    assert layout_digest(SCHEMA_SQL, AUDIT_SCHEMA_SQL) != laid_out
+
+
 def _lay_out(pool, script: str = SCHEMA_SQL) -> bool:
     return asyncio.run(org_provisioning.lay_out_schema(pool, script, ORG))
 
