@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import socket
 import struct
+import time
 
 import httpx
 import pytest
@@ -30,7 +31,9 @@ from tests.port_lease import lease_ports
 
 pytestmark = [pytest.mark.integration]
 
-_ANALYST = "analyst"
+# "analyst" itself is a standard role, which a config file cannot define (REQ-2155): this one
+# inherits from it.
+_ANALYST = "ledger_analyst"
 
 _CODE = {
     "ledger/ledger.py": r'''
@@ -69,6 +72,11 @@ class Outcome:
 def orders() -> list[Order]:
     """@table"""
     return [Order(1, "emea", "s1"), Order(2, "amer", "s2")]
+
+
+def vault() -> list[Order]:
+    """@table"""
+    return [Order(7, "apac", "v7")]
 
 
 def _messages(sock):
@@ -140,6 +148,11 @@ def read_lean(orders: TableRef[Lean]) -> list[Outcome]:
 def read_secret(orders: TableRef[Secret]) -> list[Outcome]:
     """@query"""
     return [_read(orders)]
+
+
+def read_whole(orders: TableRef[Order]) -> list[Outcome]:
+    """@query"""
+    return [_read(orders)]
 ''',
 }
 
@@ -164,7 +177,8 @@ def server(tmp_path_factory, minted_port):
         {
             "id": _ANALYST,
             "description": "Test role.",
-            "capabilities": ["query_development", "full_results"],
+            "parents": ["analyst"],
+            "capabilities": ["full_results"],
             "domain_access": ["*"],
         }
     ]
@@ -223,19 +237,38 @@ def ledger(server):
         f'createSource(input: {{id: "ledger", type: "python", host: "", port: 0, database: "", '
         f"cacheTtl: 300, mappingJson: {json.dumps(json.dumps(mapping))}}})",
     )
-    columns = [
-        _column("id", "bigint", _ROLE, _ANALYST),
-        _column("region", "text", _ROLE, _ANALYST),
-        _column("secret", "text", _ROLE),
-    ]
+    # A view is built as the organisation's administrator (mv.governed_build), so "vault" grants
+    # its secret to a role that is not that administrator's ancestor.
+    for table, secret_reader in (("orders", _ROLE), ("vault", _ANALYST)):
+        columns = [
+            _column("id", "bigint", _ROLE, _ANALYST),
+            _column("region", "text", _ROLE, _ANALYST),
+            _column("secret", "text", secret_reader),
+        ]
+        registered = _admin(
+            server,
+            'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
+            f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
+        )
+        _admin(server, release_field(registered_id(registered["message"])))
+    for function in ("read_lean", "read_secret", "read_whole"):
+        _command(server, function)
+
+
+@pytest.fixture(scope="module")
+def vault_digest(server, ledger):
+    """A materialized view over a @query whose input is the governed table "vault", built."""
+    sql = "SELECT r.status, r.body FROM read_whole('fx.vault') AS r"
+    columns = [_column("status", "text", _ROLE, _ANALYST), _column("body", "text", _ROLE, _ANALYST)]
     registered = _admin(
         server,
-        'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
-        f'tableName: "orders", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
+        'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
+        f'tableName: "vault_digest", alias: "vault_digest", viewSql: {json.dumps(sql)}, '
+        f"materialize: true, mvRefreshInterval: 3600, columns: [{', '.join(columns)}]}})",
     )
     _admin(server, release_field(registered_id(registered["message"])))
-    for function in ("read_lean", "read_secret"):
-        _command(server, function)
+    refreshed = _admin(server, 'refreshMv(mvId: "view-vault_digest")')
+    assert refreshed["success"], refreshed
 
 
 def _call(srv, role: str, sql: str) -> dict:
@@ -274,6 +307,59 @@ def test_the_read_composes_inline_with_a_where_clause(server, ledger):
         server, _ANALYST, "SELECT r.status FROM read_lean('fx.orders') AS r WHERE r.status = 'ok'"
     )
     assert row == {"status": "ok"}
+
+
+def test_the_input_is_readable_by_a_role_granted_its_every_column(server, ledger):
+    row = _call(server, _ANALYST, "SELECT * FROM read_whole('fx.vault')")
+    assert row["status"] == "ok", row
+    assert json.loads(row["body"]) == [{"id": "7", "region": "apac", "secret": "v7"}]
+
+
+def test_a_view_built_as_a_role_that_cannot_see_a_column_reads_as_that_role(server, vault_digest):
+    """The reader here holds the column, so a refusal can only be what the build stored: the code
+    ran as the administrator, which does not."""
+    deadline = time.monotonic() + 300
+    while True:
+        response = httpx.post(
+            f"{server.base_url}/data/sql",
+            json={"sql": "SELECT status, body FROM vault_digest"},
+            headers={"X-Provisa-Role": _ANALYST},
+            timeout=server.request_timeout + 120,
+        )
+        rows = response.json()["data"]["sql"] if response.status_code == 200 else []
+        if rows and rows[0]["status"] == "refused":
+            break
+        assert time.monotonic() < deadline, f"{response.text}\n{server.dump_stderr_debug()[-6000:]}"
+        time.sleep(2)
+    assert len(rows) == 1, rows
+    assert "secret" in rows[0]["body"]
+
+
+def test_the_views_lineage_runs_from_the_input_through_the_command(server, vault_digest):
+    response = httpx.get(
+        f"{server.base_url}/admin/lineage/federation",
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    graph = response.json()
+    outputs = {
+        n["column"]: n["id"]
+        for n in graph["nodes"]
+        if (n["relation"] or "").endswith("vault_digest")
+    }
+    assert set(outputs) == {"status", "body"}, graph["nodes"]
+    for output in outputs.values():
+        reached, commands, frontier = set(), set(), [output]
+        while frontier:
+            at = frontier.pop()
+            for edge in graph["edges"]:
+                if edge["target"] == at and edge["source"] not in reached:
+                    reached.add(edge["source"])
+                    frontier.append(edge["source"])
+                    commands |= {o["name"] for o in edge["ops"] if o["kind"] == "command"}
+        assert "fx.vault.id" in reached, reached
+        assert "read_whole" in commands, commands
 
 
 def test_the_listener_refuses_a_wrong_token(server, ledger, minted_port):
