@@ -94466,7 +94466,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     OPENLINEAGE:) Maintainer 2026-11-09: the demo''s words also say that a team with Flink, Airflow or another
     tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver (REQ-2229). (Amended
     2026-11-09, DBT BUILDS IT, PROVISA DELIVERS IT:) Maintainer 2026-11-09: the demo''s main thread is that
-    dbt builds a model and Provisa delivers it as a governed data product.'
+    dbt builds a model and Provisa delivers it as a governed data product. (Amended 2026-11-09, A PRODUCT
+    INHERITS THE DOORS AND THE RULES:) Maintainer 2026-11-09: the demo shows that the data product built
+    from a dbt model inherits every access method Provisa offers (the APIs, the SQL drivers and the rest)
+    and every access control, with nothing added in dbt.'
   scenario: 'Given the dbt demo
 
 
