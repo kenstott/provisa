@@ -131,7 +131,11 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const entry = (fields.code_entry ?? "").trim();
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();
-  const settings = settingsOf(fields.code_settings ?? "");
+  // A connector's source keeps its values whole: one may be multi-line text.
+  const held = fields.code_connector ? { connector: fields.code_connector } : {};
+  const settings = fields.code_connector
+    ? (JSON.parse(fields.code_connector_settings || "{}") as Record<string, unknown>)
+    : settingsOf(fields.code_settings ?? "");
   // REQ-2131: a mapping that names no workers runs one, so one is not written.
   const workers = Number((fields.code_workers ?? "").trim() || "1");
   const built =
@@ -153,6 +157,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
     ...(Object.keys(settings).length ? { settings } : {}),
     ...(workers !== 1 ? { workers } : {}),
     ...built,
+    ...held,
   });
 }
 
@@ -170,6 +175,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     mode?: string;
     remote?: Record<string, unknown>;
     content_hash?: string;
+    connector?: string;
   };
   const code = m.code ?? {};
   const secrets = Array.isArray(m.secrets)
@@ -199,9 +205,14 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_entry: m.entry ?? "",
     code_secrets: Object.keys(secrets).length ? JSON.stringify(secrets) : "",
     code_llm_cap: m.llm?.cap_usd === undefined ? "" : String(m.llm.cap_usd),
-    code_settings: Object.entries(m.settings ?? {})
-      .map(([name, value]) => `${name} = ${String(value)}`)
-      .join("\n"),
+    code_settings: m.connector
+      ? ""
+      : Object.entries(m.settings ?? {})
+          .map(([name, value]) => `${name} = ${String(value)}`)
+          .join("\n"),
+    ...(m.connector
+      ? { code_connector: m.connector, code_connector_settings: JSON.stringify(m.settings ?? {}) }
+      : {}),
     // REQ-2131: a mapping that names no workers runs one.
     code_workers: String(m.workers ?? 1),
     code_mode: m.mode ?? "dev",

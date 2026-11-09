@@ -9,6 +9,7 @@
     "port": "連接埠",
     "pairing": "配對碼",
     "pairingHint": "容器首次啟動時在 \"pairing code:\" 後列印的那一行。只使用一次，不會保留。",
-    "secretHint": "要使用的組織密鑰。其值絕不在此處輸入。"
+    "secretHint": "要使用的組織密鑰。其值絕不在此處輸入。",
+    "fixedHint": "由此連接器設定，無法更改。"
   }
 }

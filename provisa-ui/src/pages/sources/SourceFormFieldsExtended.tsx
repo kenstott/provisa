@@ -47,7 +47,8 @@ import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES } from "./codeSource";
-import { ConnectorSetupFields } from "./ConnectorSetupFields";
+import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
+import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -85,6 +86,7 @@ export function SourceFormFieldsExtended({
   authFields,
   setAuthFields,
   connector,
+  heldBy,
   editingSourceId,
   essential,
   cdc,
@@ -686,6 +688,9 @@ export function SourceFormFieldsExtended({
           sourceId={editingSourceId ?? undefined}
         />
       )}
+      {heldBy && (
+        <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
+      )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
       {form.type === JDBC_SOURCE && ( // REQ-2191
@@ -894,7 +899,11 @@ export function SourceFormFieldsExtended({
           whose tables land must state its Cache TTL. */}
       {(!essential || landsWithTtl) && (
         <FormSection id="load">
-          <SourceLoadManagementPanel form={form} setForm={setForm} />
+          <SourceLoadManagementPanel
+            form={form}
+            setForm={setForm}
+            fixed={fixedFormKeys(connector ?? heldBy)}
+          />
         </FormSection>
       )}
       {!essential && (

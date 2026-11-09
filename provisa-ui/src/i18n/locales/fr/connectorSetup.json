@@ -9,6 +9,7 @@
     "port": "Port",
     "pairing": "Code d'appairage",
     "pairingHint": "La ligne affichée par le conteneur lors de son premier démarrage, après \"pairing code:\". Elle est utilisée une seule fois et n'est pas conservée.",
-    "secretHint": "Le secret de l'organisation à utiliser. Sa valeur n'est jamais saisie ici."
+    "secretHint": "Le secret de l'organisation à utiliser. Sa valeur n'est jamais saisie ici.",
+    "fixedHint": "Défini par ce connecteur. Cette valeur ne peut pas être modifiée."
   }
 }

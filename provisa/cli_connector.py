@@ -49,7 +49,18 @@ if (
 ):  # the config models are imported when a command runs: `provisa --help` stays quick
     from pydantic import ValidationError
 
-    from provisa.core.models import ConnectorConfig, ConnectorRequirement
+    from provisa.core.models import ConnectorConfig, ConnectorRequirement, ConnectorSetting
+
+#: The project's standard file (REQ-2221), at its root with its icon beside it.
+_STANDARD_FILE = "connector.yaml"
+#: An icon's media type, by the extension of its file.
+_ICON_TYPES = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
 
 #: What a standard project of each language has at its root.
 _STANDARD_FILES = {
@@ -169,6 +180,153 @@ def _runtime(language: str, root: Path) -> str:
     return found[0] if found else "node"
 
 
+class _RequireValues:
+    """What the standard file says of one ``@requires`` value."""
+
+    def __init__(self, multiline: bool, default: Any, fixed: Any) -> None:
+        self.multiline, self.default, self.fixed = multiline, default, fixed
+
+
+class _StandardFile:
+    """The project's ``connector.yaml``, read and held to its own rules."""
+
+    def __init__(
+        self,
+        description: str,
+        icon: str,
+        requires: dict[str, _RequireValues],
+        settings: list[ConnectorSetting],
+    ) -> None:
+        self.description, self.icon, self.requires, self.settings = (
+            description,
+            icon,
+            requires,
+            settings,
+        )
+
+
+def _regular_file(root: Path, name: str) -> bool:
+    """Whether ``name`` is a file of the project itself: a link could name anything on this
+    machine, and what is read here is published in the block."""
+    path = root / name
+    if path.is_symlink():
+        raise _Refused(f"{_STANDARD_FILE}: {name} is a symbolic link; keep the file itself here")
+    return path.is_file()
+
+
+def _icon_uri(root: Path, name: str) -> str:
+    """The icon the file names, beside it, as a data: URI."""
+    import base64
+
+    from provisa.core.models import CONNECTOR_ICON_MAX
+
+    if Path(name).name != name or name in (".", ".."):
+        raise _Refused(f"{_STANDARD_FILE}: icon {name} is not a file beside it")
+    media = _ICON_TYPES.get(Path(name).suffix.lower())
+    if media is None:
+        raise _Refused(f"{_STANDARD_FILE}: icon {name} is not one of {', '.join(_ICON_TYPES)}")
+    if not _regular_file(root, name):
+        raise _Refused(f"{_STANDARD_FILE}: icon {name} is not in the project")
+    uri = f"data:{media};base64,{base64.b64encode((root / name).read_bytes()).decode()}"
+    if len(uri) > CONNECTOR_ICON_MAX:
+        raise _Refused(f"{_STANDARD_FILE}: icon {name} is over {CONNECTOR_ICON_MAX} bytes encoded")
+    return uri
+
+
+def _read_standard_file(root: Path) -> _StandardFile | None:
+    """The project's standard file; None when it has none, which builds as before. A file that
+    cannot be used is refused saying where. Tables and commands are the code's tags, not this."""
+    from pydantic import BaseModel, ConfigDict, ValidationError
+
+    from provisa.core.models import ConnectorSetting
+
+    class _Require(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        multiline: bool = False
+        default: Any = None
+        fixed: Any = None
+
+    class _Setting(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        default: Any = None
+        fixed: Any = None
+
+    class _File(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        description: str = ""
+        icon: str | None = None
+        requires: dict[str, _Require] = {}
+        settings: dict[str, _Setting] = {}
+
+    if not _regular_file(root, _STANDARD_FILE):
+        return None
+    try:
+        raw = yaml.safe_load((root / _STANDARD_FILE).read_text())
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f" (line {mark.line + 1})" if mark else ""
+        raise _Refused(f"{_STANDARD_FILE} is not valid YAML{where}") from exc
+    if not isinstance(raw, dict):
+        raise _Refused(f"{_STANDARD_FILE} is not a mapping")
+    try:
+        read = _File.model_validate(raw)
+        settings = [
+            ConnectorSetting(name=name, default_value=given.default, fixed_value=given.fixed)
+            for name, given in read.settings.items()
+        ]
+    except ValidationError as exc:
+        raise _Refused(f"{_STANDARD_FILE}: {_problems(exc)}") from exc
+    for name, given in read.requires.items():
+        for kind, value in (("default", given.default), ("fixed", given.fixed)):
+            if value is not None and not isinstance(value, str):
+                raise _Refused(f"{_STANDARD_FILE}: requires.{name}.{kind} is text; quote it")
+    return _StandardFile(
+        read.description.strip(),
+        _icon_uri(root, read.icon) if read.icon else "",
+        {n: _RequireValues(g.multiline, g.default, g.fixed) for n, g in read.requires.items()},
+        settings,
+    )
+
+
+def _with_file_values(
+    requires: list[ConnectorRequirement], standard: _StandardFile
+) -> list[ConnectorRequirement]:
+    """The code's ``requires`` carrying what the file says of them; the file names only those."""
+    from pydantic import ValidationError
+
+    from provisa.core.models import ConnectorRequirement
+
+    declared = {r.name for r in requires}
+    unknown = sorted(set(standard.requires) - declared)
+    if unknown:
+        raise _Refused(
+            f"{_STANDARD_FILE}: requires names {', '.join(unknown)}, which the code does not "
+            f"@requires (it declares {', '.join(sorted(declared)) or 'none'})"
+        )
+    out = []
+    for r in requires:
+        given = standard.requires.get(r.name)
+        if given is None:
+            out.append(r)
+            continue
+        try:
+            out.append(
+                ConnectorRequirement(
+                    name=r.name,
+                    secret=r.secret,
+                    multiline=given.multiline,
+                    default_value=given.default,
+                    fixed_value=given.fixed,
+                )
+            )
+        except ValidationError as exc:
+            raise _Refused(f"{_STANDARD_FILE}: requires.{r.name}: {_problems(exc)}") from exc
+    return out
+
+
 def _build_and_push(
     entry: ConnectorConfig,
     root: Path,
@@ -176,11 +334,13 @@ def _build_and_push(
     workdir: Path,
     registry: dict[str, str],
     package_registries: list[Any],
+    standard: _StandardFile | None = None,
 ) -> tuple[str, list[ConnectorRequirement], str]:
     """The code source image build (REQ-2098) on the project at ``root``: its digest once pushed,
     what its code declares it requires, and the hash of that code. With no server there are no
     organization package registries: ``package_registries`` are the indexes the operator named
-    for private dependencies (:func:`_package_registries`); the rest come from the public ones."""
+    for private dependencies (:func:`_package_registries`); the rest come from the public ones.
+    ``standard`` is held to what the code declares before anything is built or pushed."""
     from provisa.codesource import image_build, oci
     from provisa.codesource.install import DirectoryCode
     from provisa.codesource.languages import LANGUAGES
@@ -199,6 +359,11 @@ def _build_and_push(
         language, runtime, {"kind": "directory", "path": str(root)}, None, None, None
     )
     prepared = LANGUAGES[language].prepare()(entry.name, config, code, None, ctx)
+    requires = [
+        ConnectorRequirement(name=r.name, secret=r.secret) for r in prepared.manifest.requires
+    ]
+    if standard is not None:
+        requires = _with_file_values(requires, standard)
     plan = image_build.Plan(
         source_id=entry.name,
         language=language,
@@ -218,9 +383,6 @@ def _build_and_push(
     digest = oci.Registry(host, registry.get("username"), registry.get("password")).push(
         repository, built.tag, built.image
     )
-    requires = [
-        ConnectorRequirement(name=r.name, secret=r.secret) for r in prepared.manifest.requires
-    ]
     return digest, requires, prepared.content_hash
 
 
@@ -239,8 +401,9 @@ def _build(
             _run_build_command(entry.build_command, checkout)
         root = _project_root(checkout, entry.path)
         language = _detect_language(root, entry.path)
+        standard = _read_standard_file(root)
         digest, requires, code_hash = _build_and_push(
-            entry, root, language, work / "image", registry, package_registries
+            entry, root, language, work / "image", registry, package_registries, standard
         )
     return entry.model_copy(
         update={
@@ -249,6 +412,10 @@ def _build(
             "requires": requires,
             "code_hash": code_hash,
             "language": language,
+            # Every build states these afresh: a file since removed leaves none behind.
+            "description": standard.description if standard else "",
+            "icon": standard.icon if standard else "",
+            "settings": standard.settings if standard else [],
         }
     )
 

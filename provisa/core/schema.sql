@@ -1111,8 +1111,16 @@ CREATE TABLE IF NOT EXISTS connectors (
     digest          TEXT NOT NULL,
     code_hash       TEXT NOT NULL,
     arch            TEXT NOT NULL CHECK (arch IN ('amd64', 'arm64')),
-    requires        JSONB NOT NULL DEFAULT '[]'
+    requires        JSONB NOT NULL DEFAULT '[]',
+    -- From the project's standard file (connector.yaml): what the connector store shows, and the
+    -- standard source settings it sets.
+    description     TEXT NOT NULL DEFAULT '',
+    icon            TEXT NOT NULL DEFAULT '',
+    settings        JSONB NOT NULL DEFAULT '[]'
 );
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '';
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '[]';
 
 -- Kafka Sources (Phase V)
 CREATE TABLE IF NOT EXISTS kafka_sources (

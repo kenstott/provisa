@@ -92,8 +92,13 @@ import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
 import { fetchConnectors, type Connector } from "../api/connectors";
 import {
+  connectorChose,
+  connectorFields,
+  connectorFormValues,
   connectorMappingJson,
   connectorPick,
+  fixedFormValues,
+  heldFields,
   missingConnectorFields,
   pickedConnector,
 } from "./sources/connector";
@@ -279,6 +284,12 @@ export function SourcesPage() {
   const [cdc, setCdc] = useState<CdcState>({ ...EMPTY_CDC });
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
+  // A saved source's connector, once both are known: what it fixes is shown as the connector says
+  // now, read-only, so a save never carries an older value.
+  const heldBy = connector
+    ? null
+    : (connectors.find((c) => c.name === authFields.code_connector) ?? null);
+  const heldForm = heldBy ? { ...form, ...fixedFormValues(heldBy) } : form;
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [sourceReach, setSourceReach] = useState<SourceReach | null>(null);
   const domainsEnabled = settings?.naming.use_domains !== false;
@@ -442,6 +453,8 @@ export function SourcesPage() {
               value: connectorPick(c.name),
               label: c.name,
               name: c.name,
+              icon: c.icon || undefined,
+              description: c.description || undefined,
             })),
           },
         ]
@@ -480,11 +493,18 @@ export function SourcesPage() {
     // REQ-929: keep change_signal valid for the new type's capabilities.
     const signals = sourceChangeSignals(type);
     const changeSignal = signals.includes(form.changeSignal) ? form.changeSignal : signals[0];
-    setForm({ ...form, type, port: getDefaultPort(type), description: "", changeSignal });
+    setForm({
+      ...form,
+      type,
+      port: getDefaultPort(type),
+      description: "",
+      changeSignal,
+      ...(offered ? connectorFormValues(offered) : {}),
+    });
     // REQ-229: hive_s3 DECLARES S3 storage — the Storage Authentication select offers only "aws"
     // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
     setAuthType(type === "hive_s3" ? "aws" : "none");
-    setAuthFields({});
+    setAuthFields(offered ? connectorFields(offered) : {});
     setBrandSetup(brandSetupDefaults(type));
     resetSpFields();
   };
@@ -641,7 +661,7 @@ export function SourcesPage() {
         replicate: _rep,
         region: _region, // REQ-1921: saved on its own (setSourceRegion)
         ...coreForm
-      } = form;
+      } = heldForm;
       // Data-lake storage is a config choice, not a separate source type: the object store its tables
       // live on (Hadoop/local, S3, ADLS, GCS) + its credentials land in source.mapping, discriminated
       // by mapping.storage. Derived from the Storage Authentication select (none→hadoop, aws→s3,
@@ -814,9 +834,9 @@ export function SourcesPage() {
           : form.type === "data_profiler"
             ? profilerMappingJson(authFields) // REQ-1934
             : connector && CODE_SOURCE_TYPES.has(form.type)
-              ? connectorMappingJson(authFields, connector)
+              ? connectorMappingJson(authFields, connector, connectorChose(form, connector))
               : CODE_SOURCE_TYPES.has(form.type)
-                ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
+                ? codeMappingJson(form.type, heldBy ? heldFields(codeFields, heldBy) : codeFields) // REQ-1984, REQ-1993
                 : form.type === "cloudops"
                   ? cloudopsMappingJson(authFields) // REQ-1947
                   : form.type === "sparql"
@@ -1226,9 +1246,10 @@ export function SourcesPage() {
 
   // Shared props object passed to SourceFormFields at both call sites.
   const sourceFormFieldsProps: SourceFormFieldsProps = {
-    form,
+    form: heldForm,
     setForm,
     connector,
+    heldBy,
     authType,
     setAuthType,
     authFields,

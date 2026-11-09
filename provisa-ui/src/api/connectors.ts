@@ -18,6 +18,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 export interface ConnectorRequirement {
   name: string;
   secret?: boolean;
+  /** Entered as multi-line text. */
+  multiline?: boolean;
+  /** What the form starts with; a steward can change it. */
+  default_value?: string;
+  /** Shown read-only; a save that changes it is refused. */
+  fixed_value?: string;
+}
+
+/** A standard source setting the connector's file sets: one of the two values. */
+export interface ConnectorSetting {
+  name: string;
+  default_value?: boolean | number | string;
+  fixed_value?: boolean | number | string;
 }
 
 export interface Connector {
@@ -31,6 +44,11 @@ export interface Connector {
   code_hash: string;
   arch: "amd64" | "arm64";
   requires: ConnectorRequirement[];
+  /** What the store shows; empty when the project has no standard file. */
+  description: string;
+  /** A data: URI. */
+  icon: string;
+  settings: ConnectorSetting[];
 }
 
 export async function fetchConnectors(orgId: string): Promise<Connector[]> {

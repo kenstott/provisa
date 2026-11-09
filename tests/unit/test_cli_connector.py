@@ -18,6 +18,7 @@ own) is stubbed where these pin what it is given and what comes of its answer.
 
 from __future__ import annotations
 
+import base64
 import subprocess
 import sys
 from pathlib import Path
@@ -100,7 +101,7 @@ def built(monkeypatch) -> list[dict]:
     """The image build stubbed: what each call was given, and a digest and requires as its answer."""
     calls: list[dict] = []
 
-    def fake(entry, root, language, workdir, registry, package_registries):
+    def fake(entry, root, language, workdir, registry, package_registries, standard=None):
         calls.append(
             {
                 "entry": entry,
@@ -110,7 +111,14 @@ def built(monkeypatch) -> list[dict]:
                 "package_registries": package_registries,
             }
         )
-        return _NEW_DIGEST, [ConnectorRequirement(name="db_uri", secret=True)], _NEW_CODE_HASH
+        requires = [
+            ConnectorRequirement(name="db_uri", secret=True),
+            ConnectorRequirement(name="region"),
+            ConnectorRequirement(name="script"),
+        ]
+        if standard is None:
+            return _NEW_DIGEST, requires[:1], _NEW_CODE_HASH
+        return _NEW_DIGEST, cli_connector._with_file_values(requires, standard), _NEW_CODE_HASH
 
     monkeypatch.setattr(cli_connector, "_build_and_push", fake)
     return calls
@@ -619,3 +627,124 @@ class TestConfigBlock:
         )
         assert held.connectors[0].name == "crm"
         assert ProvisaConfig(sources=[], domains=[], tables=[], roles=[]).connectors == []
+
+
+_ICON = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
+_FILE = """
+description: Our CRM, its accounts and contacts.
+icon: icon.svg
+requires:
+  region: {default: eu-west-1}
+  script: {multiline: true, fixed: "print(1)"}
+settings:
+  replicate: {default: 0}
+  cache_ttl: {fixed: 300}
+"""
+
+
+def _with_file(repo: Path, text: str = _FILE, icon: bytes | None = _ICON) -> None:
+    if icon is not None:
+        (repo / "icon.svg").write_bytes(icon)
+    _commit(repo, "connector.yaml", text)
+
+
+class TestStandardFile:
+    def test_its_values_are_read_into_the_block(self, repo, built, capsys):
+        _with_file(repo)
+        assert cli.main(_build_args(repo)) == 0
+        block = yaml.safe_load(capsys.readouterr().out)["connectors"][0]
+        assert block["description"] == "Our CRM, its accounts and contacts."
+        assert block["icon"] == ("data:image/svg+xml;base64," + base64.b64encode(_ICON).decode())
+        assert block["requires"] == [
+            {"name": "db_uri", "secret": True},
+            {"name": "region", "default_value": "eu-west-1"},
+            {"name": "script", "multiline": True, "fixed_value": "print(1)"},
+        ]
+        assert block["settings"] == [
+            {"name": "replicate", "default_value": 0},
+            {"name": "cache_ttl", "fixed_value": 300},
+        ]
+
+    def test_the_block_it_prints_loads_as_a_connector(self, repo, built, capsys):
+        _with_file(repo)
+        assert cli.main(_build_args(repo)) == 0
+        ConnectorConfig(**yaml.safe_load(capsys.readouterr().out)["connectors"][0])
+
+    def test_a_project_with_no_file_builds_as_before(self, repo, built, capsys):
+        assert cli.main(_build_args(repo)) == 0
+        block = yaml.safe_load(capsys.readouterr().out)["connectors"][0]
+        assert not {"description", "icon", "settings"} & set(block)
+        assert block["requires"] == [{"name": "db_uri", "secret": True}]
+
+    @pytest.mark.parametrize(
+        ("text", "named"),
+        [
+            ("nonsense: 1\n", "nonsense"),
+            ("tables: [a]\n", "tables"),
+            ("requires: {nope: {default: a}}\n", "nope"),
+            ("requires: {db_uri: {default: a}}\n", "db_uri"),
+            ("requires: {db_uri: {multiline: true}}\n", "db_uri"),
+            ("requires: {region: {default: a, fixed: b}}\n", "region"),
+            ("requires: {region: {default: 5}}\n", "requires.region.default"),
+            ("settings: {made_up: {default: 1}}\n", "made_up"),
+            ("settings: {replicate: {default: -2}}\n", "replicate"),
+            ("settings: {cache_enabled: {fixed: 1}}\n", "cache_enabled"),
+            ("settings: {change_signal: {default: psychic}}\n", "change_signal"),
+            ("settings: {off_peak_tz: {default: Mars/Base}}\n", "off_peak_tz"),
+            ("settings: {cache_ttl: {default: 1, fixed: 2}}\n", "cache_ttl"),
+            ("settings: {cache_ttl: {}}\n", "cache_ttl"),
+            ("icon: missing.svg\n", "missing.svg"),
+            ("icon: ../secret.svg\n", "secret.svg"),
+            ("icon: notes.txt\n", "notes.txt"),
+            ("- a\n- b\n", "connector.yaml"),
+            ("a: [\n", "connector.yaml"),
+        ],
+    )
+    def test_a_bad_file_is_refused_by_name(self, repo, built, capsys, text, named):
+        _with_file(repo, text, None)
+        assert cli.main(_build_args(repo)) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "connector.yaml" in captured.err and named in captured.err
+
+    def test_a_file_whose_requires_the_code_lacks_is_refused_before_a_build(
+        self, tmp_path, monkeypatch
+    ):
+        from provisa.codesource import image_build
+
+        assembled: list[object] = []
+        monkeypatch.setattr(image_build, "assemble", lambda *a: assembled.append(a))
+        standard = cli_connector._StandardFile(
+            "", "", {"nope": cli_connector._RequireValues(False, "a", None)}, []
+        )
+        with pytest.raises(cli_connector._Refused, match="nope"):
+            cli_connector._with_file_values([ConnectorRequirement(name="db_uri")], standard)
+        assert assembled == []
+
+    def test_an_icon_that_is_a_link_is_refused(self, repo, built, capsys, tmp_path):
+        outside = tmp_path / "outside.svg"
+        outside.write_bytes(_ICON)
+        (repo / "icon.svg").symlink_to(outside)
+        _commit(repo, "connector.yaml", "icon: icon.svg\n")
+        assert cli.main(_build_args(repo)) == 1
+        assert "symbolic link" in capsys.readouterr().err
+
+    def test_an_icon_too_large_is_refused(self, repo, built, capsys):
+        _with_file(repo, "icon: icon.svg\n", b"x" * 200_000)
+        assert cli.main(_build_args(repo)) == 1
+        assert "icon.svg" in capsys.readouterr().err
+
+    def test_a_rebuild_after_the_file_is_removed_leaves_none_of_it(
+        self, repo, built, capsys, tmp_path
+    ):
+        _with_file(repo)
+        head = _git(repo, "rev-parse", "HEAD")
+        stale = _entry(repo, head, description="old", icon="data:image/png;base64,AAAA")
+        (repo / "connector.yaml").unlink()
+        (repo / "icon.svg").unlink()
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "drop the file")
+        path = _config(tmp_path, stale)
+        assert cli.main(["connector", "rebuild", "--config", str(path), "--latest"]) == 0
+        block = yaml.safe_load(capsys.readouterr().out)["connectors"][0]
+        assert "description" not in block and "icon" not in block
