@@ -141,17 +141,26 @@ def _unique_keys(table: Table) -> tuple[tuple[str, ...], ...]:  # REQ-1093, REQ-
     return tuple(keys)
 
 
-def product_memberships(config: ProvisaConfig) -> dict[tuple[str, ...], tuple[str, ...]]:
+def product_memberships(
+    config: ProvisaConfig, product_id: str | None = None
+) -> dict[tuple[str, ...], tuple[str, ...]]:
     """REQ-1634: each member table's products, any number, in id order, keyed by the table's
     physical triple: read off each product's ``tables``, which names a table by its virtual name
     (its alias, else its table name) or as ``source.schema.table``. A name no table, or more than
-    one, answers is refused."""
+    one, answers is refused.
+
+    ``product_id``, when given, scopes validation to that one product: only its member
+    names are resolved, so a bad reference in a different product does not raise.  A
+    genuinely unresolvable name in the requested product still raises — no silent drops.
+    """
     by_name: dict[str, list[Table]] = {}
     for table in config.tables:
         by_name.setdefault(table.alias or table.table_name, []).append(table)
         by_name.setdefault(".".join(table_ref(table).parts), []).append(table)
     out: dict[tuple[str, ...], list[str]] = {}
     for product in config.data_products:
+        if product_id is not None and product.id != product_id:
+            continue
         for name in product.tables:
             found = by_name.get(name, [])
             if len(found) != 1:
