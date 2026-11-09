@@ -635,10 +635,13 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 def _forbidden(exc: PermissionError) -> Exception:
     """The 403 a pipeline refusal answers: the approval hook's denial keeps its own code and
     reason (REQ-203); any other refusal is named by its message."""
+    from provisa.compiler.sql_validator import GovernanceRefused
     from provisa.pgwire._pipeline import ApprovalDenied
 
     if isinstance(exc, ApprovalDenied):
         return ApiError(403, exc.code, str(exc), reason=exc.reason)
+    if isinstance(exc, GovernanceRefused):  # REQ-2222: the rule that refused, by its code
+        return ApiError(403, exc.code, str(exc), violations=exc.params["violations"])
     return HTTPException(status_code=403, detail=str(exc))
 
 

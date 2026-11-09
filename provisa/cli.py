@@ -707,6 +707,11 @@ def main(argv: list[str] | None = None) -> int:
 
     register_env(sub)
 
+    # REQ-2222: drive and explain a query in any language against a running instance.
+    from provisa.cli_query import register as register_query
+
+    register_query(sub)
+
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,
     # and neither step should need a browser.
