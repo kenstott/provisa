@@ -161,6 +161,9 @@ class Paired:
 
     pin: str
     certificate: str
+    #: REQ-2221: the manifest the host handed over as it paired; None from an image that carries
+    #: none (built before REQ-2221).
+    manifest: dict | None = None
 
 
 def pair(
@@ -205,7 +208,11 @@ def pair(
     if answer is None or answer.get("op") != "paired":
         said = (answer or {}).get("message", "it closed the connection")
         raise PairingRefused(f"remote host {address}:{port} refused the pairing: {said}")
-    return Paired(pin=fingerprint, certificate=ssl.DER_cert_to_PEM_cert(der))
+    return Paired(
+        pin=fingerprint,
+        certificate=ssl.DER_cert_to_PEM_cert(der),
+        manifest=answer.get("manifest"),
+    )
 
 
 class RemoteWorker(Worker):

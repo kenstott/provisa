@@ -243,8 +243,12 @@ def test_a_panic_a_yielded_error_and_a_value_with_no_form_fail_the_call_by_name(
             // @command
             func Channel() any { return make(chan int) }
 
+            type BigRow struct {
+                N any `json:"n"`
+            }
+
             // @table
-            func Big() []map[string]any { return []map[string]any{{"n": uint64(1 << 63)}} }
+            func Big() []BigRow { return []BigRow{{uint64(1 << 63)}} }
             """
         )
     )
@@ -260,7 +264,7 @@ def test_a_panic_a_yielded_error_and_a_value_with_no_form_fail_the_call_by_name(
             next(stream)
         with pytest.raises(w.CodeFailed, match="a chan int has no form a row or a value can take"):
             started.command("Channel", [])
-        # A loose row is sent whole, as the wire's JSON: an integer beyond its range by its digits.
+        # A loose field is sent as the wire's JSON: an integer beyond its range by its digits.
         assert list(started.rows("Big", "table", [], **_read_of(manifest, "Big"))) == [
             [{"n": 2**63}]
         ]
