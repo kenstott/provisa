@@ -104,6 +104,13 @@ PROTOCOL = 4
 CONNECTIONS = 8
 #: The variable a host reads how many times to connect to its socket path from.
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
+#: The variable Node's and Bun's thread pools take their size from. A host on inherited descriptors
+#: holds a pool thread per read and per write while it waits, so its pool has two per connection
+#: beside the runtime's own four. Bun sizes its pool once, as it starts, and otherwise from the
+#: cores it has: with fewer threads than connections, a call on a connection no thread is reading
+#: is never heard. So the host's environment says it, from the start.
+THREADPOOL_ENV = "UV_THREADPOOL_SIZE"
+_INHERITED_THREADPOOL = 4 + 2 * CONNECTIONS
 #: How many of a call's frames its connection holds for the call's thread before it stops reading.
 _QUEUED = 4
 #: How often a reader waiting on a full queue looks whether its lane is being shut.
@@ -503,6 +510,8 @@ class Worker:
             CODE_HASH_ENV: self.content_hash,
             CONNECTIONS_ENV: str(CONNECTIONS),
         }
+        if self._command.inherit_socket:
+            env[THREADPOOL_ENV] = str(_INHERITED_THREADPOOL)
         if self._command.services is not None:
             from provisa.codesource import services
 
