@@ -1,0 +1,1296 @@
+{
+ "child_map": {
+  "model.jaffle.customer_orders": [
+   "test.jaffle.not_null_customer_orders_customer_id.582e6bcaa0",
+   "test.jaffle.unique_customer_orders_customer_id.0e9f6da4ce"
+  ],
+  "model.jaffle.order_events": [
+   "test.jaffle.not_null_order_events_order_id.6617edd6ae"
+  ],
+  "model.jaffle.stg_orders": [
+   "model.jaffle.customer_orders",
+   "model.jaffle.order_events"
+  ],
+  "seed.jaffle.raw_customers": [
+   "model.jaffle.customer_orders"
+  ],
+  "seed.jaffle.raw_orders": [
+   "model.jaffle.stg_orders",
+   "snapshot.jaffle.orders_snapshot"
+  ],
+  "snapshot.jaffle.orders_snapshot": [],
+  "test.jaffle.not_null_customer_orders_customer_id.582e6bcaa0": [],
+  "test.jaffle.not_null_order_events_order_id.6617edd6ae": [],
+  "test.jaffle.unique_customer_orders_customer_id.0e9f6da4ce": []
+ },
+ "disabled": {},
+ "docs": {},
+ "exposures": {},
+ "functions": {},
+ "group_map": {},
+ "groups": {},
+ "macros": {
+  "macro.dbt.make_hook_config": {
+   "arguments": [
+    {
+     "description": "",
+     "name": "sql",
+     "type": null
+    },
+    {
+     "description": "",
+     "name": "inside_transaction",
+     "type": null
+    }
+   ],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.5749938,
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro make_hook_config(sql, inside_transaction) %}\n    {{ tojson({\"sql\": sql, \"transaction\": inside_transaction}) }}\n{% endmacro %}",
+   "meta": {},
+   "name": "make_hook_config",
+   "original_file_path": "macros/materializations/hooks.sql",
+   "package_name": "dbt",
+   "patch_path": null,
+   "path": "macros/materializations/hooks.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.dbt.make_hook_config"
+  },
+  "macro.dbt.run_hooks": {
+   "arguments": [
+    {
+     "description": "",
+     "name": "hooks",
+     "type": null
+    },
+    {
+     "description": "",
+     "name": "inside_transaction",
+     "type": null
+    }
+   ],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.5746849,
+   "depends_on": {
+    "macros": [
+     "macro.dbt.statement"
+    ]
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro run_hooks(hooks, inside_transaction=True) %}\n  {% for hook in hooks | selectattr('transaction', 'equalto', inside_transaction)  %}\n    {% if not inside_transaction and loop.first %}\n      {% call statement(auto_begin=inside_transaction) %}\n        commit;\n      {% endcall %}\n    {% endif %}\n    {% set rendered = render(hook.get('sql')) | trim %}\n    {% if (rendered | length) > 0 %}\n      {% call statement(auto_begin=inside_transaction) %}\n        {{ rendered }}\n      {% endcall %}\n    {% endif %}\n  {% endfor %}\n{% endmacro %}",
+   "meta": {},
+   "name": "run_hooks",
+   "original_file_path": "macros/materializations/hooks.sql",
+   "package_name": "dbt",
+   "patch_path": null,
+   "path": "macros/materializations/hooks.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.dbt.run_hooks"
+  },
+  "macro.dbt_duckdb.duckdb__get_batch_size": {
+   "arguments": [],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.48795,
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro duckdb__get_batch_size() %}\n  {{ return(10000) }}\n{% endmacro %}",
+   "meta": {},
+   "name": "duckdb__get_batch_size",
+   "original_file_path": "macros/seed.sql",
+   "package_name": "dbt_duckdb",
+   "patch_path": null,
+   "path": "macros/seed.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.dbt_duckdb.duckdb__get_batch_size"
+  },
+  "macro.dbt_duckdb.duckdb__get_binding_char": {
+   "arguments": [],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.487863,
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro duckdb__get_binding_char() %}\n  {{ return(adapter.get_binding_char()) }}\n{% endmacro %}",
+   "meta": {},
+   "name": "duckdb__get_binding_char",
+   "original_file_path": "macros/seed.sql",
+   "package_name": "dbt_duckdb",
+   "patch_path": null,
+   "path": "macros/seed.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.dbt_duckdb.duckdb__get_binding_char"
+  },
+  "macro.jaffle.cents": {
+   "arguments": [
+    {
+     "description": "",
+     "name": "col",
+     "type": null
+    }
+   ],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.4873831,
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro cents(col) %}({{ col }} * 100)::int{% endmacro %}",
+   "meta": {},
+   "name": "cents",
+   "original_file_path": "macros/cents.sql",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "macros/cents.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.jaffle.cents"
+  },
+  "macro.jaffle.grant_read": {
+   "arguments": [
+    {
+     "description": "",
+     "name": "role",
+     "type": null
+    }
+   ],
+   "config": {
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "meta": {}
+   },
+   "created_at": 1794237885.4871,
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "macro_sql": "{% macro grant_read(role) %}\n  {% do log(\"granting to \" ~ role, info=true) %}\n{% endmacro %}",
+   "meta": {},
+   "name": "grant_read",
+   "original_file_path": "macros/grant_read.sql",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "macros/grant_read.sql",
+   "resource_type": "macro",
+   "supported_languages": null,
+   "unique_id": "macro.jaffle.grant_read"
+  }
+ },
+ "metadata": {
+  "adapter_type": "duckdb",
+  "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+  "dbt_version": "1.12.6",
+  "env": {},
+  "generated_at": "2026-11-09T15:24:45.449448Z",
+  "invocation_id": "e212985d-e19d-4482-b41d-4a8a49d86500",
+  "invocation_started_at": "2026-11-09T15:24:44.756721Z",
+  "project_id": "f9d1e024ef226b4dca0863d7d3ade287",
+  "project_name": "jaffle",
+  "quoting": {
+   "column": null,
+   "database": true,
+   "identifier": true,
+   "schema": true
+  },
+  "run_started_at": "2026-11-09T15:24:44.757598+00:00",
+  "send_anonymous_usage_stats": true,
+  "user_id": "490fe0c5-be52-4b03-9531-ee4b6fa1a947"
+ },
+ "metrics": {},
+ "nodes": {
+  "model.jaffle.customer_orders": {
+   "access": "protected",
+   "alias": "customer_orders",
+   "build_path": "target/run/jaffle/models/marts/customer_orders.sql",
+   "checksum": {
+    "checksum": "c237bbf3198fb2ce44293b27956fa30ed385c01e5925a99ef7a330a443875aa5",
+    "name": "sha256"
+   },
+   "columns": {
+    "customer_id": {
+     "config": {
+      "meta": {},
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": null,
+     "description": "The customer's identifier.",
+     "dimension": null,
+     "doc_blocks": [],
+     "entity": null,
+     "granularity": null,
+     "meta": {},
+     "name": "customer_id",
+     "quote": null,
+     "tags": []
+    },
+    "customer_name": {
+     "config": {
+      "meta": {},
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": null,
+     "description": "Upper-cased first name.",
+     "dimension": null,
+     "doc_blocks": [],
+     "entity": null,
+     "granularity": null,
+     "meta": {},
+     "name": "customer_name",
+     "quote": null,
+     "tags": []
+    },
+    "lifetime_value": {
+     "config": {
+      "meta": {},
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": null,
+     "description": "Sum of the customer's orders.",
+     "dimension": null,
+     "doc_blocks": [],
+     "entity": null,
+     "granularity": null,
+     "meta": {},
+     "name": "lifetime_value",
+     "quote": null,
+     "tags": []
+    }
+   },
+   "compiled": true,
+   "compiled_code": "\nselect c.id as customer_id, upper(c.first_name) as customer_name, sum(o.amount) as lifetime_value\nfrom \"jaffle\".\"analytics\".\"raw_customers\" c\njoin \"jaffle\".\"analytics\".\"stg_orders\" o on o.customer_id = c.id\ngroup by 1, 2",
+   "compiled_path": "target/compiled/jaffle/models/marts/customer_orders.sql",
+   "config": {
+    "access": "protected",
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "freshness": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "latest_version_pointer": {
+     "alias": null,
+     "enabled": null
+    },
+    "lookback": 1,
+    "materialized": "table",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_error": null,
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "schema": null,
+    "static_analysis": null,
+    "tags": [],
+    "unique_key": null
+   },
+   "constraints": [],
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237887.255971,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "seed.jaffle.raw_customers",
+     "model.jaffle.stg_orders"
+    ]
+   },
+   "deprecation_date": null,
+   "description": "One row per customer with lifetime value.",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "fqn": [
+    "jaffle",
+    "marts",
+    "customer_orders"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "latest_version": null,
+   "meta": {},
+   "metrics": [],
+   "name": "customer_orders",
+   "original_file_path": "models/marts/customer_orders.sql",
+   "package_name": "jaffle",
+   "patch_path": "jaffle://models/marts/schema.yml",
+   "path": "marts/customer_orders.sql",
+   "primary_key": [
+    "customer_id"
+   ],
+   "raw_code": "{{ config(materialized='table') }}\nselect c.id as customer_id, upper(c.first_name) as customer_name, sum(o.amount) as lifetime_value\nfrom {{ ref('raw_customers') }} c\njoin {{ ref('stg_orders') }} o on o.customer_id = c.id\ngroup by 1, 2",
+   "refs": [
+    {
+     "name": "raw_customers",
+     "package": null,
+     "version": null
+    },
+    {
+     "name": "stg_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": "\"jaffle\".\"analytics\".\"customer_orders\"",
+   "resource_type": "model",
+   "schema": "analytics",
+   "sources": [],
+   "tags": [],
+   "time_spine": null,
+   "unique_id": "model.jaffle.customer_orders",
+   "unrendered_config": {
+    "materialized": "table"
+   },
+   "version": null
+  },
+  "model.jaffle.order_events": {
+   "access": "protected",
+   "alias": "order_events",
+   "build_path": "target/run/jaffle/models/marts/order_events.sql",
+   "checksum": {
+    "checksum": "036af8f36eef4ee2d87bb31b3791d0189d7e4e53c918e787562b15d57dafe12b",
+    "name": "sha256"
+   },
+   "columns": {
+    "order_id": {
+     "config": {
+      "meta": {},
+      "tags": []
+     },
+     "constraints": [],
+     "data_type": null,
+     "description": "The order.",
+     "dimension": null,
+     "doc_blocks": [],
+     "entity": null,
+     "granularity": null,
+     "meta": {},
+     "name": "order_id",
+     "quote": null,
+     "tags": []
+    }
+   },
+   "compiled": true,
+   "compiled_code": "\nselect order_id, status, (amount * 100)::int as amount_cents, updated_at from \"jaffle\".\"analytics\".\"stg_orders\"\n",
+   "compiled_path": "target/compiled/jaffle/models/marts/order_events.sql",
+   "config": {
+    "access": "protected",
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "freshness": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "latest_version_pointer": {
+     "alias": null,
+     "enabled": null
+    },
+    "lookback": 1,
+    "materialized": "incremental",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_error": null,
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "schema": null,
+    "static_analysis": null,
+    "tags": [],
+    "unique_key": "order_id"
+   },
+   "constraints": [],
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237887.256581,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [
+     "macro.jaffle.cents",
+     "macro.dbt.is_incremental"
+    ],
+    "nodes": [
+     "model.jaffle.stg_orders"
+    ]
+   },
+   "deprecation_date": null,
+   "description": "Order status changes, appended incrementally.",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "fqn": [
+    "jaffle",
+    "marts",
+    "order_events"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "latest_version": null,
+   "meta": {},
+   "metrics": [],
+   "name": "order_events",
+   "original_file_path": "models/marts/order_events.sql",
+   "package_name": "jaffle",
+   "patch_path": "jaffle://models/marts/schema.yml",
+   "path": "marts/order_events.sql",
+   "primary_key": [],
+   "raw_code": "{{ config(materialized='incremental', unique_key='order_id') }}\nselect order_id, status, {{ cents('amount') }} as amount_cents, updated_at from {{ ref('stg_orders') }}\n{% if is_incremental() %}where updated_at > (select max(updated_at) from {{ this }}){% endif %}",
+   "refs": [
+    {
+     "name": "stg_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": "\"jaffle\".\"analytics\".\"order_events\"",
+   "resource_type": "model",
+   "schema": "analytics",
+   "sources": [],
+   "tags": [],
+   "time_spine": null,
+   "unique_id": "model.jaffle.order_events",
+   "unrendered_config": {
+    "materialized": "incremental",
+    "unique_key": "order_id"
+   },
+   "version": null
+  },
+  "model.jaffle.stg_orders": {
+   "access": "protected",
+   "alias": "stg_orders",
+   "build_path": "target/run/jaffle/models/staging/stg_orders.sql",
+   "checksum": {
+    "checksum": "4a472cca21cc07cc88bc0fbf2919f77bd53ff094d162b8c9a39f29bf32d8db18",
+    "name": "sha256"
+   },
+   "columns": {},
+   "compiled": true,
+   "compiled_code": "\nselect id as order_id, customer_id, amount, status, updated_at from \"jaffle\".\"analytics\".\"raw_orders\"",
+   "compiled_path": "target/compiled/jaffle/models/staging/stg_orders.sql",
+   "config": {
+    "access": "protected",
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "freshness": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "latest_version_pointer": {
+     "alias": null,
+     "enabled": null
+    },
+    "lookback": 1,
+    "materialized": "view",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_error": null,
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "schema": null,
+    "static_analysis": null,
+    "tags": [],
+    "unique_key": null
+   },
+   "constraints": [],
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237886.61714,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "seed.jaffle.raw_orders"
+    ]
+   },
+   "deprecation_date": null,
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "fqn": [
+    "jaffle",
+    "staging",
+    "stg_orders"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "latest_version": null,
+   "meta": {},
+   "metrics": [],
+   "name": "stg_orders",
+   "original_file_path": "models/staging/stg_orders.sql",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "staging/stg_orders.sql",
+   "primary_key": [],
+   "raw_code": "{{ config(materialized='view') }}\nselect id as order_id, customer_id, amount, status, updated_at from {{ ref('raw_orders') }}",
+   "refs": [
+    {
+     "name": "raw_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": "\"jaffle\".\"analytics\".\"stg_orders\"",
+   "resource_type": "model",
+   "schema": "analytics",
+   "sources": [],
+   "tags": [],
+   "time_spine": null,
+   "unique_id": "model.jaffle.stg_orders",
+   "unrendered_config": {
+    "materialized": "view"
+   },
+   "version": null
+  },
+  "seed.jaffle.raw_customers": {
+   "alias": "raw_customers",
+   "build_path": "target/run/jaffle/seeds/raw_customers.csv",
+   "checksum": {
+    "checksum": "8906fc3aef5efd1e6569bdf9f2e4e4946559645f036c2381dbba2a3a07b416fe",
+    "name": "sha256"
+   },
+   "columns": {},
+   "config": {
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "delimiter": ",",
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "lookback": 1,
+    "materialized": "seed",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quote_columns": null,
+    "quoting": {},
+    "schema": null,
+    "static_analysis": null,
+    "tags": [],
+    "unique_key": null
+   },
+   "created_at": 1794237887.0790122,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "fqn": [
+    "jaffle",
+    "raw_customers"
+   ],
+   "group": null,
+   "meta": {},
+   "name": "raw_customers",
+   "original_file_path": "seeds/raw_customers.csv",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "raw_customers.csv",
+   "raw_code": "",
+   "relation_name": "\"jaffle\".\"analytics\".\"raw_customers\"",
+   "resource_type": "seed",
+   "root_path": ".",
+   "schema": "analytics",
+   "tags": [],
+   "unique_id": "seed.jaffle.raw_customers",
+   "unrendered_config": {}
+  },
+  "seed.jaffle.raw_orders": {
+   "alias": "raw_orders",
+   "build_path": "target/run/jaffle/seeds/raw_orders.csv",
+   "checksum": {
+    "checksum": "20bb32e8e196e1e53267ec0398470c68bfdbf5bad2da101416416d633a04413d",
+    "name": "sha256"
+   },
+   "columns": {},
+   "config": {
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "delimiter": ",",
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "lookback": 1,
+    "materialized": "seed",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quote_columns": null,
+    "quoting": {},
+    "schema": null,
+    "static_analysis": null,
+    "tags": [],
+    "unique_key": null
+   },
+   "created_at": 1794237887.0819042,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": []
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "fqn": [
+    "jaffle",
+    "raw_orders"
+   ],
+   "group": null,
+   "meta": {},
+   "name": "raw_orders",
+   "original_file_path": "seeds/raw_orders.csv",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "raw_orders.csv",
+   "raw_code": "",
+   "relation_name": "\"jaffle\".\"analytics\".\"raw_orders\"",
+   "resource_type": "seed",
+   "root_path": ".",
+   "schema": "analytics",
+   "tags": [],
+   "unique_id": "seed.jaffle.raw_orders",
+   "unrendered_config": {}
+  },
+  "snapshot.jaffle.orders_snapshot": {
+   "alias": "orders_snapshot",
+   "build_path": "target/run/jaffle/snapshots/orders_snapshot.sql/orders_snapshot.sql",
+   "checksum": {
+    "checksum": "83d0100e082faeaf0b3ad8929ba1c6607c2e5b1c16acdd48d42ecf43f29ccfc0",
+    "name": "sha256"
+   },
+   "columns": {},
+   "compiled": true,
+   "compiled_code": "\n\nselect * from \"jaffle\".\"analytics\".\"raw_orders\"",
+   "compiled_path": "target/compiled/jaffle/snapshots/orders_snapshot.sql/orders_snapshot.sql",
+   "config": {
+    "alias": null,
+    "batch_size": null,
+    "begin": null,
+    "check_cols": null,
+    "column_types": {},
+    "concurrent_batches": null,
+    "contract": {
+     "alias_types": true,
+     "enforced": false
+    },
+    "database": null,
+    "dbt_valid_to_current": null,
+    "docs": {
+     "node_color": null,
+     "show": true
+    },
+    "enabled": true,
+    "event_time": null,
+    "full_refresh": null,
+    "grants": {},
+    "group": null,
+    "incremental_strategy": null,
+    "lookback": 1,
+    "materialized": "snapshot",
+    "meta": {},
+    "on_configuration_change": "apply",
+    "on_schema_change": "ignore",
+    "packages": [],
+    "persist_docs": {},
+    "post-hook": [],
+    "pre-hook": [],
+    "quoting": {},
+    "schema": null,
+    "snapshot_meta_column_names": {
+     "dbt_is_deleted": null,
+     "dbt_scd_id": null,
+     "dbt_updated_at": null,
+     "dbt_valid_from": null,
+     "dbt_valid_to": null
+    },
+    "static_analysis": null,
+    "strategy": "timestamp",
+    "tags": [],
+    "target_database": null,
+    "target_schema": "snapshots",
+    "unique_key": "id",
+    "updated_at": "updated_at"
+   },
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237886.9404569,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "seed.jaffle.raw_orders"
+    ]
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "fqn": [
+    "jaffle",
+    "orders_snapshot",
+    "orders_snapshot"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "meta": {},
+   "metrics": [],
+   "name": "orders_snapshot",
+   "original_file_path": "snapshots/orders_snapshot.sql",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "orders_snapshot.sql",
+   "raw_code": "\n{{ config(target_schema='snapshots', unique_key='id', strategy='timestamp', updated_at='updated_at') }}\nselect * from {{ ref('raw_orders') }}\n",
+   "refs": [
+    {
+     "name": "raw_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": "\"jaffle\".\"snapshots\".\"orders_snapshot\"",
+   "resource_type": "snapshot",
+   "schema": "snapshots",
+   "sources": [],
+   "tags": [],
+   "unique_id": "snapshot.jaffle.orders_snapshot",
+   "unrendered_config": {
+    "strategy": "timestamp",
+    "target_schema": "snapshots",
+    "unique_key": "id",
+    "updated_at": "updated_at"
+   }
+  },
+  "test.jaffle.not_null_customer_orders_customer_id.582e6bcaa0": {
+   "alias": "not_null_customer_orders_customer_id",
+   "attached_node": "model.jaffle.customer_orders",
+   "build_path": "target/run/jaffle/models/marts/schema.yml/not_null_customer_orders_customer_id.sql",
+   "checksum": {
+    "checksum": "",
+    "name": "none"
+   },
+   "column_name": "customer_id",
+   "columns": {},
+   "compiled": true,
+   "compiled_code": "\n    \n    \n\n\n\nselect customer_id\nfrom \"jaffle\".\"analytics\".\"customer_orders\"\nwhere customer_id is null\n\n\n",
+   "compiled_path": "target/compiled/jaffle/models/marts/schema.yml/not_null_customer_orders_customer_id.sql",
+   "config": {
+    "alias": null,
+    "database": null,
+    "enabled": true,
+    "error_if": "!= 0",
+    "fail_calc": "count(*)",
+    "group": null,
+    "limit": null,
+    "materialized": "test",
+    "meta": {},
+    "schema": "dbt_test__audit",
+    "severity": "ERROR",
+    "sql_header": null,
+    "static_analysis": null,
+    "store_failures": null,
+    "store_failures_as": null,
+    "tags": [],
+    "warn_if": "!= 0",
+    "where": null
+   },
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237887.33164,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery",
+     "macro.dbt.get_limit_subquery_sql",
+     "macro.dbt.should_store_failures",
+     "macro.dbt.statement"
+    ],
+    "nodes": [
+     "model.jaffle.customer_orders"
+    ]
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "file_key_name": "models.customer_orders",
+   "fqn": [
+    "jaffle",
+    "marts",
+    "not_null_customer_orders_customer_id"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "meta": {},
+   "metrics": [],
+   "name": "not_null_customer_orders_customer_id",
+   "original_file_path": "models/marts/schema.yml",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "not_null_customer_orders_customer_id.sql",
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "refs": [
+    {
+     "name": "customer_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": null,
+   "resource_type": "test",
+   "schema": "analytics_dbt_test__audit",
+   "sources": [],
+   "tags": [],
+   "test_metadata": {
+    "kwargs": {
+     "column_name": "customer_id",
+     "model": "{{ get_where_subquery(ref('customer_orders')) }}"
+    },
+    "name": "not_null",
+    "namespace": null
+   },
+   "unique_id": "test.jaffle.not_null_customer_orders_customer_id.582e6bcaa0",
+   "unrendered_config": {}
+  },
+  "test.jaffle.not_null_order_events_order_id.6617edd6ae": {
+   "alias": "not_null_order_events_order_id",
+   "attached_node": "model.jaffle.order_events",
+   "build_path": "target/run/jaffle/models/marts/schema.yml/not_null_order_events_order_id.sql",
+   "checksum": {
+    "checksum": "",
+    "name": "none"
+   },
+   "column_name": "order_id",
+   "columns": {},
+   "compiled": true,
+   "compiled_code": "\n    \n    \n\n\n\nselect order_id\nfrom \"jaffle\".\"analytics\".\"order_events\"\nwhere order_id is null\n\n\n",
+   "compiled_path": "target/compiled/jaffle/models/marts/schema.yml/not_null_order_events_order_id.sql",
+   "config": {
+    "alias": null,
+    "database": null,
+    "enabled": true,
+    "error_if": "!= 0",
+    "fail_calc": "count(*)",
+    "group": null,
+    "limit": null,
+    "materialized": "test",
+    "meta": {},
+    "schema": "dbt_test__audit",
+    "severity": "ERROR",
+    "sql_header": null,
+    "static_analysis": null,
+    "store_failures": null,
+    "store_failures_as": null,
+    "tags": [],
+    "warn_if": "!= 0",
+    "where": null
+   },
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237887.3339908,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_not_null",
+     "macro.dbt.get_where_subquery",
+     "macro.dbt.get_limit_subquery_sql",
+     "macro.dbt.should_store_failures",
+     "macro.dbt.statement"
+    ],
+    "nodes": [
+     "model.jaffle.order_events"
+    ]
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "file_key_name": "models.order_events",
+   "fqn": [
+    "jaffle",
+    "marts",
+    "not_null_order_events_order_id"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "meta": {},
+   "metrics": [],
+   "name": "not_null_order_events_order_id",
+   "original_file_path": "models/marts/schema.yml",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "not_null_order_events_order_id.sql",
+   "raw_code": "{{ test_not_null(**_dbt_generic_test_kwargs) }}",
+   "refs": [
+    {
+     "name": "order_events",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": null,
+   "resource_type": "test",
+   "schema": "analytics_dbt_test__audit",
+   "sources": [],
+   "tags": [],
+   "test_metadata": {
+    "kwargs": {
+     "column_name": "order_id",
+     "model": "{{ get_where_subquery(ref('order_events')) }}"
+    },
+    "name": "not_null",
+    "namespace": null
+   },
+   "unique_id": "test.jaffle.not_null_order_events_order_id.6617edd6ae",
+   "unrendered_config": {}
+  },
+  "test.jaffle.unique_customer_orders_customer_id.0e9f6da4ce": {
+   "alias": "unique_customer_orders_customer_id",
+   "attached_node": "model.jaffle.customer_orders",
+   "build_path": "target/run/jaffle/models/marts/schema.yml/unique_customer_orders_customer_id.sql",
+   "checksum": {
+    "checksum": "",
+    "name": "none"
+   },
+   "column_name": "customer_id",
+   "columns": {},
+   "compiled": true,
+   "compiled_code": "\n    \n    \n\nselect\n    customer_id as unique_field,\n    count(*) as n_records\n\nfrom \"jaffle\".\"analytics\".\"customer_orders\"\nwhere customer_id is not null\ngroup by customer_id\nhaving count(*) > 1\n\n\n",
+   "compiled_path": "target/compiled/jaffle/models/marts/schema.yml/unique_customer_orders_customer_id.sql",
+   "config": {
+    "alias": null,
+    "database": null,
+    "enabled": true,
+    "error_if": "!= 0",
+    "fail_calc": "count(*)",
+    "group": null,
+    "limit": null,
+    "materialized": "test",
+    "meta": {},
+    "schema": "dbt_test__audit",
+    "severity": "ERROR",
+    "sql_header": null,
+    "static_analysis": null,
+    "store_failures": null,
+    "store_failures_as": null,
+    "tags": [],
+    "warn_if": "!= 0",
+    "where": null
+   },
+   "contract": {
+    "alias_types": true,
+    "checksum": null,
+    "enforced": false
+   },
+   "created_at": 1794237887.32935,
+   "database": "jaffle",
+   "depends_on": {
+    "macros": [
+     "macro.dbt.test_unique",
+     "macro.dbt.get_where_subquery",
+     "macro.dbt.get_limit_subquery_sql",
+     "macro.dbt.should_store_failures",
+     "macro.dbt.statement"
+    ],
+    "nodes": [
+     "model.jaffle.customer_orders"
+    ]
+   },
+   "description": "",
+   "doc_blocks": [],
+   "docs": {
+    "node_color": null,
+    "show": true
+   },
+   "extra_ctes": [],
+   "extra_ctes_injected": true,
+   "file_key_name": "models.customer_orders",
+   "fqn": [
+    "jaffle",
+    "marts",
+    "unique_customer_orders_customer_id"
+   ],
+   "functions": [],
+   "group": null,
+   "language": "sql",
+   "meta": {},
+   "metrics": [],
+   "name": "unique_customer_orders_customer_id",
+   "original_file_path": "models/marts/schema.yml",
+   "package_name": "jaffle",
+   "patch_path": null,
+   "path": "unique_customer_orders_customer_id.sql",
+   "raw_code": "{{ test_unique(**_dbt_generic_test_kwargs) }}",
+   "refs": [
+    {
+     "name": "customer_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "relation_name": null,
+   "resource_type": "test",
+   "schema": "analytics_dbt_test__audit",
+   "sources": [],
+   "tags": [],
+   "test_metadata": {
+    "kwargs": {
+     "column_name": "customer_id",
+     "model": "{{ get_where_subquery(ref('customer_orders')) }}"
+    },
+    "name": "unique",
+    "namespace": null
+   },
+   "unique_id": "test.jaffle.unique_customer_orders_customer_id.0e9f6da4ce",
+   "unrendered_config": {}
+  }
+ },
+ "parent_map": {
+  "model.jaffle.customer_orders": [
+   "model.jaffle.stg_orders",
+   "seed.jaffle.raw_customers"
+  ],
+  "model.jaffle.order_events": [
+   "model.jaffle.stg_orders"
+  ],
+  "model.jaffle.stg_orders": [
+   "seed.jaffle.raw_orders"
+  ],
+  "seed.jaffle.raw_customers": [],
+  "seed.jaffle.raw_orders": [],
+  "snapshot.jaffle.orders_snapshot": [
+   "seed.jaffle.raw_orders"
+  ],
+  "test.jaffle.not_null_customer_orders_customer_id.582e6bcaa0": [
+   "model.jaffle.customer_orders"
+  ],
+  "test.jaffle.not_null_order_events_order_id.6617edd6ae": [
+   "model.jaffle.order_events"
+  ],
+  "test.jaffle.unique_customer_orders_customer_id.0e9f6da4ce": [
+   "model.jaffle.customer_orders"
+  ]
+ },
+ "saved_queries": {},
+ "selectors": {},
+ "semantic_models": {},
+ "sources": {},
+ "unit_tests": {}
+}

@@ -26,7 +26,7 @@ Fontes de **materialização** também não têm conector federado. O Provisa bu
 
 ## Todas as Fontes {: #all-sources }
 
-O Provisa registra **77** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 77; o índice é a contagem.
+O Provisa registra **78** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 78; o índice é a contagem.
 
 | # | Grupo | Tipos de fonte |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ O Provisa registra **77** tipos de fonte, os que o formulário de Fontes oferece
 | 49–53 | [Baseado em arquivo](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilidade e outros](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [Fontes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data profiler](#data-profiler) | `data_profiler` |
-| 76 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
+| 65–72 | [Fontes de API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data profiler](#data-profiler) | `data_profiler` |
+| 77 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
 
 Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" significa que consultas de fonte única são executadas contra a fonte nativamente (sub-100ms). "Nome do Conector" é o conector federado usado quando a fonte participa de JOINs multi-fonte.
 

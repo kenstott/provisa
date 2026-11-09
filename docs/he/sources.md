@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **77** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 77; המספור הוא הספירה.
+Provisa רושמת **78** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 78; המספור הוא הספירה.
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa רושמת **77** סוגי מקור, אלה שטופס המקורות מ
 | 49–53 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 76 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 65–72 | [מקורות API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 77 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי.
 

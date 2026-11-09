@@ -251,8 +251,11 @@ async def _fetch_view_rows(state) -> list[dict]:
     speaks the names the user defined (``<domain>.<table>``, e.g. ``pet_store.test``)."""
     if getattr(state, "model_db", None) is None:
         return []
+    from provisa.dbt.store import lineage_views
+
     async with state.model_db.acquire() as conn:
-        return await _view_rows(conn)
+        # REQ-2228: a dbt model's compiled SQL is read as a view's definition is.
+        return [*await _view_rows(conn), *await lineage_views(conn)]
 
 
 async def _view_rows(conn) -> list[dict]:
@@ -475,6 +478,8 @@ def _view_relation(row: dict) -> str:
     ``pet_store``), so a statement's reference to the view stitches to this same node id."""
     from provisa.compiler.naming import domain_to_sql_name
 
+    if "relation" in row:  # REQ-2228: a dbt model already knows the relation it is served as
+        return row["relation"]
     return f"{domain_to_sql_name(row['domain_id'])}.{row['table_name']}"
 
 

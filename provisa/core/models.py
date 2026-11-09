@@ -155,6 +155,9 @@ class SourceType(str, Enum):
     prometheus = "prometheus"
     graphql_remote = "graphql_remote"
     openapi = "openapi"
+    # REQ-2228: a dbt project: its manifest offers its models as tables and everything dbt can run
+    # as commands; the rows are read through the warehouse source the manifest names.
+    dbt = "dbt"
     grpc_remote = "grpc_remote"
     airport = "airport"  # Arrow Flight server — DuckDB airport community extension (REQ-899)
     # Push receiver — external services POST JSON events (Phase AS)
