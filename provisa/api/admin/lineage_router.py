@@ -304,6 +304,19 @@ async def _registry_columns(conn) -> list[dict]:
     return [dict(r._mapping) for r in res.fetchall()]
 
 
+async def store_lineage_edges(conn, rows: list[dict]) -> None:
+    """Replace the stored lineage edges with ``rows``."""
+    from sqlalchemy import delete, insert
+
+    from provisa.core.repositories.build_output import replacing_build_output
+    from provisa.core.schema_org import lineage_edges
+
+    async with replacing_build_output(conn, lineage_edges):
+        await conn.execute_core(delete(lineage_edges))
+        if rows:
+            await conn.execute_core(insert(lineage_edges).values(rows))
+
+
 async def write_lineage_edges(conn, state) -> None:
     """Replace the lineage edge table with the model's column lineage edges (REQ-2129).
 
@@ -311,9 +324,6 @@ async def write_lineage_edges(conn, state) -> None:
     every registered view definition, the served commands, the registry's relations. The edges are
     folded from the same per-view sub-DAGs that graph is the union of, so the two never differ. An
     end that is a registered column is stored with its table and its stored name."""
-    from sqlalchemy import delete, insert
-
-    from provisa.core.schema_org import lineage_edges
     from provisa.lineage.commands import command_write_graphs
     from provisa.lineage.edges import folded_edges
     from provisa.lineage.merge import federation_subdags
@@ -353,9 +363,7 @@ async def write_lineage_edges(conn, state) -> None:
                 "target_column_name": target[1],
             }
         )
-    await conn.execute_core(delete(lineage_edges))
-    if rows:
-        await conn.execute_core(insert(lineage_edges).values(rows))
+    await store_lineage_edges(conn, rows)
 
 
 def _relation_of(domain_id: str, table_name: str) -> str:

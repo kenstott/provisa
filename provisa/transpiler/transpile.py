@@ -1781,7 +1781,7 @@ _OWN_TRY_CASTS = {
 
 
 def transpile(
-    pg_sql: str, target_dialect: str, *, pgvector: bool = False
+    pg_sql: str, target_dialect: str, *, pgvector: bool = False, quote_identifiers: bool = False
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -1790,6 +1790,8 @@ def transpile(
         target_dialect: SQLGlot dialect name (e.g. "trino", "postgres", "mysql").
         pgvector: the statement runs on a PostgreSQL source with the pgvector extension, whose
             own operator a similarity search is then written with (REQ-423).
+        quote_identifiers: send every identifier quoted, for a source written in another
+            dialect's text whose database folds an unquoted name to upper case (REQ-1671).
 
     Returns:
         SQL string in target dialect.
@@ -1820,7 +1822,7 @@ def transpile(
     # UNQUOTED (verified live: `CreateTable` compiled `product_id` bare) — fixed at the DDL side
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
-    identify = target_dialect in ("snowflake", "oracle")
+    identify = quote_identifiers or target_dialect in ("snowflake", "oracle")
     if target_dialect in ("trino", "athena") and pg_sql.lstrip().upper().startswith(
         ("INSERT", "UPDATE")
     ):
@@ -2226,19 +2228,39 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         | {t.alias_or_name for t in tree.find_all(exp.Table) if t.name in ctes}
     )
 
-    def _reads_only_derived(column: exp.Column) -> bool:
+    def _sources(column: exp.Column) -> list[exp.Expr]:
         select = column.find_ancestor(exp.Select)
         if select is None:
-            return False
-        sources = [
+            return []
+        return [
             src.this if isinstance(src, (exp.From, exp.Join)) else src
             for src in [select.args.get("from_"), *select.args.get("joins", [])]
             if src is not None
         ]
+
+    def _reads_only_derived(column: exp.Column) -> bool:
+        sources = _sources(column)
         return bool(sources) and all(
             isinstance(src, exp.Subquery) or (isinstance(src, exp.Table) and src.name in ctes)
             for src in sources
         )
+
+    cte_bodies = {c.alias: c.this for c in tree.find_all(exp.CTE)}
+
+    def _quoted_outputs(column: exp.Column) -> set[str]:
+        """The names the derived relations ``column`` reads output in quotes, as written."""
+        outputs: set[str] = set()
+        for src in _sources(column):
+            if column.table and src.alias_or_name != column.table:
+                continue
+            body = src.this if isinstance(src, exp.Subquery) else cte_bodies.get(src.name)
+            if not isinstance(body, exp.Query):
+                continue
+            for projection in body.selects:
+                name = projection.args.get("alias" if isinstance(projection, exp.Alias) else "this")
+                if isinstance(name, exp.Identifier) and name.quoted:
+                    outputs.add(name.this)
+        return outputs
 
     def _stored(ident: exp.Expr | None, own: set[str]) -> None:
         if isinstance(ident, exp.Identifier) and ident.this == ident.this.lower():
@@ -2263,7 +2285,12 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         _stored(column.args.get("table"), table_aliases | ctes)
         qualifier = column.table
         if (qualifier and qualifier in derived) or (not qualifier and _reads_only_derived(column)):
-            continue  # a derived relation's column is the statement's own output name
+            # A derived relation's column is the statement's own output name. Unquoted, Exasol
+            # reads it in upper case, which a quoted lowercase output does not answer to.
+            name = column.this
+            if isinstance(name, exp.Identifier) and name.this in _quoted_outputs(column):
+                name.set("quoted", True)
+            continue
         # An ORDER BY of an output alias names the alias, not a stored column.
         in_order = column.find_ancestor(exp.Order) is not None
         _stored(column.args.get("this"), output_aliases if in_order else set())
