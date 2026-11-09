@@ -19,6 +19,7 @@
     "sectionRegions": "Regiones",
     "sectionDefaultGrant": "Concesión predeterminada",
     "sectionOrgs": "Organizaciones",
+    "sectionEngines": "Motores",
     "defaultGrantIntro": "Las regiones que se conceden a cada organización nueva, con el almacén donde guarda cada tipo de datos en ellas, para que una organización nueva empiece con una región que funciona.",
     "orgsIntro": "Aquí se decide qué regiones usa una organización: concédale regiones y asigne el almacén donde guarda cada tipo de datos en ellas.",
     "colDescription": "Descripción",
