@@ -33,6 +33,8 @@ import urllib.request
 
 import httpx
 import pytest
+import sqlglot
+import sqlglot.expressions as exp
 
 from tests.integration.worker_boot_harness import WorkerBoot
 
@@ -406,8 +408,11 @@ def _nl(boot) -> dict:
         time.sleep(1)
     branch = out["branches"]["sql"]
     assert out["state"] == "complete" and branch["error"] is None, out
-    # The branch reports the statement strict NL compiled from the GraphQL read (quoted).
-    assert branch["query"] == 'SELECT "id" FROM "sales"."orders"', branch
+    # The branch reports the governed statement strict NL compiled from the GraphQL read: the
+    # table through its governed relation (REQ-039).
+    read = sqlglot.parse_one(branch["query"], dialect="postgres")
+    assert {(t.db, t.name) for t in read.find_all(exp.Table)} == {("sales", "orders")}, branch
+    assert [e.alias_or_name for e in read.expressions] == ["id"], branch
     return branch["result"]["redirect"]
 
 
