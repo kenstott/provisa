@@ -191,6 +191,7 @@ def _subjects(state: Any, role: str) -> tuple[dict, ...]:
     return tuple(
         {
             "id": member,
+            "capabilities": state.roles[member].get("capabilities") or [],  # REQ-870
             "domain_access": state.roles[member]["domain_access"],
             OWN_DOMAIN_ACCESS: state.roles[member][OWN_DOMAIN_ACCESS],
         }

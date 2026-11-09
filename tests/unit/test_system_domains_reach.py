@@ -735,4 +735,4 @@ def test_command_admission_is_not_widened_by_a_capability(role_id, domain, admit
 
 def test_a_listed_role_holding_observability_is_admitted_no_ops_command():
     command = {"domain_id": OPS_DOMAIN_ID, "visible_to": [ROLE]}
-    assert not command_reachable(command, _flat(ROLE, "observability"))
+    assert not command_reachable(command, _flat(ROLE, "observability", "command_execution"))

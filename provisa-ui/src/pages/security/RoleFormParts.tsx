@@ -26,6 +26,7 @@ const ALL_CAPABILITIES: Capability[] = [
   "query_development",
   "full_results",
   "write",
+  "command_execution",
   "no_aggregations",
   "create_view",
   "approve_view",

@@ -2587,8 +2587,8 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
     # The one list of roles the command is assigned to; empty assigns it to every role. A role
-    # calls it when it is assigned, reaches its domain, and — for a mutation — holds the write
-    # right (security/mutation_authz.admit_command).
+    # calls it when it holds command_execution, is assigned and reaches its domain, whether the
+    # command writes or not (security/mutation_authz.admit_command).
     visible_to: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None

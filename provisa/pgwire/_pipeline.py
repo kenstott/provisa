@@ -57,8 +57,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
-_SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
-
 
 def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
     """Resolve ``current_setting('provisa.<var>')`` to a SQL literal for engines
@@ -84,27 +82,18 @@ def resolve_settings(tree: sqlglot.exp.Expr, session_vars: dict[str, str]) -> sq
     NULL where it carries none (REQ-1682). The literal is a node, written in whatever dialect the
     tree is (REQ-913)."""
     from provisa.compiler.sql_literals import literal_expr
+    from provisa.core.session_terms import setting_name
 
     def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
-        named = _setting_named(node)
+        # Skip Cast nodes: the inner current_setting will be visited and resolved.
+        if isinstance(node, sqlglot.exp.Cast):
+            return node
+        named = setting_name(node)
         if named is None:
             return node
         return literal_expr(session_vars.get(named))
 
     return tree.transform(_resolved)
-
-
-def _setting_named(node: sqlglot.exp.Expr) -> str | None:
-    """The provisa.<var> ``node`` reads, where it is current_setting('provisa.<var>' [, true])."""
-    exp = sqlglot.exp
-    if not isinstance(node, exp.Anonymous) or node.name.lower() != "current_setting":
-        return None
-    args = node.expressions
-    missing_ok = len(args) == 2 and isinstance(args[1], exp.Boolean) and args[1].this is True
-    if not (len(args) == 1 or missing_ok) or not isinstance(args[0], exp.Literal):
-        return None
-    found = _SETTING_NAME_RE.fullmatch(args[0].this) if args[0].is_string else None
-    return found.group(1) if found else None
 
 
 @dataclass(frozen=True)
