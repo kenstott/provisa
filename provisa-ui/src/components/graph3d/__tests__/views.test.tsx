@@ -271,8 +271,20 @@ describe("a product's graph, expanded from its panel", () => {
       ],
       edges: [
         ...FACTS.edges,
-        { id: "a", a: "term:account", b: "t:customers", kind: "term_binding", layers: ["ontology"] },
-        { id: "b", a: "term:account", b: "t:elsewhere", kind: "term_binding", layers: ["ontology"] },
+        {
+          id: "a",
+          a: "term:account",
+          b: "t:customers",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
+        {
+          id: "b",
+          a: "term:account",
+          b: "t:elsewhere",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
       ],
     };
     await open();
