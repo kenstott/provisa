@@ -534,8 +534,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
 
 async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
     """Sandbox ``org_id``'s environments: its template's, each created from its prod, given its
-    rows, and its runtime built. Creation and runtime builds each run concurrently: each
-    environment's schema is independent, so two do not conflict (REQ-2006, J1157c)."""
+    rows, and its runtime built."""
     from provisa.api import demo_synthetic
     from provisa.api.app import ensure_org_runtime
     from provisa.api.demo_templates import create_environments, template_environments
@@ -543,15 +542,9 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
     # REQ-2053: the template's environments (a test environment of fakes, say), each created from
     # the sandbox's prod after its person's roles are granted, so each carries them.
     wanted = await template_environments(demo.template_org)
-
-    async def _create_one(env: dict) -> None:
+    for env in wanted:
         async with _stage(org_id, demo.name, f"its environment {env['name']}"):
             await create_environments(org_id, [env], person)
-
-    # Each environment's creation is independent (different schema, different env name): run them
-    # concurrently to avoid paying for them in sequence (3.2 s dev + 1.8 s test → 3.2 s parallel).
-    await asyncio.gather(*(_create_one(env) for env in wanted))
-
     # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
     # at a visitor's request. REQ-2006: its rows, records and bindings are copied from the
     # template's prepared environment, through its schema.
@@ -559,16 +552,12 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
         await demo_synthetic.copy_to_sandbox(
             demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
         )
-
-    async def _build_runtime_one(env: dict) -> None:
-        async with _stage(org_id, demo.name, f"its environment {env['name']}'s runtime"):
-            await ensure_org_runtime(org_id, env["name"], model_cloned=True)
-
     # REQ-2006 (amended 2026-11-04): then each one's runtime, built once and cloned, as its prod's
     # is: its model was copied from prod a moment ago. Left to the first request, a tour step
     # waited 15-20 s on an ordinary build that seeded the whole model again.
-    # Runtimes are independent and run concurrently (0.4 s dev + 0.9 s test → 0.9 s parallel).
-    await asyncio.gather(*(_build_runtime_one(env) for env in wanted))
+    for env in wanted:
+        async with _stage(org_id, demo.name, f"its environment {env['name']}'s runtime"):
+            await ensure_org_runtime(org_id, env["name"], model_cloned=True)
 
 
 async def carry_landed_data(template_org: str, org_id: str, seed: Any, demo: str) -> None:
