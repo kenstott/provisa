@@ -20,9 +20,9 @@ OpenAPI, gRPC, Hasura):
 
 2. ADMIT a command call (``admit_command``), the one admission every surface's call passes:
    the role holds command_execution (REQ-870), is assigned the command (its one role list,
-   ``visible_to``; empty assigns it to no role), reaches the command's domain, and — for a mutation — holds the global WRITE
-   capability (REQ-868). A command the role may not use is not found, the same as one never
-   registered. No capability stands above the assignment.
+   ``visible_to``; empty assigns it to no role) and reaches the command's domain. The assignment
+   is the grant: whether the command writes asks nothing more. A command the role may not use is
+   not found, the same as one never registered. No capability stands above the assignment.
 
 The executor (api/data/action_exec.py) renders these as the API's answers; this module is pure
 and unit-testable with no I/O.
@@ -39,7 +39,6 @@ from provisa.security.rights import (
     InsufficientRightsError,
     has_capability,
     reaches_command_domain,
-    reads_data,
 )
 
 
@@ -188,9 +187,9 @@ def command_reachable(command: dict, role: dict) -> bool:
 
 
 def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-869, REQ-1758
-    """The one command admission, for every surface: the role is assigned the command, reaches
-    its domain, and — for a command declared ``mutation`` (or of unknown kind) — holds the write
-    right. Approval, where the command declares it, is the caller's next step.
+    """The one command admission, for every surface: the role may use the command by
+    :func:`command_reachable`, whether the command writes or not; it needs no write capability
+    for it (REQ-870). Approval, where the command declares it, is the caller's next step.
 
     A command is opaque within these rights: what it does once admitted is not inspected here.
     There is no call without a role (REQ-1758)."""
@@ -198,9 +197,3 @@ def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-8
         raise MutationNotPermitted(name, "no acting role: a command is called as a role")
     if not command_reachable(command, role):
         raise CommandNotFound(name)
-    # REQ-870: a role holding only command_execution runs what it is assigned, and nothing else.
-    needs_write = classify_kind(command.get("kind")) is MutationKind.WRITE and reads_data(
-        role.get("capabilities")
-    )
-    if needs_write and not has_capability(role, Capability.WRITE):
-        raise MutationNotPermitted(name, "role lacks the WRITE capability")
