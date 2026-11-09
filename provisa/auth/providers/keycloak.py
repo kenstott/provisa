@@ -32,11 +32,13 @@ class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
         realm: str,
         client_id: str,
         client_secret: str | None = None,
+        entitlements_claim: str | None = None,
     ) -> None:
         self._server_url = server_url.rstrip("/")
         self._realm = realm
         self._client_id = client_id
         self._client_secret = client_secret
+        self._entitlements_claim = entitlements_claim  # REQ-2219
         # REQ-122: the realm is the issuer; a token minted by another realm of the same server
         # is signed by a different key set and names a different issuer.
         self._issuer = f"{self._server_url}/realms/{realm}"
@@ -76,4 +78,5 @@ class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
             display_name=decoded.get("preferred_username"),
             roles=roles,
             raw_claims=decoded,
+            entitlements_claim=self._entitlements_claim,
         )

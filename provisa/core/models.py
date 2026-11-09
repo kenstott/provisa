@@ -594,6 +594,7 @@ class DataProduct(BaseModel):  # REQ-1634
     status_reason: str | None = None
     retire_on: date | None = None
     successor: str | None = None
+    created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
     # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
@@ -2351,6 +2352,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     # current_setting('provisa.<name>') reads when the request binds nothing of that name. A child
     # takes its ancestors' under its own (nearest wins).
     session_vars: dict[str, str] = Field(default_factory=dict)
+    # REQ-2219: what a holder gets with no list. Left out, a save writes it from domain_access
+    # when domain_access changed, and keeps what is stored when it did not.
+    default_entitlements: dict[str, list[str]] | None = None
 
     @field_validator("description")
     @classmethod
