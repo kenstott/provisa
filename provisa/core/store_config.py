@@ -179,9 +179,7 @@ def _profile_result_of(
     return str(member["table_name"]), match[3]
 
 
-def _table(
-    row: dict[str, Any], class_term: str | None, by_id: dict[int, dict[str, Any]]
-) -> dict[str, Any]:
+def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     fields = _fields(Table, {**row, "class_term": class_term})
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
@@ -200,10 +198,18 @@ def _table(
     # tables by (source, schema, table).
     written["schema"] = table.schema_name
     written["domain_id"] = table.domain_id
-    profile_result = _profile_result_of(row, by_id)
-    if profile_result is not None:  # REQ-2222
-        written["profile_of"], written["kind"] = profile_result
     return written
+
+
+def _named_by_member(
+    written: dict[str, Any], row: dict[str, Any], by_id: dict[int, dict[str, Any]]
+) -> dict[str, Any]:  # REQ-2222
+    """``written`` with the member and kind of a profiler's result table, if ``row`` is one."""
+    profile_result = _profile_result_of(row, by_id)
+    if profile_result is None:
+        return written
+    member, kind = profile_result
+    return {**written, "profile_of": member, "kind": kind}
 
 
 async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
@@ -417,7 +423,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         ],
         "glossary_terms": await _glossary_terms(conn),
         "tables": [
-            _table(t, class_terms.get(int(t["id"])), by_id)
+            _named_by_member(_table(t, class_terms.get(int(t["id"]))), t, by_id)
             for t in tables
             if int(t["id"]) not in internal
         ],
@@ -505,14 +511,30 @@ def _in_a_stable_order(model: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def with_store_model(raw: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+def _without_stored_name(table: dict[str, Any]) -> dict[str, Any]:  # REQ-2222
+    """A table as a configuration states it. A profile result's name carries its member's id in
+    this store, which another store does not share: the configuration names it by member and kind
+    (REQ-2052), and the store it is applied to names it."""
+    if table.get("profile_of") is None:
+        return table
+    return {k: v for k, v in table.items() if k != "table"}
+
+
+def with_store_model(
+    raw: dict[str, Any], model: dict[str, Any], *, stored: bool = False
+) -> dict[str, Any]:
     """The configuration ``raw`` (the deployment's file, as written) with every model section
-    replaced by the store's. The file's settings — server, engine, auth and the rest — stay."""
+    replaced by the store's. The file's settings — server, engine, auth and the rest — stay.
+
+    ``stored``: for the process that runs this store's model, which reads a profile result by the
+    name it has here. Without it, the configuration an export writes."""
     # A ``views:`` block declares tables of the derived source (config_loader.views_as_tables);
     # the store holds them as tables, so the file's are not carried over.
     out = {k: v for k, v in raw.items() if k not in MODEL_SECTIONS and k != "views"}
     for section in MODEL_SECTIONS:
         out[section] = model[section]
+    if not stored:
+        out["tables"] = [_without_stored_name(t) for t in out["tables"]]
     out["naming"] = {**(raw.get("naming") or {}), "rules": model["naming_rules"]}
     return out
 

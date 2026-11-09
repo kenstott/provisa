@@ -115,3 +115,29 @@ def test_a_result_named_by_its_member_names_no_table_and_a_known_kind():
         from provisa.profiler.registration import validate_config
 
         validate_config(parse_config_dict(config))
+
+
+def test_an_export_names_a_result_by_its_member_and_the_running_process_by_its_stored_name():
+    # REQ-2222: the stored name carries an id another store does not share, so a file omits it.
+    from provisa.core.config_loader import parse_config_dict
+    from provisa.core.store_config import MODEL_SECTIONS, with_store_model
+
+    result = {
+        "source_id": "prof",
+        "schema": "public",
+        "domain_id": "harbor",
+        "table": "customers_3_profile_columns",
+        "profile_of": "customers",
+        "kind": "columns",
+        "columns": [],
+    }
+    other = {"source_id": "pg", "schema": "public", "domain_id": "harbor", "table": "orders"}
+    model = {section: [] for section in MODEL_SECTIONS}
+    model.update(naming_rules=[], tables=[result, other])
+
+    exported = with_store_model({}, model)
+    assert "table" not in exported["tables"][0]
+    assert exported["tables"][1] == other
+    assert with_store_model({}, model, stored=True)["tables"] == [result, other]
+    with pytest.raises(ValueError, match="names no table"):
+        parse_config_dict({"tables": [result]})

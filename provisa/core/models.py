@@ -1692,12 +1692,6 @@ def pending_profile_result_name(member: str, kind: str) -> str:  # REQ-2052
     return f"{member}_profile_{kind}"
 
 
-def is_profile_result_name(name: str, member: str, kind: str) -> bool:  # REQ-2222
-    """Whether ``name`` is ``member``'s ``kind`` result relation under some store's id for it: an
-    export states the name it had, and the store it is applied to names it by its own id."""
-    return re.fullmatch(rf"{re.escape(member)}_\d+_profile_{re.escape(kind)}", name) is not None
-
-
 def config_table_name(raw: dict) -> str:  # REQ-2052
     """A configuration table's name as written: its ``table``, or -- a profile result named by its
     member -- the pending name it holds until the seed resolves it."""
@@ -2085,11 +2079,10 @@ class Table(
         if held is not None:
             if (info.context or {}).get(STORED_MODEL):
                 return data  # REQ-2222: the store's model names it by its member and its stored id
-            if not is_profile_result_name(held, data["profile_of"], kind):
-                raise ValueError(
-                    f"table profile_of {data['profile_of']!r}: its name is resolved from its "
-                    "member; it names no table"
-                )
+            raise ValueError(
+                f"table profile_of {data['profile_of']!r}: its name is resolved from its member; "
+                "it names no table"
+            )
         return {**data, "table": pending_profile_result_name(data["profile_of"], kind)}
 
     @model_validator(mode="after")

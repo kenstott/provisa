@@ -2379,7 +2379,7 @@ async def store_raw(raw: dict, conn: "Connection") -> dict:  # REQ-1919
     store: the raw configuration every reader of a model section reads, never the file's."""
     from provisa.core.store_config import store_model, with_store_model
 
-    return with_store_model(raw, await store_model(conn))
+    return with_store_model(raw, await store_model(conn), stored=True)
 
 
 def parse_store_raw(raw: dict) -> ProvisaConfig:  # REQ-1919
