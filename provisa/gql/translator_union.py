@@ -301,6 +301,7 @@ class _UnionMixin:  # mixin for _Translator
         # Held across the hops of a statement: each hop's columns are its own.
         self._all_rels_ends.setdefault(src_col, [])
         self._all_rels_ends.setdefault(tgt_col, [])
+        required = self._required_var_props(rel_var) if rel_var else []
         for rm in self._lm.relationships.values():
             src_nm = self._lm.nodes.get(rm.source_label)
             tgt_nm = self._lm.nodes.get(rm.target_label)
@@ -341,6 +342,11 @@ class _UnionMixin:  # mixin for _Translator
                 # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
                 # These are not real FK traversals and would pull in unrelated domain nodes.
                 if rm.constant_source:
+                    continue
+                # Metadata-based prune, as _build_domain_union's: a relationship lacking a
+                # property the MATCH's WHERE filters the relationship on is never matched, so
+                # its tables are never read.
+                if any(p not in rm.properties for p in required):
                     continue
 
                 sa = f"_s_{rm.rel_type.lower()[:20]}"
