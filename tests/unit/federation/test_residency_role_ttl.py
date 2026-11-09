@@ -412,10 +412,11 @@ async def test_a_trader_read_lands_only_past_the_cache_ttl_floor(wiring, monkeyp
     import time as _time
 
     monkeypatch.setattr(_time, "time", lambda: NOW + 170)
+    # No freshness guarantee on this source: the read asks for the build and does not wait (REQ-860).
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
-    ).built == [("s", "orders")]
-    assert backend.lands == 1
+    ).built == []
+    assert backend.plans == 1
 
 
 @pytest.mark.asyncio
@@ -426,9 +427,9 @@ async def test_two_concurrent_trader_reads_share_one_land(wiring):
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
         ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state)),
     )
-    assert backend.lands == 1 and backend.plans == 1  # one request, one build
-    # both readers waited for that one build
-    assert first.built == second.built == [("s", "orders")]
+    assert backend.plans == 1  # one request, so one build
+    # no freshness guarantee: neither reader waited for it (REQ-860)
+    assert first.built == second.built == []
 
 
 @pytest.mark.asyncio

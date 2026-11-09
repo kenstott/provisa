@@ -577,9 +577,13 @@ async def test_a_copy_that_says_stale_is_checked_against_the_record_before_a_bui
 
 
 @pytest.mark.asyncio
-async def test_a_ttl_outrun_asks_for_a_rebuild_and_waits_for_it(wiring, plane):
+async def test_a_ttl_outrun_asks_for_a_rebuild_and_waits_for_it(wiring, plane, monkeypatch):
+    monkeypatch.setattr(
+        "provisa.freshness.source_gate.gate_source",
+        lambda source, subject, now: SimpleNamespace(is_fresh=False),
+    )
     pets = _table("pets-db", "pets", cache_ttl=60)
-    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state = _state([_source("pets-db", freshness_gate=True)], [pets], _Backend(), plane)
     await _built(plane, pets, at=datetime.now(UTC) - timedelta(seconds=600))
     assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
     assert wiring.built == [_key(pets)]
@@ -694,13 +698,18 @@ async def test_a_gate_off_read_waits_on_the_retry_of_a_failed_refresh(
 
 @pytest.mark.asyncio
 async def test_a_read_of_a_table_with_a_ttl_of_0_is_answered_by_the_build_it_waited_for(
-    wiring, plane
+    wiring, plane, monkeypatch
 ):
     """REQ-2003: a cache_ttl of 0 keeps no copy current past its landing, so a replica is stale
     the moment it lands. A read that asked for a build is answered by the landing it waited for,
-    not left to poll until its deadline for a copy that can never be current."""
+    not left to poll until its deadline for a copy that can never be current. Gated: only a
+    read with the freshness guarantee waits for a refresh of a replica it holds (REQ-860)."""
+    monkeypatch.setattr(
+        "provisa.freshness.source_gate.gate_source",
+        lambda source, subject, now: SimpleNamespace(is_fresh=False),
+    )
     pets = _table("pets-db", "pets", cache_ttl=0)
-    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    state = _state([_source("pets-db", freshness_gate=True)], [pets], _Backend(), plane)
     from provisa.core import request_deadline
 
     with request_deadline.within(5.0):
