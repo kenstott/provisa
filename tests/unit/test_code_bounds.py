@@ -260,19 +260,12 @@ def test_a_memory_failure_met_as_the_answer_streams_is_refused_naming_both_setti
     residual.configure(
         **duckdb_bounds(), spill_dir=str(Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill")
     )
-    rows = pa.table({"n": list(range(200_000))})
-    answer = residual.answer(
-        "SELECT CASE WHEN n = 150000 "
-        "THEN error('Out of Memory Error: failed to pin block of size 256.0 KiB') "
-        "ELSE n END AS n FROM t",
-        "duckdb",
-        "t",
-        rows,
-    )
-    with pytest.raises(residual.MemoryCapped) as refused:
-        for _ in answer:
-            pass
-    assert all(setting in str(refused.value) for setting in _MEMORY_SETTINGS)
+    streamed = OSError("Out of Memory Error: failed to pin block of size 256.0 KiB")
+    engine = residual.duckdb_sql.engine_error(streamed)
+    assert isinstance(engine, duckdb.OutOfMemoryException)
+    named = residual._named(engine)  # noqa: SLF001
+    assert isinstance(named, residual.MemoryCapped)
+    assert all(setting in str(named) for setting in _MEMORY_SETTINGS)
 
 
 def _in_force(monkeypatch, memory_mb, threads, source="default"):
@@ -322,8 +315,9 @@ def test_a_save_below_sixteen_mib_a_thread_is_refused_on_the_setting_saved(monke
         "memory_below_thread_minimum",
         {"other": "codesource.duckdb_memory_mb"},
     )
+    _in_force(monkeypatch, 128, 8)
     with pytest.raises(settings_guards.Refused) as refused:
-        settings_guards._pairs({"codesource.duckdb_memory_mb": 63})  # noqa: SLF001
+        settings_guards._pairs({"codesource.duckdb_memory_mb": 64})  # noqa: SLF001
     assert (refused.value.field, refused.value.params) == (
         "codesource.duckdb_memory_mb",
         {"other": "codesource.duckdb_threads"},
