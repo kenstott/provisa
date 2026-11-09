@@ -125,6 +125,7 @@
         "redis_tls_required": "在要求使用 TLS 时，Redis 必须使用 TLS。",
         "price_entry_invalid": "每个条目是一个模型 ID 和四个每百万 token 价格：输入、输出、缓存读取、缓存写入（{{entry}}）。",
         "retry_max_below_interval": "最长等待时间不能小于重试间隔（{{other}}）。",
+        "memory_below_thread_minimum": "每个 DuckDB 线程至少需要 16 MiB 内存。请更改此值或 {{other}}。",
         "cannot_decrypt": "无法用当前密钥解密已存储的值。",
         "internal_tls_set_by_chart": "此项由 Helm chart 在此设置：请更改 chart 值 {{value}}。",
         "internal_tls_not_trino": "只有 Trino 引擎才能加密引擎节点之间的流量。",

@@ -364,6 +364,7 @@
   "he/adminPage.json::adminPage.setting.reason.internal_tls_set_by_chart": "The Helm chart sets this here: change the chart value {{value}}.",
   "he/adminPage.json::adminPage.setting.reason.internal_tls_single_node": "This deployment's engines are single-node coordinators: no traffic passes between engine nodes.",
   "he/adminPage.json::adminPage.setting.reason.invalid_tls_pair": "The certificate and private key must be set together ({{other}}).",
+  "he/adminPage.json::adminPage.setting.reason.memory_below_thread_minimum": "Each DuckDB thread needs at least 16 MiB of memory. Change this value or {{other}}.",
   "he/adminPage.json::adminPage.setting.reason.not_a_boolean": "Choose on or off.",
   "he/adminPage.json::adminPage.setting.reason.not_a_list": "Enter a list of values separated by commas.",
   "he/adminPage.json::adminPage.setting.reason.not_a_map": "Enter a JSON object.",

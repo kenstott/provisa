@@ -641,6 +641,7 @@ describe("new PUT reasons", () => {
     "redis_tls_required",
     "cannot_decrypt",
     "retry_max_below_interval",
+    "memory_below_thread_minimum",
   ])("has a text for %s and shows the other listener", async (reason) => {
     const onSave = vi.fn().mockRejectedValue(
       Object.assign(new Error("raw server text"), {
@@ -656,7 +657,8 @@ describe("new PUT reasons", () => {
     if (
       reason === "port_in_use" ||
       reason === "invalid_tls_pair" ||
-      reason === "retry_max_below_interval"
+      reason === "retry_max_below_interval" ||
+      reason === "memory_below_thread_minimum"
     ) {
       expect(err.textContent).toContain("server.grpc_port");
     }

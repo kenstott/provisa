@@ -33,6 +33,7 @@ from provisa.codehost import front, residual
 from provisa.codesource import remote
 from provisa.codesource.arrow_rows import schema_text
 from provisa.codesource.worker import _frame, _read_frame, duckdb_bounds
+from provisa.core import settings_registry
 from provisa.python.source import HOST
 
 pytestmark = pytest.mark.unit
@@ -211,6 +212,120 @@ def test_a_spill_that_reaches_the_end_of_its_volume_as_the_answer_streams_is_ref
     with pytest.raises(residual.SpillCapped, match="codesource.duckdb_spill_cap_mb"):
         for _ in answer:
             pass
+
+
+_MEMORY_SETTINGS = ("codesource.duckdb_memory_mb", "codesource.duckdb_threads")
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Out of Memory Error: failed to pin block of size 256.0 KiB (64.0 MiB/64.0 MiB used)",
+        "Out of Memory Error: failed to allocate data of size 8.0 MiB (60.0 MiB/64.0 MiB used)",
+    ],
+)
+def test_a_statement_past_the_memory_it_can_spill_from_is_refused_naming_both_settings(said):
+    """Past the point DuckDB can sort by spilling, its failure names neither setting; the refusal
+    names both, what each is now, and which way each has to move."""
+    residual.configure(
+        **duckdb_bounds(), spill_dir=str(Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill")
+    )
+    named = residual._named(duckdb.OutOfMemoryException(said))  # noqa: SLF001
+    assert isinstance(named, residual.MemoryCapped)
+    bounds = duckdb_bounds()
+    assert str(named) == (
+        "the statement needs more memory than DuckDB can answer it in, even spilling to disk: "
+        f"codesource.duckdb_memory_mb is {bounds['memory_mb']} MiB and "
+        f"codesource.duckdb_threads is {bounds['threads']}. "
+        "Raise codesource.duckdb_memory_mb, lower codesource.duckdb_threads, "
+        "or narrow the statement"
+    )
+
+
+def test_running_out_of_the_spill_cap_is_still_refused_naming_the_cap_not_the_memory():
+    residual.configure(
+        **duckdb_bounds(), spill_dir=str(Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill")
+    )
+    capped = duckdb.OutOfMemoryException(
+        "Out of Memory Error: failed to offload data block: max_temp_directory_size reached"
+    )
+    named = residual._named(capped)  # noqa: SLF001
+    assert isinstance(named, residual.SpillCapped)
+    assert not any(setting in str(named) for setting in _MEMORY_SETTINGS)
+
+
+def test_a_memory_failure_met_as_the_answer_streams_is_refused_naming_both_settings():
+    """Arrow's reader raises the engine's failure as an OSError carrying only its message: met
+    there, it is the same refusal."""
+    residual.configure(
+        **duckdb_bounds(), spill_dir=str(Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill")
+    )
+    streamed = OSError("Out of Memory Error: failed to pin block of size 256.0 KiB")
+    engine = residual.duckdb_sql.engine_error(streamed)
+    assert isinstance(engine, duckdb.OutOfMemoryException)
+    named = residual._named(engine)  # noqa: SLF001
+    assert isinstance(named, residual.MemoryCapped)
+    assert all(setting in str(named) for setting in _MEMORY_SETTINGS)
+
+
+def _in_force(monkeypatch, memory_mb, threads, source="default"):
+    """The two settings resolving to these values, whatever the deployment running the test."""
+    resolved = {
+        "codesource.duckdb_memory_mb": settings_registry.Resolved(memory_mb, source),
+        "codesource.duckdb_threads": settings_registry.Resolved(threads, source),
+    }
+    real_resolve = settings_registry.resolve
+    monkeypatch.setattr(
+        settings_registry,
+        "resolve",
+        lambda key: resolved[key] if key in resolved else real_resolve(key),
+    )
+
+
+@pytest.mark.parametrize(
+    ("memory_mb", "threads"),
+    [(64, 4), (64, 1), (1024, 4), (1024, 64), (80, 5)],
+)
+def test_at_least_sixteen_mib_a_thread_is_accepted(monkeypatch, memory_mb, threads):
+    _in_force(monkeypatch, memory_mb, threads)
+    settings_registry.check_pairs()
+
+
+@pytest.mark.parametrize(
+    ("memory_mb", "threads"),
+    [(64, 5), (64, 8), (1024, 65), (79, 5)],
+)
+def test_a_load_below_sixteen_mib_a_thread_stops_by_name(monkeypatch, memory_mb, threads):
+    _in_force(monkeypatch, memory_mb, threads)
+    with pytest.raises(settings_registry.SettingsConflict) as refused:
+        settings_registry.check_pairs()
+    assert (refused.value.field, refused.value.other) == _MEMORY_SETTINGS
+    assert refused.value.reason == "memory_below_thread_minimum"
+    assert (refused.value.value, refused.value.other_value) == (memory_mb, threads)
+
+
+def test_a_save_below_sixteen_mib_a_thread_is_refused_on_the_setting_saved(monkeypatch):
+    from provisa.api.admin import settings_guards
+
+    _in_force(monkeypatch, 64, 4)
+    with pytest.raises(settings_guards.Refused) as refused:
+        settings_guards._pairs({"codesource.duckdb_threads": 8})  # noqa: SLF001
+    assert (refused.value.field, refused.value.reason, refused.value.params) == (
+        "codesource.duckdb_threads",
+        "memory_below_thread_minimum",
+        {"other": "codesource.duckdb_memory_mb"},
+    )
+    _in_force(monkeypatch, 128, 8)
+    with pytest.raises(settings_guards.Refused) as refused:
+        settings_guards._pairs({"codesource.duckdb_memory_mb": 64})  # noqa: SLF001
+    assert (refused.value.field, refused.value.params) == (
+        "codesource.duckdb_memory_mb",
+        {"other": "codesource.duckdb_threads"},
+    )
+    # Saved together they are judged together, and exactly the minimum is allowed.
+    settings_guards._pairs(  # noqa: SLF001
+        {"codesource.duckdb_memory_mb": 128, "codesource.duckdb_threads": 8}
+    )
 
 
 _FAILS_MIDWAY = """

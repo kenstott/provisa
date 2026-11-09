@@ -125,6 +125,7 @@
         "redis_tls_required": "Redis חייב להשתמש ב-TLS כל עוד TLS נדרש.",
         "price_entry_invalid": "כל רשומה היא מזהה מודל וארבעה מחירים למיליון טוקנים: קלט, פלט, קריאה מהמטמון, כתיבה למטמון ({{entry}}).",
         "retry_max_below_interval": "ההמתנה הארוכה ביותר אינה יכולה להיות קטנה ממרווח הניסיון החוזר ({{other}}).",
+        "memory_below_thread_minimum": "כל תהליכון של DuckDB זקוק ל-16 MiB זיכרון לפחות. שנו את הערך הזה או את {{other}}.",
         "cannot_decrypt": "לא ניתן היה לפענח ערך שמור באמצעות המפתח הנוכחי.",
         "internal_tls_set_by_chart": "תרשים Helm קובע זאת כאן: שנו את ערך התרשים {{value}}.",
         "internal_tls_not_trino": "אפשר להצפין את התעבורה בין צמתי המנוע רק במנוע Trino.",
