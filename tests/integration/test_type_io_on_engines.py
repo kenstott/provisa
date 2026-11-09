@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 
 from provisa.core.pg_error import from_engine
+from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
 from tests.unit.pgwire.type_io_corpus import (
@@ -81,7 +82,10 @@ def test_trino_answers_as_postgresql_17_answered(trino_conn, function: str):
     def run(sql: str, _: int | None) -> Any:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
-        return cursor.fetchall()[0][0]
+        cell = cursor.fetchall()[0][0]
+        # A jsonb is its text on the engine, Trino's canonical JSON: a client reads it as
+        # jsonb_out writes it (pg_forms_json).
+        return jsonb_out(cell) if function == "jsonb_in" else cell
 
     assert _differences(run, "trino", function) == {}
 
