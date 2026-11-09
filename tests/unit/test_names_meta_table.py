@@ -14,6 +14,10 @@ standard report listing every name, its problems, and the clashes the last build
 
 from __future__ import annotations
 
+import asyncio
+import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -201,6 +205,13 @@ class _RecordingConn:
     async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
         self.statements.append(stmt)
 
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        yield
+
+    async def advisory_xact_lock(self, key: int) -> None:
+        pass
+
 
 @pytest.mark.asyncio
 async def test_a_model_with_more_names_than_a_statement_can_bind_is_stored(control_plane):
@@ -241,6 +252,54 @@ async def test_what_a_build_sends_does_not_grow_with_its_names(write, many):
         return [len(s.compile().params) for s in conn.statements]
 
     assert await sent(2) == await sent(500)
+
+
+@pytest.mark.asyncio
+async def test_a_build_writing_while_another_replaces_the_names_waits_for_it(control_plane):
+    """Every worker builds the model it is told changed: a second build arriving between the first
+    one's delete and its insert took the same keys, and the first was refused on the primary key
+    (REQ-194). The second waits, and the table holds the last build's names alone."""
+    db = control_plane.org()
+    names = _names().rows
+    finished = threading.Event()
+    failures: list[BaseException] = []
+
+    async def second_build() -> None:
+        async with db.acquire() as conn:
+            await write_names_table(conn, names[:1])
+
+    def run_second() -> None:
+        try:
+            asyncio.run(second_build())
+        except BaseException as exc:  # noqa: BLE001 -- reported by the assertion below
+            failures.append(exc)
+        finally:
+            finished.set()
+
+    second = threading.Thread(target=run_second)
+    try:
+        async with db.acquire() as conn:
+            await conn.execute_core(text(_META_TABLE_VIEWS["model_names"]))
+            insert_rows = conn.execute_core_many
+
+            async def second_build_arrives(stmt: Any, rows: list[dict[str, Any]]) -> None:
+                second.start()
+                finished.wait(timeout=3)
+                await insert_rows(stmt, rows)
+
+            conn.execute_core_many = second_build_arrives  # type: ignore[method-assign]
+            await write_names_table(conn, names)
+            conn.execute_core_many = insert_rows  # type: ignore[method-assign]
+        second.join(timeout=30)
+        assert not second.is_alive(), "the second build never finished"
+        assert failures == []
+        async with db.acquire() as conn:
+            kept = (
+                await conn.execute_core(text("SELECT object_id FROM model_names_meta"))
+            ).fetchall()
+    finally:
+        await db.close()
+    assert [tuple(r) for r in kept] == [("1",)]
 
 
 @pytest.mark.asyncio
