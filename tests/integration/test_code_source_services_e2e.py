@@ -69,6 +69,7 @@ def services_read(inputs: UsedInputs) -> list[Used]:
     cached = ps.cache.get(f"region-{name}")
     ps.log("read the region", level="info", name=name)
     ps.metric("reads", 1, source_name=name)
+    ps.audit("read.region", name=name, region=region)
     return [Used(name, region, cached)]
 ''',
 }
@@ -76,7 +77,7 @@ def services_read(inputs: UsedInputs) -> list[Used]:
 _NODE = {
     "uses/package.json": json.dumps({"name": "uses", "type": "module", "main": "index.js"}),
     "uses/index.js": """
-import { settings, cache, log, metric } from "@provisa/services";
+import { settings, cache, log, metric, audit } from "@provisa/services";
 
 export async function services_read({ name }) {
   const region = await settings.get("region");
@@ -84,6 +85,7 @@ export async function services_read({ name }) {
   const cached = await cache.get(`region-${name}`);
   await log("read the region", "info", { name });
   await metric("reads", 1, "counter", { source_name: name });
+  await audit("read.region", { name, region });
   return [{ name, setting: region, cached }];
 }
 """,
@@ -163,3 +165,23 @@ def uses(server):
 def test_the_code_reads_its_setting_and_its_cache_through_the_module(server, uses):
     (row,) = _rows(_sql(server, "SELECT setting, cached FROM services_read WHERE _nf_name = 'a'"))
     assert row == {"setting": "eu-west", "cached": "eu-west"}
+
+
+def test_the_codes_audit_event_is_in_the_orgs_trail(server, uses):
+    from sqlalchemy import text
+
+    from provisa.codesource.service_ops import CODE_AUDIT
+    from provisa.core.environments import org_schema
+
+    _rows(_sql(server, "SELECT setting FROM services_read WHERE _nf_name = 'audited'"))
+    trail = f'"{org_schema(server.org_id)}".admin_audit_log'
+    with server.plane.engine().connect() as conn:
+        written = conn.execute(
+            text(f"SELECT actor_id, subject_id, detail FROM {trail} WHERE action = :action"),
+            {"action": CODE_AUDIT},
+        ).fetchall()
+    (row,) = [w for w in written if w.detail["fields"].get("name") == "audited"]
+    assert row.actor_id == f"source:{uses}" and row.subject_id == "read.region"
+    assert row.detail["source"] == uses
+    assert row.detail["fields"] == {"name": "audited", "region": "eu-west"}
+    assert "trace_id" in row.detail
