@@ -188,13 +188,19 @@ async def _bound(rt: "OrgRuntime", work: Any) -> None:
 async def reload_model(rt: "OrgRuntime") -> object:
     """Rebuild ``rt``'s compiled model from the control plane. The build records the ``model``
     stamp it read before reading the model, and bumps the process's schema generation, which is
-    what every kept plan, compiled query and routing decision is keyed on."""
-    from provisa.api.app import _rebuild_schemas
+    what every kept plan, compiled query and routing decision is keyed on.
+
+    A change the build does not read builds nothing: the runtime takes the new ``model`` stamp and
+    its schema generation stays, as what a kept plan was made from has not changed. What follows
+    the stamp (the response cache, the hot tables, the audit record) moves with it."""
+    from provisa.api.app import _rebuild_schemas, model_stamp_moved_without_a_build
 
     if not _held(rt):
         return NOT_RELOADED  # dropped since the watcher listed it: there is no copy left to reload
 
     async def _rebuild() -> None:
+        if await model_stamp_moved_without_a_build():
+            return
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
         # Built at the stored stamp by the time its turn comes (this worker's own change), it is
         # not built again.
