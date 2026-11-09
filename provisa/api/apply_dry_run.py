@@ -145,6 +145,32 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         if row.get("type") == "postgresql":
             sources[sid] = {**row, "database": source_to_catalog(sid)}
 
+    # The write capability of each table must be stamped on its record before the build reads it
+    # (app.py does this in the real build; schema_gen directly keys write_ops, write_returns_rows
+    # and write_refused_forms — no default). Use merged source types so newly-added sources are
+    # covered alongside any that pre-existed only in state.
+    from provisa.executor.write_capability import (
+        table_write_ops,
+        table_write_refused_forms,
+        table_write_returns_rows,
+    )
+
+    _merged_types = {**state.source_types, **source_types}
+    for _t in [*tables, *draft_tables]:
+        _stype = None if _t.get("view_sql") else _merged_types.get(_t["source_id"])
+        _spath = None if _t.get("view_sql") else sources.get(_t["source_id"], {}).get("path")
+        _t["write_ops"] = sorted(
+            table_write_ops(_t, _stype, state.federation_engine.engine, source_path=_spath)
+        )
+        _t["write_returns_rows"] = table_write_returns_rows(
+            _t, _stype, state.federation_engine.engine, source_path=_spath
+        )
+        _t["write_refused_forms"] = sorted(
+            table_write_refused_forms(
+                _t, _stype, state.federation_engine.engine, source_path=_spath
+            )
+        )
+
     physical = getattr(state, "kafka_table_physical", {})
     column_types = introspect_tables(
         None, tables, sources, {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(physical or {})}
