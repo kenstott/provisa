@@ -429,7 +429,11 @@ async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session
     from provisa.executor.source_operation import call_operation
 
     return await call_operation(
-        state, fn["source_id"], fn["function_name"], _json_arguments_from_sql(fn, args)
+        state,
+        fn["source_id"],
+        fn["function_name"],
+        _json_arguments_from_sql(fn, args),
+        fn.get("schema_name"),
     )
 
 

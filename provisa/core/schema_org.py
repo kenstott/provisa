@@ -307,6 +307,9 @@ registered_tables = Table(
     # REQ-1981: the table's format where its source reports one (an Athena table: "iceberg" or
     # "hive"), recorded when it is registered; it decides the writes the table takes.
     Column("table_format", Text),
+    # REQ-2230: the statement that defines the table in its source (a Snowflake Dynamic Table's),
+    # recorded when it is registered; what it reads joins the lineage graph.
+    Column("source_definition", Text),
     # REQ-1954: a ServiceNow table's import set: the staging table of the transform map its
     # inserts go through. NULL = its inserts are written to the table directly.
     Column("import_set", Text),

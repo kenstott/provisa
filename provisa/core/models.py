@@ -1873,6 +1873,11 @@ class Table(
     # "hive"), read from the source when the table is registered, never set by a steward. It
     # decides the writes the table takes (``executor/write_capability``).
     table_format: str | None = None
+    # REQ-2230: the statement that defines the table in its source, where the source reports one
+    # (a Snowflake Dynamic Table's), read when the table is registered, never set by a steward.
+    # What it reads joins the lineage graph (``lineage/source_definitions``). "" is read and none
+    # reported; None is not read.
+    source_definition: str | None = None
     # REQ-1954: a ServiceNow table bound to one of the instance's import sets: the staging table
     # of the transform map (targeting this table) its inserts go through, by the instance's Import
     # Set API. None: its inserts are written to the table directly. Updates and deletes are always

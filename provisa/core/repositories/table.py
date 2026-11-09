@@ -644,6 +644,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "file_glob": getattr(table, "file_glob", None),  # REQ-788
         "source_file_column": getattr(table, "source_file_column", None),  # REQ-788
         "table_format": getattr(table, "table_format", None),  # REQ-1981
+        "source_definition": getattr(table, "source_definition", None),  # REQ-2230
         "import_set": getattr(table, "import_set", None),  # REQ-1954
         "delta": _delta.model_dump()
         if (_delta := getattr(table, "delta", None))
@@ -711,6 +712,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "file_glob",  # REQ-788
         "source_file_column",  # REQ-788
         "table_format",  # REQ-1981
+        # REQ-2230: read from the source at registration only, so a save that did not read it
+        # (None: a configuration applied again) keeps what is held.
+        *(["source_definition"] if getattr(table, "source_definition", None) is not None else []),
         "import_set",  # REQ-1954
         "delta",  # REQ-874
         "cache_ttl",  # REQ-1865

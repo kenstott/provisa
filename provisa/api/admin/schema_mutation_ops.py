@@ -348,10 +348,12 @@ async def register_table(
 
     default_mail_watermark(model, _reg_state.source_types.get(input.source_id))
 
-    from provisa.api.admin.introspect import record_table_format
+    from provisa.api.admin.introspect import record_source_definition, record_table_format
 
     # REQ-1981: its format, from the source, decides the writes it takes.
     await record_table_format(model, _reg_state.source_types.get(input.source_id))
+    # REQ-2230: its definition, from the source, contributes its lineage.
+    await record_source_definition(model, _reg_state.source_types.get(input.source_id))
 
     from provisa.federation.replica_routing import NO_REPLICA_TYPES
 

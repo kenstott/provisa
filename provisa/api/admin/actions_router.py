@@ -213,18 +213,24 @@ async def _as_source_operation(body: FunctionInput) -> None:
         OPERATION_SCHEMA,
         offered_operation,
     )
+    from provisa.executor.snowflake_objects import SNOWFLAKE, names_operation
 
     source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
-    if source_type not in OPERATION_SCHEMA:
+    if source_type == SNOWFLAKE and names_operation(body.functionName):
+        # REQ-2230: registered under the schema its object is in; a routine is not an operation.
+        schema_name = body.schemaName
+    elif source_type in OPERATION_SCHEMA:
+        schema_name = OPERATION_SCHEMA[source_type]
+    else:
         return
     if source_type == "openapi":
         from provisa.api.admin.schema_helpers import _ensure_openapi_spec
 
         await _ensure_openapi_spec(body.sourceId)
-    operation = await offered_operation(state, body.sourceId, body.functionName)
+    operation = await offered_operation(state, body.sourceId, body.functionName, schema_name)
     body.implKind = "source_operation"
     body.kind = "query" if operation.reads else "mutation"
-    body.schemaName = OPERATION_SCHEMA[source_type]
+    body.schemaName = schema_name
     body.returns = ""
     body.binding = {}
     body.materialize = False

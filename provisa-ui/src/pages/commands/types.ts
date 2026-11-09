@@ -223,6 +223,15 @@ export const OPERATION_SCHEMA: Record<string, string> = {
   grpc_remote: "grpc_remote",
 };
 
+// REQ-2230: a Snowflake source also offers operations on its schema's Dynamic Tables and Tasks,
+// among its routines. One picked is called as it is, so like any operation it declares no shape.
+const SNOWFLAKE_OPERATION =
+  /^(refresh_dynamic_table|suspend_dynamic_table|resume_dynamic_table|execute_task|suspend_task|resume_task)\./;
+
+export function isSnowflakeOperation(sourceType: string | undefined, functionName: string) {
+  return sourceType === "snowflake" && SNOWFLAKE_OPERATION.test(functionName);
+}
+
 // REQ-2131: the schema a code source's @columns functions are offered and registered under.
 // A code source offers functions to pick, registered as column transforms.
 export const CODE_SCHEMA: Record<string, string> = { node: "code", python: "code" };
