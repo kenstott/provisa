@@ -3919,6 +3919,15 @@ class ProvisaConfig(BaseModel):
         """The config as written. A config built in code is what it was built with."""
         return self if self._written is None else self._written
 
+    # REQ-1634: the names that identify a seeded table, which the store holds and ``tables`` does
+    # not. Only the metadata export model carries them (publishing._model_for_export), read from
+    # the store; a file cannot state them, so it cannot excuse a member name that names nothing.
+    _seeded_table_names: frozenset[str] = PrivateAttr(default_factory=frozenset)
+
+    @property
+    def seeded_table_names(self) -> frozenset[str]:
+        return self._seeded_table_names
+
     server: ServerConfig = Field(default_factory=ServerConfig)
     # REQ-1921/1922: the platform's physical regions (a deployment key: a node reads them before
     # it opens any store), and the regions this org selects with the stores it keeps in each.

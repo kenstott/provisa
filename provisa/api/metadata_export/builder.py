@@ -148,13 +148,13 @@ def product_memberships(
     physical triple: read off each product's ``tables``, which names a table by its virtual name
     (its alias, else its table name) or as ``source.schema.table``.
 
-    A member name that more than one table answers is refused. A member name no table in
-    ``config.tables`` answers is silently skipped — it names a seeded table that exists in the
-    store but is not part of the export model; store-level validation (``set_product_members``)
-    catches genuinely bad references at load time, so there is no need to raise here.
+    A name no table, or more than one, answers is refused. The one exception is a name in
+    ``config.seeded_table_names``: a seeded table stays out of ``config.tables`` (REQ-1634 EXPORT
+    KEEPS SEEDED MEMBERS) and publishes nowhere, so it has no membership to record.
 
-    ``product_id``, when given, scopes the result to that one product: only its member
-    names are resolved, so a reference in a different product is ignored.
+    ``product_id``, when given, scopes validation to that one product: only its member
+    names are resolved, so a bad reference in a different product does not raise.  A
+    genuinely unresolvable name in the requested product still raises — no silent drops.
     """
     by_name: dict[str, list[Table]] = {}
     for table in config.tables:
@@ -166,13 +166,13 @@ def product_memberships(
             continue
         for name in product.tables:
             found = by_name.get(name, [])
-            if len(found) > 1:
+            if not found and name in config.seeded_table_names:
+                continue
+            if len(found) != 1:
                 raise ValueError(
                     f"data product {product.id!r} lists table {name!r}, which "
-                    "more than one table is named"
+                    + ("no table is named" if not found else "more than one table is named")
                 )
-            if not found:
-                continue  # seeded table not in export model — skip, not raise
             out.setdefault(table_ref(found[0]).parts, []).append(product.id)
     return {parts: tuple(sorted(ids)) for parts, ids in out.items()}
 

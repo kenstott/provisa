@@ -164,6 +164,22 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
+async def seeded_table_names(conn: "Connection") -> frozenset[str]:  # REQ-1634
+    """Every name that identifies a seeded table: its virtual name (its alias, else its table
+    name) and ``source.schema.table``, the two ways a data product names a member."""
+    from provisa.core.repositories import table as table_repo
+
+    return frozenset(
+        name
+        for row in await table_repo.list_all(conn, parts_of=lambda _row: False)
+        if _internal_table(row)
+        for name in (
+            str(row.get("alias") or row["table_name"]),
+            f"{row['source_id']}.{row['schema_name']}.{row['table_name']}",
+        )
+    )
+
+
 _PROFILE_RESULT = re.compile(r"(.+)_(\d+)_profile_(\w+)")
 
 
