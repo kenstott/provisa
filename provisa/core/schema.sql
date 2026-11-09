@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS stores (
     kind    TEXT,                           -- REQ-1922: the engine kind, on a region's engine store
     binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'))  -- REQ-1491, REQ-1942
 );
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS kind TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
 CREATE TABLE IF NOT EXISTS org_regions (
     id        TEXT PRIMARY KEY,
@@ -73,6 +75,26 @@ CREATE TABLE IF NOT EXISTS sources (
     approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS replicate INTEGER;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS region TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS load_protected BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS off_peak_window TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS off_peak_tz TEXT NOT NULL DEFAULT 'UTC';
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS max_live_concurrency INTEGER;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS sentinel_path TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS download_from TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS freshness_gate BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS gql_naming_convention TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS brand_setup JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS base_url TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS pool_min INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS pool_max INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS use_pgbouncer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS pgbouncer_port INTEGER NOT NULL DEFAULT 6432;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS producer_command JSONB;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_catalog TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_schema TEXT NOT NULL DEFAULT 'api_cache';
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS approval_hook BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-1695: the source's password as a SECRET REFERENCE. A literal typed into the Sources form is
 -- put into the org vault and what lands here is the ${secret:NAME} naming it; a reference the
@@ -106,6 +128,7 @@ CREATE TABLE IF NOT EXISTS domains (
     -- schema_org.domains): the model store holds the tree.
     parent_domain_id TEXT
 );
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
@@ -160,6 +183,8 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- REQ-2219: who created it, set on insert only; it grants nothing.
     created_by    TEXT
 );
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
 
@@ -248,6 +273,24 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     contract    JSONB,
     UNIQUE (source_id, schema_name, table_name)
 );
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS draft BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS load_protected BOOLEAN;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_window TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_tz TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS pagination JSONB;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS arguments JSONB;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS landing_filter TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS gql_naming_convention TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS approval_hook BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS hot BOOLEAN;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS query_template TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS relay_pagination BOOLEAN;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS contract JSONB;
 
 CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,
@@ -279,6 +322,23 @@ CREATE TABLE IF NOT EXISTS table_columns (
     encrypted    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1919: surfaced as @encrypted
     UNIQUE (table_id, column_name)
 );
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS not_null BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS epoch_unit TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS array_depth INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS element_type TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_type TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_platform TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS subtype TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS fake TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS fake_stable BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS fake_stable_version INTEGER;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS synthetic_rule TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS fake_why JSONB;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS embedding BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS embedding_model TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS embedding_source_column TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS encrypted BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Migration: add alias/description columns if missing
 DO $$ BEGIN
@@ -417,6 +477,8 @@ CREATE TABLE IF NOT EXISTS relationships (
         OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
     )
 );
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
 
 -- Migration: add materialize columns if missing
 DO $$ BEGIN
@@ -523,6 +585,11 @@ CREATE TABLE IF NOT EXISTS roles (
     -- domain_access when that is set; narrowed afterwards. Absent kinds are the whole role.
     default_entitlements JSONB
 );
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS residency_values JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS session_vars JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS parents JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS max_rows INTEGER;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS relationship_guard BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
 -- so a roles table made before the column existed needs it here first.
@@ -586,6 +653,10 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     rights      TEXT NOT NULL DEFAULT 'R'
                 CHECK (rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD'))
 );
+ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS action_name TEXT;
+ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS why JSONB;
+ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS rights TEXT NOT NULL DEFAULT 'R' CHECK (rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD'));
 
 -- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
 -- predicates like rls_rules.filter_expr and are encrypted at rest the same way (REQ-686); NULL is
@@ -603,6 +674,7 @@ CREATE TABLE IF NOT EXISTS table_write_grants (
     tenant_id   UUID,
     UNIQUE (table_id, role_id, operation)
 );
+ALTER TABLE table_write_grants ADD COLUMN IF NOT EXISTS why JSONB;
 
 ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tag_id TEXT;  -- REQ-1384
 
@@ -632,6 +704,7 @@ CREATE TABLE IF NOT EXISTS tags (
     -- REQ-1943: the Sensitive data option: a column carrying this tag is a sensitive column.
     sensitive      BOOLEAN NOT NULL DEFAULT FALSE
 );
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-1384: a row filter on a tag refers to the tag. No ON DELETE action: a tag that carries a
 -- filter is refused deletion (repositories.integrity), never taken with its filter.
@@ -713,6 +786,12 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- contradiction — the column's values are entity names of ONE type.
     UNIQUE (base_tag_id, object_key)
 );
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS purpose TEXT;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS bases JSONB;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS review_on TEXT;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS decided_by TEXT;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS evidence JSONB;
 
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS reason TEXT;
@@ -758,6 +837,8 @@ CREATE TABLE IF NOT EXISTS catalog_bindings (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (target, semantic_uri)
 );
+-- Nullable here: NOT NULL with no default fails on a table that already has rows.
+ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS target TEXT;
 
 DO $$ BEGIN
     ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS tenant_id UUID;
@@ -799,6 +880,9 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     tenant_id       UUID,
     UNIQUE (name)
 );
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_reason TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
@@ -914,6 +998,11 @@ CREATE TABLE IF NOT EXISTS materialized_views (
     business_day_grain BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE materialized_views ADD COLUMN IF NOT EXISTS calendar TEXT;
+ALTER TABLE materialized_views ADD COLUMN IF NOT EXISTS grain TEXT;
+ALTER TABLE materialized_views ADD COLUMN IF NOT EXISTS allowed_lateness INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE materialized_views ADD COLUMN IF NOT EXISTS expected_events JSONB;
+ALTER TABLE materialized_views ADD COLUMN IF NOT EXISTS business_day_grain BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-879, REQ-1922: a region's build of a materialized view (its state store): the record of what
 -- the region built (region names it) and the fleet's refresh coordination (claim, lease, the
@@ -933,6 +1022,7 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     snapshot_id     TEXT,
     index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
 );
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS index_state JSONB;
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
@@ -975,6 +1065,7 @@ CREATE TABLE IF NOT EXISTS calendars (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (name, version)
 );
+ALTER TABLE calendars ADD COLUMN IF NOT EXISTS day_close TEXT;
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (
     id          SERIAL PRIMARY KEY,
@@ -989,6 +1080,10 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     trace_id           TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS definition_version TEXT;
+ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS input_version TEXT;
+ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS input_version_kind TEXT;
+ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS trace_id TEXT;
 
 -- REQ-877: opt-in per-MV ROW-LEVEL delta ledger (append-only; store-independent, never stamped on
 -- the target). One event per changed key per refresh version: change_type, row_key, the row hashes
@@ -1095,6 +1190,7 @@ CREATE TABLE IF NOT EXISTS relationship_candidates (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (source_table_id, source_column, target_table_id, target_column)
 );
+ALTER TABLE relationship_candidates ADD COLUMN IF NOT EXISTS suggested_name TEXT;
 
 -- REQ-2221: the connectors this organization offers: the model's `connectors:` block, promoted
 -- with the model. path and build_command are the CLI's build settings; the server keeps them so the
@@ -1125,6 +1221,7 @@ CREATE TABLE IF NOT EXISTS kafka_sources (
     -- a credential stays its reference). The model store holds it once a configuration seeded it.
     spec                JSONB
 );
+ALTER TABLE kafka_sources ADD COLUMN IF NOT EXISTS spec JSONB;
 ALTER TABLE kafka_sources ALTER COLUMN bootstrap_servers SET DEFAULT '';
 
 -- REQ-1491, REQ-1942: how this environment reaches -- a connection given in it (own), one copied from its parent
@@ -1278,6 +1375,12 @@ CREATE TABLE IF NOT EXISTS live_query_state (
     status          TEXT NOT NULL DEFAULT 'active',
     PRIMARY KEY (source, output_type)
 );
+-- source and output_type nullable here: NOT NULL with no default fails on a table with rows.
+ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS output_type TEXT;
+ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS last_watermark TEXT;
+ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 
 -- Tracked DB functions exposed as GraphQL mutations (REQ-205)
 CREATE TABLE IF NOT EXISTS tracked_functions (
@@ -1298,6 +1401,10 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS output_columns JSONB;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS writes_table TEXT;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS language_bindings JSONB NOT NULL DEFAULT '{}';
 
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
@@ -1316,6 +1423,7 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE tracked_webhooks ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-1003, REQ-1004: the org's scheduled triggers, in its model (REQ-1919). The schema is the org:
 -- a trigger runs bound to the org whose model holds it, and only prod's are scheduled.
@@ -1345,6 +1453,9 @@ CREATE TABLE IF NOT EXISTS scheduled_triggers (
         OR (cron IS NULL AND on_table IS NOT NULL AND on_event IS NOT NULL)
     )
 );
+ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS on_table TEXT;
+ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS on_event TEXT;
+ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS command TEXT;
 
 -- REQ-1939: an environment's synthetic datasets, their (table, profile run) pairs and their report.
 CREATE TABLE IF NOT EXISTS synthetic_datasets (
@@ -1366,6 +1477,12 @@ CREATE TABLE IF NOT EXISTS synthetic_datasets (
     closeness_draws INTEGER,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS report_error TEXT;
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS fanout_conditions JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS assertions JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS private_epsilon DOUBLE PRECISION;
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS closeness_threshold DOUBLE PRECISION;
+ALTER TABLE synthetic_datasets ADD COLUMN IF NOT EXISTS closeness_draws INTEGER;
 
 CREATE TABLE IF NOT EXISTS synthetic_dataset_tables (
     dataset_id    TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
@@ -1452,6 +1569,9 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     decided_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (table_id, signature)
 );
+-- Nullable here: NOT NULL with no default fails on a table that already has rows.
+ALTER TABLE profiler_constraints ADD COLUMN IF NOT EXISTS physical_column TEXT;
+ALTER TABLE profiler_constraints ADD COLUMN IF NOT EXISTS physical_other_column TEXT;
 
 -- REQ-2147: a steward's decision on a classification a profile suggested for a column.
 CREATE TABLE IF NOT EXISTS profiler_classifications (
@@ -1699,6 +1819,7 @@ CREATE TABLE IF NOT EXISTS user_directory (
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- REQ-1382: attributes the org records for a member, beside what their identity provider
 -- supplies. Bound as session variables (current_setting('provisa.<name>')); where the provider
@@ -1835,6 +1956,8 @@ CREATE TABLE IF NOT EXISTS node_freshness_state (
     last_refresh_ok BOOLEAN,             -- REQ-961: outcome of that refresh (freshness-contract input)
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE node_freshness_state ADD COLUMN IF NOT EXISTS last_refresh_at TIMESTAMPTZ;
+ALTER TABLE node_freshness_state ADD COLUMN IF NOT EXISTS last_refresh_ok BOOLEAN;
 
 -- Where the last completed read of a mail source reached (REQ-1923): a token for each mailbox
 -- (scope '') or each of its folders (scope = the folder's id); kind 'probe' or 'delta'.
@@ -1938,6 +2061,38 @@ CREATE TABLE IF NOT EXISTS replica_state (
     index_state      JSONB,
     PRIMARY KEY (source_id, schema_name, table_name)
 );
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_state TEXT NOT NULL DEFAULT 'idle' CONSTRAINT replica_state_build_state_check CHECK (build_state IN ('idle','requested','building','failed'));
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS requested_reason TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_started_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_holder TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_method TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS rows_copied BIGINT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS completed_rows BIGINT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS next_refresh_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS content_hash TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS built_store TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS definition_hash TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS built_columns JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS model_stamp BIGINT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS load_kind TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_wait JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_progress JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS last_error TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS last_error_code TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS last_error_params JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS build_notes JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS failed_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS waiting_on TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS feed_down_since TIMESTAMPTZ;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS feed_error TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS delta_cursor JSONB;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS delta_skipped TEXT;
+ALTER TABLE replica_state ADD COLUMN IF NOT EXISTS index_state JSONB;
 
 -- The replica builds that ended: one row a build that completed or failed, appended as its
 -- record above is written. Bounded per replica: only its last REPLICA_BUILD_LOG_KEEP builds
@@ -2154,6 +2309,14 @@ CREATE TABLE IF NOT EXISTS glossary_term_scans (
     source_table    TEXT,  -- REQ-2202: a table's scan: its domain, table, id and text columns
     tenant_id       UUID
 );
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS model TEXT;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS step TEXT;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS batch INTEGER;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS batches INTEGER;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS budget_limit INTEGER;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS launch TEXT;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS progress_at TIMESTAMPTZ;
+ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS source_table TEXT;
 
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,
