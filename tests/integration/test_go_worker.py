@@ -157,7 +157,7 @@ def test_an_audit_event_is_written_to_the_trail_tied_to_its_request(tmp_path_fac
     tracer = TracerProvider().get_tracer("test")
     try:
         with tracer.start_as_current_span("the request") as span:
-            [[row]] = _rows(started, manifest, "Recorded", [{"name": "a"}])
+            [[row]] = _rows(started, manifest, "Recorded", ["a"])
     finally:
         started.stop()
     assert row == {"name": "a"}

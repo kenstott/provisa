@@ -22,6 +22,7 @@ import (
 	"syscall"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	services "provisa_services"
 )
 
 // A table's rows go in batches of this many.
@@ -81,10 +82,14 @@ func texts(value any) []string {
 }
 
 func newCall(conn *connection, message map[string]any) *call {
-	ctx, cancel := context.WithCancel(context.Background())
+	id := uint64(number(message["id"]))
+	// REQ-2106: the context names the call and the request's trace, for Provisa's services: a Go
+	// program has nothing per goroutine to keep them in, so this is what the code passes back.
+	traceparent, _ := message["traceparent"].(string)
+	ctx, cancel := context.WithCancel(services.BindCall(context.Background(), id, traceparent))
 	c := &call{
 		conn:    conn,
-		id:      uint64(number(message["id"])),
+		id:      id,
 		export:  fmt.Sprint(message["export"]),
 		kind:    fmt.Sprint(message["kind"]),
 		keyed:   message["keyed"] == true,

@@ -38,7 +38,7 @@ from provisa.golang.build import (
     import_path,
     requirements,
 )
-from provisa.golang.reader import ensure_reader, read_code
+from provisa.golang.reader import SERVICES, SERVICES_MODULE, ensure_reader, read_code
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
 
 pytestmark = pytest.mark.unit
@@ -297,6 +297,7 @@ def test_the_build_joins_the_hosts_module_and_the_codes(tmp_path, fixture_manife
     }
     assert [" ".join(w) for w in directives(module, "replace")] == [
         f"example.com/orders => {code}",
+        f"{SERVICES_MODULE} => {SERVICES}",  # Provisa's, in every build (REQ-2106)
         f"example.com/dep => {(code / 'vendored' / 'dep').resolve()}",
     ]
     sums = (into / "go.sum").read_text().splitlines()
