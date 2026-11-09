@@ -21,9 +21,9 @@ machinery (``local_users`` + HTTP Basic) so no test-only login shim is introduce
   3. person 3 — redeems the invite and becomes an ``analyst`` of person 2's org, and is
      forbidden from issuing invites (the org_admin authz boundary).
 
-Org routing is driven by the request Host (REQ-1276): the control-plane host
-``cloud.provisa.org`` carries no org, the org subdomain ``acme.provisa.org`` selects org
-``acme``. The Part-1 data-plane build (``build_org_runtime``) and physical provisioning
+Org routing is driven by the request Host (REQ-1276) under the declared base domain
+``provisa.org``: the control-plane host ``cloud.provisa.org`` carries no org, the org subdomain
+``acme.provisa.org`` selects org ``acme``. The Part-1 data-plane build (``build_org_runtime``) and physical provisioning
 (``provision_org``) are stubbed — this test pins the CONTROL plane (membership, role grants,
 provisioning-state transitions, invite authz), which the data-plane tests
 (``test_two_org_trino_isolation``) cover separately.
@@ -166,6 +166,10 @@ def planes(monkeypatch):
     )
 
     from provisa.api.app import state as app_state
+
+    # REQ-1276 (amended 2026-11-05): a Host names an org only under the base domain the deployment
+    # declares. This deployment is the one _CONTROL_HOST and _ORG_HOST address.
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")
 
     # tenant_db/roles are AppState property shims that resolve the ContextVar-selected OrgRuntime;
     # with current_org unset they resolve the DEFAULT org's runtime. Patch that runtime's plain
