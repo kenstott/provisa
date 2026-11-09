@@ -764,8 +764,8 @@ def readable(pg_sql: str) -> str:
     def _watched(node: exp.Expr) -> exp.Expr:
         nonlocal differs
         out = held(node)
-        # What a statement with nothing to write compares equal on: its form is kept as written.
-        differs = differs or (out is not node and out != node)
+        # A replacement always differs: each of _FORMS is another name, varbit another type.
+        differs = differs or out is not node
         return out
 
     written = sqlglot.parse_one(pg_sql, read=_HexKept).transform(_watched, copy=False)
