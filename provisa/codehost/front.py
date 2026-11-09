@@ -282,6 +282,12 @@ class Connection:
 #: How many connections the front has to the code's worker, each serving one call at a time
 #: (provisa/codesource/worker.py CONNECTIONS).
 CONNECTIONS = 8
+#: The size of the worker's thread pool, in the variable Node and Bun take it from
+#: (provisa/codesource/worker.py THREADPOOL_ENV). The worker's connections are inherited, so each
+#: holds a pool thread per read and per write while it waits, beside the runtime's own four. Bun
+#: sizes its pool once, as it starts: the worker's environment says it, from the start.
+THREADPOOL_ENV = "UV_THREADPOOL_SIZE"
+_THREADPOOL = 4 + 2 * CONNECTIONS
 #: How many of a call's frames its connection holds before it stops reading the worker.
 _QUEUED = 4
 
@@ -313,7 +319,7 @@ class _Lane:
         if current is not None and message.get("id") == current:
             self.waiting.put(message)
 
-    def force(self, item: object) -> None:
+    def force(self, item: _Cancelled) -> None:
         while True:
             try:
                 self.waiting.put_nowait(item)
@@ -367,7 +373,8 @@ class Worker:
         pairs = [socket.socketpair() for _ in range(CONNECTIONS)]
         theirs = [t.fileno() for _, t in pairs]
         argv = [a.replace("{fd}", f"fd:{','.join(map(str, theirs))}") for a in argv]
-        self.process = subprocess.Popen(argv, pass_fds=tuple(theirs))  # noqa: S603  # nosec B603
+        env = {**os.environ, THREADPOOL_ENV: str(_THREADPOOL)}
+        self.process = subprocess.Popen(argv, pass_fds=tuple(theirs), env=env)  # noqa: S603  # nosec B603
         for _, t in pairs:
             t.close()
         hello: dict = {}
