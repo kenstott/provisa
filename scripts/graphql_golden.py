@@ -748,6 +748,42 @@ def _canonical(row: dict) -> str:
     return json.dumps(row, sort_keys=True, default=str)
 
 
+def _unordered_levels(document: Any, root_field: str) -> set[tuple[str, ...]]:
+    """The response paths, below ``root_field``, of the nested fields the read gives no order_by:
+    their lists are in no order (neither the GraphQL compiler's statement nor the front end's
+    COLLECT orders them), so their answers are compared as multisets. A level the read orders
+    keeps its order."""
+    from graphql.language import FieldNode, OperationDefinitionNode
+
+    def walk(node: Any, path: tuple[str, ...], out: set[tuple[str, ...]]) -> None:
+        for sel in node.selection_set.selections if node.selection_set else ():
+            if not isinstance(sel, FieldNode) or sel.selection_set is None:
+                continue
+            key = (sel.alias or sel.name).value
+            if not any(a.name.value == "order_by" for a in sel.arguments or ()):
+                out.add((*path, key))
+            walk(sel, (*path, key), out)
+
+    out: set[tuple[str, ...]] = set()
+    for definition in document.definitions:
+        if not isinstance(definition, OperationDefinitionNode):
+            continue
+        for sel in definition.selection_set.selections:
+            if isinstance(sel, FieldNode) and (sel.alias or sel.name).value == root_field:
+                walk(sel, (), out)
+    return out
+
+
+def _in_read_order(value: Any, unordered: set[tuple[str, ...]], path: tuple[str, ...] = ()) -> Any:
+    """``value`` with each list at an ``unordered`` path sorted canonically, its items first."""
+    if isinstance(value, dict):
+        return {k: _in_read_order(v, unordered, (*path, k)) for k, v in value.items()}
+    if isinstance(value, list):
+        items = [_in_read_order(v, unordered, path) for v in value]
+        return sorted(items, key=_canonical) if path in unordered else items
+    return value
+
+
 def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
     """Each root of each corpus read of ``demo`` as the GraphQL front end lowers it, printed as
     Cypher and read back by the Cypher front end, answered on DuckDB over the seeded sources, with
@@ -845,6 +881,11 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
                         row["nodes"] = sorted(row["nodes"], key=_canonical)
             else:
                 expected = json.loads(je.graphql_field(own_batches, c.columns).body)
+            # A nested level the read does not order is in no order on either side (REQ-863:
+            # a level is ordered by its order_by): compared as a multiset, as the roots are.
+            unordered = _unordered_levels(document, root_field)
+            rows = [_in_read_order(r, unordered) for r in rows]
+            expected = [_in_read_order(r, unordered) for r in expected]
             out.append(
                 {
                     "origin": read.origin,

@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
+from provisa.core.org_settings import graphql_remote_max_rows
 
 
 def _source_from_row(row: dict) -> Source:
@@ -319,7 +320,7 @@ async def connection_rows(state: Any, source_id: str, table_name: str) -> int:  
     no setting of its own, so the operator's bound applies."""
     from provisa.core.paging import connection_max_rows
 
-    ceiling = state.config.graphql_remote.max_rows
+    ceiling = graphql_remote_max_rows(state.config.graphql_remote.max_rows)
     for table in await registered_tables(state):
         if table.source_id == source_id and table.table_name == table_name:
             return connection_max_rows(table.pagination, ceiling)

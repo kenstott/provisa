@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
+from provisa.core.session_time_zone import clickhouse_spelling, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
@@ -147,6 +148,28 @@ class _CHBackend(Protocol):
     def close(self) -> None: ...
 
 
+def _settings(qid: str, sql: str) -> dict[str, str]:
+    """A statement's settings. ``session_timezone`` is a setting of this request alone, so nothing
+    keeps it (REQ-2171). It is what timezone() and an instant read without a zone go by, and no
+    more: what a statement reads of a stored column has the zone written into it
+    (transpiler.zoned_instants)."""
+    zone = told_as(sql, clickhouse_spelling, "ClickHouse")
+    return {"query_id": qid} if zone is None else {"query_id": qid, "session_timezone": zone}
+
+
+_HAS_SETTINGS = re.compile(r"\bSETTINGS\b(?![^']*'(?:[^']*'[^']*')*[^']*$)", re.IGNORECASE)
+
+
+def _in_session_zone(sql: str) -> str:
+    """``sql`` with its zone in its own text: chdb takes no settings beside a statement, and a SET
+    on its one session would be every later statement's."""
+    zone = _settings("", sql).get("session_timezone")
+    if zone is None:
+        return sql
+    join = "," if _HAS_SETTINGS.search(sql) else " SETTINGS"
+    return f"{sql.rstrip().rstrip(';')}{join} session_timezone = '{zone}'"
+
+
 class _ServerBackend:
     """A running ClickHouse server reached over HTTP (clickhouse-connect)."""
 
@@ -187,7 +210,7 @@ class _ServerBackend:
     def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
-            res = self._client.query(sql, parameters=params or None, settings={"query_id": qid})
+            res = self._client.query(sql, parameters=params or None, settings=_settings(qid, sql))
             names = result_names(self._client, sql, params or None, res.column_names)
         return [tuple(r) for r in res.result_rows], names
 
@@ -197,7 +220,7 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             return self._client.query_arrow(
-                sql, parameters=params or None, settings={"query_id": qid}, use_strings=True
+                sql, parameters=params or None, settings=_settings(qid, sql), use_strings=True
             )
 
     def query_arrow_stream(
@@ -211,7 +234,7 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             stream_ctx = self._client.query_arrow_stream(
-                sql, parameters=params or None, settings={"query_id": qid}, use_strings=True
+                sql, parameters=params or None, settings=_settings(qid, sql), use_strings=True
             )
             reader: Any = stream_ctx.gen  # the pyarrow RecordBatchStreamReader the context wraps
             schema = reader.schema  # available before consumption; GeneratorStream needs it
@@ -357,6 +380,7 @@ class _EmbeddedBackend:
     def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         import pyarrow as pa
 
+        sql = _in_session_zone(sql)
         raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return pa.table({})
@@ -370,6 +394,7 @@ class _EmbeddedBackend:
         # Flight ARROW_STREAM transport is uniform across backends (REQ-986).
         import pyarrow as pa
 
+        sql = _in_session_zone(sql)
         raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             empty = pa.table({})

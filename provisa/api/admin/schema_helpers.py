@@ -27,6 +27,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
     registered_tables,
     sources,
@@ -522,7 +523,7 @@ async def _fetch_table_with_columns(
         ],  # REQ-1907
         paging_kind=_paging_kind,  # REQ-318
         pagination=paging_type(row["pagination"]),
-        paging_ceiling_rows=_state.config.graphql_remote.max_rows,
+        paging_ceiling_rows=graphql_remote_max_rows(_state.config.graphql_remote.max_rows),
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         profiler_source_id=row.get("profiler_source_id"),  # REQ-1934

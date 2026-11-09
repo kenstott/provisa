@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from sqlalchemy import select, update
 
 from provisa.api.admin.types import MutationResult, PagingInput, PagingType
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.paging import (
     PaginationConfig,
     PagingRefused,
@@ -80,7 +81,7 @@ def declared_paging(
             pagination,
             table=table_name,
             kind=table_paging_kind(state, source_type, source_id, table_name),
-            ceiling_rows=state.config.graphql_remote.max_rows,
+            ceiling_rows=graphql_remote_max_rows(state.config.graphql_remote.max_rows),
         )
     except PagingRefused as refused:
         return _refused(refused.code, refused.params, str(refused))

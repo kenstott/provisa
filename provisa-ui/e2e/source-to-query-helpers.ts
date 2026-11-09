@@ -96,7 +96,10 @@ export async function fillCheckerConnection(page: Page, backendUrl: string = BAC
   await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
   await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(pgwirePort));
   await page.getByLabel(/^Username/).fill("org_admin");
-  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
+  await page
+    .getByLabel(/^Database/)
+    .and(page.locator(FORM_FIELD))
+    .fill("provisa");
 }
 
 export async function submitSourceAndExpectListed(page: Page, sourceId: string) {
@@ -140,7 +143,9 @@ export async function openSourceDiscovery(page: Page, sourceId: string) {
 
 export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  // The header renders once the first TablesQuery answers (TablesPage's initial-load gate), measured
+  // at 7-16s on a shared CI runner while schema rebuilds run: the same 60s openSourcesForm gives it.
+  await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
   // Apollo may serve the sources list from cache first; the new source arrives with the refetch.

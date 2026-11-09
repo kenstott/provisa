@@ -1127,7 +1127,9 @@ TIME_TIMETZ = _zoned_time("value", "date_part('timezone', now())")
 INTERVAL_TIME = held(
     "_t",
     f"{_micros('value')} % {_USECS_PER_DAY}",
-    f"{_MIDNIGHT} + to_microseconds(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END)",
+    # BIGINT: to_microseconds takes it alone, and a NULL interval's micros are a DOUBLE on 2.0.
+    f"{_MIDNIGHT} + to_microseconds(CAST(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END "
+    "AS BIGINT))",
 )
 TIME_INTERVAL = "to_microseconds(epoch_us(value))"
 #: A date's or a timestamp's infinity, which the engine's casts between them do not keep.
@@ -1141,7 +1143,9 @@ def _keeping_infinity(value: str, sql_type: str, answer: str) -> str:
 
 _CLOCK = "to_microseconds(epoch_us(t))"
 DATETIME_PL = _keeping_infinity("d", "TIMESTAMP", f"CAST(d AS TIMESTAMP) + {_CLOCK}")
-_ZONED_MICROS = "to_microseconds(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000)"
+# BIGINT: on a NULL TIMETZ DuckDB 2.0 takes date_part's DOUBLE overload, and to_microseconds
+# takes a BIGINT alone.
+_ZONED_MICROS = "to_microseconds(CAST(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000 AS BIGINT))"
 #: The date and the clock read at the time's own offset.
 DATETIMETZ_PL = _keeping_infinity(
     "d", "TIMESTAMPTZ", f"timezone('UTC', CAST(d AS TIMESTAMP) + {_ZONED_MICROS})"

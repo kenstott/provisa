@@ -460,16 +460,12 @@ export function NameClashPolicyCard() {
   );
 }
 
-/** GraphQL/SQL naming conventions + the domain prefix (deployment-wide). Domains tab. */
+/** GraphQL/SQL naming conventions + the domain prefix (the org's, REQ-1327). Domains tab. */
 export function NamingConventionsCard() {
   const { t } = useTranslation();
   const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["naming"]);
   const conventions = useNamingConventions();
-  // The naming module those three fields configure is process-global, so they are the deployment's
-  // and the payload omits them entirely for anyone else.
-  if (!settings?.features?.deployment_settings || settings.naming.convention === undefined) {
-    return null;
-  }
+  if (!settings) return null;
   // REQ-416: the server's conventions, the one list the admin offers.
   const conventionData = conventions.map((value) => ({
     value,
@@ -615,42 +611,78 @@ export function DomainModeCard({ onApplied }: { onApplied?: () => void }) {
   );
 }
 
-/** Sampling, CDC and the GraphQL-remote ceilings (deployment-wide). Federation tab. */
+/** The default sample size and the remote GraphQL row limit (the org's, REQ-1327). Domains tab. */
+export function OrgProcessingCards() {
+  const { t } = useTranslation();
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks(
+    ["sampling", "graphql_remote"],
+    { graphql_remote: ["max_rows"] },
+  );
+  if (!settings) return null;
+  const { sampling, graphql_remote: remote } = settings;
+
+  return (
+    <Card withBorder padding="md" data-testid="org-processing-settings">
+      <Title order={4} mb="sm">
+        {t("adminPage.sampling")}
+      </Title>
+      <FormLayout>
+        <FormField help={t("adminPage.defaultSampleSizeHint")} size="short">
+          <NumberInput
+            label={t("adminPage.defaultSampleSize")}
+            data-testid="org-sample-size"
+            min={1}
+            value={sampling.default_sample_size}
+            onChange={(v) =>
+              setSettings({
+                ...settings,
+                sampling: { default_sample_size: typeof v === "number" ? v : 0 },
+              })
+            }
+          />
+        </FormField>
+      </FormLayout>
+      <Title order={4} mb="sm" mt="md">
+        {t("adminPage.graphqlRemote")}
+      </Title>
+      <FormLayout>
+        <FormField help={t("adminPage.maxRowsHint")} size="short">
+          <NumberInput
+            label={t("adminPage.maxRows")}
+            data-testid="org-remote-max-rows"
+            min={1}
+            value={remote.max_rows}
+            onChange={(v) =>
+              setSettings({
+                ...settings,
+                graphql_remote: { ...remote, max_rows: typeof v === "number" ? v : 0 },
+              })
+            }
+          />
+        </FormField>
+      </FormLayout>
+      <SaveRow save={save} saving={saving} msg={msg} />
+    </Card>
+  );
+}
+
+/** The CDC consumer group and the GraphQL-remote traversal limits (deployment-wide). Federation tab. */
 export function FederationSettingsCards() {
   const { t } = useTranslation();
-  const { settings, setSettings, save, saving, msg } = useSettingsBlocks([
-    "sampling",
-    "cdc",
-    "graphql_remote",
-  ]);
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks(
+    ["cdc", "graphql_remote"],
+    {
+      graphql_remote: ["max_object_depth", "max_list_depth", "max_list_items"],
+    },
+  );
   if (!settings?.features?.deployment_settings) return null;
-  const { sampling, cdc, graphql_remote: remote } = settings;
-  if (!sampling || !cdc || !remote) return null;
+  const { cdc, graphql_remote: remote } = settings;
+  if (!cdc || !remote) return null;
 
   return (
     <Collapsibles id="admin.federation-settings" testId="federation-settings">
       <CollapsibleItem value="settings" defaultOpen={false} title={t("adminPage.settingsPanel")}>
         <Stack gap="md">
-          <Card withBorder padding="md">
-            <Title order={4} mb="sm">
-              {t("adminPage.sampling")}
-            </Title>
-            <FormLayout>
-              <FormField help={t("adminPage.defaultSampleSizeHint")} size="short">
-                <NumberInput
-                  label={t("adminPage.defaultSampleSize")}
-                  value={sampling.default_sample_size}
-                  onChange={(v) =>
-                    setSettings({
-                      ...settings,
-                      sampling: { default_sample_size: typeof v === "number" ? v : 0 },
-                    })
-                  }
-                />
-              </FormField>
-            </FormLayout>
-          </Card>
-
           <Card withBorder padding="md">
             <Title order={4} mb="sm">
               {t("adminPage.cdc")}
@@ -720,22 +752,6 @@ export function FederationSettingsCards() {
                       graphql_remote: {
                         ...remote,
                         max_list_items: typeof v === "number" ? v : 0,
-                      },
-                    })
-                  }
-                />
-              </FormField>
-              <FormField help={t("adminPage.maxRowsHint")} size="short">
-                <NumberInput
-                  label={t("adminPage.maxRows")}
-                  min={1}
-                  value={remote.max_rows}
-                  onChange={(v) =>
-                    setSettings({
-                      ...settings,
-                      graphql_remote: {
-                        ...remote,
-                        max_rows: typeof v === "number" ? v : 0,
                       },
                     })
                   }

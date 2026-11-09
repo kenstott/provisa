@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The TimeZone a session is on (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED). No engine is told it,
-so what a form writes in UTC is right only for a session on UTC: a statement that calls one of those
-forms from any other zone is refused by name.
+"""The TimeZone a session is on (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED). What runs a statement
+is told it (:meth:`SessionZone.statement_zone`), but a form that writes in UTC is still right only
+for a session on UTC: a statement that calls one of those forms from any other zone is refused by
+name.
 
 A zone comes from the startup packet, SET, SET LOCAL or set_config, and SET is undone by ROLLBACK
 as in PostgreSQL. Where the zone cannot be told it is ``UNKNOWN_ZONE``, which is not UTC.
@@ -35,6 +36,7 @@ from zoneinfo import ZoneInfo, available_timezones
 from buenavista.core import BVType
 
 from provisa.core.pg_error import PostgresError
+from provisa.core.session_time_zone import StatementZone
 from provisa.transpiler.pg_forms_type_io import zoned_call
 from provisa.transpiler.pg_forms_types import REFUSED
 
@@ -145,6 +147,32 @@ def read_zone(word: str) -> Zone:
     raise _invalid(word)
 
 
+def _fixed_spellings(east: int) -> tuple[str | None, str]:
+    """A fixed offset as the tz database's Etc area names it, where it does (a whole hour, and that
+    area's sign is POSIX's, west of UTC), and as an offset."""
+    hours, rest = divmod(abs(east), 3600)
+    minutes = rest // 60
+    sign = "-" if east < 0 else "+"
+    offset = f"{sign}{hours:02d}:{minutes:02d}"
+    if rest:
+        return None, offset
+    if east == 0:
+        return "Etc/UTC", offset
+    named = -14 * 3600 <= east <= 12 * 3600
+    return (f"Etc/GMT{'+' if east < 0 else '-'}{hours}" if named else None), offset
+
+
+def _statement_zone(zone: Zone) -> StatementZone:
+    assert zone.name is not None  # an offset a text cannot be told has no Zone to read
+    if isinstance(zone.tz, ZoneInfo):
+        return StatementZone(zone.name, name=zone.tz.key, posix=zone.name)
+    if isinstance(zone.tz, datetime.timezone):
+        delta = zone.tz.utcoffset(None)
+        name, offset = _fixed_spellings(int(delta.total_seconds()))
+        return StatementZone(zone.name, name=name, offset=offset, posix=zone.name)
+    return StatementZone(zone.name, posix=zone.name)  # a POSIX daylight rule: PostgreSQL's alone
+
+
 def _unwritable(zone: str | None) -> PostgresError:
     return PostgresError(
         "0A000", f"a timestamptz cannot be written as text in the session TimeZone {zone}"
@@ -196,6 +224,16 @@ class SessionZone:
         if shown is None:
             raise PostgresError("0A000", f"the session TimeZone cannot be told: {self.current}")
         return shown
+
+    def statement_zone(self) -> StatementZone | None:
+        """The zone in force as engines read it, None on UTC. Where it cannot be told it has only
+        the name it is refused under."""
+        if on_utc(self.current):
+            return None
+        zone = self._in_force()
+        if zone is None or zone.name is None:
+            return StatementZone(str(self.current))
+        return _statement_zone(zone)
 
     def written_in(self) -> datetime.tzinfo:
         """What a timestamptz is written in as text, refused where that cannot be told."""

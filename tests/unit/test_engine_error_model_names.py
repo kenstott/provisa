@@ -86,6 +86,16 @@ def test_a_binder_error_names_its_tables_as_the_model_does(org):
     assert told.startswith(_TOLD)
 
 
+def test_the_excerpt_is_dropped_from_an_error_carried_in_json(org):
+    # DuckDB 2.0 underlines the excerpt with a run of carets, one for each character it marks.
+    import json
+
+    said = _binder_error()
+    assert "^^" in said
+    told = engine_error_names.model_named(json.dumps({"error": said}), _ORG)
+    assert "pet_store_sqlite" not in told and "LINE 1" not in told and "^" not in told
+
+
 def test_an_unquoted_physical_address_is_named_too(org):
     told = engine_error_names.model_named(
         "Catalog Error: Table with name pet_store_sqlite.pet_store.pets does not exist!", _ORG

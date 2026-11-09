@@ -28,9 +28,9 @@ from provisa.federation.duckdb_pg_functions import size_pretty
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.pg_functions import capture_groups
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
-from tests.unit.test_crypto_hashes import crypto_extension  # noqa: F401
+from tests.unit.test_crypto_hashes import crypto_extension, crypto_staged  # noqa: F401
 
-pytestmark = pytest.mark.usefixtures("crypto_extension")
+pytestmark = pytest.mark.usefixtures("crypto_staged")
 
 INT2, INT4, INT8, FLOAT4, FLOAT8, NUMERIC = 21, 23, 20, 700, 701, 1700
 TEXT, BYTEA, OID, BPCHAR, CHAR = 25, 17, 26, 1042, 18

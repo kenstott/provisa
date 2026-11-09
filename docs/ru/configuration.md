@@ -1754,7 +1754,7 @@ sources:
 | `FLIGHT_PORT` | `8815` | Порт сервера Provisa Arrow Flight |
 | `GRPC_PORT` | `50051` | Порт сервера Provisa Protobuf gRPC |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Включает серверное перенаправление по порогу |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Пороговое значение количества строк по умолчанию |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Пороговое значение количества строк по умолчанию |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Формат перенаправления по умолчанию |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 для перенаправленных результатов |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL S3-совместимого эндпоинта |

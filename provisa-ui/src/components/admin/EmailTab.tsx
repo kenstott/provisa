@@ -12,7 +12,9 @@
 // neither is taken for the other:
 //
 // - the mail Provisa SENDS (invitations and other notifications): the deployment's, opened by
-//   platform_settings;
+//   platform_settings AND cross_org (the API asks the deployment check, which needs both, so a
+//   single-tenant org administrator holding platform_settings alone is not shown a half that
+//   would refuse them);
 // - the mail platforms the organisation's sources CONNECT TO (Google Workspace, Microsoft 365):
 //   the organisation's, opened by org_settings.
 //
@@ -28,7 +30,8 @@ import { MailTab } from "./MailTab";
 export function EmailTab() {
   const { t } = useTranslation();
   const { capabilities } = useAuth();
-  const sends = hasCapability(capabilities, "platform_settings");
+  const sends =
+    hasCapability(capabilities, "platform_settings") && hasCapability(capabilities, "cross_org");
   const connects = hasCapability(capabilities, "org_settings");
   return (
     <Stack gap="xl">

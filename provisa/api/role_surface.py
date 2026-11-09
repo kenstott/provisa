@@ -76,11 +76,19 @@ class LazySurface:
     many requests ask at once. A failed build is held too, and raised to every reader; a build a
     request's deadline cut short is not held, and the next reader builds again."""
 
-    __slots__ = ("_build", "_failure", "_lock", "_surface", "role_id")
+    __slots__ = ("_build", "_failure", "_lock", "_reads", "_surface", "role_id")
 
-    def __init__(self, role_id: str, build: Callable[[], RoleSurface]) -> None:
+    def __init__(
+        self,
+        role_id: str,
+        build: Callable[[], RoleSurface],
+        reads: Callable[[], RoleSurface] | None = None,
+    ) -> None:
         self.role_id = role_id
         self._build = build
+        # The parts saying what the role reads -- its context and row filters -- without its
+        # schema and proto (:meth:`reading`); None when only the whole surface can be built.
+        self._reads = reads
         self._lock = threading.Lock()
         self._surface: RoleSurface | None = None
         self._failure: RoleSurfaceUnbuilt | None = None
@@ -90,28 +98,46 @@ class LazySurface:
         return self._surface is not None or self._failure is not None
 
     def resolve(self) -> RoleSurface:
-        from provisa.core.request_deadline import DeadlinePassed, RequestTimedOut
-        from provisa.core.runtime_gone import RuntimeNotBuilt
-
         with self._lock:
             if self._surface is not None:
                 return self._surface
             if self._failure is not None:
                 raise self._failure
-            try:
-                self._surface = self._build()
-            except (DeadlinePassed, RequestTimedOut):
-                raise  # the reader's time ran out, not the role's build: the next one builds
-            except RuntimeNotBuilt:
-                # The runtime it was registered for is gone (a change of an environment's data,
-                # an engine wake): the role's build did not fail, so nothing is held; the reader
-                # is refused, or a detached pass left to the next runtime (runtime_gone).
-                raise
-            except Exception as exc:
-                self._failure = RoleSurfaceUnbuilt(self.role_id, exc)
-                log.error("%s", self._failure, exc_info=exc)
-                raise self._failure from exc
+            self._surface = self._held(self._build)
             return self._surface
+
+    def reading(self) -> RoleSurface:
+        """The role's context and row filters, and no other part: what a meta-role's build reads
+        of each member (security/meta_role). The whole surface when it is built already, or when
+        this surface was given no ``reads``. A failure is held as :meth:`resolve` holds one."""
+        if self._reads is None:
+            return self.resolve()
+        with self._lock:
+            if self._surface is not None:
+                return self._surface
+            if self._failure is not None:
+                raise self._failure
+            return self._held(self._reads)
+
+    def _held(self, build: Callable[[], RoleSurface]) -> RoleSurface:
+        """``build()``, with a failure of the role's build held for every later reader. Called
+        under the lock."""
+        from provisa.core.request_deadline import DeadlinePassed, RequestTimedOut
+        from provisa.core.runtime_gone import RuntimeNotBuilt
+
+        try:
+            return build()
+        except (DeadlinePassed, RequestTimedOut):
+            raise  # the reader's time ran out, not the role's build: the next one builds
+        except RuntimeNotBuilt:
+            # The runtime it was registered for is gone (a change of an environment's data,
+            # an engine wake): the role's build did not fail, so nothing is held; the reader
+            # is refused, or a detached pass left to the next runtime (runtime_gone).
+            raise
+        except Exception as exc:
+            self._failure = RoleSurfaceUnbuilt(self.role_id, exc)
+            log.error("%s", self._failure, exc_info=exc)
+            raise self._failure from exc
 
 
 def resolved(held: RoleSurface | LazySurface | None) -> RoleSurface | None:
@@ -122,6 +148,12 @@ def resolved(held: RoleSurface | LazySurface | None) -> RoleSurface | None:
 def built_surface(held: RoleSurface | LazySurface) -> RoleSurface:
     """A registered role's surface (an entry that is there): a lazy one is built here."""
     return held.resolve() if isinstance(held, LazySurface) else held
+
+
+def reading_surface(held: RoleSurface | LazySurface) -> RoleSurface:
+    """A registered role's context and row filters (:meth:`LazySurface.reading`): a lazy one's
+    are built here, its schema and proto not."""
+    return held.reading() if isinstance(held, LazySurface) else held
 
 
 def role_surface(state: Any, role_id: str) -> RoleSurface | None:

@@ -417,7 +417,7 @@ Attach 會在附加時自動佈建所有先決條件：
 | 環境變數 | 預設值 | 用途 |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 啟用伺服器端門檻式重新導向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 預設資料列數門檻 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 預設資料列數門檻 |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | 預設重新導向格式 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 儲存桶名稱 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 相容 S3 的端點網址 |

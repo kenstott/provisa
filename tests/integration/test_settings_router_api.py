@@ -250,7 +250,7 @@ class TestCacheStorage:
         assert resp.status_code == 200
         body = resp.json()
         assert "cache" in body
-        assert "hot_tables" in body
+        assert "hot_tables" not in body  # REQ-1327: the org's, read from GET /admin/settings
 
     async def test_set_cache_storage(self, client):
         resp = await client.put(
@@ -261,7 +261,8 @@ class TestCacheStorage:
         body = resp.json()
         assert body["success"] is True
         assert "cache.default_ttl" in body["updated"]
-        assert "hot_tables.max_rows" in body["updated"]
+        # REQ-1327: hot tables are the org's, not this door's.
+        assert "hot_tables.max_rows" not in body["updated"]
 
 
 class TestEncryption:

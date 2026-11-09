@@ -541,6 +541,67 @@ async def test_a_resave_that_omits_a_stored_columns_type_snapshots_the_stored_ty
     ]
 
 
+def _ledger(data_type: str, version: str) -> Table:
+    """A table in no product, so each of its saves records a version (REQ-2158)."""
+    return Table(
+        source_id="pg",
+        domain_id="sales",
+        schema_name="public",
+        table_name="ledger",
+        contract=DataContract(version=version),
+        columns=[Column(name="amount", visible_to=["analyst"], data_type=data_type)],
+    )
+
+
+async def _ledger_contract(conn) -> DataContract:
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.contract).where(registered_tables.c.table_name == "ledger")
+        )
+    ).fetchone()
+    return DataContract.model_validate(row.contract)
+
+
+@pytest.mark.parametrize(
+    "first, second",
+    [
+        ("numeric(10,2)", "decimal(10, 2)"),
+        ("numeric(10,2)", "NUMERIC(10,2)"),
+        ("money", "numeric(21,4)"),
+        ("inet", "text"),
+    ],
+)
+async def test_a_column_respelled_or_subtyped_is_no_difference_between_versions(
+    plane, first, second
+):
+    """REQ-2158, REQ-2171: a table's save snapshots the type it stores, so the same column
+    spelled two ways is not a changed type."""
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _ledger(first, "1.0.0"))
+        await table_repo.upsert(conn, _ledger(second, "2.0.0"))
+        stored = await _ledger_contract(conn)
+    assert [c.type for c in stored.versions[-2].columns] == [
+        c.type for c in stored.versions[-1].columns
+    ]
+    assert [c.kind for c in stored.versions[-1].changes] == []
+
+
+async def test_a_real_type_change_is_still_breaking_between_table_saves(plane):
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _ledger("numeric(10,2)", "1.0.0"))
+        await table_repo.upsert(conn, _ledger("text", "2.0.0"))
+        stored = await _ledger_contract(conn)
+    assert [(c.kind, c.breaking) for c in stored.versions[-1].changes] == [
+        ("field_type_changed", True)
+    ]
+
+
+async def test_a_malformed_numeric_is_refused_before_a_version_is_recorded(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(table_repo.NumericSizeRefused):
+            await table_repo.upsert(conn, _ledger("numeric(0,2)", "1.0.0"))
+
+
 async def test_a_refused_save_records_no_version(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)

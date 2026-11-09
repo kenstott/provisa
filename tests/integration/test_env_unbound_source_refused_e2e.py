@@ -80,6 +80,8 @@ def boot():
                 "source_column": "region",
                 "target_column": "name",
                 "cardinality": "many-to-one",
+                # Its derived field name, region, is the orders column's: REQ-194 refuses the clash.
+                "graphql_alias": "regionRow",
             }
         ],
     }

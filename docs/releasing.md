@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are triggered by pushing a git tag. The tag name determines the channel.
+Releases are triggered by pushing a git tag. The tag name determines the channel. For how a change reaches a release, and which stages are in use today, see [Release process](release-process.md).
 
 ## Tag Conventions
 

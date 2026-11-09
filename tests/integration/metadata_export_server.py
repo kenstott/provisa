@@ -66,14 +66,6 @@ ORDERS_CONTRACT = {
     "status": "active",
     "description": PRODUCT_FIELDS["purpose"],
     "terms": {"usage": PRODUCT_FIELDS["usage"], "limitations": PRODUCT_FIELDS["limitations"]},
-    "columns": [
-        {"name": "id", "type": "integer"},
-        {"name": "customer_id", "type": "integer"},
-        {"name": "amount", "type": "numeric"},
-        {"name": "region", "type": "text"},
-        {"name": "ssn", "type": "text"},
-        {"name": "margin", "type": "numeric"},
-    ],
 }
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"

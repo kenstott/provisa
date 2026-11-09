@@ -219,6 +219,13 @@ async def _register_user_views_in_state(
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
                 state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+                if _bt_spec.inherited is not None:
+                    # REQ-2064, REQ-2109: it declared none of the times its reads answer.
+                    from provisa.mv.bitemporal_inherit import with_inherited_read_columns
+
+                    with_inherited_read_columns(
+                        next(t for t in tables if t["id"] == _vr["id"]), _bt_spec
+                    )
             elif called(_semantic_sql, _transforms):
                 # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
                 from provisa.mv.models import stored_table_ref
