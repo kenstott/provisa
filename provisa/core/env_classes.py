@@ -229,6 +229,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
         "profiler_sensitive_scans",
         "profiler_sensitive_hints",
+        # REQ-2228: what this environment's dbt source last read from its own manifest. The
+        # manifest comes through the source's binding and states the databases and schemas of the
+        # dbt target that built it, so like catalog_bindings it addresses this environment's
+        # warehouse; another environment reads its own.
+        "dbt_manifests",
     }
 )
 

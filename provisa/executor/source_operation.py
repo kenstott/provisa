@@ -46,7 +46,12 @@ from provisa.api.errors import ApiError
 from provisa.core.ir_types import bytea_hex
 
 # The schema name a source's operations are registered under, per source type.
-OPERATION_SCHEMA = {"openapi": "openapi", "graphql_remote": "graphql", "grpc_remote": "grpc_remote"}
+OPERATION_SCHEMA = {
+    "openapi": "openapi",
+    "graphql_remote": "graphql",
+    "grpc_remote": "grpc_remote",
+    "dbt": "dbt",  # REQ-2228
+}
 
 # An OpenAPI operation's request body is passed as this one argument.
 BODY_ARGUMENT = "body"
@@ -164,6 +169,21 @@ def _grpc_operations(state, source_id: str) -> list[Operation] | None:
     ]
 
 
+async def _dbt_operations(state, source_id: str) -> list[Operation] | None:  # REQ-2228
+    """Everything a dbt source's manifest offers to run: None until its manifest is held."""
+    from provisa.dbt.commands import offered_commands
+    from provisa.dbt.store import held_manifest
+
+    async with state.model_db.acquire() as conn:
+        manifest = await held_manifest(conn, source_id)
+    if manifest is None:
+        return None
+    return [
+        Operation(name=c.name, comment=c.comment, arguments=c.arguments)
+        for c in offered_commands(manifest)
+    ]
+
+
 async def offered_operations(state, source_id: str) -> list[Operation] | None:
     """Every write operation ``source_id`` offers, or None when it is not a remote source this
     process holds."""
@@ -174,6 +194,8 @@ async def offered_operations(state, source_id: str) -> list[Operation] | None:
         return await _graphql_operations(state, source_id)
     if source_type == "grpc_remote":
         return _grpc_operations(state, source_id)
+    if source_type == "dbt":
+        return await _dbt_operations(state, source_id)
     return None
 
 

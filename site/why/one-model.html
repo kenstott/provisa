@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>One model — Provisa</title>
-  <meta name="description" content="Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Cross-source queries across 77 connectors reaching over 200 data sources, metrics defined once, the glossary as a graph, and six access-control layers compiled into every query plan." />
+  <meta name="description" content="Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Cross-source queries across 78 connectors reaching over 200 data sources, metrics defined once, the glossary as a graph, and six access-control layers compiled into every query plan." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -67,13 +67,13 @@
           thing to break.
         </p>
         <p>
-          Here 77 connectors reach over 200 data sources in place, with no pipeline. You register the tables you want; nothing a source offers is
+          Here 78 connectors reach over 200 data sources in place, with no pipeline. You register the tables you want; nothing a source offers is
           registered for you.
         </p>
         <p>
           Query in SQL, GraphQL or Cypher over nine protocols: pgwire, Bolt, Arrow Flight,
           gRPC, JDBC, REST, WebSocket, Airport and MCP. Any Postgres-wire client can connect,
-          so a BI tool or a metrics tool can sit on top. <a href="/why/sources">All 77
+          so a BI tool or a metrics tool can sit on top. <a href="/why/sources">All 78
           connectors.</a> <a href="/why/interfaces">The languages and protocols.</a>
         </p>
 
@@ -133,6 +133,32 @@
           valid paths. Roles are governed by default; opting out is a deliberate grant of the
           ignore-relationships right to a role you trust. An agent's token maps to a role, so
           an agent gets the same layers a person does.
+        </p>
+
+        <h2 id="estate">See your whole estate</h2>
+        <p>
+          Today there are tens of copies of your key datasets. Who has them, are they fresh, does
+          anyone need them? No one knows.
+        </p>
+        <ul>
+          <li><strong>Who has it:</strong> regions and domains.</li>
+          <li><strong>Who can see it:</strong> roles, capabilities and entitlements.</li>
+          <li><strong>Is it fresh:</strong> declared on the dataset and recorded on every query.</li>
+          <li><strong>Does anyone need it:</strong> usage per table, including the ones nobody queries.</li>
+        </ul>
+        <p>
+          Duplication surfaces as you go. Every governed table has to belong somewhere, and every
+          enforced join has to be an approved relationship, so a second copy of the same data
+          becomes a question someone has to answer. Once one governed table serves everyone, the
+          next team doesn't need its own copy.
+        </p>
+        <p>
+          When a team does need one, it usually comes down to three things: managing load on the
+          source, keeping history, or decoupling runtimes. All of it is declared on the table. A
+          replica carries the load. You can say queries never read the source live, which protects
+          the source and separates the two runtimes. You can keep the copy in a region closer to
+          you for performance. A bitemporal view keeps both when something happened and when it was
+          recorded. Either way it stays governed, and everyone can see it.
         </p>
 
         <h2>Alongside context layers</h2>

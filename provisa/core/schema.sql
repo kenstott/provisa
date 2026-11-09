@@ -1318,6 +1318,13 @@ ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
 ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
+-- REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+CREATE TABLE IF NOT EXISTS dbt_manifests (
+    source_id   TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    definitions TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,
     source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,

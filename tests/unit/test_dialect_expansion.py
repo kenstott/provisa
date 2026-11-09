@@ -167,6 +167,28 @@ class TestTranspileExasol:
         sql = transpile(_WHERE_SELECT, "exasol")
         assert "WHERE" in sql
 
+    def test_inner_table_columns_are_uppercased_when_outer_subquery_shares_the_alias(self):
+        """REQ-1731: a subquery alias in the outer SELECT must not suppress uppercasing of
+        same-named real-table columns in the inner SELECT.
+
+        Before the fix, the global ``derived`` set included ``"widgets"`` (from the outer
+        subquery), so ``"widgets"."id"`` in the inner SELECT was treated as derived and its
+        column name was left as the lowercase ``"id"`` — causing Exasol to reject the query
+        because the stored column name is ``ID``."""
+        sql = transpile(
+            'SELECT "id", "name"'
+            ' FROM (SELECT "widgets"."id" AS "id", "widgets"."name" AS "name"'
+            '       FROM "provisa"."widgets" AS "widgets") AS "widgets"'
+            ' ORDER BY "id"',
+            "exasol",
+        )
+        # Inner column names from the real table must arrive in uppercase.
+        assert '"ID"' in sql, sql
+        assert '"NAME"' in sql, sql
+        # Outer read of the derived subquery's output stays lowercase-quoted so the row
+        # columns resolve correctly against the alias that the inner SELECT produced.
+        assert '"id"' in sql, sql
+
 
 class TestTranspileSinglestore:
     def test_simple_select(self):
