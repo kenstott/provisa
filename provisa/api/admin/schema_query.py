@@ -2928,6 +2928,10 @@ async def _introspect_available_columns(
     if source_id == DERIVED_SOURCE_ID:
         return await _derived_view_columns(schema_name, table_name)
     source_type = state.source_types.get(source_id, "")
+    if source_type == "dbt":  # REQ-2228: the warehouse's columns, with the manifest's descriptions
+        from provisa.api.admin._dbt_table_registration import model_columns
+
+        return await model_columns(source_id, schema_name, table_name)
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
     # REQ-1672 (and the same engine-independent readers for the types below): the app's own native
