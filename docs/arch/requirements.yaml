@@ -94243,14 +94243,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
     2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
     each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
-    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
+    (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on REQ-1921 and REQ-1922: a materialized
+    view''s build runs as the org''s admin role, so that is the calling role when a build reads a table
+    through a command.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
     And a materialized view over that command with a governed table as its input
 
 
-    When the view is built as a role that cannot see a column of the input
+    When the view is built, its build running as a role that cannot see a column of the input
 
 
     Then the code reads the table as that role and the column is not available to it
