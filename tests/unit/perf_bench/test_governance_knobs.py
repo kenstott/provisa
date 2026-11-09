@@ -402,7 +402,7 @@ def test_each_table_gets_its_row_rules_each_keeping_every_row(tmp_path: Path) ->
         {
             "tagId": f"bench_gov_rule{i}_t{oid}",
             "roleId": "org_admin",
-            "filterExpr": "order_id IS NOT NULL",
+            "filterExpr": f"order_id IS NOT NULL OR {i} < 0",
             "description": f"Benchmark governance: row rule {i}, every row",
         }
         for i in (1, 2)

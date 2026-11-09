@@ -861,9 +861,10 @@ export function useKaggleDatasetsLazy() {
     kaggleDatasets: { ref: string; title: string; subtitle: string }[];
   }>(KaggleDatasets, { fetchPolicy: "no-cache" });
   return useCallback(
+    // Null, not an empty list, for a search a newer one replaced: it found nothing out.
     async (token: string, query: string) => {
-      const { data } = await run({ variables: { token, query } });
-      return data?.kaggleDatasets ?? [];
+      const answer = await nullWhenCutShort(() => run({ variables: { token, query } }));
+      return answer && (answer.data?.kaggleDatasets ?? []);
     },
     [run],
   );
