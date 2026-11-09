@@ -19,6 +19,7 @@
     "sectionRegions": "Regio's",
     "sectionDefaultGrant": "Standaardtoekenning",
     "sectionOrgs": "Organisaties",
+    "sectionStores": "Cachestores",
     "defaultGrantIntro": "De regio's die elke nieuwe organisatie krijgt, met de opslag waarin ze daar elk soort gegevens bewaart, zodat een nieuwe organisatie begint met een werkende regio.",
     "orgsIntro": "Hier wordt bepaald welke regio's een organisatie gebruikt: ken haar regio's toe en wijs de opslag toe waarin ze daar elk soort gegevens bewaart.",
     "colDescription": "Beschrijving",

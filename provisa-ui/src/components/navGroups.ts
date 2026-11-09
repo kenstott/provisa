@@ -40,6 +40,8 @@ export interface DropdownItem {
   // REQ-1327: a right needed besides whichever of the above opened the entry. A platform page asks
   // the deployment check, `platform_settings` and `cross_org`, as its routes on the server do.
   andCapability?: Capability;
+  // REQ-1327: rights that, held together, also open the entry (CapabilityRequirement.orAllOf).
+  orAllOf?: Capability[];
   // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
   regionsOnly?: boolean;
   // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
@@ -146,7 +148,14 @@ export const NAV_GROUPS: NavGroup[] = [
       // DEPLOYMENT-WIDE settings, so each asks the deployment check, `platform_settings` and
       // `cross_org`: a single-tenant org_admin holds the first (apply_tenancy_role_grants) and never
       // the second, so it is not shown a page whose every call it would be refused.
-      { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "org_settings" },
+      {
+        // REQ-1327: the org's cache settings and the operations on its materialized views, each
+        // tab to the right that holds it. The deployment's stores are on the Platform page.
+        to: "/admin/cache",
+        labelKey: "navBar.itemCache",
+        capability: "org_settings",
+        orCapability: "table_registration",
+      },
       {
         to: "/admin/scheduled-tasks",
         labelKey: "navBar.itemScheduler",
@@ -192,15 +201,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
       { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
       // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
-      // an invitation is the platform's message rather than any org's, so platform_settings.
+      // an invitation is the platform's message rather than any org's, so the deployment check.
       // REQ-1923: the page also holds the organisation's mail platforms (the client its sources
       // sign in to Google or Microsoft with), which are the organisation's: org_settings opens it
       // too, and each half of the page shows only to a holder of its own right.
       {
         to: "/admin/email",
         labelKey: "navBar.itemEmail",
-        capability: "platform_settings",
-        orCapability: "org_settings",
+        capability: "org_settings",
+        orAllOf: ["platform_settings", "cross_org"],
       },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
       // the deployment check — the same one that gates the engine topology switch it announces.
