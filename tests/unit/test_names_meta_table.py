@@ -14,6 +14,9 @@ standard report listing every name, its problems, and the clashes the last build
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from typing import Any
 
 import pytest
@@ -34,6 +37,7 @@ from provisa.core.repositories.model_names import (
     write_names_table,
     write_refused_clashes,
 )
+from provisa.core.schema_org import model_names
 from provisa.security.rights import DEFAULT_TIER_META_TABLES, META_ROW_SCOPED_VIEWS
 
 
@@ -334,3 +338,57 @@ def test_the_settings_block_validates_the_policy():
         _names_block({"clash_policy": "rename"}, {}, [])
     with pytest.raises(ApiError):
         _names_block({"other": 1}, {}, [])
+
+
+def _a_backend_is_waiting_on_a_lock(control_plane, *, within: float = 30.0) -> bool:
+    deadline = time.monotonic() + within
+    # Autocommit: pg_stat_activity holds still for the length of a transaction.
+    with control_plane.engine().connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        while time.monotonic() < deadline:
+            waiting = conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                )
+            ).scalar_one()
+            if waiting:
+                return True
+            time.sleep(0.05)
+    return False
+
+
+@pytest.mark.asyncio
+async def test_two_builds_storing_at_once_both_succeed_and_leave_one_names_table(control_plane):
+    # Every worker of a server builds the model at boot, and each stores this table. While one
+    # build's write is open another's must wait for it, then replace what it wrote: the second
+    # build's insert met the first's rows and the worker died on model_names_pkey.
+    rows = _names().rows
+    first, second = control_plane.org(), control_plane.org()
+    failures: list[BaseException] = []
+
+    async def _second_build() -> None:
+        async with second.acquire() as conn:
+            await write_names_table(conn, rows)
+
+    def _run_second_build() -> None:
+        try:
+            asyncio.run(_second_build())
+        except BaseException as exc:  # noqa: BLE001 - reported by the assertion below
+            failures.append(exc)
+
+    thread = threading.Thread(target=_run_second_build)
+    try:
+        async with first.acquire() as conn:
+            async with conn.transaction():
+                await write_names_table(conn, rows)
+                thread.start()
+                assert _a_backend_is_waiting_on_a_lock(control_plane)
+        thread.join(timeout=30)
+        assert not thread.is_alive()
+        assert failures == []
+        async with first.acquire() as conn:
+            stored = (await conn.execute_core(select(model_names.c.object_id))).fetchall()
+    finally:
+        await first.close()
+        await second.close()
+    assert len(stored) == len(rows)
