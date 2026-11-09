@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: c7b2cbdd-0ec7-42c4-8c86-c4753379b369
 # Canary: placeholder
 #
 # This source code is licensed under the Business Source License 1.1
@@ -53,7 +54,7 @@ def _union(arms: int) -> str:
 def _whole_statement_scans(monkeypatch, sql: str) -> int:
     """How many times the pruning pass walks the whole statement."""
     seen = {"walks": 0}
-    walk = exp.Expr.walk
+    walk = exp.Expression.walk
 
     def counting(self, *args, **kwargs):
         frame = sys._getframe(1)
@@ -67,7 +68,7 @@ def _whole_statement_scans(monkeypatch, sql: str) -> int:
             frame = frame.f_back
         return walk(self, *args, **kwargs)
 
-    monkeypatch.setattr(exp.Expr, "walk", counting)
+    monkeypatch.setattr(exp.Expression, "walk", counting)
     governed_for_role(sql, _ctx(), "clerk", column_types=_COLUMNS)
     return seen["walks"]
 
@@ -83,7 +84,12 @@ def test_the_scan_count_does_not_grow_with_the_relations(monkeypatch):
 
 
 def test_each_relation_still_serves_only_what_the_statement_reads():
-    governed = governed_for_role(_union(2), _ctx(), "clerk", column_types=_COLUMNS)
+    """Arms under aliases of their own: a relation counts a column of its alias read anywhere
+    else in the statement as read, so arms sharing an alias keep each other's outputs."""
+    sql = (
+        'SELECT a."email" FROM "public"."t" AS a UNION ALL SELECT b."email" FROM "public"."t" AS b'
+    )
+    governed = governed_for_role(sql, _ctx(), "clerk", column_types=_COLUMNS)
     assert '"email"' in governed
     assert "region" not in governed
     assert '"id"' not in governed
