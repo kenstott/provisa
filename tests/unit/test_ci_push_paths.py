@@ -8,27 +8,31 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""During alpha the container suite runs only when asked for (maintainer 2026-10-15).
+"""The integration and e2e suites run on release branches, not on main (REQ-1989).
 
-A push to main starts no run of it, whatever the push touches: the suite is dispatched on request,
-and the nightly run is the warehouse lane alone."""
+A push to main starts no run of them, whatever the push touches; every push to release/** does.
+Elsewhere they are dispatched on request, and the nightly run is the warehouse lane alone."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
-_SUITE = REPO / ".github" / "workflows" / "integration-suite.yml"
+_WORKFLOWS = REPO / ".github" / "workflows"
+_SUITE = _WORKFLOWS / "integration-suite.yml"
+_SUITES = [_SUITE, *(_WORKFLOWS / f"ui-e2e-{lane}.yml" for lane in ("core", "trino", "swap-amd64"))]
 
 
-def _triggers() -> dict:
-    return yaml.safe_load(_SUITE.read_text())[True]  # PyYAML reads the key `on` as True
+def _triggers(workflow: Path = _SUITE) -> dict:
+    return yaml.safe_load(workflow.read_text())[True]  # PyYAML reads the key `on` as True
 
 
-def test_no_push_starts_the_suite():
-    assert "push" not in _triggers()
+@pytest.mark.parametrize("workflow", _SUITES, ids=lambda path: path.stem)
+def test_a_push_to_main_starts_no_suite_and_a_push_to_a_release_branch_does(workflow: Path):
+    assert _triggers(workflow)["push"] == {"branches": ["release/**"]}
 
 
 def test_the_suite_is_dispatched_on_request_and_nightly_for_the_warehouse_lane():
