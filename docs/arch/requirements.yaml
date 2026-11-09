@@ -93985,7 +93985,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Maintainer 2026-11-09: a container cannot know its own digest, so Provisa reads the labels of the image
     at the block''s digest from the registry; if Provisa cannot reach the registry the join is refused.
     Pairing spends the one-time code: after a later refusal the host stays paired and the operator resets
-    its state to retry.'
+    its state to retry. (Amended 2026-11-09, A STANDARD FILE SAYS WHAT THE STORE SHOWS:) Maintainer 2026-11-09:
+    a connector project may hold a standard file, connector.yaml with its icon beside it, that provisa connector
+    build reads into the connector''s block: the icon and description for the connector store, defaults
+    for its @requires values and for standard source settings, and fixed values. A default is applied when
+    the source is created and a steward can change it; a fixed value is shown read-only and a save that
+    changes it is refused. Tables and commands stay in the code''s tags. A project with no file builds as
+    before.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94122,7 +94128,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09: the Spark connector''s documentation covers small
     jobs, big jobs, replication and caching, and what each means for performance and timeliness. (Amended
     2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer 2026-11-09: the script declares each table''s
-    row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.'
+    row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.
+    (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:) Maintainer 2026-11-09: the Spark connector
+    states replication on by default in the standard file of REQ-2221.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
