@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from provisa.api.admin.secret_redaction import (
     redact,
     redact_per_provider,
@@ -90,3 +92,99 @@ def test_a_changed_address_does_not_inherit_the_old_password():
 def test_nothing_to_restore_when_nothing_is_stored():
     assert restore_url_password("postgresql://db/x", None) == "postgresql://db/x"
     assert restore_url_password("", "postgresql://svc:p@db/x") == ""
+
+
+# A credential can ride in any query parameter of a DSN, not only in the netloc.
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "password",
+        "passwd",
+        "pwd",
+        "PWD",
+        "token",
+        "access_token",
+        "auth-token",
+        "motherduck_token",
+        "secret",
+        "client_secret",
+        "sslpassword",
+        "key",
+        "access_key",
+        "secret_key",
+        "api_key",
+        "api-key",
+        "apiKey",
+        "private_key",
+        "account_key",
+        "pass%77ord",
+    ],
+)
+def test_a_credential_query_parameter_is_stripped(name):
+    out = redact_url_password(f"postgresql://h/db?{name}=hunter2&sslmode=require")
+    assert out == "postgresql://h/db?sslmode=require"
+    assert "hunter2" not in out
+
+
+def test_the_only_query_parameter_being_a_credential_leaves_no_query():
+    assert redact_url_password("postgresql://h/db?password=x") == "postgresql://h/db"
+
+
+def test_netloc_password_and_query_credential_are_both_stripped():
+    out = redact_url_password(
+        "postgresql://svc:hunter2@h:5432/db?sslpassword=s3cr3t&sslmode=require"
+    )
+    assert out == "postgresql://svc@h:5432/db?sslmode=require"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "sslmode=require",
+        "application_name=provisa&connect_timeout=10",
+        # Contains a credential word without being a credential.
+        "keyspace=orders",
+        "token_type=bearer",
+        "secret_name=prod-db",
+        "password_authentication=scram",
+        # A path to the key file, as libpq defines it, and an identifier that is not the secret.
+        "sslkey=/etc/ssl/client.key",
+        "access_key_id=AKIAEXAMPLE",
+    ],
+)
+def test_a_non_secret_query_parameter_is_left_alone(query):
+    url = f"postgresql://h/db?{query}"
+    assert redact_url_password(url) == url
+
+
+def test_redacting_leaves_the_other_parameters_exactly_as_written():
+    url = "postgresql://h/db?sslrootcert=/etc/ca.pem&options=-c%20a%3Db&password=x"
+    assert (
+        redact_url_password(url) == "postgresql://h/db?sslrootcert=/etc/ca.pem&options=-c%20a%3Db"
+    )
+
+
+def test_a_redacted_query_credential_comes_back_unchanged_address():
+    stored = "postgresql://h/db?sslmode=require&password=hunter2"
+    assert restore_url_password(redact_url_password(stored), stored) == stored
+
+
+def test_a_redacted_netloc_password_and_query_credential_both_come_back():
+    stored = "postgresql://svc:hunter2@h:5432/db?sslmode=require&sslpassword=s3cr3t"
+    assert restore_url_password(redact_url_password(stored), stored) == stored
+
+
+def test_a_submitted_query_credential_wins_and_the_other_stored_one_stays():
+    stored = "postgresql://h/db?token=old&sslpassword=s3cr3t"
+    assert (
+        restore_url_password("postgresql://h/db?token=new", stored)
+        == "postgresql://h/db?token=new&sslpassword=s3cr3t"
+    )
+
+
+def test_a_moved_address_does_not_inherit_a_query_credential():
+    stored = "postgresql://h/db?password=hunter2"
+    moved = "postgresql://other/db"
+    assert restore_url_password(moved, stored) == moved

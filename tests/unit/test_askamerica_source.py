@@ -673,7 +673,9 @@ async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepa
     }
 
 
-def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
+def _cancelling_server(
+    monkeypatch, *, catalog_pending: bool, catalog_requested: bool = True
+) -> list[str]:
     """A listening server that cancels the read it held queued, as the adapter answers a
     statement it held past its queue bound behind its catalog's preparation (SQLSTATE 57014)."""
     import asyncpg
@@ -686,6 +688,9 @@ def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
 
         def catalog_pending(self):
             return catalog_pending
+
+        def catalog_requested(self):
+            return catalog_requested
 
         def catalog_preparing(self):
             return False
@@ -716,6 +721,15 @@ async def test_a_read_cancelled_while_the_catalog_is_prepared_is_still_starting(
     with pytest.raises(pr.SourceStillStartingError) as raised:
         await pr.adapter_tables(_source(), "sec")
     assert raised.value.preparing_catalog
+    assert statements[-1] == "closed"
+
+
+@pytest.mark.asyncio
+async def test_a_read_cancelled_on_a_catalog_never_requested_claims_no_preparation(monkeypatch):
+    statements = _cancelling_server(monkeypatch, catalog_pending=True, catalog_requested=False)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        await pr.adapter_tables(_source(), "sec")
+    assert raised.value.catalog_not_requested and not raised.value.preparing_catalog
     assert statements[-1] == "closed"
 
 
@@ -1865,9 +1879,41 @@ def test_a_source_not_yet_in_use_has_no_catalog_preparation_sent():
     with pytest.raises(pr.SourceStillStartingError) as raised:
         replica.await_catalog(ports, 5)
     assert time.monotonic() - started < 1
-    assert raised.value.preparing_catalog
+    assert raised.value.catalog_not_requested and not raised.value.preparing_catalog
     assert replica._catalog_thread is None and asked == []
     assert not replica.catalog_preparing()  # the Register Table lists are read at once
+
+
+def test_a_catalog_never_requested_is_reported_as_such():
+    """Nothing is being prepared, so the answer does not say so. The STARTING prefix stays: the
+    source is not failed, and the frontend polls on that prefix."""
+    replica = _replica_with_server(healthy=True, exit_code=None, catalog_ready=False, in_use=False)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 5)
+    said = str(raised.value)
+    assert said.startswith("STARTING: 'test-askamerica'")
+    assert "has not been requested" in said
+    assert "reading the columns" not in said
+    assert "try again shortly" not in said
+
+
+def test_a_catalog_really_being_prepared_is_still_reported_starting():
+    release = threading.Event()
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: release.wait(5),
+        in_use=True,
+    )
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
+    release.set()
+    replica._catalog_thread.join(5)  # type: ignore[union-attr]
+    assert raised.value.preparing_catalog and not raised.value.catalog_not_requested
+    said = str(raised.value)
+    assert said.startswith("STARTING: 'test-askamerica'")
+    assert "reading the columns" in said and "try again shortly" in said
 
 
 def test_an_attach_of_a_source_not_yet_in_use_sends_no_preparation(monkeypatch):

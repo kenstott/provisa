@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models and controls the maintenance banner. You need no Docker, no Node and no external services.
+The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models, queries any front door and controls the maintenance banner. You need no Docker, no Node and no external services.
 
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
 and the embedded PostgreSQL model store:
@@ -35,9 +35,9 @@ export PROVISA_API_URL=https://acme.provisa.org
 export PROVISA_API_TOKEN=<token>
 ```
 
-Subcommands that accept these flags: `metadata export`, every `env` subcommand (`list`, `show`,
-`create`, `delete`, `diff`, `merge`, `deploy`, `revert`, `redo`, `fetch`, `push`, `pull`),
-`maintenance on`, `maintenance off`, `maintenance status`.
+Subcommands that accept these flags: `api`, `query`, `explain`, `metadata export`, every `env`
+subcommand (`list`, `show`, `create`, `delete`, `diff`, `merge`, `deploy`, `revert`, `redo`,
+`fetch`, `push`, `pull`), `maintenance on`, `maintenance off`, `maintenance status`.
 
 ---
 
@@ -184,6 +184,156 @@ provisa metadata export \
 ```
 
 [Metadata Export](metadata-export.md#from-the-command-line) has the full configuration reference, covering providers, credentials, `reconcile_cron` and the snapshot's contents.
+
+---
+
+## provisa api
+
+Call any endpoint on a running instance. One generic command covers every route the API offers, with no code per feature. The server's checks apply as they do to any other caller.
+
+```
+provisa api METHOD PATH [--data BODY] [--api URL] [--token TOKEN] [--timeout SECONDS]
+```
+
+| Argument / Flag | Notes |
+| --- | --- |
+| `METHOD` | One of `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `PATH` | Path on the instance, including any query string; the instance's base URL is prepended |
+| `--data` | JSON request body. Pass the text directly, `@file` to read a file, or `@-` to read stdin |
+| `--api` | See [Shared options](#shared-options) |
+| `--token` | Bearer token; default `$PROVISA_API_TOKEN` |
+| `--timeout` | Default 30 s |
+
+Stdout is the response body, byte for byte — on success and on a refusal — so a refusal's error code is there to read. HTTP status is not echoed unless it is an error, which prints `HTTP <status>` to stderr.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | The instance answered with a success status |
+| 1 | The instance answered with an error status, or could not be reached |
+| 2 | Usage error; no call was made |
+
+```bash
+# Read the acting org's settings
+provisa api GET /admin/settings \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# Apply a config update from a file
+provisa api PUT /admin/config \
+  --data @./config/provisa.yaml \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# Trigger a metadata publish and pipe the JSON response through jq
+provisa api POST /admin/metadata-export/publish \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN" | jq .
+```
+
+---
+
+## provisa query
+
+Send a statement in any language to a running instance and read the answer. It goes through the same front door a client uses, so the role's rights, row rules, masks and refusals are the server's.
+
+There is no interactive mode. Use psql over pgwire for SQL and cypher-shell over Bolt for Cypher.
+
+```
+provisa query LANGUAGE [STATEMENT] [--file FILE] [--arguments JSON]
+              --role ROLE [--org ORG] [--expect-refused CODE]
+              [--api URL] [--token TOKEN] [--mcp-url URL] [--timeout SECONDS]
+```
+
+| Argument / Flag | Notes |
+| --- | --- |
+| `LANGUAGE` | One of `sql`, `graphql`, `cypher`, `sparql`, `grpc`, `rest`, `mcp` |
+| `STATEMENT` | The statement text (`sql`, `graphql`, `cypher`, `sparql`), the gRPC type name (`grpc`), the path and query string (`rest`), or the tool name (`mcp`). Pass `-` to read from stdin |
+| `--file` | Read the statement from this file instead |
+| `--arguments` | A JSON object: GraphQL variables, Cypher parameters, the gRPC request body, or MCP tool arguments |
+| `--role` | Required. The role the statement runs as; sets `X-Provisa-Role` |
+| `--org` | The organization; sets `X-Org-Provisa` |
+| `--expect-refused CODE` | Exit 0 only when the statement is refused with this exact error code |
+| `--api` | See [Shared options](#shared-options) |
+| `--token` | Bearer token; default `$PROVISA_API_TOKEN` |
+| `--mcp-url` | MCP endpoint; default `$PROVISA_MCP_URL` |
+| `--timeout` | Default 300 s |
+
+Stdout is one JSON document, keys sorted. Stderr carries the status line (`refused: <code>: <detail>` or `failed: <code>: <detail>`).
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Answered, or refused with the code `--expect-refused` names |
+| 1 | Refused: the instance declined the statement (HTTP 4xx) |
+| 2 | Usage error |
+| 3 | `--expect-refused` was not met: the statement was answered, or refused under another code |
+| 4 | Failed: the instance could not be reached, or answered 5xx |
+
+Pass `--expect-refused` with the full error code, never bare. A statement with a typo is also refused, and a bare assertion would pass on it.
+
+```bash
+# Run a SQL query as the analyst role
+provisa query sql "SELECT id, name FROM customers LIMIT 5" \
+  --role analyst --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# GraphQL query with variables
+provisa query graphql 'query GetOrders($limit: Int) { orders(limit: {value: $limit}) { id } }' \
+  --arguments '{"limit": 10}' \
+  --role analyst
+
+# Cypher query from a file
+provisa query cypher --file queries/find_account.cypher \
+  --arguments '{"id": "acct_42"}' \
+  --role analyst
+
+# Assert that a restricted role is refused on a column it cannot see
+provisa query sql "SELECT ssn FROM customers LIMIT 1" \
+  --role viewer \
+  --expect-refused governance.column_not_visible
+
+# MCP tool call
+provisa query mcp list_tables \
+  --role analyst --mcp-url "$PROVISA_MCP_URL"
+```
+
+---
+
+## provisa explain
+
+Show the SQL that a statement in any language produces. All the same flags as `query` apply; the server runs every compilation and governance step, then returns the plan instead of executing it.
+
+```
+provisa explain LANGUAGE [STATEMENT] [--file FILE] [--arguments JSON]
+                --role ROLE [--org ORG]
+                [--analyze] [--expect-refused CODE]
+                [--api URL] [--token TOKEN] [--mcp-url URL] [--timeout SECONDS]
+```
+
+The `--analyze` flag runs the statement and reports real timings alongside the plan. Without it, nothing is executed.
+
+Stdout is one JSON document with:
+
+| Key | Contents |
+| --- | --- |
+| `semantic` | The statement as the compiler parsed it, with views expanded |
+| `governed` | The statement after governance rules are applied |
+| `optimized` | The statement after the optimizer, with the rules that fired |
+| `route` | Which engine will execute it, and why |
+| `native` | The statement in the target engine's SQL dialect |
+| `engine_plan` | The engine's own query plan (when available) |
+| `timings` | Real execution timings (`--analyze` only) |
+
+A statement the role is not permitted to run prints the refusal and exits 1.
+
+Exit codes are the same as `provisa query`.
+
+```bash
+# See the SQL an analyst's GraphQL query becomes
+provisa explain graphql \
+  'query { orders { id customer { name } } }' \
+  --role analyst
+
+# Check what SQL a Cypher path produces, then run it and time it
+provisa explain cypher \
+  "MATCH (c:Customer)-[:PLACED]->(o:Order) RETURN c.name, count(o)" \
+  --role analyst --analyze
+```
 
 ---
 
@@ -479,6 +629,10 @@ Maintenance notice: ON
 | `provisa license apply <file>` | Install a license file offline |
 | `provisa license status` | Show machine ID and trial / license state |
 | `provisa metadata export` | Publish the metadata snapshot on demand |
+| `provisa api METHOD PATH` | Call any endpoint on a running instance |
+| `provisa query LANG STATEMENT --role ROLE` | Run a statement as a client would |
+| `provisa explain LANG STATEMENT --role ROLE` | Show the SQL a statement produces |
+| `provisa explain LANG STATEMENT --role ROLE --analyze` | Show the plan and time it |
 | `provisa env list --org ORG` | List the org's environments and their builds |
 | `provisa env show --org ORG --env ENV` | Show one environment |
 | `provisa env create --org ORG --env ENV --data-mode MODE` | Create an environment from another |
