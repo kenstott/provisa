@@ -47,6 +47,7 @@ from provisa.api.errors import ApiError
 from provisa.api.error_answer import error_answer
 from provisa.core import domain_policy
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+from provisa.compiler.sql_validator import GovernanceRefused
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
@@ -331,6 +332,7 @@ def _sql_error(exc: Exception) -> Exception:
         | CatalogViewRefused  # REQ-2190
         | MetadataFunctionRefused  # REQ-2190
         | FunctionRefused  # REQ-2167
+        | GovernanceRefused  # REQ-2222: the app answers it under its code
         | HTTPException,
     ):
         return exc

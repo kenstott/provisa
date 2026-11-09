@@ -27,6 +27,7 @@ from __future__ import annotations
 import functools
 import importlib.util
 import json
+import logging
 import os
 import shutil
 from collections.abc import Callable
@@ -36,9 +37,12 @@ from pathlib import Path
 import duckdb
 
 from provisa.core import engine_memory
+from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
-from provisa.federation.engine import build_duckdb_engine
+from provisa.federation.engine import build_duckdb_engine, duckdb_engine_connectors
+
+_log = logging.getLogger(__name__)
 
 _EXT_DIR_ENV = "PROVISA_DUCKDB_EXT_DIR"
 
@@ -255,14 +259,20 @@ class StagedManifestMissing(RuntimeError):
     it was not staged by this Provisa for this DuckDB, so what it can attach is unknown."""
 
 
+#: What this server process installed from DuckDB's repositories when it started; None until it
+#: has (REQ-1142, THE SERVER TIER STAGES AT START).
+_installed_at_start: frozenset[str] | None = None
+
+
 def staged_extensions() -> frozenset[str] | None:
-    """The extensions staged for the running DuckDB version and platform, read from the staged
-    directory's manifest (REQ-1142, ATTACHABLE MEANS STAGED), each by its file name and by the
-    name a connector gives it (postgres for postgres_scanner). None where no extension directory
-    is staged: DuckDB installs from its own repositories (a server or a dev checkout, REQ-1142)."""
+    """The extensions a connector may count on for the running DuckDB version and platform: those
+    in the staged directory's manifest (REQ-1142, ATTACHABLE MEANS STAGED), each by its file name
+    and by the name a connector gives it (postgres for postgres_scanner), or with no staged
+    directory those the server installed when it started (THE SERVER TIER STAGES AT START). None
+    where neither has happened: a process that is not a server, DuckDB installing on first use."""
     directory = extension_directory()
     if directory is None:
-        return None
+        return _installed_at_start
     raw_version, platform = running_version_platform()
     path = Path(directory) / raw_version / platform / MANIFEST
     if not path.is_file():
@@ -274,14 +284,19 @@ def staged_extensions() -> frozenset[str] | None:
     return names | {_SHORT_NAMES[n] for n in names if n in _SHORT_NAMES}
 
 
-def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
-    """The extensions ``connector``'s way of reaching needs that are not in ``staged``: each it
-    names in ``staged_needs``, else its ``extension``. Empty for a connector needing none (DuckDB's
-    own csv, parquet and database files) or one whose every extension is staged."""
+def _needs(connector: Connector) -> tuple[str, ...]:
+    """The extensions ``connector``'s way of reaching needs: each it names in ``staged_needs``,
+    else its ``extension``. Empty for a connector needing none (DuckDB's own csv, parquet and
+    database files)."""
     needs = getattr(connector, "staged_needs", None)
     if needs is None:
         needs = (connector.extension,) if connector.extension else ()
-    return tuple(n for n in needs if n not in staged)
+    return tuple(needs)
+
+
+def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
+    """The extensions ``connector`` needs that are not in ``staged``."""
+    return tuple(n for n in _needs(connector) if n not in staged)
 
 
 #: The reader that lands a source type's replicas where the engine cannot attach it, decided and
@@ -314,25 +329,17 @@ def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
     )
 
 
-#: The newest DuckDB MotherDuck's extension loads on (its own refusal on 2.0.0, 2026-11-06:
-#: "Your DuckDB version (v2.0.0) is not yet supported by MotherDuck. The latest supported version
-#: is v1.5.6."). Raised when MotherDuck supports a later one.
-MOTHERDUCK_LATEST_DUCKDB = (1, 5, 6)
-
-
 def motherduck_reader_missing() -> str | None:
     """What is missing to read a MotherDuck source in this deployment, or None where the engine's
     DuckDB loads MotherDuck's extension (REQ-1998). Elsewhere a MotherDuck source is a replica
     landed through MotherDuck's Postgres endpoint (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES
     ENDPOINT), whose reader this deployment does not have yet: the source names it."""
-    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
-    if running <= MOTHERDUCK_LATEST_DUCKDB:
+    limit = motherduck_extension_limit()
+    if limit is None:
         return None
-    latest = ".".join(map(str, MOTHERDUCK_LATEST_DUCKDB))
     return (
         f"needs {PENDING_READERS['motherduck']} to land it, which this deployment does not have "
-        f"yet: MotherDuck's extension supports DuckDB up to {latest} and the engine runs DuckDB "
-        f"{duckdb.__version__}"
+        f"yet: {limit}"
     )
 
 
@@ -370,20 +377,56 @@ def _snowflake_driver() -> dict[str, str]:
 _EXTENSION_ENV: dict[str, Callable[[], dict[str, str]]] = {"snowflake": _snowflake_driver}
 
 
-def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
-    """The INSTALL and LOAD statements that bring ``extension`` up: from its named repository for
-    an extension of EXTENSION_REPOSITORIES (created where the connection does not know it), else
-    from community or the core registry."""
+def install_statements(extension: str, *, from_community: bool) -> list[str]:
+    """The statements that INSTALL ``extension``: from its named repository for an extension of
+    EXTENSION_REPOSITORIES (created where the connection does not know it), else from community or
+    the core registry."""
     if extension in EXTENSION_REPOSITORIES:
         repository, prefix = EXTENSION_REPOSITORIES[extension]
         return [
             "SET allow_extension_repositories = 'allowed'",
             f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'",
             f"INSTALL {extension} FROM {repository}",
-            f"LOAD {extension} FROM {repository}",
         ]
-    install = f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"
-    return [install, f"LOAD {extension}"]
+    return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]
+
+
+def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
+    """The INSTALL and LOAD statements that bring ``extension`` up."""
+    load = f"LOAD {extension}"
+    if extension in EXTENSION_REPOSITORIES:
+        load += f" FROM {EXTENSION_REPOSITORIES[extension][0]}"
+    return [*install_statements(extension, from_community=from_community), load]
+
+
+def install_extension_set() -> frozenset[str] | None:
+    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
+    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
+    the engine counts a connector as attachable only when its extensions did. An extension that
+    does not install (no build for the running DuckDB) is named in the log and left out, so the
+    source shows it when added. None where a staged directory holds the set: nothing to install."""
+    global _installed_at_start
+    if extension_directory() is not None:
+        return None
+    wanted: dict[str, bool] = {}
+    for connector in duckdb_engine_connectors():
+        for need in _needs(connector):
+            community = bool(connector.install_from_community) and need == connector.extension
+            wanted[need] = wanted.get(need, False) or community
+    installed: set[str] = set()
+    for extension, from_community in sorted(wanted.items()):
+        con = connect()
+        try:
+            for statement in install_statements(extension, from_community=from_community):
+                con.execute(statement)
+        except duckdb.Error as error:
+            _log.warning("DuckDB extension %s did not install: %s", extension, error)
+        else:
+            installed.add(extension)
+        finally:
+            con.close()
+    _installed_at_start = frozenset(installed)
+    return _installed_at_start
 
 
 def install_and_load(

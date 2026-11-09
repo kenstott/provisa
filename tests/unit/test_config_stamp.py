@@ -28,6 +28,7 @@ The same rules on PostgreSQL: ``tests/integration/test_config_stamp_pg.py``."""
 from __future__ import annotations
 
 import asyncio
+import datetime
 from pathlib import Path
 
 import pytest
@@ -70,7 +71,12 @@ def test_every_plane_table_named_for_a_stamp_exists():
     assert set(config_stamp.PLATFORM_TABLES) <= {t.name for t in schema_admin.REGISTRY_TABLES}
 
 
-_TENANT_KINDS = {config_stamp.MODEL, config_stamp.SETTINGS, config_stamp.REPLICA}
+_TENANT_KINDS = {
+    config_stamp.MODEL,
+    config_stamp.BUILD,
+    config_stamp.SETTINGS,
+    config_stamp.REPLICA,
+}
 
 
 def test_every_kind_has_a_row_after_the_schema_is_created(tenant_db):
@@ -416,3 +422,177 @@ def test_a_copy_that_is_gone_is_not_reported_as_reloaded(tenant_db, caplog):
     said = [r.getMessage() for r in caplog.records]
     assert not any(m.startswith("config reloaded") for m in said), said
     assert any("config not reloaded: org acme: model is gone" in m for m in said), said
+
+
+# REQ-1914 (amended 2026-11-09): the build stamp advances for what the model build reads. A change
+# the build does not read advances the model stamp alone.
+
+_PRODUCT = "orders_product"
+
+
+@pytest.fixture
+def product(tenant_db):
+    with tenant_db.engine.begin() as conn:
+        conn.execute(sa.insert(schema_org.domains).values(id="sales"))
+        conn.execute(sa.insert(schema_org.domains).values(id="finance"))
+        for pid in (_PRODUCT, "taker"):
+            conn.execute(
+                sa.insert(schema_org.data_products).values(id=pid, domain_id="sales", name=pid)
+            )
+    return _PRODUCT
+
+
+def _update_product(db: Database, **values) -> None:
+    with db.engine.begin() as conn:
+        conn.execute(
+            sa.update(schema_org.data_products)
+            .where(schema_org.data_products.c.id == _PRODUCT)
+            .values(**values)
+        )
+
+
+def _moved(db: Database, before: dict[str, int]) -> tuple[bool, bool]:
+    """Whether the (model, build) stamps moved since ``before``."""
+    after = _stamps(db)
+    return (
+        after[config_stamp.MODEL] != before[config_stamp.MODEL],
+        after[config_stamp.BUILD] != before[config_stamp.BUILD],
+    )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"status": "live"},
+        {"status_reason": "because"},
+        {"retire_on": datetime.date(2030, 1, 1)},
+        {"status_by": "someone"},
+        {"status_at": datetime.datetime(2030, 1, 1, tzinfo=datetime.UTC)},
+        {"successor_id": "taker"},
+        {"status": "deprecated", "status_reason": "old", "status_by": "someone"},
+    ],
+    ids=lambda v: "+".join(v),
+)
+@pytest.mark.usefixtures("product")
+def test_a_status_change_moves_the_model_stamp_and_not_the_build_stamp(tenant_db, values):
+    before = _stamps(tenant_db)
+    _update_product(tenant_db, **values)
+    assert _moved(tenant_db, before) == (True, False)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"owner_role": "org_admin"},  # what the build reads (REQ-2188)
+        {"domain_id": "finance"},  # what the build reads (REQ-2219)
+        {"name": "renamed"},  # a column not listed as one the build ignores
+        {"status": "live", "owner_role": "org_admin"},  # a status beside what the build reads
+    ],
+    ids=lambda v: "+".join(v),
+)
+@pytest.mark.usefixtures("product")
+def test_a_change_the_build_reads_moves_both_stamps(tenant_db, values):
+    before = _stamps(tenant_db)
+    _update_product(tenant_db, **values)
+    assert _moved(tenant_db, before) == (True, True)
+
+
+@pytest.mark.usefixtures("product")
+def test_a_new_or_deleted_product_moves_both_stamps(tenant_db):
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(
+            sa.insert(schema_org.data_products).values(id="another", domain_id="sales", name="a")
+        )
+    assert _moved(tenant_db, before) == (True, True)
+
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(
+            sa.delete(schema_org.data_products).where(schema_org.data_products.c.id == "another")
+        )
+    assert _moved(tenant_db, before) == (True, True)
+
+
+@pytest.mark.usefixtures("product")
+def test_a_truncate_of_the_products_moves_both_stamps(tenant_db):
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(sa.text("TRUNCATE data_products CASCADE"))
+    assert _moved(tenant_db, before) == (True, True)
+
+
+@pytest.mark.usefixtures("product")
+def test_a_product_rewritten_with_the_values_it_holds_moves_neither_stamp(tenant_db):
+    before = _stamps(tenant_db)
+    _update_product(tenant_db, status="draft", name=_PRODUCT)
+    assert _moved(tenant_db, before) == (False, False)
+
+
+def test_a_change_to_any_other_model_table_moves_both_stamps(tenant_db):
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(sa.insert(schema_org.roles).values(id="risk_reviewer"))
+    assert _moved(tenant_db, before) == (True, True)
+
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(
+            sa.update(schema_org.roles)
+            .where(schema_org.roles.c.id == "risk_reviewer")
+            .values(domain_access=["sales"])
+        )
+    assert _moved(tenant_db, before) == (True, True)
+
+
+def test_a_settings_change_moves_neither_the_model_nor_the_build_stamp(tenant_db):
+    before = _stamps(tenant_db)
+    with tenant_db.engine.begin() as conn:
+        conn.execute(
+            sa.insert(schema_org.org_settings).values(key="naming", value={"use_domains": False})
+        )
+    assert _moved(tenant_db, before) == (False, False)
+
+
+@pytest.mark.usefixtures("product")
+def test_the_status_actions_of_the_repository_do_not_move_the_build_stamp(tenant_db):
+    from provisa.core.repositories import data_product as data_product_repo
+
+    async def _publish_then_deprecate() -> None:
+        async with tenant_db.acquire() as conn:
+            await data_product_repo.publish(conn, _PRODUCT, by="someone")
+            await data_product_repo.deprecate(
+                conn,
+                _PRODUCT,
+                reason="superseded",
+                retire_on=None,
+                by="someone",
+                today=datetime.date(2026, 11, 9),
+            )
+
+    before = _stamps(tenant_db)
+    asyncio.run(_publish_then_deprecate())
+    assert _moved(tenant_db, before) == (True, False)
+
+
+@pytest.mark.usefixtures("product")
+def test_an_install_over_an_older_trigger_function_replaces_it(tenant_db):
+    """No migrations: a schema laid out by an earlier release keeps its triggers, and the install
+    replaces the function they call and seeds the row, so the rule reaches every org schema."""
+    with tenant_db.engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "CREATE OR REPLACE FUNCTION advance_config_stamp() RETURNS trigger "
+                "LANGUAGE plpgsql AS $fn$ BEGIN "
+                "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = $1', "
+                "TG_TABLE_SCHEMA) USING TG_ARGV[0]; RETURN NULL; END $fn$"
+            )
+        )
+        conn.execute(sa.text("DELETE FROM config_stamp WHERE kind = 'build'"))
+        config_stamp.install(
+            conn, config_stamp.TENANT_TABLES, advanced=config_stamp.TENANT_ADVANCED
+        )
+    assert config_stamp.BUILD in _stamps(tenant_db)
+    before = _stamps(tenant_db)
+    _update_product(tenant_db, status="live")
+    assert _moved(tenant_db, before) == (True, False)

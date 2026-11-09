@@ -296,6 +296,43 @@ def test_the_session_knows_its_zone(statements: list[str], want: str | None):
     assert _zone_after(*statements) == want
 
 
+@pytest.mark.parametrize(
+    "sql, params, want",
+    [
+        ("SELECT set_config('TimeZone', $1, false)", ["Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["TimeZone", "Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["timezone", "Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["search_path", "a"], None),
+        ("SELECT set_config('TimeZone', $1::text, $2)", ["Asia/Tokyo", False], "Asia/Tokyo"),
+        ("SELECT set_config('TimeZone', $1, $2::bool)", ["Asia/Tokyo", "off"], "Asia/Tokyo"),
+        ("SELECT set_config('TimeZone', $1, $2)", ["Asia/Tokyo", True], None),
+        ("SELECT set_config('TimeZone', $1, false)", [None], UNKNOWN_ZONE),
+        ("SELECT set_config($1, 'Asia/Tokyo', false)", [None], UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', $2, false)", ["Asia/Tokyo"], UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', 'Asia/Tokyo', $1)", None, UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', 'Asia/Tokyo', $1)", [None], "Asia/Tokyo"),
+    ],
+)
+def test_a_bound_value_of_set_config_is_read_as_the_literal_would_be(sql, params, want):
+    zone = SessionZone()
+    zone.note(sql, False, False, params)
+    assert zone.current == want
+
+
+def test_set_local_of_a_bound_zone_ends_with_the_block():
+    zone = SessionZone()
+    zone.note("BEGIN", False, True)
+    zone.note("SELECT set_config('TimeZone', $1, $2)", True, True, ["Asia/Tokyo", True])
+    assert zone.current == "Asia/Tokyo"
+    zone.note("COMMIT", True, False)
+    assert zone.current is None
+
+
+def test_a_bound_zone_postgresql_does_not_know_is_refused():
+    with pytest.raises(PostgresError, match='invalid value for parameter "TimeZone"'):
+        SessionZone().note("SELECT set_config('TimeZone', $1, false)", False, False, ["Bad/One"])
+
+
 def test_copy_of_such_a_form_is_refused_in_another_zone():
     session = SimpleNamespace(role_id="analyst", zone=SessionZone("Asia/Tokyo"))
     sql = "COPY (SELECT timestamptz_out(t) FROM events) TO STDOUT"

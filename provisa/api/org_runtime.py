@@ -391,6 +391,9 @@ class OrgRuntime:
     # copy when they differ, so a change made through another worker process or instance is in
     # force here within the reload interval; no request reads the control plane for it.
     model_stamp: int | None = None
+    # The ``build`` stamp the schema build read beside ``model_stamp``. It stays while the model
+    # stamp is brought forward over a change the build does not read.
+    build_stamp: int | None = None
     settings_stamp: int | None = None
     # REQ-826: the tenant plane's ``replica`` stamp ``replica_routes`` was published at (read
     # before the registry was). The stamp moves when a busy table is promoted or demoted and

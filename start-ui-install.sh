@@ -67,6 +67,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 # A named demo's directory: this checkout's demo/named/<name>/, or -- for a published demo (REQ-2049)
 # -- its bundle, pulled from where the project publishes demos (PROVISA_DEMO_REGISTRY names another)
 # into $PROVISA_HOME/demos/<name>/<version>: `--demo weblogs` pulls its latest, `--demo
