@@ -410,6 +410,9 @@ _CREATE_ONLY = {
     ),
     "code_source_vectors": "source_id item_id vector text item_metadata",
     "config_stamp": "kind stamp",
+    "connectors": (
+        'name git ref "commit" path build_command language image digest code_hash arch requires'
+    ),
     "creation_requests": (
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"
@@ -489,6 +492,10 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_run_datasets": (
+        "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
+        "column_lineage"
+    ),
     "org_regions": "id engine replicas views cache state record",
     "org_secrets": "key value_enc updated_at updated_by",
     "org_settings": "key value updated_at updated_by",
