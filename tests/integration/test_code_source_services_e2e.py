@@ -12,8 +12,8 @@
 (REQ-2106): provisa_services in Python, @provisa/services in Node.
 
 The ``test`` instance, as the code sources e2e runs it. The source declares a setting; its table's
-function reads it, caches it, reads it back from the cache, writes a log line and a metric point,
-and returns what it read -- through the egress proxy, with nothing on the allow-list."""
+function reads it, caches it, reads it back from the cache, writes a log line, a metric point and
+an audit event, and returns what it read -- through the egress proxy, with nothing on the allow-list."""
 
 # Requirements: REQ-2106
 
