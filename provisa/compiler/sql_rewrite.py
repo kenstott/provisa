@@ -456,13 +456,22 @@ def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
 def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
     """Per physical ``(schema, table)`` (lowercased), each published column name to its physical
     name (``published_columns``). Lowering never renames a physical name, so it is idempotent and
-    safe on SQL that is already physical."""
-    by_id: dict[int, tuple[str, str]] = {
-        m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
-    }
+    safe on SQL that is already physical. An API-backed table has no physical spelling to lower
+    to: it is read from what it was materialized as (a hot VALUES CTE, an engine-cache table),
+    whose columns are the SQL names (REQ-301)."""
+    from provisa.compiler.complexity import api_source_types
+
+    api_backed = api_source_types()
+    by_id: dict[int, tuple[str, str]] = {}
+    materialized: set[int] = set()
+    for m in _all_table_metas(ctx):
+        by_id[m.table_id] = (m.schema_name.lower(), m.table_name.lower())
+        if m.source_type in api_backed:
+            materialized.add(m.table_id)
     out: dict[tuple[str, str], dict[str, str]] = {}
     for table_id, names in published_columns(ctx).items():
-        out.setdefault(by_id[table_id], {}).update(names)
+        if table_id not in materialized:
+            out.setdefault(by_id[table_id], {}).update(names)
     return out
 
 

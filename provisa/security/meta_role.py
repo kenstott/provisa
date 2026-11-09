@@ -53,10 +53,22 @@ from typing import Any
 
 
 def _member_surface(held: Any) -> Any:
-    """A member role's surface, built on first read (api/role_surface.LazySurface)."""
-    from provisa.api.role_surface import built_surface
+    """A member role's context and row filters, built on first read: the parts a meta-role is
+    folded from. Its schema and proto are not built for it (api/role_surface.LazySurface)."""
+    from provisa.api.role_surface import reading_surface
 
-    return built_surface(held)
+    return reading_surface(held)
+
+
+def _member_parts(state: Any, members: list[dict]) -> dict[str, tuple[Any, frozenset[int]]]:
+    """Each member's reading parts (:func:`_member_surface`) and the ids of the tables it reads,
+    by member id: one snapshot per member -- context and filters of one build -- taken once for
+    the whole fold. A scan of the member's context for every table was quadratic in the model."""
+    parts = {}
+    for m in members:
+        member = _member_surface(state.surfaces[m["id"]])
+        parts[m["id"]] = (member, frozenset(tm.table_id for tm in member.context.tables.values()))
+    return parts
 
 
 META_PREFIX = "meta:"
@@ -246,7 +258,11 @@ def _fold_write_grants(
 
 
 def _member_reads(
-    state: Any, members: list[dict], tables: list[dict], qualifiers: tuple[str, ...]
+    state: Any,
+    members: list[dict],
+    tables: list[dict],
+    qualifiers: tuple[str, ...],
+    parts: dict[str, tuple[Any, frozenset[int]]],
 ) -> dict[int, Any]:
     """Per table a member reads, how each member reads it (compiler.rls.MemberReads): a row is
     read as the member(s) whose own filter admitted it, each column masked or hidden as that
@@ -273,20 +289,13 @@ def _member_reads(
     }
     out: dict[int, Any] = {}
     for t in tables:
-        readers = [
-            m
-            for m in members
-            if any(
-                tm.table_id == t["id"]
-                for tm in _member_surface(state.surfaces[m["id"]]).context.tables.values()
-            )
-        ]
+        readers = [m for m in members if t["id"] in parts[m["id"]][1]]
         if not readers:
             continue
         domain = t.get("domain_id")
         flags: list[Any] = []
         for m in readers:
-            ctx = _member_surface(state.surfaces[m["id"]]).rls
+            ctx = parts[m["id"]][0].rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(domain or "")
             flags.append(
                 exp.true() if expr is None else _inlined(expr, m.get("session_vars") or {})
@@ -332,15 +341,13 @@ def _rls(
     from provisa.security.mutation_authz import command_reachable
 
     rules: dict[int, Any] = {}
+    parts = _member_parts(state, members)
     for t in tables:
         terms: list[Any] = []
         lifted = False
         for m in members:
-            member = _member_surface(
-                state.surfaces[m["id"]]
-            )  # one snapshot: context and filters of one build
-            reads = any(tm.table_id == t["id"] for tm in member.context.tables.values())
-            if not reads:
+            member, reads = parts[m["id"]]
+            if t["id"] not in reads:
                 continue
             ctx = member.rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
@@ -362,7 +369,7 @@ def _rls(
         for m in members:
             if not command_reachable(c, m):
                 continue
-            ctx = state.rls_contexts[m["id"]]
+            ctx = parts[m["id"]][0].rls
             expr = ctx.action_rules.get(c["name"]) or ctx.domain_rules.get(c.get("domain_id") or "")
             if expr is None:
                 lifted = True
@@ -374,7 +381,7 @@ def _rls(
         rules=rules,
         domain_rules={},
         action_rules=actions,
-        member_reads=_member_reads(state, members, tables, qualifiers),
+        member_reads=_member_reads(state, members, tables, qualifiers, parts),
     )
 
 
