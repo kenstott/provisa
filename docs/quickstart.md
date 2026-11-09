@@ -34,6 +34,15 @@ cd provisa
 ./start-ui.sh
 ```
 
+Before the Docker services start, the script checks whether `.venv` is in step with `uv.lock`. If it is not — after a `git pull` that added or changed a dependency, for example — it exits immediately and prints the fix command:
+
+```
+.venv is out of step with uv.lock. Run:
+  UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact
+```
+
+Run that command, then re-run `./start-ui.sh`.
+
 When it finishes starting up you'll see:
 
 ```yaml
