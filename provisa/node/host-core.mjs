@@ -171,7 +171,7 @@ export class Connection {
     });
     const batch = new A.RecordBatch(
       schema,
-      A.makeData({ type: new A.Struct(fields), length: values.length, nullCount: 0, children }),
+      A.makeData({ type: new A.Struct(fields), length: rows.length, nullCount: 0, children }),
     );
     return this.sendTable(id, new A.Table(batch));
   }
