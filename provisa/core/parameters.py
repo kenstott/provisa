@@ -76,7 +76,9 @@ def required_parameters(columns: Iterable[Any]) -> list[str]:
     return [parameter_name(c) for c in columns if is_parameter(c) and is_required(c)]
 
 
-def _canonical(name: str) -> str:
+def canonical_name(name: str) -> str:
+    """One parameter's one name, however it is spelled (``breedName``, ``breed_name``,
+    ``_breed_name``)."""
     from provisa.compiler.naming import apply_sql_name
 
     # A statement names a parameter by its column, which the naming authority may have
@@ -91,7 +93,7 @@ def missing_parameters(
     """The required parameters of a table's ``columns`` that a read gives no value: neither in
     ``given`` (the statement's arguments, by parameter name) nor through a join (``fed`` answers
     for a parameter column's name)."""
-    have = {_canonical(k) for k, v in (given or {}).items() if v is not None}
+    have = {canonical_name(k) for k, v in (given or {}).items() if v is not None}
     # Each parameter once, by its declared column's name: a remote field that is also an argument
     # is held both as its column and as its ``_nf_`` column, under the argument's own spelling
     # ("requires the parameter(s) ['breed_name', 'breedName']").
@@ -99,7 +101,7 @@ def missing_parameters(
     for c in columns:
         if not is_parameter(c) or not is_required(c) or fed(column_name(c)):
             continue
-        key = _canonical(parameter_name(c))
+        key = canonical_name(parameter_name(c))
         if key in have:
             continue
         if key not in missing or not column_name(c).startswith(NF_PREFIX):
