@@ -227,12 +227,18 @@ def read_clips(clips: TableRef[Clip]) -> list[Outcome]:
 
 
 def read_star(orders: TableRef[Lean]) -> list[Outcome]:
-    """@query — sends SELECT * so the governed pipeline determines the visible columns."""
+    """Sends SELECT * so the governed pipeline determines the visible columns.
+
+    @query
+    """
     return [_read_sql(orders, "SELECT * FROM fx.orders")]
 
 
 def read_qualified_secret(orders: TableRef[Secret]) -> list[Outcome]:
-    """@query — uses a table alias so the qualified-column visibility check fires."""
+    """Uses a table alias so the qualified-column visibility check fires.
+
+    @query
+    """
     return [_read_sql(orders, "SELECT o.secret FROM fx.orders AS o")]
 ''',
 }
