@@ -723,7 +723,11 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                     if tid is None:
                         continue
                     vis = gov_ctx.visible_columns.get(tid)
-                    if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
+                    # Refuse when no governance data (key absent = fail closed) OR when the role's
+                    # visible set exists and excludes this column (REQ-039).
+                    if (tid not in gov_ctx.visible_columns) or (
+                        vis is not None and registered_name(gov_ctx, tid, col_name) not in vis
+                    ):
                         violations.append(
                             ValidationViolation(
                                 "V003",
@@ -757,7 +761,13 @@ def _unqualified_column_refused(  # REQ-039, REQ-2190
                 return True
     if holders:
         return False
-    return any(gov_ctx.visible_columns.get(tid) is not None for tid in am.values())
+    # Refuse when any table in scope is governed (key present in visible_columns) OR has no
+    # governance data at all (key absent = fail closed, REQ-039).  The only safe case is every
+    # table explicitly marked "all visible" (key present, value None).
+    return any(
+        gov_ctx.visible_columns.get(tid) is not None or tid not in gov_ctx.visible_columns
+        for tid in am.values()
+    )
 
 
 def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
@@ -1114,7 +1124,11 @@ def _check_masked_in_xmltable(  # REQ-040, REQ-2167
                     )
                 for tid in tids:
                     vis = gov_ctx.visible_columns.get(tid)
-                    if vis is not None and registered_name(gov_ctx, tid, col.name) not in vis:
+                    # Refuse when no governance data (key absent = fail closed) OR when the role's
+                    # visible set exists and excludes this column (REQ-039).
+                    if (tid not in gov_ctx.visible_columns) or (
+                        vis is not None and registered_name(gov_ctx, tid, col.name) not in vis
+                    ):
                         violations.append(
                             ValidationViolation(
                                 "V003", f"Column {written} is not visible to this role"
