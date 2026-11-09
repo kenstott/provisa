@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     pagination  JSONB,       -- REQ-318: how the table is read page by page; NULL = not paged here
     arguments   JSONB,       -- REQ-2061: its source's parameters fixed for every read; NULL = none
     landing_filter TEXT,     -- REQ-2062: predicate over its own columns, applied when its replica lands
+    read_wait   INTEGER,     -- REQ-2224: a read with nothing landed: NULL = the request timeout; N > 0 = waits up to N s; 0 = answers no rows and requests the landing
     gql_naming_convention TEXT,
     watermark_column TEXT,
     change_signal TEXT,  -- REQ-929: override source change signal; NULL = inherit
@@ -314,6 +315,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS read_wait INTEGER;  -- REQ-2224
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS change_signal TEXT;  -- REQ-929
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS probe_query TEXT;  -- REQ-929

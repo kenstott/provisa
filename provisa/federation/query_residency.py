@@ -28,14 +28,15 @@ and never ask for a build. A source with ``freshness_gate`` set is judged by its
 
 Concurrent stale reads of one table share one build: the request is one conditional write in
 the state store, and every reader waits on the same record. The wait is an await inside the
-request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``).
+request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``), or by the
+table's own limit while nothing of it has landed (``read_wait``, REQ-2224).
 
 A build that fails is recorded on the replica and fails the query with the build's own cause;
 the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
 not ask again until the build's retry wait (``replica_state.RetryPolicy``) has passed.
 """
 
-# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915
+# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915, REQ-2224
 
 from __future__ import annotations
 
@@ -202,13 +203,55 @@ class Residency:
     #: REQ-1922: the region whose data answers the statement when it reads only what that one
     #: other region keeps, in place there; None when this node's region answers it.
     answered_in: str | None = None
+    #: REQ-2224: the tables this statement reads as empty, because nothing of them has landed.
+    no_rows: NoRows | None = None
+
+
+@dataclass(frozen=True)
+class NoRows:
+    """The replicas a statement reads as empty (REQ-2224): each replica's name, with the columns
+    (name, type) its landing will give it, and the dialect of the statement that names them."""
+
+    dialect: str
+    columns: dict[str, list[tuple[str, str]]]
+
+
+def read_as_empty(sql: str, no_rows: NoRows) -> str:
+    """``sql`` with each replica of ``no_rows`` read as a relation of its columns and no rows: the
+    statement stays the statement, so its joins, aggregates and result columns are the engine's
+    answer over an empty table, on every surface."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read=no_rows.dialect)
+    for node in list(tree.find_all(exp.Table)):
+        columns = no_rows.columns.get(node.name)
+        if columns is None:
+            continue
+        empty = exp.select(
+            *(
+                exp.alias_(
+                    exp.cast(exp.null(), exp.DataType.build(type_, no_rows.dialect, udt=True)),
+                    name,
+                    quoted=True,
+                )
+                for name, type_ in columns
+            )
+        ).where(exp.false())
+        node.replace(empty.subquery(exp.to_identifier(node.alias_or_name, quoted=True)))
+    return tree.sql(dialect=no_rows.dialect)
 
 
 def put_on_plan(plan: Any, residency: Residency) -> None:
     """Put what ``residency`` says the statement was answered from on ``plan``, where its audit
-    record reads it: the replicas read (its data age) and the region whose data answered it."""
+    record reads it: the replicas read (its data age) and the region whose data answered it. A
+    statement that reads a table with nothing landed (REQ-2224) is run reading it as empty, and its
+    answer is not kept: the next read after the landing has rows to find."""
     plan.replicas_read = residency.replicas_read
     plan.answered_in = residency.answered_in
+    if residency.no_rows is not None:
+        plan.physical_sql = read_as_empty(plan.physical_sql, residency.no_rows)
+        plan.no_rows_yet = True
 
 
 class ReplicaAgeUnknown(RuntimeError):
@@ -421,6 +464,11 @@ async def ensure_resident(
     its retry wait (``replica_state.RetryPolicy``). A read whose deadline passes while the build is still
     running raises :class:`ReplicaBuilding`; the build goes on.
 
+    REQ-2224: a table's ``read_wait`` says what a read does while nothing of it has landed: waits
+    up to that long, in place of the request's timeout, or (``READ_WAIT_NO_ROWS``) asks for the
+    landing and reads the table as empty (``Residency.no_rows``). A replica that has landed and
+    gone stale is waited for as before, bounded by the request.
+
     ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
     and waited for. A statement that reads one table of a source does not wait on the source's
     other tables, and is not moved onto a replica by a setting on a table it does not read.
@@ -550,6 +598,7 @@ async def ensure_resident(
     protected_of = {s.id: _load_protected(s, tables_by_source.get(s.id, [])) for s in sources}
 
     from provisa.core import request_deadline
+    from provisa.core.models import READ_WAIT_NO_ROWS
     from provisa.core.request_context import current_org
     from provisa.federation import replica_builds, replica_state
     from provisa.federation.replica_routing import live_while_building
@@ -626,6 +675,15 @@ async def ensure_resident(
     retry = replica_state.retry_policy()
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     replicas_read: dict[ReplicaKey, datetime] = {}
+    # REQ-2224: each table's limit of its own on this read's wait, and those read as empty.
+    own_wait: dict[ReplicaKey, float] = {}
+    empty: dict[str, list[tuple[str, str]]] = {}
+
+    def _nothing_landed(key: ReplicaKey, record: Any) -> bool:
+        """Whether this engine's store holds nothing of the replica a read could answer from."""
+        return (
+            record is None or not record.exists_in(_store()) or not view.serves(org_id, key, record)
+        )
 
     def _read_from(key: ReplicaKey, record: Any) -> None:
         """The statement reads this replica: keep the time its copy is current as of (its
@@ -689,37 +747,66 @@ async def ensure_resident(
                 raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
             if live_while_building(source, t, engine.engine):
                 continue  # read live while the build runs; the build is requested, not awaited
+            if t.read_wait is not None and _nothing_landed(key, record):
+                if t.read_wait == READ_WAIT_NO_ROWS:
+                    address = backend.replica_address(
+                        state,
+                        source_id=source.id,
+                        schema_name=t.schema_name,
+                        table_name=t.table_name,
+                    )
+                    empty[address.table] = resolve_landing_args_for(
+                        source, t, backend.dialect
+                    ).columns
+                    continue
+                own_wait[key] = float(t.read_wait)
             waiting.append((source, t, key))
-    if not waiting:
+    no_rows = NoRows(engine.dialect, empty) if empty else None
+    if not waiting and no_rows is None:
         return Residency(replicas_read=replicas_read, answered_in=answered_in)
     replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
     asked_at = datetime.now(UTC)
     budget = request_deadline.remaining()
-    while waiting:
-        still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
-        async with db.acquire() as conn:
-            for source, t, key in waiting:
-                record = await replica_state.read(conn, key)
-                view.read(org_id, key, record)
-                if record is not None and record.build_state == replica_state.FAILED:
-                    raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
-                if _stale(source, t, record) and not _landed_since(record, asked_at):
-                    still.append((source, t, key))
-                else:
-                    _read_from(key, record)
-        waiting = still
-        if not waiting:
-            break
-        waited = time.monotonic() - started
-        if budget is not None and waited + _BUILD_POLL_S + _ANSWER_RESERVE_S >= budget:
-            # The request answers with ReplicaBuilding before its own deadline cuts it off with
-            # a timeout that says nothing about why. The build goes on.
-            raise replica_state.ReplicaBuilding(".".join(waiting[0][2]), waited)
-        await asyncio.sleep(_BUILD_POLL_S)
-    log.info("query residency: %s built before the read", built)
-    return Residency(built=built, replicas_read=replicas_read, answered_in=answered_in)
+
+    def _out_of_time(key: ReplicaKey, waited: float) -> bool:
+        """Whether this table's wait is over: its own limit, or the request's. The request answers
+        with ReplicaBuilding before its own deadline cuts it off with a timeout that says nothing
+        about why."""
+        own = own_wait.get(key)
+        if own is not None:
+            return waited >= own
+        return budget is not None and waited + _BUILD_POLL_S + _ANSWER_RESERVE_S >= budget
+
+    # REQ-2224: while a table's own limit bounds the wait, the wait is not the request's to time.
+    with request_deadline.clock_stopped(max(own_wait.values(), default=0.0)):
+        while waiting:
+            still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
+            async with db.acquire() as conn:
+                for source, t, key in waiting:
+                    record = await replica_state.read(conn, key)
+                    view.read(org_id, key, record)
+                    if record is not None and record.build_state == replica_state.FAILED:
+                        raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
+                    if _stale(source, t, record) and not _landed_since(record, asked_at):
+                        still.append((source, t, key))
+                    else:
+                        _read_from(key, record)
+            waiting = still
+            if not waiting:
+                break
+            waited = time.monotonic() - started
+            late = next((key for _s, _t, key in waiting if _out_of_time(key, waited)), None)
+            if late is not None:
+                # The build goes on.
+                raise replica_state.ReplicaBuilding(".".join(late), waited)
+            await asyncio.sleep(_BUILD_POLL_S)
+    if built:
+        log.info("query residency: %s built before the read", built)
+    return Residency(
+        built=built, replicas_read=replicas_read, answered_in=answered_in, no_rows=no_rows
+    )
 
 
 def _landed_since(record: Any, asked_at: datetime) -> bool:

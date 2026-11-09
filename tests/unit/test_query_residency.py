@@ -70,6 +70,7 @@ def _table(sid, name, schema="pet_store", row_materialize=False, columns=None, c
         schema_name=schema,
         table_name=name,
         row_materialize=row_materialize,
+        read_wait=None,  # REQ-2224
         columns=columns or [],
         cache_ttl=cache_ttl,
         role_ttl={},  # REQ-1907

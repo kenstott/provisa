@@ -539,6 +539,7 @@ async def _fetch_table_with_columns(
         import_set=row.get("import_set"),  # REQ-1954
         arguments=dict(row["arguments"] or {}),  # REQ-2061: NULL = none fixed
         landing_filter=row["landing_filter"],  # REQ-2062
+        read_wait=row["read_wait"],  # REQ-2224
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),

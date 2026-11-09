@@ -271,6 +271,8 @@ registered_tables = Table(
     Column("arguments", JSON(none_as_null=True)),
     # REQ-2062: a SQL predicate over the table's own columns, applied when its replica lands.
     Column("landing_filter", Text),
+    # REQ-2224: what a read does with nothing landed (provisa.core.models.Table.read_wait).
+    Column("read_wait", Integer),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit

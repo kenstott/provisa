@@ -517,6 +517,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     arguments: JsonScalar | None = None
     # REQ-2062: the predicate over its own columns its replica's rows pass (None = every row).
     landing_filter: str | None = None
+    # REQ-2224: what a read does with nothing landed (None: the request timeout applies).
+    read_wait: int | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -1356,6 +1358,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     arguments: JsonScalar | None = None
     # REQ-2062: a SQL predicate over the table's own columns, applied when its replica lands.
     landing_filter: str | None = None
+    # REQ-2224: what a read does with nothing landed (None: the request timeout applies).
+    read_wait: int | None = None
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
     # The server generates (and regenerates on metric change) the view SELECT from this spec.
     view_metrics: ViewMetricsInput | None = None

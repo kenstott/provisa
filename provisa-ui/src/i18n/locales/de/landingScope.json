@@ -8,6 +8,13 @@
     "argumentsNotJson": "Kein gültiges JSON",
     "argumentsNotObject": "Geben Sie ein JSON-Objekt aus Argumentnamen und Werten an",
     "readFilter": "Landefilter",
-    "readArguments": "Feste Argumente"
+    "readArguments": "Feste Argumente",
+    "readWaitLabel": "Lesen vor der ersten Landung",
+    "readWaitHelp": "Was ein Lesevorgang tut, solange von dieser Tabelle nichts gelandet ist. Standardmäßig wartet er so lange, wie die Anfrage erlaubt; stattdessen kann er eine eigene Zeit warten oder keine Zeilen mit den Spalten der Tabelle zurückgeben und die Landung starten.",
+    "readWaitRequest": "Bis zum Anfrage-Timeout warten",
+    "readWaitTimed": "Bis zu einer festgelegten Zeit warten",
+    "readWaitNoRows": "Keine Zeilen zurückgeben und Landung starten",
+    "readWaitSeconds": "Wartezeit (Sekunden)",
+    "readWaitUpTo": "Wartet bis zu {{seconds}} s"
   }
 }

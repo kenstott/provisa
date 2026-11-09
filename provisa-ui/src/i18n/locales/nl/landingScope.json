@@ -8,6 +8,13 @@
     "argumentsNotJson": "Geen geldige JSON",
     "argumentsNotObject": "Geef een JSON-object met argumentnamen en waarden",
     "readFilter": "Laadfilter",
-    "readArguments": "Vaste argumenten"
+    "readArguments": "Vaste argumenten",
+    "readWaitLabel": "Lezen vóór de eerste landing",
+    "readWaitHelp": "Wat een leesactie doet zolang er nog niets van deze tabel is geland. Standaard wacht deze zolang het verzoek toestaat; in plaats daarvan kan deze een eigen tijd wachten, of nul rijen met de kolommen van de tabel teruggeven en de landing starten.",
+    "readWaitRequest": "Wachten tot de time-out van het verzoek",
+    "readWaitTimed": "Wachten tot een ingestelde tijd",
+    "readWaitNoRows": "Nul rijen teruggeven en landing starten",
+    "readWaitSeconds": "Wachttijd (seconden)",
+    "readWaitUpTo": "Wacht tot {{seconds}} s"
   }
 }

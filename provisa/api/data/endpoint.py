@@ -941,13 +941,11 @@ async def _handle_query(
         try:
             # The deadline is bound for the work, as on the multi-field path below: without it
             # nothing under this call knows how long the request may wait (REQ-1882).
-            with request_deadline.within(_role_timeout):
-                root_field, field_rows, redirect_info, cached_entry = await asyncio.wait_for(
-                    _execute_one_field(
+            with request_deadline.within(_role_timeout) as deadline:
+                async with request_deadline.timing_out(deadline):
+                    root_field, field_rows, redirect_info, cached_entry = await _execute_one_field(
                         prepared[0], ctx, state, role_id, output_format, **_field_args
-                    ),
-                    timeout=_role_timeout,
-                )
+                    )
         except ReplicaBuilding as exc:
             # Not a slow query: the table's replica is still being built, and the message says so.
             raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)
@@ -990,8 +988,9 @@ async def _handle_query(
     try:
         # The deadline watchdog cancels an in-flight blocking statement; wait_for alone cannot
         # fire while inline driver work holds the request thread (REQ-1882).
-        with request_deadline.within(_role_timeout):
-            results = await asyncio.wait_for(_execute_fields(), timeout=_role_timeout)
+        with request_deadline.within(_role_timeout) as deadline:
+            async with request_deadline.timing_out(deadline):
+                results = await _execute_fields()
     except ReplicaBuilding as exc:
         # Not a slow query: the table's replica is still being built, and the message says so.
         raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)

@@ -50,6 +50,7 @@ def _rtbl(sid, tname, cols):
         "schema_name": "default",
         "table_name": tname,
         "landing_filter": None,
+        "read_wait": None,
         "columns": cols,
         # the per-table overrides every registry row carries (None = inherit the source's)
         "replicate": None,

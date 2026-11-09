@@ -157,6 +157,7 @@ def _row(term_id: int, name: str, columns: list[dict], bindings: list[dict]) -> 
         "probe_type": None,
         "pagination": None,
         "landing_filter": None,
+        "read_wait": None,
         "query_template": None,
         "business_key": None,
         "valid_time": None,

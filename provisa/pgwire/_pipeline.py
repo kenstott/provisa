@@ -184,6 +184,9 @@ class _Plan:
     # region keeps, in place there (``query_residency.Residency.answered_in``); the audit record
     # names it. None: this node's region answered.
     answered_in: str | None = None
+    # REQ-2224: the statement read a table with nothing landed as empty (``put_on_plan``). Its
+    # answer is never stored in the response cache: the landing it asked for changes it.
+    no_rows_yet: bool = False
     # REQ-1350: what this statement's answer must say about itself (an API answer cut at its
     # max_pages), collected while it was governed (``core.statement_warnings``); every surface
     # reports them in its own warning channel. A warned result is never stored in the response
@@ -4452,7 +4455,7 @@ async def check_response_cache_datarows(  # REQ-1897
 
 
 def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int] | None) -> Any:
-    if plan.warnings:
+    if plan.warnings or plan.no_rows_yet:
         return None  # a warned answer (one cut short) is never stored as the statement's answer
     ck = _response_cache_key(plan, wire_formats=wire_formats)
     store = state.response_cache_store  # always set (NoopCacheStore when caching is off)
