@@ -142,8 +142,6 @@ _VIEW_KEYS = {
     "off_peak_tz": "off_peak_tz",
     # REQ-1921: a view naming a region is built and refreshed there alone.
     "region": "region",
-    # REQ-1634: a view is a member of a data product as a table is.
-    "product_id": "product_id",
     # REQ-2120: a materialized view's snapshot schedule, as a table entry's mv_* keys (REQ-961/962).
     "calendar": "mv_calendar",
     "grain": "mv_grain",
@@ -1084,6 +1082,34 @@ async def _resolve_tag_assignment_table(
     return ta.model_copy(update={"table_id": resolved})
 
 
+async def _set_product_members(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1634
+    """Each declared data product's members become exactly the tables and commands it lists: the
+    product owns its membership, so its declaration is the whole of it. A table is named as a
+    relationship names one (its alias, else its table name), or as ``source.schema.table`` where
+    that name is not unique; a name no registered table answers fails the load, naming the
+    product."""
+    for dp in config.data_products:
+        table_ids = []
+        for name in dp.tables:
+            parts = name.split(".")
+            row = (
+                await table_repo.get_by_name(conn, *parts)
+                if len(parts) == 3
+                else await table_repo.find_by_table_name(conn, name)
+            )
+            if row is None:
+                raise ValueError(
+                    f"data product {dp.id!r} lists table {name!r}, which no registration holds"
+                )
+            table_ids.append(int(row["id"]))
+        try:
+            await data_product_repo.set_members(
+                conn, dp.id, table_ids=table_ids, commands=dp.commands
+            )
+        except data_product_repo.MembershipRefused as refused:
+            raise ValueError(f"data product {dp.id!r}: {refused}") from refused
+
+
 async def _load_after_tables(  # REQ-1919
     conn: "Connection", config: ProvisaConfig, *, refs_before: Any, defer_unregistered: bool
 ) -> None:
@@ -1123,6 +1149,9 @@ async def _load_after_tables(  # REQ-1919
     # 8. Tracked DB functions
     for func in config.functions:
         await function_repo.upsert_function(conn, func, return_schema=func.return_schema)
+
+    # 8.5 Data-product members (REQ-1634), once their tables and commands exist.
+    await _set_product_members(conn, config)
 
     # 9. Tracked webhooks. Config is the trusted source of truth, so a config-declared webhook is
     # pre-approved (REQ-209): without an 'executed' creation_request the schema gate in
@@ -1400,7 +1429,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
         # it carries no org, and the admin surfaces do not delete it.
         await role_repo.upsert(conn, role, org_id=None)
 
-    # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
+    # 4.5 Data products (before tables; their members are set once tables and commands exist)  # REQ-1634
     # REQ-1634 STATUS: a retired product's successor may come later in the file, so every product
     # exists before any names its successor.
     for dp in config.data_products:

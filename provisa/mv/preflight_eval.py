@@ -31,7 +31,7 @@ non-streaming engine is rejected at boot, not on the first fire.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from typing import Any
 
 from provisa.federation.execution_auth import system_auth
@@ -70,7 +70,7 @@ async def evaluate_streams(
     input_nodes: Iterable[str],
     ctx: Any,
     *,
-    product_id: str | None = None,
+    product_ids: Sequence[str] = (),
     hold: bool = False,
     table_id: int | None = None,
 ) -> Verdict | None:
@@ -79,7 +79,7 @@ async def evaluate_streams(
     SQL-expressible → engine-side count probe over the named input node. Otherwise → open a lazy
     Arrow stream per input and run the compiled hook against the ``{node: rows}`` dict. The Arrow
     path REQUIRES ARROW_STREAM and fails loud when the engine does not advertise it."""
-    held = await _hold_on_failing_checks(ctx, hold, table_id, source, product_id)
+    held = await _hold_on_failing_checks(ctx, hold, table_id, source, product_ids)
     if held is not None and not held.is_continue:
         return held
     if source is None or not source.strip():
@@ -95,14 +95,14 @@ async def evaluate_streams(
 
     engine.require(EngineCapability.ARROW_STREAM)  # fail loud — never materialize the whole input
     # REQ-2133: a check that imports provisa_services runs with them bound, dq relating checkers
-    # to the view's product.
-    fn = compile_check(source, subject=f"view {ctx.node}", product_id=product_id)
+    # to the view's products.
+    fn = compile_check(source, subject=f"view {ctx.node}", product_ids=product_ids)
     streams = await _open_input_streams(engine, input_nodes)
     return await run_preflight(fn, streams, ctx)
 
 
 async def _hold_on_failing_checks(
-    ctx: Any, hold: bool, table_id: int | None, source: str | None, product_id: str | None
+    ctx: Any, hold: bool, table_id: int | None, source: str | None, product_ids: Sequence[str]
 ) -> Verdict | None:
     """REQ-2133: the view's Hold on failing checks verdict (None when the option is off), run before
     its own preflight -- the refresh lands only if both continue. A view whose check asks dq is given
@@ -119,7 +119,7 @@ async def _hold_on_failing_checks(
             f"view {ctx.node} holds on failing checks, but it is no registered view table, so it "
             "has no inputs to check"
         )
-    check = compile_check(hold_checks.SOURCE, subject=f"view {ctx.node}", product_id=product_id)
+    check = compile_check(hold_checks.SOURCE, subject=f"view {ctx.node}", product_ids=product_ids)
     return await run_preflight(check, {}, ctx)
 
 
@@ -128,7 +128,7 @@ def make_streams_evaluator(
     source: str | None,
     input_nodes: Iterable[str],
     *,
-    product_id: str | None = None,
+    product_ids: Sequence[str] = (),
     hold: bool = False,
     table_id: int | None = None,
 ) -> Callable[[Any, Any], Awaitable[Verdict | None]] | None:
@@ -158,7 +158,7 @@ def make_streams_evaluator(
     async def _eval(rows: Any, ctx: Any) -> Verdict | None:
         del rows  # the gate streams inputs; the produced output is not its subject
         return await evaluate_streams(
-            engine, source, nodes, ctx, product_id=product_id, hold=hold, table_id=table_id
+            engine, source, nodes, ctx, product_ids=product_ids, hold=hold, table_id=table_id
         )
 
     return _eval

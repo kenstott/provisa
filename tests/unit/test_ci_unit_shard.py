@@ -49,6 +49,37 @@ def test_a_file_keeps_its_shard_whatever_else_is_added():
     assert {shard.shard_of(f"tests/unit/test_{i}.py", 4) for i in range(40)} == {1, 2, 3, 4}
 
 
+def test_recorded_files_are_dealt_out_by_time_and_the_rest_by_hash():
+    shard = _shard()
+    seconds = {"a.py": 10.0, "b.py": 9.0, "c.py": 5.0, "d.py": 5.0, "e.py": 1.0}
+    placed = shard.assign(["a.py", "b.py", "c.py", "d.py", "e.py", "new.py"], seconds, 2)
+    assert placed["a.py"] == 1 and placed["b.py"] == 2
+    load = {1: 0.0, 2: 0.0}
+    for f, s in seconds.items():
+        load[placed[f]] += s
+    assert abs(load[1] - load[2]) <= 1.0
+    assert placed["new.py"] == shard.shard_of("new.py", 2)
+
+
+def test_the_recorded_times_balance_the_real_shards():
+    shard = _shard()
+    seconds = shard.recorded_seconds()
+    loads = [sum(seconds.get(f, 0) for f in shard.files(f"{i}/4")) for i in range(1, 5)]
+    assert max(loads) < 1.05 * min(loads)
+
+
+def test_timings_sum_a_junit_by_the_file_its_classname_names(tmp_path):
+    shard = _shard()
+    junit = tmp_path / "j.xml"
+    junit.write_text(
+        "<testsuites><testsuite>"
+        '<testcase classname="tests.unit.test_ci_unit_shard" name="a" time="1.5"/>'
+        '<testcase classname="tests.unit.test_ci_unit_shard.TestX" name="b" time="2"/>'
+        "</testsuite></testsuites>"
+    )
+    assert shard.timings([junit]) == {"tests/unit/test_ci_unit_shard.py": 3.5}
+
+
 def test_the_check_names_a_test_missing_run_twice_or_unknown(tmp_path):
     shard = _shard()
     full = tmp_path / "full.txt"

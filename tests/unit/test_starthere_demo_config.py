@@ -81,7 +81,16 @@ def test_each_other_object_is_the_standard_demo_s(section, key):
         if section == "domains":
             assert entry["id"] == standard[name]["id"]
             continue
-        assert entry == standard[name], name
+        expected = standard[name]
+        if section == "data_products":
+            # REQ-1634: a product names only members the demo holds; a command of a left-out
+            # source (add_pet, the petstore API's) is not one, so the product keeps the rest.
+            kept = {f["name"] for f in _STANDARD["functions"] if f["source_id"] not in _LEFT_OUT}
+            commands = [c for c in expected.get("commands", []) if c in kept]
+            expected = {k: v for k, v in expected.items() if k != "commands"}
+            if commands:
+                expected["commands"] = commands
+        assert entry == expected, name
 
 
 def test_its_tags_are_the_standard_demo_s_over_those_sources():

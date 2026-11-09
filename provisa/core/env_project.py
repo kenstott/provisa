@@ -97,7 +97,18 @@ async def _rows(conn: "Connection", table: "SaTable", schema: str) -> list[dict[
     string in every comparison here would fail at serialization time instead.
     """
     result = await conn.execute_core(select(_table_in(conn, table, schema)))
-    return [{str(k): v for k, v in r._mapping.items()} for r in result.fetchall()]
+    keys = [str(k) for k in result.keys()]
+    return [dict(zip(keys, r, strict=True)) for r in result.fetchall()]
+
+
+def _by(rows: list[dict[str, Any]], key: str) -> dict[Any, list[dict[str, Any]]]:
+    """``rows`` grouped by their ``key`` value, each group in the rows' order: what one entity's
+    children are, looked up once per entity -- a filter of every row per entity was quadratic in
+    the model."""
+    groups: dict[Any, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(row[key], []).append(row)
+    return groups
 
 
 async def model_stamp(conn: "Connection", schema: str) -> int:
@@ -256,6 +267,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     term_paths = {t["id"]: kind_path(KIND_DIRS["glossary_terms"], t["name"]) for t in terms}
 
     tree: dict[str, dict[str, Any]] = {}
+    rls_by_domain = _by([r for r in rls if r["table_id"] is None], "domain_id")
+    tagged_by_domain = _by(tagged, "owner_domain_id")
 
     for row in await _rows(conn, org.domains, schema):
         tree[domain_path(row["id"])] = entity(
@@ -264,20 +277,27 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             row_policies=Child(
                 "role_id",
                 "domain_id",
-                [r for r in rls if r["domain_id"] == row["id"] and r["table_id"] is None],
+                rls_by_domain.get(row["id"], []),
                 table="rls_rules",
             ),
             tags=Child(  # REQ-2208: tags on the domain's row rules
                 "at",
                 OWNER_KEYS,
-                [t for t in tagged if t["owner_domain_id"] == row["id"]],
+                tagged_by_domain.get(row["id"], []),
                 table="tag_assignments",
             ),
         )
 
+    columns_by_table = _by(columns, "table_id")
+    rels_by_table = _by(relationships, "source_table_id")
+    links_by_table = _by(meta_links, "source_table_id")
+    refs_by_table = _by(term_refs, "table_id")
+    rls_by_table = _by(rls, "table_id")
+    grants_by_table = _by(write_grants, "table_id")
+    tagged_by_table = _by(tagged, "owner_table_id")
     for row in tables:
         table_id = row["id"]
-        own_rels = [r for r in relationships if r["source_table_id"] == table_id]
+        own_rels = rels_by_table.get(table_id, [])
         for rel in own_rels:
             # A relationship whose target is a FUNCTION has no target table, and gets no "target"
             # key rather than a null one -- the tree writes absence as absence (REQ-1526).
@@ -288,14 +308,11 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             if rel["via_table_id"] is not None:
                 rel["via"] = paths[rel["via_table_id"]]
         own_links = [
-            {"target": paths[m["target_table_id"]]}
-            for m in meta_links
-            if m["source_table_id"] == table_id
+            {"target": paths[m["target_table_id"]]} for m in links_by_table.get(table_id, [])
         ]
         own_refs = [
             {"column_name": r["column_name"], "term": term_paths[r["term_id"]]}
-            for r in term_refs
-            if r["table_id"] == table_id
+            for r in refs_by_table.get(table_id, [])
         ]
         # REQ-2141: a proposal is marked, so a deploy keeps it a proposal (derived, not declared)
         # REQ-2130: the table's class_term_id, written as the term's path -- the serial means
@@ -313,7 +330,7 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             columns=Child(
                 "column_name",
                 "table_id",
-                [c for c in columns if c["table_id"] == table_id],
+                columns_by_table.get(table_id, []),
                 table="table_columns",
             ),
             # SORTED AND ADDRESSED BY ``id``, not by alias: alias is nullable, and a null sort key
@@ -331,13 +348,13 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             row_policies=Child(
                 "role_id",
                 "table_id",
-                [r for r in rls if r["table_id"] == table_id],
+                rls_by_table.get(table_id, []),
                 table="rls_rules",
             ),
             write_grants=Child(
                 "role_id",
                 "table_id",
-                [g for g in write_grants if g["table_id"] == table_id],
+                grants_by_table.get(table_id, []),
                 table="table_write_grants",
             ),
             glossary=Child("column_name", "table_id", own_refs, table="glossary_term_refs"),
@@ -347,7 +364,7 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             tags=Child(
                 "at",
                 OWNER_KEYS,
-                [a for a in tagged if a["owner_table_id"] == table_id],
+                tagged_by_table.get(table_id, []),
                 table="tag_assignments",
             ),
         )
@@ -433,10 +450,30 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="tag_assignments",
             ),
         )
+    # REQ-1634: a product's members, written in its file -- a table as its path, since a table's
+    # serial means nothing in another environment, and a command by its name.
+    product_tables = await _rows(conn, org.data_product_tables, schema)
+    product_commands = await _rows(conn, org.data_product_commands, schema)
     for row in await _rows(conn, org.data_products, schema):
         tree[kind_path(KIND_DIRS["data_products"], row["id"])] = entity(
             "data_products",
             row,
+            tables=Child(
+                "table",
+                "product_id",
+                [
+                    {"table": paths[m["table_id"]]}
+                    for m in product_tables
+                    if m["product_id"] == row["id"]
+                ],
+                table="data_product_tables",
+            ),
+            commands=Child(
+                "command_name",
+                "product_id",
+                [m for m in product_commands if m["product_id"] == row["id"]],
+                table="data_product_commands",
+            ),
             tags=Child(
                 "at",
                 OWNER_KEYS,

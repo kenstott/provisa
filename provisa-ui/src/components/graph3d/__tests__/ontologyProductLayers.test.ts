@@ -27,6 +27,7 @@ import {
   type QueryScope,
 } from "../graphModel";
 import {
+  memberTablesOf,
   ontologyQuery,
   productMapGraph,
   readsProducts,
@@ -81,8 +82,8 @@ describe("the product layers' reads", () => {
   it("read a product's commands only under Commands", () => {
     const off = ontologyQuery(m, scope(["data"])) as string;
     const on = ontologyQuery(m, scope(["data", "commands"])) as string;
-    expect(off).not.toContain("commands");
-    expect(on).toMatch(/commands \{[^}]*name[^}]*domainId/);
+    expect(off).not.toContain("dataProductCommands");
+    expect(on).toMatch(/dataProductCommands \{\s*trackedFunction \{[^}]*name[^}]*domainId/);
   });
 
   it("read a checker's checked table and the tables' profiles only under Quality", () => {
@@ -124,7 +125,7 @@ const PRODUCTS: ProductRow[] = [
     id: "p1",
     name: "P1",
     domainId: "sales",
-    commands: [{ name: "refund", domainId: "sales" }],
+    dataProductCommands: [{ trackedFunction: { name: "refund", domainId: "sales" } }],
     edges: [
       {
         kind: "relationship",
@@ -133,20 +134,24 @@ const PRODUCTS: ProductRow[] = [
         targetProduct: { id: "p2", name: "P2", domainId: "finance" },
       },
     ],
-    memberTables: [
+    dataProductTables: [
       {
-        id: 3,
-        domainId: "sales",
-        tableName: "pets",
-        tableColumns: [{ columnName: "name", columnKey: "3:name" }],
-        profileResults: [{ id: 40, tableName: "pets" }],
+        registeredTable: {
+          id: 3,
+          domainId: "sales",
+          tableName: "pets",
+          tableColumns: [{ columnName: "name", columnKey: "3:name" }],
+          profileResults: [{ id: 40, tableName: "pets" }],
+        },
       },
       {
-        id: 4,
-        domainId: "sales",
-        tableName: "pets_checks",
-        dqContract: "rules: []",
-        checks: { id: 3 },
+        registeredTable: {
+          id: 4,
+          domainId: "sales",
+          tableName: "pets_checks",
+          dqContract: "rules: []",
+          checks: { id: 3 },
+        },
       },
     ],
   },
@@ -155,7 +160,13 @@ const PRODUCTS: ProductRow[] = [
 describe("the product layers' graph", () => {
   const g = productMapGraph([], [], PRODUCTS);
   const drawn = (layers: LayerId[]) =>
-    visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE);
+    visibleGraph(
+      g,
+      new Set<LayerId>(["ontology", ...layers]),
+      NO_FILTERS,
+      new Set(),
+      PRODUCT_MAP_SCOPE,
+    );
   const ids = (layers: LayerId[]) => drawn(layers).nodes.map((n) => n.id);
 
   it("draws a product's commands under Commands", () => {
@@ -201,7 +212,7 @@ const input = (over: Partial<ProductInput>): ProductInput => ({
   domain_id: "raw",
   table_name: "d",
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,
@@ -230,6 +241,47 @@ describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", (
     materialized: false,
   });
   const feeds = (source: string, target: string) => ({ source, target, transform: "", ops: [] });
+
+  it("draws one product node for each product an input is a member of, the focus product excluded", () => {
+    const g = withProductLineage(
+      base,
+      "p1",
+      lineageOf({
+        members: ["sales.pets"],
+        nodes: [
+          col("sales.pets.name", "sales.pets", "derived"),
+          col("mart.e.name", "mart.e"),
+          col("raw.only_here.name", "raw.only_here"),
+        ],
+        edges: [
+          feeds("mart.e.name", "sales.pets.name"),
+          feeds("raw.only_here.name", "sales.pets.name"),
+        ],
+        inputs: [
+          input({
+            relation: "mart.e",
+            domain_id: "mart",
+            table_name: "e",
+            product_ids: ["p1", "p2", "p3"],
+          }),
+          input({
+            relation: "raw.only_here",
+            domain_id: "raw",
+            table_name: "only_here",
+            product_ids: ["p1"],
+          }),
+        ],
+      }),
+      memberTablesOf(PRODUCTS[0]),
+    );
+    expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
+    expect(g.nodes.some((n) => n.id === "l:raw.only_here")).toBe(true);
+    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
+      ["p:p2", "t:3"],
+      ["p:p3", "t:3"],
+      ["l:raw.only_here", "t:3"],
+    ]);
+  });
 
   it("links each input to the member table that reads it, each named as its reader knows it", () => {
     const g = withProductLineage(
@@ -262,10 +314,10 @@ describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", (
             source_schema: "public",
             source_table: "Orders",
           }),
-          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_id: "p2" }),
+          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_ids: ["p2"] }),
         ],
       }),
-      PRODUCTS[0].memberTables ?? [],
+      memberTablesOf(PRODUCTS[0]),
     );
     const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
     expect(label("l:pet_store.pets")).toBe("pet-store.pets");
@@ -279,8 +331,13 @@ describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", (
       ["p:p2", "t:3"],
     ]);
     const on = (layers: LayerId[]) =>
-      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE)
-        .nodes.map((n) => n.id);
+      visibleGraph(
+        g,
+        new Set<LayerId>(["ontology", ...layers]),
+        NO_FILTERS,
+        new Set(),
+        PRODUCT_MAP_SCOPE,
+      ).nodes.map((n) => n.id);
     expect(on(["data"])).not.toContain("l:pet_store.pets");
     expect(on(["data", "lineage"])).toContain("l:pet_store.pets");
   });
@@ -291,7 +348,7 @@ describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", (
         base,
         "p1",
         lineageOf({ members: ["sales.pets"], inputs: [input({})] }),
-        PRODUCTS[0].memberTables ?? [],
+        memberTablesOf(PRODUCTS[0]),
       ),
     ).toThrow(/read by none of its members/);
   });
@@ -325,7 +382,7 @@ describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", (
         inputs: [input({})],
         members: ["sales.pets"],
       }),
-      PRODUCTS[0].memberTables ?? [],
+      memberTablesOf(PRODUCTS[0]),
     );
     expect(g.edges.filter((e) => e.kind === "column_lineage").map((e) => [e.a, e.b])).toEqual([
       ["lc:native:raw.d.Name", "c:9:name"],

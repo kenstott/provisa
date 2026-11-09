@@ -42,7 +42,7 @@ DECLARED: list[Setting] = [
         effect="live",
         req="REQ-029",
         env="PROVISA_REDIRECT_THRESHOLD",
-        default=1000,
+        default=100000,
         min=0,
         unit="rows",
     ),

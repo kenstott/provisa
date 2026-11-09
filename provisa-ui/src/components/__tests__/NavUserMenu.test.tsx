@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Admin and Docs are in the user menu, below a divider after Profile, Settings and What's new, and
+// Admin and Docs are in the user menu, below a divider after Profile and What's new, and
 // not in the top navigation. Admin is shown only to a caller who holds an admin right.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,7 +96,9 @@ describe("Admin and Docs in the user menu", () => {
   it("are in the user menu below a divider after What's new", async () => {
     render(<NavBar />);
     await openUserMenu();
-    expect(menuLabels()).toEqual(["Profile", "Settings", "What's new", "Admin", "Docs", "Logout"]);
+    expect(menuLabels()).toEqual(["Profile", "What's new", "Admin", "Docs", "Logout"]);
+    // REQ-1327: Admin is the one way into administration, so there is no Settings entry.
+    expect(menuLabels()).not.toContain("Settings");
     const divider = document.querySelector('[data-testid="navbar-menu-divider"]');
     expect(divider).not.toBeNull();
     const whatsNew = screen.getByTestId("navbar-whats-new");

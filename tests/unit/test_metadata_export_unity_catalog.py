@@ -27,6 +27,7 @@ import pytest
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.api.metadata_export.unity_catalog import UnityCatalogExport, schema_tags
+from tests.unit.product_members import all_members_of
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -134,7 +135,6 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
                 schema_name="public",
                 table_name=name,
                 description=f"{name} of the shop",
-                product_id="customer_360",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["admin"], description="Key"),
                     Column(
@@ -166,7 +166,10 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
         ],
         roles=[],
     )
-    return build_snapshot(config, org_id="acme", dialect="databricks", contexts={})
+    # REQ-1634: every table is a member of customer_360.
+    return build_snapshot(
+        all_members_of(config, "customer_360"), org_id="acme", dialect="databricks", contexts={}
+    )
 
 
 @pytest.fixture

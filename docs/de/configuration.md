@@ -1754,7 +1754,7 @@ Für Google-Cloud-Quellen setzen Sie `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `FLIGHT_PORT` | `8815` | Port des Provisa-Arrow-Flight-Servers |
 | `GRPC_PORT` | `50051` | Port des Provisa-Protobuf-gRPC-Servers |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Serverseitigen Schwellenwert-Redirect aktivieren |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Standard-Zeilenanzahl-Schwellenwert |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Standard-Zeilenanzahl-Schwellenwert |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Standard-Redirect-Format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3-Bucket für weitergeleitete Ergebnisse |
 | `PROVISA_REDIRECT_ENDPOINT` | — | S3-kompatible Endpunkt-URL |

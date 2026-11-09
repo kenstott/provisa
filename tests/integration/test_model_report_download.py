@@ -115,13 +115,27 @@ def _config() -> dict:
     return {
         "sources": [src],
         "domains": [{"id": "sales"}, {"id": "petstore"}],
+        # REQ-1634: each product lists its members.
+        "data_products": [
+            {
+                "id": "prod-sales",
+                "domain_id": "sales",
+                "name": "Sales",
+                "tables": ["orders", "order_totals"],
+            },
+            {
+                "id": "prod-petstore",
+                "domain_id": "petstore",
+                "name": "Pets",
+                "tables": ["pets", "pet_rollup"],
+            },
+        ],
         "tables": [
             {
                 "source_id": "pg1",
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "orders",
-                "product_id": "prod-sales",
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": _READERS},
                     {"name": "amount", "data_type": "numeric", "visible_to": _READERS},
@@ -132,7 +146,6 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pets",
-                "product_id": "prod-petstore",
                 "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
@@ -147,7 +160,6 @@ def _config() -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "order_totals",
-                "product_id": "prod-sales",
                 "view_sql": "SELECT id FROM orders",
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
@@ -156,7 +168,6 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pet_rollup",
-                "product_id": "prod-petstore",
                 "view_sql": "SELECT order_id FROM pets",
                 "materialize": True,
                 "mv_refresh_interval": 900,
