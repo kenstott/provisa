@@ -550,6 +550,8 @@ def _pgw_build_state(pool):
         }
     }
     state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
+    # Governance serves a role the columns of the registry a server loads (visible_to).
+    state.tables = _PGW_TABLES
     state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
     state.auth_middleware_active = False
     state.masking_rules = {}

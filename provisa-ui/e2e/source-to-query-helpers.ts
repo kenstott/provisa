@@ -140,7 +140,9 @@ export async function openSourceDiscovery(page: Page, sourceId: string) {
 
 export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  // The header renders once the tables list has answered, and registering a source rebuilds the
+  // model: the swap lane's /tables took 14.9 s and 27.5 s to show it (run 42527450262).
+  await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
   // Apollo may serve the sources list from cache first; the new source arrives with the refetch.
