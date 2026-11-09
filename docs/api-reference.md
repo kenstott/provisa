@@ -836,9 +836,13 @@ Report the acting org's storage footprint against its platform allowance, and wh
 
 When the org has registered its own DSN, its materializations go there and are no longer counted against the allowance. The DSN itself is never returned.
 
-#### `PUT /admin/org-storage`
+#### `GET /admin/platform/orgs/{org_id}/storage`
 
-Register (or clear) the org's own materialization store.
+The same report for a named organization. Requires a platform administrator.
+
+#### `PUT /admin/platform/orgs/{org_id}/storage`
+
+Register (or clear) a named organization's own materialization store. Requires a platform administrator; an organization that does not exist is a 404.
 
 **Request body:**
 
