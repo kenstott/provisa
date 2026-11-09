@@ -417,7 +417,7 @@ Ces en-têtes implémentent la redirection contrôlée par le client.
 | Variable d'env | Défaut | Objectif |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Active la redirection par seuil côté serveur |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Seuil de nombre de lignes par défaut |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Seuil de nombre de lignes par défaut |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Format de redirection par défaut |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Nom de bucket S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL d'endpoint compatible S3 |

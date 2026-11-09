@@ -469,29 +469,28 @@ class TestImputeStableIds:
         assert "Company|2" in out
 
     @pytest.mark.asyncio
-    async def test_register_node_ids_calls_upsert_then_replaces(self):
-        """register_node_ids upserts to DB and mutates rows in place with returned ids."""
+    async def test_register_node_ids_registers_then_replaces(self, control_plane):
+        """register_node_ids registers the node in node_ids and mutates rows in place with its id."""
+        from sqlalchemy import select
+
+        from provisa.core import schema_org
         from provisa.gql.assembler import register_node_ids
 
-        conn = AsyncMock()
-        # No pre-existing node_ids row → JSON merge falls back to new props.
-        existing = MagicMock()
-        existing.fetchone.return_value = None
-        conn.execute_core = AsyncMock(return_value=existing)
-        conn.upsert_returning = AsyncMock(return_value=555)
-
-        acquire_ctx = MagicMock()
-        acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
-        acquire_ctx.__aexit__ = AsyncMock(return_value=False)
-
-        tenant_db = MagicMock()
-        tenant_db.acquire = MagicMock(return_value=acquire_ctx)
+        db = control_plane.org()
 
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
-        await register_node_ids(rows, tenant_db)
+        await register_node_ids(rows, db)
 
-        conn.upsert_returning.assert_called_once()
-        assert rows[0]["node"]["id"] == 555
+        async with db.acquire() as conn:
+            held = (
+                await conn.execute_core(
+                    select(schema_org.node_ids.c.id).where(
+                        schema_org.node_ids.c.composite_id == "Person|5"
+                    )
+                )
+            ).fetchone()
+        assert held is not None
+        assert rows[0]["node"]["id"] == held[0]
 
     @pytest.mark.asyncio
     async def test_register_node_ids_noop_without_pg_pool(self):

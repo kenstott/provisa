@@ -1632,6 +1632,9 @@ export async function runSql(
   statement: string | { sql: string; params: (string | number)[] },
   role: string,
   statsEnabled: boolean = false,
+  /** True for one page the caller bounds with its own LIMIT (a grid reading pageSize+1 rows): the
+      server does not measure it against the large-result threshold. */
+  paged: boolean = false,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1655,13 +1658,14 @@ export async function runSql(
       // api/acting_role.py), because the server's acting role is one member of the set.
       method: "POST",
       headers,
-      body: JSON.stringify(
-        typeof statement === "string"
+      body: JSON.stringify({
+        ...(typeof statement === "string"
           ? { sql: statement }
           : statement.params.length > 0
             ? statement
-            : { sql: statement.sql },
-      ),
+            : { sql: statement.sql }),
+        ...(paged ? { paged: true } : {}),
+      }),
     });
     if (!resp.ok) {
       return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };
