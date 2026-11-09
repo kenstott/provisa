@@ -93904,7 +93904,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     where the CLI runs is the operator''s choice. (Amended 2026-11-08, THE OPERATOR RUNS THE CONTAINER:)
     The operator runs an organization''s connector container, as in built mode (REQ-2098): the connectors
     block names the image and its digest, the operator''s own deployment runs it, and Provisa pairs with
-    it. Provisa does not start connector containers. (Maintainer 2026-11-08.)'
+    it. Provisa does not start connector containers. (Maintainer 2026-11-08.) (Amended 2026-11-09, HOW AN
+    OPERATOR-RUN CONNECTOR JOINS:) Maintainer 2026-11-09: a connector known only by its image becomes a
+    source through a connect path in which the paired host sends its manifest in the handshake, and Provisa
+    checks it against the digest and code hash; the server never builds a connector or reads its build settings.
+    The connectors block lives in a control-plane table that promotes with the model, so the model''s branches
+    decide where a version runs. provisa connector build takes --package-registries FILE to name the indexes
+    for private dependencies; credentials stay with the operator.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
