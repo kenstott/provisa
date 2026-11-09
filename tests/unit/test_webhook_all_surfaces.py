@@ -87,7 +87,11 @@ def _state() -> SimpleNamespace:
         role_chains={},
         federation_engine=_Engine(),
         roles={
-            "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["write"]},
+            "admin": {
+                "id": "admin",
+                "domain_access": ["*"],
+                "capabilities": ["write", "command_execution"],
+            },
             "guest": {"id": "guest", "domain_access": ["*"], "capabilities": []},
         },
         ephemeral=False,

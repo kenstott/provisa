@@ -135,7 +135,12 @@ def test_a_role_reaches_the_meta_commands_by_catalog_read():
     assert not reaches_command_domain(["shelter", "ops"], "ops")
     assert not reaches_command_domain(["shelter", "ontology"], "ontology")
     assert not reaches_command_domain(["shelter"], "hr")
-    apoc = {"name": "apoc_meta_data", "domain_id": "meta", "visible_to": ["reader"]}
+    apoc = {
+        "name": "apoc_meta_data",
+        "kind": "query",
+        "domain_id": "meta",
+        "visible_to": ["reader"],
+    }
     assert command_reachable(
         apoc, {"id": "reader", "capabilities": ["usage"], "domain_access": ["shelter", "meta"]}
     )

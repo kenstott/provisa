@@ -97,7 +97,12 @@ def test_classify_kind_unknown_defaults_to_write():
 
 
 def _role(role_id, *caps, domains=("*",)):
-    return {"id": role_id, "capabilities": list(caps), "domain_access": list(domains)}
+    # REQ-870: every role here holds command_execution, so what each test refuses is its own subject.
+    return {
+        "id": role_id,
+        "capabilities": [Capability.COMMAND_EXECUTION.value, *caps],
+        "domain_access": list(domains),
+    }
 
 
 def _command(kind="mutation", visible_to=(), domain="sales"):

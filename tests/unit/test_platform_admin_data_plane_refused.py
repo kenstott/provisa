@@ -228,6 +228,14 @@ def test_the_role_row_itself_authorizes_no_write():
             "refund",
         )
     reaching = {**ROLES["platform_admin"], "domain_access": ["*"]}
+    # REQ-870: without command_execution it finds no command, reach or no reach.
+    with pytest.raises(CommandNotFound):
+        admit_command(
+            {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+            reaching,
+            "refund",
+        )
+    reaching["capabilities"] = [*reaching["capabilities"], "command_execution"]
     with pytest.raises(MutationNotPermitted, match="WRITE"):
         admit_command(
             {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},

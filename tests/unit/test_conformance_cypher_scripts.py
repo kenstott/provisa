@@ -869,13 +869,15 @@ def test_a_procedure_s_command_is_admitted_for_the_roles_that_call_it(procedure_
 
     entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
     for role in (
-        {"id": "org_admin", "capabilities": [], "domain_access": ["*"]},
-        {"id": "tck_empty", "capabilities": [], "domain_access": ["tck_empty"]},
+        {"id": "org_admin", "capabilities": ["command_execution"], "domain_access": ["*"]},
+        {"id": "tck_empty", "capabilities": ["command_execution"], "domain_access": ["tck_empty"]},
     ):
         admit_command(entry, role, entry["name"])
     with pytest.raises(CommandNotFound):
         admit_command(
-            entry, {"id": "other", "capabilities": [], "domain_access": ["*"]}, entry["name"]
+            entry,
+            {"id": "other", "capabilities": ["command_execution"], "domain_access": ["*"]},
+            entry["name"],
         )
 
 

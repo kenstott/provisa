@@ -55,7 +55,11 @@ def _fn(**over):
 
 
 def _state(*, role_caps=(), visible_to=("ops",), connected=True, pools=None):
-    role = {"id": "ops", "capabilities": list(role_caps), "domain_access": ["sales"]}
+    role = {
+        "id": "ops",
+        "capabilities": [*role_caps, "command_execution"],  # REQ-870
+        "domain_access": ["sales"],
+    }
     pools = pools or _FakePools(connected=connected)
     return SimpleNamespace(
         roles={
