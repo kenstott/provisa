@@ -239,7 +239,7 @@ relationships:
 # The pharmacy's vocabulary: abstract terms, grounded through their edges in the terms the
 # formulary's and the public tables' columns derive (availability, classification, days of supply).
 glossary_terms:
-- name: NDC
+- name: ndc
   approve: true
   definition: 'National Drug Code: the labeler, product and package code FDA lists every drug under. The product code (labeler-product) names a drug of one strength and form.'
   domains:
@@ -250,7 +250,7 @@ glossary_terms:
   domains:
   - pharma
   edges:
-  - to: NDC
+  - to: ndc
     rel_type: PART_OF
 - name: formulary
   approve: true

@@ -34,7 +34,7 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
 
     provider_name: str = "firebase"
 
-    def __init__(self, firebase_config: dict) -> None:
+    def __init__(self, firebase_config: dict, entitlements_claim: str | None = None) -> None:
         if not _HAS_FIREBASE:
             raise ImportError("firebase-admin is required: pip install provisa[firebase]")
         project_id = firebase_config.get("project_id")
@@ -44,6 +44,7 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
         # yields "" (no key file) rather than a literal path that would be opened.
         service_account_key = resolve_secrets(firebase_config.get("service_account_key") or "")
         self._project_id = project_id
+        self._entitlements_claim = entitlements_claim  # REQ-2219
         if not firebase_admin._apps:  # type: ignore[union-attr]
             cred = (
                 credentials.Certificate(service_account_key)  # type: ignore[union-attr]
@@ -72,6 +73,7 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
             display_name=decoded.get("name"),
             roles=decoded.get("roles", []),
             raw_claims=decoded,
+            entitlements_claim=self._entitlements_claim,
         )
 
 
