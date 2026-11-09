@@ -52,6 +52,7 @@ the timeout and nothing else."""
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import contextvars
 import ctypes
@@ -64,7 +65,7 @@ import threading
 import time
 import traceback
 import weakref
-from collections.abc import Callable, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from types import FrameType
 
 log = logging.getLogger(__name__)
@@ -213,6 +214,8 @@ class Deadline:
         self.expires = time.monotonic() + timeout
         self.transport = transport
         self.setting = setting
+        # The deadline this one sits inside: a stopped clock stops both (``clock_stopped``).
+        self.outer = _current.get()
         self._lock = threading.Lock()
         self._cancels: dict[int, Callable[[], None]] = {}
         self._next = 0
@@ -224,6 +227,8 @@ class Deadline:
         self._working: _ThreadShield | None = None
         self._depth = 0
         self._cancelled = False
+        # What follows this deadline's expiry and has to hear when it moves (``follows``).
+        self._followers: list[Callable[[], None]] = []
         with _live_lock:
             _live.add(self)
         # Watched from creation: expiry is acted on whatever the request is doing at that moment.
@@ -254,8 +259,8 @@ class Deadline:
         has already ended is left alone. Returns the seconds after which to do it again, or
         None when there is nothing left to do."""
         with self._lock:
-            if self._stopped:
-                return None
+            if self._stopped or not self.fired:
+                return None  # ended, or its clock was stopped: a later entry watches the new time
             first = not self._cancelled
             self._cancelled = True
             in_statement = bool(self._cancels)
@@ -302,6 +307,32 @@ class Deadline:
             if self._depth == 0:
                 self._working = None
                 shield.inside.discard(self)
+
+    def _stop_clock(self, at_most: float) -> float | None:
+        """Stop charging this budget for up to ``at_most`` seconds. Returns what was left of it,
+        for :meth:`_restart_clock`; None when it has already ended and there is nothing to stop."""
+        with self._lock:
+            if self._stopped or self.fired:
+                return None
+            left = self.expires - time.monotonic()
+            self.expires += at_most
+            followers = list(self._followers)
+        _watchdog.watch(self)
+        for follower in followers:
+            follower()
+        return left
+
+    def _restart_clock(self, left: float) -> None:
+        """Charge this budget again, with ``left`` seconds of it to go. A request ended meanwhile
+        (:meth:`expire`) stays ended."""
+        with self._lock:
+            if self._stopped or self._ended is not None:
+                return
+            self.expires = time.monotonic() + left
+            followers = list(self._followers)
+        _watchdog.watch(self)
+        for follower in followers:
+            follower()
 
     def stop(self) -> None:
         with self._lock:
@@ -699,6 +730,57 @@ def within(timeout: float) -> contextlib.AbstractContextManager[Deadline]:
     if outer is not None and outer.remaining() <= timeout:
         return contextlib.nullcontext(outer)
     return _Scope(Deadline(timeout), every_failure=False, stops=True)
+
+
+@contextlib.contextmanager
+def clock_stopped(at_most: float) -> Generator[None]:
+    """The enclosed wait is not charged to the current request, for up to ``at_most`` seconds: a
+    wait with a limit of its own, which stands in for the request's timeout (the read of a table
+    with a read wait, ``query_residency``). The deadlines the current one sits inside stop with
+    it. What was left of each is left of it afterwards. ``at_most`` of 0: no such limit, and the
+    wait is charged as any other."""
+    if at_most <= 0:
+        yield
+        return
+    stopped: list[tuple[Deadline, float]] = []
+    dl = _current.get()
+    while dl is not None:
+        left = dl._stop_clock(at_most)  # noqa: SLF001
+        if left is not None:
+            stopped.append((dl, left))
+        dl = dl.outer
+    try:
+        yield
+    finally:
+        for held, left in stopped:
+            held._restart_clock(left)  # noqa: SLF001
+
+
+@contextlib.asynccontextmanager
+async def timing_out(dl: Deadline) -> AsyncGenerator[None]:
+    """``asyncio.timeout`` at ``dl``'s expiry, moving when its clock stops and starts
+    (:func:`clock_stopped`): the coroutine timer of a request whose deadline is ``dl``. A timer set
+    once would cut off a wait that deadline has stopped its clock for."""
+    loop = asyncio.get_running_loop()
+    timer = asyncio.timeout_at(loop.time() + dl.remaining())
+    entered = True
+
+    def move() -> None:
+        if entered and not timer.expired():
+            timer.reschedule(loop.time() + dl.remaining())
+
+    def moved() -> None:
+        loop.call_soon_threadsafe(move)
+
+    with dl._lock:  # noqa: SLF001
+        dl._followers.append(moved)  # noqa: SLF001
+    try:
+        async with timer:
+            yield
+    finally:
+        entered = False
+        with dl._lock:  # noqa: SLF001
+            dl._followers.remove(moved)  # noqa: SLF001
 
 
 @contextlib.contextmanager

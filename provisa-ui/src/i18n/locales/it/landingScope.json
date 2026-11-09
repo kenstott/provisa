@@ -8,6 +8,13 @@
     "argumentsNotJson": "JSON non valido",
     "argumentsNotObject": "Indicare un oggetto JSON di nomi e valori degli argomenti",
     "readFilter": "Filtro di caricamento",
-    "readArguments": "Argomenti fissi"
+    "readArguments": "Argomenti fissi",
+    "readWaitLabel": "Lettura prima del primo caricamento",
+    "readWaitHelp": "Cosa fa una lettura finché nulla di questa tabella è stato caricato. Per impostazione predefinita attende quanto consentito dalla richiesta; in alternativa può attendere un tempo proprio, oppure restituire zero righe con le colonne della tabella e avviare il caricamento.",
+    "readWaitRequest": "Attendi fino al timeout della richiesta",
+    "readWaitTimed": "Attendi fino a un tempo definito",
+    "readWaitNoRows": "Restituisci zero righe e avvia il caricamento",
+    "readWaitSeconds": "Attesa (secondi)",
+    "readWaitUpTo": "Attende fino a {{seconds}} s"
   }
 }

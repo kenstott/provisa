@@ -66,6 +66,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         import_set=getattr(inp, "import_set", None) or None,  # REQ-1954
         arguments=dict(inp.arguments or {}),  # REQ-2061
         landing_filter=inp.landing_filter or None,  # REQ-2062
+        read_wait=inp.read_wait,  # REQ-2224
         view_metrics=view_metrics,  # REQ-1318
         materialize=inp.materialize,
         mv_refresh_interval=inp.mv_refresh_interval,

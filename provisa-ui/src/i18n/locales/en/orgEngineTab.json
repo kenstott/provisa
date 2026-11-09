@@ -4,13 +4,13 @@
     "intro": "Choose which query engine this organization runs on. The deployment runs {{engine}}; this organization can share it, take a dedicated one, or run an engine of its own.",
     "modeLabel": "Engine",
     "modeShared": "Shared: the pooled engine Provisa operates",
-    "modeSharedHelp": "The default. Your queries run on the multi-tenant coordinator, isolated by catalog and role.",
+    "modeSharedHelp": "The default. This organization's queries run on the multi-tenant coordinator, isolated by catalog and role.",
     "modeIsolated": "Isolated: a dedicated engine Provisa operates for this organization",
     "modeIsolatedHelp": "A coordinator reserved for this organization alone. No other tenant's work shares its resources.",
     "modeIsolatedUnavailable": "This deployment cannot provision a dedicated coordinator, so an isolated engine is not available here.",
     "modeIsolatedNotEntitled": "A dedicated engine is part of the Pro plan. Upgrade this organization's subscription to select it.",
-    "modeExternal": "External: an engine you operate",
-    "modeExternalHelp": "Point Provisa at an engine you run. It can be any supported kind, including ones other than the deployment's {{engine}}. Planning and governance stay in Provisa; execution lands on your cluster.",
+    "modeExternal": "External: an engine this organization operates",
+    "modeExternalHelp": "Point Provisa at an engine this organization runs. It can be any supported kind, including ones other than the deployment's {{engine}}. Planning and governance stay in Provisa; execution lands on the organization's cluster.",
     "kindLabel": "Engine kind",
     "kindHelp": "Which engine this organization runs. An organization can run on its own Databricks, Snowflake, BigQuery, ClickHouse, Trino or almost any relational database.",
     "urlLabel": "Engine URL",
@@ -36,6 +36,12 @@
     "hostedStateStopped": "This engine is idle. It starts on the next query.",
     "hostedStateAbsent": "This engine has not been created yet. It starts on the next query.",
     "hostedStateOther": "Engine state: {{state}}",
-    "hostedChange": "To change the engine, change the plan on the Billing page."
+    "hostedChange": "To change the engine, change the plan on the Billing page.",
+    "platformIntro": "Which query engine an organization runs on is set here. Pick the organization, then its engine.",
+    "reportIntro": "The platform administrator sets which query engine this organization runs on. The deployment runs {{engine}}.",
+    "reportKind": "Engine kind: {{kind}}",
+    "reportEndpoint": "Coordinator: {{host}}:{{port}}",
+    "reportUrlStored": "A connection URL is stored.",
+    "reportChange": "To change the engine, ask your platform administrator."
   }
 }

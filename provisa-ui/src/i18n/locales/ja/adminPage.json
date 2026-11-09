@@ -125,6 +125,7 @@
         "redis_tls_required": "TLS が必須の間、Redis は TLS を使用する必要があります。",
         "price_entry_invalid": "各エントリはモデル ID と 100 万トークンあたりの 4 つの価格です：入力、出力、キャッシュ読み取り、キャッシュ書き込み（{{entry}}）。",
         "retry_max_below_interval": "最大待機時間は再試行間隔（{{other}}）より小さくできません。",
+        "memory_below_thread_minimum": "DuckDB の各スレッドには 16 MiB 以上のメモリが必要です。この値または {{other}} を変更してください。",
         "cannot_decrypt": "保存された値を現在の鍵で復号できませんでした。",
         "internal_tls_set_by_chart": "Helmチャートがここで設定しています。チャートの値 {{value}} を変更してください。",
         "internal_tls_not_trino": "エンジンノード間の通信を暗号化できるのはTrinoエンジンのみです。",

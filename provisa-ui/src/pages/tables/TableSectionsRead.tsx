@@ -11,8 +11,10 @@
 import { ttlText } from "../../components/form/cacheTtl";
 import { Alert, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
 import { replicateLabel } from "../../components/admin/replicate";
+import { READ_WAIT_NO_ROWS } from "./ReadWaitField";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { namingConventionLabel } from "../../hooks/useNamingConventions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
@@ -42,6 +44,14 @@ import { checkersField, uniquesField, useContractFields } from "./qualityReadFie
 // order and under the same labels; a value not set says what applies instead.
 
 /** A table's effective refresh and serving policy, as the server derives it. */
+/** What a read does with nothing landed, as the read view words it; null when the request timeout
+ * applies, the default a read view leaves unsaid. */
+function readWaitText(t: TFunction, readWait: number | null): string | null {
+  if (readWait === null) return null;
+  if (readWait === READ_WAIT_NO_ROWS) return t("landingScope.readWaitNoRows");
+  return t("landingScope.readWaitUpTo", { seconds: readWait });
+}
+
 export function RefreshPolicyAlert({ policy }: { policy: RefreshPolicySummary }) {
   const { t } = useTranslation();
   return (
@@ -206,6 +216,10 @@ export function LoadRead({ table, source }: { table: RegisteredTable; source?: S
                 : null,
           },
           ...pagingFields(t, table),
+          {
+            label: t("landingScope.readWaitLabel"),
+            value: readWaitText(t, table.readWait ?? null),
+          },
           {
             label: t("landingScope.readFilter"),
             value: table.landingFilter ? <code>{table.landingFilter}</code> : null,

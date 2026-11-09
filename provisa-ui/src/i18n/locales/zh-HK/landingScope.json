@@ -8,6 +8,13 @@
     "argumentsNotJson": "不是有效的 JSON",
     "argumentsNotObject": "請提供由參數名稱和值組成的 JSON 物件",
     "readFilter": "落地篩選條件",
-    "readArguments": "固定參數"
+    "readArguments": "固定參數",
+    "readWaitLabel": "首次落地前的讀取",
+    "readWaitHelp": "在此資料表尚未落地任何內容時讀取的行為。預設按請求允許的時間等待；也可以等待自己的時間，或傳回帶資料表欄位的零列並啟動落地。",
+    "readWaitRequest": "等待至請求逾時",
+    "readWaitTimed": "等待至設定時間",
+    "readWaitNoRows": "傳回零列並啟動落地",
+    "readWaitSeconds": "等待（秒）",
+    "readWaitUpTo": "最多等待 {{seconds}} 秒"
   }
 }
