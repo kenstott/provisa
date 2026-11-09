@@ -431,7 +431,7 @@ def _rewrite_empty_json_list_for_trino(sql: str) -> str:
                     default.replace(exp.Literal.string("[]"))
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
@@ -598,7 +598,7 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
                 )
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:
@@ -628,7 +628,7 @@ def _rewrite_json_build_object_for_trino(sql: str) -> str:
             return exp.JSONObject(expressions=pairs)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
@@ -671,7 +671,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
             return _list(inner, None)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
@@ -702,8 +702,9 @@ def _duckdb_form(pg_sql: str) -> str:
     # statement's text, and each step that read it again paid for all of them.
     tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
     tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
-    tree = _postgres_semantics_for_duckdb(_lengths_for_duckdb(tree))
-    return pg_functions.after_in(tree).sql(dialect="duckdb")
+    tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
+    # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
+    return tree.sql(dialect="duckdb", copy=tree.parent is not None)
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -897,7 +898,9 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
         return pg_sql
     from provisa.codehost.duckdb_sql import escape_likes
 
-    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(dialect="postgres")
+    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(
+        dialect="postgres", copy=False
+    )
 
 
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
@@ -1930,7 +1933,11 @@ def transpile(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     elif lowered is not None:
-        result = lowered.sql(dialect=target_dialect, identify=identify)
+        # In place, the tree being this function's; a root a step lifted out of its parent keeps
+        # its copy, for the generator reads a root's parent.
+        result = lowered.sql(
+            dialect=target_dialect, identify=identify, copy=lowered.parent is not None
+        )
     else:
         results = sqlglot.transpile(
             pg_sql, read="postgres", write=target_dialect, identify=identify

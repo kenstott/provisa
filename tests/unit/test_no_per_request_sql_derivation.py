@@ -82,7 +82,7 @@ def test_a_statement_naming_no_registered_command_is_not_parsed_to_look_for_one(
     from provisa.pgwire.function_call import detect_sql_function_call
 
     state = SimpleNamespace(
-        roles={"r": {"id": "r", "capabilities": [], "domain_access": ["*"]}},
+        roles={"r": {"id": "r", "capabilities": ["command_execution"], "domain_access": ["*"]}},
         tracked_functions={
             "send_invoice": {"name": "send_invoice", "domain_id": "sales", "visible_to": ["r"]}
         },

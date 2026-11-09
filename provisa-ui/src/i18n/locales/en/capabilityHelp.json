@@ -33,6 +33,7 @@
     "dq_rw": "Manage data quality checks, expectations and promises.",
     "ignore_relationships": "Join tables that no approved relationship covers.",
     "write": "Write data, where the role has a write grant.",
+    "command_execution": "Run the commands assigned to this role, in the domains it lists.",
     "no_aggregations": "Take aggregate queries away from this role.",
     "data_residency": "Set where the data of a table, a source or a materialized view lives, for the regions listed.",
     "notHeldByParent": "No parent of this role holds this capability.",

@@ -997,4 +997,4 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _table(node, dialect)
         return _call(node, dialect, rewrite) if isinstance(node, exp.Func) else node
 
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

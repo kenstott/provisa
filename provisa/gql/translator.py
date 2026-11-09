@@ -123,6 +123,10 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     Returns (sql_ast, ordered_param_names, graph_vars).
     """
     ast = _null_bound_matches(ast)
+    # REQ-2176: a path over the session's graph starts from its more selective end.
+    from provisa.gql.traversal_order import reordered
+
+    ast = reordered(ast, label_map)
     translator = _Translator(ast, label_map, params)
     sql_ast, ordered, graph_vars = translator.translate()
     return quote_keywords(sql_ast), ordered, graph_vars

@@ -273,6 +273,15 @@ def _used_key(rel: "RelationshipMapping", direction: str) -> tuple:
     )
 
 
+@dataclass(frozen=True)
+class Selectivity:
+    """How many nodes a label map's session labels hold (REQ-2176): the nodes of each label the
+    session alone holds. A read starts a path from the end fewer nodes hold
+    (gql.traversal_order)."""
+
+    node_counts: dict[str, int]
+
+
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
 
@@ -282,6 +291,8 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     #: A graph session's node relations of several labels (node_of_all): each one's table name ->
     #: the labels its nodes all have, and its type name -> the same (REQ-2176).
     label_sets: dict[str, tuple[str, ...]] = {}
+    #: The session's counts, on a map the read overlay made (REQ-2176); a model's map has none.
+    selectivity: Selectivity | None = None
 
     def __init__(
         self,

@@ -19,6 +19,7 @@
     "sectionRegions": "Regions",
     "sectionDefaultGrant": "Default grant",
     "sectionOrgs": "Organizations",
+    "sectionStores": "Cache stores",
     "defaultGrantIntro": "The regions every new organization is granted, with the store it keeps each kind of data in there, so a new organization starts with a working region.",
     "orgsIntro": "Which regions an organization uses is decided here: grant it regions and assign the store it keeps each kind of data in there.",
     "colDescription": "Description",
