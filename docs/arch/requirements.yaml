@@ -94428,3 +94428,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the Dynamic Table is refreshed and the call is recorded'
   stakeholders:
   - data-engineer
+- id: REQ-2231
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing page with no in-process interface to unit test. Verified by rendering it.
+  description: 'Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one
+    job, and moves them to trying the product. It has five parts: a hero whose primary action opens a
+    live demo with no login; six job cards, each linking to its quick start; one statement of the single
+    model with the pains it removes and a same-query, two-roles proof; a short row of sources; and
+    download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a
+    why page answers opens that page.'
