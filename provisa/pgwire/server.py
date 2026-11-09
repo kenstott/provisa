@@ -2475,7 +2475,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         was_open = self.transaction_open
         self.transaction_open = _transaction_open(stripped, was_open)
-        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
+        self.zone.note(stripped, was_open, self.transaction_open, params)  # REQ-2171
         if was_open and not self.transaction_open:
             advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
