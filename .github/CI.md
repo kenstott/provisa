@@ -41,11 +41,10 @@ and passes each leg the same `version` and `publish`.
 
 | Trigger | Workflows |
 | --- | --- |
-| push to `dev` | Unit Tests, UI Unit Tests, Lint, Requirements CI, Deploy Site (when `docs/**`, `site/**` or the like changed) |
-| push to `main` (a release merging) | Demo bundles (when a named demo changed) |
+| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke (when the container changed), Deploy Site (when `docs/**`, `site/**` or the like changed), Demo bundles (when a named demo changed) |
 | pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
 | tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds |
-| push to `release/**` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke |
+| push to `release/**` | Everything that gates a release: Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke, Integration suite, UI E2E Core, UI E2E Trino, UI E2E Swap, every Conformance suite |
 | nightly | Integration suite, CVE Audit |
 | 17:00 America/New_York (schedule, from `main`) | Release: alpha nightly, which starts the alpha's suites and dry-run build on the new `release/<version>` (a workflow token's push starts nothing) |
 | push to `ci/**` touching `.github/` or `scripts/ci/` | CI leaf check |
@@ -80,7 +79,7 @@ marker and `tests/conftest.py` starts it; CI has nothing per source. Check which
 expression in `scripts/ci/run_lane.py` now selects the test, and whether that lane's memory
 still holds the new container.
 
-**Finish a release.** After a release is published, the lead runs `python scripts/release_merge.py --version <tag>` from any clone. It merges the release to `main` and `dev`, deletes the branch, prints each ref's move, refuses on a conflict and never forces.
+**Finish a release.** After a release is published, the lead runs `python scripts/release_merge.py --version <tag>` from any clone. It merges the release back to `main`, deletes the branch, prints each ref's move, refuses on a conflict and never forces.
 
 **Add a release artifact.** Name it in `release-metadata`, build it in the leg for its platform,
 and add it to the one file list in `release-publish.yml` ("Release assets present"). Not yet
@@ -120,7 +119,7 @@ by review alone.
     `test_reusable_workflows_nest_no_deeper_than_github_allows`
 11. A workflow that costs money or reads live credentials runs only on the triggers in the
     table above. — `test_the_salesforce_lane_runs_only_when_a_dispatch_asks_for_it`; the others: *no test*
-12. A change to a leaf is proven on a `ci/**` branch before it reaches dev. — *no test*
+12. A change to a leaf is proven on a `ci/**` branch before it reaches main. — *no test*
 13. Teammates do not push, dispatch or re-run. The lead does, one suite at a time. — *no test*
 14. Unit failures are found locally, not in CI. Run the tests for what you changed, the tests
     that import it, and the guards it could trip. — *no test*

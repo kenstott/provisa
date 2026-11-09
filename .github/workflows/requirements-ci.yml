@@ -5,7 +5,7 @@ name: Requirements CI
 
 on:
   push:
-    branches: [dev, 'release/**']
+    branches: [main, 'release/**']
   pull_request:
   workflow_dispatch:
 

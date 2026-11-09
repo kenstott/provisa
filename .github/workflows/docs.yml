@@ -6,7 +6,7 @@ name: Deploy Site
 # multi-tenant/SaaS) out of the published site.
 on:
   push:
-    branches: [dev]
+    branches: [main]
     paths:
       - README.md
       - README.*.md

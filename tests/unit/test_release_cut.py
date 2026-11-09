@@ -337,10 +337,13 @@ def test_the_notes_commit_and_the_tag_reach_the_branch_together_and_nothing_is_f
     for path in (
         _WORKFLOWS / "release-cut.yml",
         _WORKFLOWS / "release-publish.yml",
-        _ROOT / "scripts" / "release_merge.py",
     ):
         text = path.read_text()
         assert "--force" not in text and "push -f" not in text, path.name
+    # The script's one --force removes its own temporary worktree; its push has none.
+    script = (_ROOT / "scripts" / "release_merge.py").read_text()
+    push = script[script.index('"push"') : script.index("finally:")]
+    assert "--force" not in push and '"-f"' not in push
 
 
 def _branch(repo: Path, name: str, start: str = "HEAD") -> None:

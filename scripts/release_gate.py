@@ -38,7 +38,8 @@ _CORE = (
     "docker-image.yml",
     "build-dmg.yml",
 )
-# What a release branch runs beyond the push checks. An alpha lists what is left of them.
+# What a release branch runs beyond the push checks. Beta and production need them green; an
+# alpha lists what is left of them.
 _FULL_SUITES = (
     "integration-suite.yml",
     "ui-e2e-core.yml",
@@ -69,7 +70,7 @@ def gates(version: str) -> tuple[str, ...]:
     requirements that lack a unit test, which is no defect of the alpha being shipped."""
     if is_alpha(version):
         return _CORE + _FULL_SUITES
-    return _CORE + ("requirements-ci.yml",)
+    return _CORE + _FULL_SUITES + ("requirements-ci.yml",)
 
 
 def run_state(workflow: str, branch: str, sha: str) -> str:

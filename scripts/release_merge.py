@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Merge a published release to main and to dev, and delete its branch.
+"""Merge a published release back to main, and delete its branch.
 
 Run by the lead, after the release is published:
 
@@ -19,11 +19,10 @@ no CI secret: the push is the lead's. It prints what it did and stops, exiting 2
 and pushing nothing, on:
 
 - a release branch that moved after the tag: deleting it would lose those commits;
-- a merge conflict, into main or into dev, naming the files;
-- a main that would not match the release afterwards: main only ever takes a release.
+- a merge conflict into main, naming the files.
 
-main, dev and the branch's deletion go in one atomic push, so a refused push (a landing on dev
-that got in first) changes nothing and the script is run again. Nothing is ever forced.
+main and the branch's deletion go in one atomic push, so a refused push (a landing on main that
+got in first) changes nothing and the script is run again. Nothing is ever forced.
 """
 
 # Requirements: REQ-1989
@@ -76,18 +75,11 @@ def merge(repo: Path, version: str) -> None:
     if tip != tagged:
         raise MergeRefused(f"{branch} has commits after the tag {version}: {tagged}..{tip}")
     old_main = _required(repo, "rev-parse", "refs/remotes/origin/main")
-    old_dev = _required(repo, "rev-parse", "refs/remotes/origin/dev")
     with tempfile.TemporaryDirectory(prefix="release-merge-") as parent:
         tree = Path(parent) / "tree"
         _required(repo, "worktree", "add", "-q", "--detach", str(tree), tagged)
         try:
             new_main = _merged_into(tree, "main", version)
-            if _git(tree, "diff", "--quiet", f"refs/tags/{version}", new_main).returncode != 0:
-                raise MergeRefused(
-                    f"main would not match {version} after the merge: "
-                    "it holds something no release brought"
-                )
-            new_dev = _merged_into(tree, "dev", version)
             _required(
                 tree,
                 "push",
@@ -95,18 +87,16 @@ def merge(repo: Path, version: str) -> None:
                 "--atomic",
                 "origin",
                 f"{new_main}:refs/heads/main",
-                f"{new_dev}:refs/heads/dev",
                 f":refs/heads/{branch}",
             )
         finally:
             _git(repo, "worktree", "remove", "--force", str(tree))
     print(f"main: {_short(old_main)} -> {_short(new_main)} (merged {version})")
-    print(f"dev: {_short(old_dev)} -> {_short(new_dev)} (merged {version})")
     print(f"deleted {branch}")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Merge a published release to main and dev.")
+    parser = argparse.ArgumentParser(description="Merge a published release back to main.")
     parser.add_argument("--version", required=True, help="the release's tag")
     parser.add_argument("--repo", type=Path, default=Path("."), help="the repository (default: .)")
     args = parser.parse_args(argv)

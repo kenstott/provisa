@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The nightly alpha's start (REQ-1989): a release branch from main with all of dev merged.
+"""The nightly alpha's start (REQ-1989): a release branch cut from main's newest commit.
 
 Run by .github/workflows/alpha-nightly.yml, from a clone that can push. In order:
 
@@ -16,16 +16,16 @@ Run by .github/workflows/alpha-nightly.yml, from a clone that can push. In order
    workflow holds one cron for each offset, because a cron is in UTC and 17:00 in New York is not
    one hour of it all year.
 2. The last alpha is the highest one, tagged or still an open release branch. When it already
-   holds dev, or matches dev (a shipped release merged to dev adds a commit and changes nothing),
-   dev has not moved and the night is skipped.
+   holds main, or matches main (a shipped release merged back, or a fix cascaded to main, adds a
+   commit and changes nothing), main has not moved and the night is skipped.
 3. The next alpha number is taken above every tag and every open branch, so an alpha nobody cut
    keeps its number.
-4. release/<version> is made from origin/main, origin/dev is merged into it, and it is pushed.
-   A conflict stops the night, naming the files, with nothing pushed. Nothing is ever forced.
+4. release/<version> is pushed at origin/main's commit, everything on main to that point. It is
+   a cut: no commit is made and nothing is ever forced.
 
 Prints ``version=<tag>`` or ``skip=true`` for the step's outputs. Exits 2, pushing nothing, on a
-conflict, on a release above the last alpha (alpha numbering ends at the first beta release), or
-when no alpha can be found to number from.
+refused push, on a release above the last alpha (alpha numbering ends at the first beta release),
+or when no alpha can be found to number from.
 """
 
 # Requirements: REQ-1989
@@ -104,11 +104,11 @@ def _last_alpha(repo: Path) -> tuple[str, str]:
     return last, ref
 
 
-def _dev_moved(repo: Path, ref: str) -> bool:
-    dev = "refs/remotes/origin/dev"
-    if _git(repo, "merge-base", "--is-ancestor", dev, ref).returncode == 0:
+def _main_moved(repo: Path, ref: str) -> bool:
+    main = "refs/remotes/origin/main"
+    if _git(repo, "merge-base", "--is-ancestor", main, ref).returncode == 0:
         return False
-    return _git(repo, "diff", "--quiet", ref, dev).returncode != 0
+    return _git(repo, "diff", "--quiet", ref, main).returncode != 0
 
 
 def _next(version: str) -> str:
@@ -116,28 +116,23 @@ def _next(version: str) -> str:
     return f"{stem}.{int(number) + 1}"
 
 
-def _make_branch(repo: Path, version: str) -> None:
-    """release/<version> is main with all of dev merged."""
-    branch = f"release/{version}"
-    _required(repo, "checkout", "-q", "--detach", "refs/remotes/origin/main")
-    subject = f"chore(release): merge dev into {branch}"
-    if _git(repo, "merge", "-q", "--no-ff", "-m", subject, "refs/remotes/origin/dev").returncode:
-        conflicts = _required(repo, "diff", "--name-only", "--diff-filter=U").split()
-        _required(repo, "merge", "--abort")
-        raise NightRefused(f"merging dev into {branch} conflicts in: {', '.join(conflicts)}")
-    _required(repo, "push", "-q", "origin", f"HEAD:refs/heads/{branch}")
+def _cut(repo: Path, version: str) -> None:
+    """release/<version> is main at its newest commit."""
+    _required(
+        repo, "push", "-q", "origin", f"refs/remotes/origin/main:refs/heads/release/{version}"
+    )
 
 
 def start(repo: Path) -> str | None:
-    """The version started tonight, or None when dev has not moved."""
+    """The version started tonight, or None when main has not moved."""
     _required(
         repo, "fetch", "-q", "--prune", "--tags", "origin", "+refs/heads/*:refs/remotes/origin/*"
     )
     last, ref = _last_alpha(repo)
-    if not _dev_moved(repo, ref):
+    if not _main_moved(repo, ref):
         return None
     version = _next(last)
-    _make_branch(repo, version)
+    _cut(repo, version)
     return version
 
 
