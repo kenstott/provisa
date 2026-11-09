@@ -24290,7 +24290,7 @@ A named demo, streaming (Live order stream): A live order feed arriving through 
 
 **Code:** —
 
-**Tests:** `tests/integration/test_streaming_demo.py`
+**Tests:** `tests/integration/test_streaming_demo.py`, `tests/unit/test_streaming_demo.py`
 
 ### REQ-2034 · UI {#REQ-2034}
 
@@ -24314,7 +24314,7 @@ A named demo, GDPR at an international retail group (one group, EU and US subsid
 
 **Code:** —
 
-**Tests:** `tests/integration/test_retail_demo.py`, `tests/integration/test_retail_regions_tier_e2e.py`
+**Tests:** `tests/integration/test_retail_demo.py`, `tests/integration/test_retail_regions_tier_e2e.py`, `tests/unit/test_retail_demo.py`, `tests/unit/test_start_ui_install_named_demo.py`
 
 ### REQ-2036 · UI {#REQ-2036}
 
@@ -24338,7 +24338,7 @@ An industry vertical demo, insurance: Where is our property exposure concentrate
 
 **Code:** —
 
-**Tests:** `tests/integration/test_insurance_demo.py`
+**Tests:** `tests/integration/test_insurance_demo.py`, `tests/unit/test_insurance_glossary.py`, `tests/unit/test_demo_bundle_setup.py`
 
 ### REQ-2038 · UI {#REQ-2038}
 
@@ -24742,7 +24742,7 @@ A capability demo, provisioning: a warehouse takes several feeds (orders, invent
 
 **Code:** —
 
-**Tests:** `tests/integration/test_provisioning_demo.py`
+**Tests:** `tests/integration/test_provisioning_demo.py`, `tests/unit/test_provisioning_demo_consumer.py`, `tests/unit/test_provisioning_setup_pulls.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -26378,7 +26378,7 @@ Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a data
 
 **Code:** —
 
-**Tests:** `tests/integration/test_jdbc_source_e2e.py`
+**Tests:** `tests/integration/test_jdbc_source_e2e.py`, `tests/unit/jdbc_source/test_jdbc_source.py`, `tests/unit/jdbc_source/test_jdbc_source_attach.py`, `tests/unit/jdbc_source/test_jdbc_source_detect.py`, `tests/unit/jdbc_source/test_jdbc_source_floor.py`
 
 ### REQ-2192 · Source Connectors {#REQ-2192}
 
@@ -26492,7 +26492,7 @@ Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a
 
 **Code:** —
 
-**Tests:** `tests/integration/test_banksecrecy_demo.py`
+**Tests:** `tests/integration/test_banksecrecy_demo.py`, `tests/unit/test_term_scan_carry.py`, `tests/unit/test_demo_template_scans.py`
 
 ## 3. Source Registration & Data Modeling
 
