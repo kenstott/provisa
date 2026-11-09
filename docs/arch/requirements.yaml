@@ -34020,13 +34020,17 @@
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: 'Bring-your-own storage (BYO): an org may register its own materialization store (their
-    cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks
-    the deployment''s configured store for every MV output and landed table the org writes. That is a precedence, not a fallback. Their bytes never count against platform storage and are neither metered (REQ-1049)
-    nor capped (REQ-1046). The org''s store credentials are scoped to that org only and are never returned
-    by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls
-    landed or materialized is a replica, and making one is replication (REQ-826, REQ-1915). A materialized
-    view keeps its name.'
+  description: 'Bring-your-own storage (BYO): [SUPERSEDED by REQ-1048, 2026-11-09 -- the platform administrator
+    registers it. Kept here for history; do not implement against it.] an org may register its own materialization
+    store (their cloud account, their bill), [END SUPERSEDED BLOCK] configured per org and stored encrypted
+    at rest. Once registered it outranks the deployment''s configured store for every MV output and landed
+    table the org writes. That is a precedence, not a fallback. Their bytes never count against platform
+    storage and are neither metered (REQ-1049) nor capped (REQ-1046). The org''s store credentials are scoped
+    to that org only and are never returned by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy
+    of a source table that this text calls landed or materialized is a replica, and making one is replication
+    (REQ-826, REQ-1915). A materialized view keeps its name. (Amended 2026-11-09, THE PLATFORM REGISTERS
+    THE STORE:) Maintainer 2026-11-09: the platform administrator registers an org''s own materialization
+    store (the org''s cloud account, the org''s bill), naming the org; the org reads what is assigned.'
   use_case: Enables premium customers with large or unpredictable storage needs to avoid platform quota
     limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket
     permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost).
@@ -44913,7 +44917,10 @@
     MENU:) Admin and Docs leave the top navigation for the user menu, below a divider after Profile, Settings
     and What''s new; Admin is shown only to a caller with an admin right (maintainer 2026-11-08). (Amended
     2026-11-08, NO SETTINGS ENTRY IN THE USER MENU:) The user menu has no Settings entry: Admin is the one
-    way into administration. (Maintainer 2026-11-08.)'
+    way into administration. (Maintainer 2026-11-08.) (Amended 2026-11-09, EACH PAGE ONE LAYER:) Maintainer
+    2026-11-09: the Redis and materialize-store panels are on a platform page; the Cache page opens to org_settings
+    or table_registration and shows each panel only to the right that holds it. The default lifetime of
+    a materialized view (materialized_views.default_ttl) is the platform''s.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -48178,19 +48185,24 @@
   type: behavioral
   description: 'An org administrator moves the acting org between three federation-engine lanes from an
     "Org Engine" admin tab: shared (the pooled coordinator, REQ-1243), isolated (a coordinator SaaS operates
-    for that org alone, REQ-1043), and external (a coordinator the org itself operates, named by host
-    and port). The mode is derived from the orgs row -- external_engine_host set means external, else
-    isolated_engine decides -- never stored twice. An external endpoint outranks both the deployment''s
-    shared endpoint and the isolated-host template. The surface is gated on org_settings, not platform_settings:
-    the engine KIND stays deployment-wide. Isolated is refused with 503 where the deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE,
-    since routing to the shared coordinator would void the isolation the org was promised. Changing the
-    lane rebuilds the org runtime under the registry lock so the change reaches queries immediately. The
-    isolated lane is also entitled, not merely available: a dedicated coordinator is compute the platform
-    stands up and pays for, so on a commercial deployment it belongs to the Pro plan and a move onto it
-    from a lesser plan is refused 402 org_engine.lane_not_entitled before anything is written or provisioned.
-    The GET reports isolated_entitled alongside isolated_available so the tab disables the lane the org
-    cannot buy rather than failing the save. The shared and external lanes are ungated: shared is where every org starts, and an external engine is the org''s own compute. A deployment with no commercial
-    plugin, and an org with no billing row, gate no lane.'
+    for that org alone, REQ-1043), and external (a coordinator the org itself operates, named by host and
+    port). The mode is derived from the orgs row -- external_engine_host set means external, else isolated_engine
+    decides -- never stored twice. An external endpoint outranks both the deployment''s shared endpoint
+    and the isolated-host template. [SUPERSEDED by REQ-1412, 2026-11-09 -- the platform saves an org''s
+    engine lane. Kept here for history; do not implement against it.] The surface is gated on org_settings,
+    not platform_settings: [END SUPERSEDED BLOCK] the engine KIND stays deployment-wide. Isolated is refused
+    with 503 where the deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, since routing to the shared
+    coordinator would void the isolation the org was promised. Changing the lane rebuilds the org runtime
+    under the registry lock so the change reaches queries immediately. The isolated lane is also entitled,
+    not merely available: a dedicated coordinator is compute the platform stands up and pays for, so on
+    a commercial deployment it belongs to the Pro plan and a move onto it from a lesser plan is refused
+    402 org_engine.lane_not_entitled before anything is written or provisioned. The GET reports isolated_entitled
+    alongside isolated_available so the tab disables the lane the org cannot buy rather than failing the
+    save. The shared and external lanes are ungated: shared is where every org starts, and an external engine
+    is the org''s own compute. A deployment with no commercial plugin, and an org with no billing row, gate
+    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) Maintainer 2026-11-09 (REQ-1327): saving
+    an org''s engine lane is the platform''s, on the deployment check, naming the org. org_settings keeps
+    the page read-only, with its report.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
