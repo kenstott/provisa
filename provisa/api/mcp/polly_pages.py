@@ -141,7 +141,7 @@ PAGES: dict[str, PollyPage] = {
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
     "/admin/catalogs": PollyPage("catalogs"),
-    "/admin/reference-library": PollyPage("the reference library"),
+    "/library": PollyPage("the reference library"),
     "/admin/metadata-export": PollyPage("metadata export"),
     "/admin/import": PollyPage("import"),
     "/admin/tags": PollyPage("tags"),

@@ -83,6 +83,9 @@ const ViewsPage = lazyPage(() =>
 const MetricsPage = lazyPage(() =>
   import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
 );
+const LibraryPage = lazyPage(() =>
+  import("./pages/library/LibraryPage").then((m) => ({ default: m.LibraryPage })),
+);
 const DataProductsPage = lazyPage(() =>
   import("./pages/DataProductsPage").then((m) => ({ default: m.DataProductsPage })),
 ); // REQ-1634
@@ -565,6 +568,17 @@ function App() {
                                             }
                                           />
                                           <Route
+                                            path="/library"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <LibraryPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          <Route
                                             path="/metrics"
                                             element={
                                               <CapabilityGate
@@ -673,7 +687,6 @@ function App() {
                                               ["/admin/package-registries", "org_settings"], // REQ-1984
                                               ["/admin/container-registries", "org_settings"], // REQ-2098
                                               ["/admin/catalogs", "org_settings"], // REQ-2122
-                                              ["/admin/reference-library", "glossary_rw"], // REQ-2185, REQ-1327
                                               ["/admin/metadata-export", "org_settings"],
                                               ["/admin/classification-kinds", "sensitive_data"], // REQ-2147, REQ-1327
                                               ["/admin/reports", "observability"], // REQ-1386

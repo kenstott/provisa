@@ -80,6 +80,10 @@ NOT_SEARCHED: dict[tuple[str, str], str] = {
         "the text of a statement someone ran, encrypted at rest; a record of the past, never "
         "resolved"
     ),
+    ("reference_documents", "pending_content"): (
+        "an uploaded file's bytes waiting to be read into passages; a document's content, never "
+        "resolved as a reference, and gone when it is indexed or the document is removed"
+    ),
     # --- the platform plane ---
     ("secrets_store", "value"): "the vault's own envelope: the secrets themselves",
     ("org_code_bundles", "archive"): (

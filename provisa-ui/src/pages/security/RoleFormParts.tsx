@@ -46,6 +46,7 @@ const ALL_CAPABILITIES: Capability[] = [
   "data_product_rw",
   "dq_read",
   "dq_rw",
+  "lineage_report",
   "org_settings",
   "observability",
   "environment_switch",

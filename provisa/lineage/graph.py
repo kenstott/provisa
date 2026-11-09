@@ -51,7 +51,7 @@ class Node:  # REQ-1160
     id: str
     column: str
     relation: str | None  # source/intermediate relation name; None for a bare output column
-    kind: str  # "source" | "derived" | "command" | "native"
+    kind: str  # "source" | "derived" | "command" | "native" | "job" | "external"
     # REQ-1161: True when this node's relation is materialized (an MV / CTAS snapshot). A cycle that
     # crosses a materialized node is a legal time-lagged feedback loop, not a design error.
     materialized: bool = False
@@ -60,6 +60,12 @@ class Node:  # REQ-1160
     source_id: str | None = None
     source_schema: str | None = None
     source_table: str | None = None
+    # REQ-2229: what a reported job or a dataset outside the model is called.
+    label: str | None = None
+
+
+#: REQ-2229: an edge's origin when the model's own definitions produced it.
+DEFINITION = "definition"
 
 
 @dataclass
@@ -70,6 +76,7 @@ class Edge:  # REQ-1160
     target: str  # downstream node id
     transform: str  # the raw projection expression (SQL)
     ops: tuple[TransformOp, ...]  # the named operations composing the transform
+    origin: str = DEFINITION  # REQ-2229: where the edge came from
 
 
 def _node_dict(n: Node) -> dict:
@@ -84,6 +91,8 @@ def _node_dict(n: Node) -> dict:
         out.update(
             source_id=n.source_id, source_schema=n.source_schema, source_table=n.source_table
         )
+    if n.label is not None:
+        out["label"] = n.label
     return out
 
 
@@ -113,6 +122,7 @@ class LineageGraph:  # REQ-1160
                     "target": e.target,
                     "transform": e.transform,
                     "ops": [{"name": o.name, "kind": o.kind, "args": list(o.args)} for o in e.ops],
+                    "origin": e.origin,
                 }
                 for e in self.edges
             ],

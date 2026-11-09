@@ -566,7 +566,7 @@ On its first start the container prints a line beginning `pairing code:` in its 
 
 ### Provisa's services {: #provisas-services }
 
-Your code can import one module that Provisa always provides on the server: `provisa_services` in Python, `@provisa/services` in Node.js, Bun and Deno. Nothing needs installing, and it isn't on any package registry. Outside Provisa it doesn't exist, so your tests mock it.
+Your code can import one module that Provisa always provides on the server: `provisa_services` in Python and Go, `@provisa/services` in Node.js, Bun and Deno. Nothing needs installing, and it isn't on any package registry. Outside Provisa it doesn't exist, so your tests mock it.
 
 ```python
 import provisa_services as ps
@@ -583,6 +583,23 @@ const region = await settings.get("region");
 const rates = (await cache.get("rates")) ?? (await fetchRates());
 await cache.set("rates", rates, 3600);
 ```
+
+```go
+import ps "provisa_services"
+
+func Rates(ctx context.Context, in RatesInputs) ([]Rate, error) {
+	region, err := ps.Settings.Get(ctx, "region")
+	if err != nil {
+		return nil, err
+	}
+	cached, err := ps.Cache.Get(ctx, "rates")
+	// ...
+	err = ps.Cache.Set(ctx, "rates", rates, 3600)
+	// ...
+}
+```
+
+In Go the calls have the same names, capitalized (`ps.Cache.Set`, `ps.HTTP.Get`, `ps.LLM.BaseURL`, `ps.DQ.Dataset`, `ps.Log`, `ps.Audit`), and each returns an `error` last. Every call but `ps.LLM.BaseURL` takes a `context.Context` first: give your function a leading `context.Context` and pass that one along, because it is what ties the call to the request your code is serving. Your `go.mod` doesn't need to name the module. To compile outside Provisa, point it at your own mock with a `replace provisa_services => ./mock`; on the server Provisa's module takes its place.
 
 | Call | What it does |
 |---|---|

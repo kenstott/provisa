@@ -12,7 +12,8 @@
 
 import type { ReactNode } from "react";
 import { Group } from "@mantine/core";
-import { ROLE_STYLE } from "./lineage-layout";
+import { useTranslation } from "react-i18next";
+import { REPORTED_EDGE_COLOR, ROLE_STYLE } from "./lineage-layout";
 import type { Role } from "./lineage-layout";
 
 // Each entry is drawn the way the DAG draws a field of that role — same colour, weight and style
@@ -26,10 +27,30 @@ const LEGEND_ROLES: { label: string; role: Role }[] = [
 // REQ-2116: a source's raw field, keyed only when the graph draws the native hop.
 const NATIVE_ROLE = { label: "native field", role: "native" as Role };
 
-export function LineageLegend({ children, native = false }: { children?: ReactNode; native?: boolean }) {
+export function LineageLegend({
+  children,
+  native = false,
+  reported = false,
+}: {
+  children?: ReactNode;
+  native?: boolean;
+  /** REQ-2229: the graph holds what OpenLineage reported. */
+  reported?: boolean;
+}) {
+  const { t } = useTranslation();
+  const entries = [
+    ...(native ? [NATIVE_ROLE] : []),
+    ...LEGEND_ROLES,
+    ...(reported
+      ? [
+          { label: t("lineageDag.job"), role: "job" as Role },
+          { label: t("lineageDag.outsideModel"), role: "external" as Role },
+        ]
+      : []),
+  ];
   return (
     <Group gap="md" data-testid="lineage-legend">
-      {(native ? [NATIVE_ROLE, ...LEGEND_ROLES] : LEGEND_ROLES).map((l) => (
+      {entries.map((l) => (
         <div
           key={l.label}
           style={{
@@ -48,6 +69,20 @@ export function LineageLegend({ children, native = false }: { children?: ReactNo
           {l.label}
         </div>
       ))}
+      {reported && (
+        <div
+          data-testid="lineage-legend-reported"
+          style={{
+            borderBottom: `2px dashed ${REPORTED_EDGE_COLOR}`,
+            fontFamily: "monospace",
+            fontSize: 10,
+            lineHeight: "16px",
+            color: REPORTED_EDGE_COLOR,
+          }}
+        >
+          {t("lineageDag.reportedEdge")}
+        </div>
+      )}
       {children}
     </Group>
   );
