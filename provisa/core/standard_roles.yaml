@@ -97,7 +97,8 @@ source_admin:
   parents: [viewer]
   domain_access: ["*"]
   # catalog_read: it registers into the whole catalog, and must see what is already there.
-  capabilities: [catalog_read, source_registration, table_registration]
+  # lineage_report: REQ-2229, the tools that move data between the sources it registers report here.
+  capabilities: [catalog_read, source_registration, table_registration, lineage_report]
 
 org_operator:
   description: "Operates the organization: its settings, observability, and approving views and relationships."

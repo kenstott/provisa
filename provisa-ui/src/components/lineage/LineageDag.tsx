@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type NodeSingular } from "cytoscape";
 import elkRaw from "cytoscape-elk";
+import { useTranslation } from "react-i18next";
 import { ActionIcon, Text } from "@mantine/core";
 import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
@@ -25,6 +26,7 @@ import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
 import {
   FOOTER_H,
+  REPORTED_EDGE_COLOR,
   ROLE_STYLE,
   ROW_H,
   buildLineageModel,
@@ -126,6 +128,7 @@ export function LineageDag({
   links,
   onOpenLink,
 }: LineageDagProps): React.ReactElement {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -172,6 +175,11 @@ export function LineageDag({
       allColumns,
       lanesAround: lanes,
       relationLabel,
+      reportedWords: {
+        job: t("lineageDag.job"),
+        outside: t("lineageDag.outsideModel"),
+        reported: t("lineageDag.reportedEdge"),
+      },
     });
 
     // A relation is a compound node whose children are its rows (and the "+N unused" footer).
@@ -244,7 +252,8 @@ export function LineageDag({
           id: e.id,
           source: e.source,
           target: e.target,
-          label: edgeText(e),
+          label: edgeText(e, t("lineageDag.reportedEdge")),
+          reported: e.reported ? "yes" : "no",
           command: e.command ? "yes" : "no",
           commandName: e.commandName ?? "",
         },
@@ -474,6 +483,15 @@ export function LineageDag({
             "line-color": "#9c36b5",
             "target-arrow-color": "#9c36b5",
             width: 2,
+            "line-style": "dashed",
+          },
+        },
+        {
+          // REQ-2229: an OpenLineage event reported this edge; the model did not derive it.
+          selector: 'edge[reported = "yes"]',
+          style: {
+            "line-color": REPORTED_EDGE_COLOR,
+            "target-arrow-color": REPORTED_EDGE_COLOR,
             "line-style": "dashed",
           },
         },
@@ -830,7 +848,7 @@ export function LineageDag({
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToggleRelation is read through toggleRef; only its presence decides whether hints are wired
-  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel]);
+  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel, t]);
 
   return (
     <div
@@ -847,7 +865,10 @@ export function LineageDag({
         <div
           style={{ position: "absolute", insetInlineStart: 8, bottom: 8, pointerEvents: "none" }}
         >
-          <LineageLegend native={graph.nodes.some((n) => n.kind === "native")} />
+          <LineageLegend
+            native={graph.nodes.some((n) => n.kind === "native")}
+            reported={graph.edges.some((e) => e.origin === "openlineage")}
+          />
         </div>
       )}
       {stats && (
