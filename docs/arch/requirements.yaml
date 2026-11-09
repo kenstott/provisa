@@ -94211,7 +94211,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
     reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
     job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
-    which needs a cluster sized for the subscribers.'
+    which needs a cluster sized for the subscribers. (Amended 2026-11-09, HOW IT IS OFFERED AND WHAT THE
+    IMAGE HOLDS:) Maintainer 2026-11-09: the connector is offered to every organization through a platform
+    block file in the package, written by the release build and read beside the org''s own connectors; Sources
+    shows nothing until a release fills it. The image holds a thin Spark Connect client, not Spark: the
+    cluster value is a Spark Connect address, and the customer''s cluster does the work.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 

@@ -274,7 +274,35 @@ async def _view_rows(conn) -> list[dict]:
             registered_tables.c.view_sql.is_not(None),
         )
     )
-    return [dict(r._mapping) for r in res.fetchall()]
+    return [dict(r._mapping) for r in res.fetchall()] + await _source_definition_views(conn)
+
+
+async def _source_definition_views(conn) -> list[dict]:
+    """REQ-2230: each table defined in its source (a Snowflake Dynamic Table), as a view over what
+    its definition reads. Every table of those sources is read, since each may be one it reads."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as t
+    from provisa.core.schema_org import sources, table_columns
+    from provisa.lineage.source_definitions import definition_views
+
+    defined = select(t.c.source_id).where(t.c.source_definition.is_not(None))
+    res = await conn.execute_core(
+        select(
+            t.c.source_id,
+            sources.c.database,
+            t.c.domain_id,
+            t.c.schema_name,
+            t.c.table_name,
+            t.c.source_definition,
+            table_columns.c.column_name,
+            table_columns.c.alias,
+        )
+        .join(sources, sources.c.id == t.c.source_id)
+        .join(table_columns, table_columns.c.table_id == t.c.id)
+        .where(t.c.source_id.in_(defined))
+    )
+    return definition_views([dict(r._mapping) for r in res.fetchall()])
 
 
 async def _fetch_registry_columns(state) -> list[dict]:

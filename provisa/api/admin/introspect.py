@@ -1356,6 +1356,23 @@ async def record_table_format(model: Any, source_type: str | None) -> None:
         )
 
 
+async def record_source_definition(model: Any, source_type: str | None) -> None:
+    """REQ-2230: record on ``model`` the statement that defines it, where its source reports one
+    (a Snowflake Dynamic Table's), which contributes its lineage. Read and none reported is "";
+    None is not read, which leaves what is held (``repositories.table``)."""
+    if source_type != "snowflake":
+        return
+    from provisa.api.app import state
+    from provisa.executor.snowflake_objects import dynamic_tables
+
+    if not state.source_pools.has(model.source_id):
+        return
+    found = await dynamic_tables(state.source_pools, model.source_id, model.schema_name)
+    model.source_definition = next(
+        (t.definition or "" for t in found if t.name == model.table_name), ""
+    )
+
+
 async def _native_columns_athena(
     source_id: str, schema_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -2193,7 +2210,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
             f"WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name",
         )
-        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+        # REQ-2230: a Dynamic Table is offered as a table, and says what it is.
+        from provisa.executor.snowflake_objects import dynamic_tables
+
+        dynamic = {d.name: d for d in await dynamic_tables(pool, source_id, schema_name)}
+        return [
+            AvailableTableType(
+                name=name,
+                comment=" — ".join(p for p in ("DYNAMIC TABLE", dynamic[name].comment) if p)
+                if name in dynamic
+                else None,
+            )
+            for name in sorted({row[0] for row in result.rows} | dynamic.keys())
+        ]
 
     if t == "databricks":
         from provisa.api.admin.types import AvailableTableType

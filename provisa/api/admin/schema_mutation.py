@@ -4327,9 +4327,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     from provisa.api.app import state as _app_state
 
                     # REQ-1981: its format, from the source, decides the writes it takes.
-                    from provisa.api.admin.introspect import record_table_format
+                    from provisa.api.admin.introspect import (
+                        record_source_definition,
+                        record_table_format,
+                    )
 
                     await record_table_format(model, _app_state.source_types.get(model.source_id))
+                    # REQ-2230: its definition, from the source, contributes its lineage.
+                    await record_source_definition(
+                        model, _app_state.source_types.get(model.source_id)
+                    )
                     if _app_state.source_types.get(model.source_id) == "jira":
                         # REQ-2069: a form's project and issue type, and each column's field, from the
                         # account's form and field lists -- the steward picks a form and its columns.

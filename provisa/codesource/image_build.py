@@ -185,6 +185,9 @@ class Plan:
     registries: list[Any]  # core.package_registries.Resolved
     cache_root: Path
     version: str
+    #: REQ-2225: the @requires value that is the connector's script, for a connector whose tables
+    #: and commands come from a script given at setup; None for any other.
+    script: str | None = None
 
 
 def assemble(
@@ -236,6 +239,7 @@ def assemble(
             "PROVISA_HOST_LIB": f"{ROOT}/hostlib",
             "PROVISA_FRONT_LIB": f"{ROOT}/frontlib",
             "PROVISA_MANIFEST_FILE": f"{FRONT}/manifest.json",
+            **({SCRIPT_ENV: plan.script} if plan.script else {}),
             **env,
         },
         labels=labels(plan.runtime, plan.code_hash, plan.exports, plan.names, plan.manifest),
@@ -308,6 +312,9 @@ def uv_install(arch: str, site: Path) -> list[str]:
 
 #: Where a Node image's front end Python runs from (a Python image's front end runs on the code's).
 FRONT_RUNTIME = f"{ROOT}/front-runtime"
+#: REQ-2225: names the @requires value that is the connector's script, for the front end
+#: (provisa/codehost/front.py).
+SCRIPT_ENV = "PROVISA_CONNECTOR_SCRIPT"
 #: The front end's programs (provisa/codehost), with the code's name tables beside them.
 FRONT = f"{ROOT}/front"
 FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgcatalog.py")

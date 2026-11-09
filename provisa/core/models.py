@@ -1876,6 +1876,11 @@ class Table(
     # "hive"), read from the source when the table is registered, never set by a steward. It
     # decides the writes the table takes (``executor/write_capability``).
     table_format: str | None = None
+    # REQ-2230: the statement that defines the table in its source, where the source reports one
+    # (a Snowflake Dynamic Table's), read when the table is registered, never set by a steward.
+    # What it reads joins the lineage graph (``lineage/source_definitions``). "" is read and none
+    # reported; None is not read.
+    source_definition: str | None = None
     # REQ-1954: a ServiceNow table bound to one of the instance's import sets: the staging table
     # of the transform map (targeting this table) its inserts go through, by the instance's Import
     # Set API. None: its inserts are written to the table directly. Updates and deletes are always
@@ -3705,6 +3710,9 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
     # From the project's standard file (connector.yaml). A secret takes none of these: its value is
     # the organization's, and the block is committed with the model.
     multiline: bool = False  # REQ-2225: entered as multi-line text
+    # REQ-2225: this value is the annotated script the host serves: its tags are the source's tables
+    # and commands, read from it at join rather than from the image.
+    script: bool = False
     default_value: str | None = None
     fixed_value: str | None = None
 
@@ -3713,9 +3721,14 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
         if self.default_value is not None and self.fixed_value is not None:
             raise ValueError(f"{self.name} has both a default and a fixed value")
         if self.secret and (
-            self.multiline or self.default_value is not None or self.fixed_value is not None
+            self.multiline
+            or self.script
+            or self.default_value is not None
+            or self.fixed_value is not None
         ):
             raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
+        if self.script and not self.multiline:
+            raise ValueError(f"{self.name} is a script: it is entered as multi-line text")
         return self
 
 

@@ -336,6 +336,66 @@ async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
     return [{"pattern": r.pattern, "replace": r.replacement} for r in rows]
 
 
+#: How a list of naming rules is named: in a diff of files, and in what :func:`store_model` returns.
+NAMING_RULE_SECTIONS = frozenset({"naming.rules", "naming_rules"})
+
+
+def item_identity(section: str, item: dict[str, Any]) -> str:  # REQ-2222
+    """What names an item of a model section, the same however the item was written."""
+    if section == "tables":
+        if item.get("profile_of") is not None:
+            return f"{item['profile_of']}/profile/{item['kind']}"
+        return f"{item['source_id']}/{item['schema']}/{item['table']}"
+    if section == "calendars":
+        return f"{item['name']}@{item['version']}"
+    if section in NAMING_RULE_SECTIONS:
+        return str(item["pattern"])
+    if section == "rls_rules":
+        target = (item.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
+        named = "/".join(str(t) for t in target if t is not None)
+        return f"{item['role_id']}/{named}/{','.join(sorted(item.get('rights') or []))}"
+    for name in ("id", "name"):
+        if name in item:
+            return str(item[name])
+    return json.dumps(item, sort_keys=True, default=str)
+
+
+def _differing_fields(old: Any, new: Any, path: str = "") -> list[str]:
+    """The dotted paths at which two items differ. Names only: a value may be a credential."""
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return [] if old == new else [path]
+    out: list[str] = []
+    for key in sorted(old.keys() | new.keys()):
+        out += _differing_fields(old.get(key), new.get(key), f"{path}.{key}" if path else key)
+    return out
+
+
+def model_changes(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:  # REQ-2222
+    """What changed between two :func:`store_model` readings, by section: the items added, those
+    changed with the fields that differ, and those removed. Both readings are written by one hand,
+    so a difference is a change."""
+    sections: dict[str, Any] = {}
+    unchanged = 0
+    for section, items in after.items():
+        old = {item_identity(section, i): i for i in before[section]}
+        new = {item_identity(section, i): i for i in items}
+        held = old.keys() & new.keys()
+        changed = [
+            {"item": key, "fields": _differing_fields(old[key], new[key])}
+            for key in sorted(held)
+            if old[key] != new[key]
+        ]
+        unchanged += len(held) - len(changed)
+        entry = {
+            "add": sorted(new.keys() - old.keys()),
+            "change": changed,
+            "remove": sorted(old.keys() - new.keys()),
+        }
+        if any(entry.values()):
+            sections[section] = entry
+    return {"changes": bool(sections), "unchanged": unchanged, "sections": sections}
+
+
 async def store_model(conn: "Connection") -> dict[str, Any]:
     """Every model section the store holds, as a configuration writes it, and the naming rules
     (``naming_rules``). Sections are complete lists; an empty one is an empty list."""
