@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { PlatformOrgEngine, PlatformOrgEngines } from "../components/admin/PlatformOrgEngine";
 import type { OrgEngineState } from "../api/admin";
@@ -266,8 +266,11 @@ describe("OrgEngineTab", () => {
     ]);
     mockFetch.mockResolvedValue(state());
     render(<PlatformOrgEngines />);
-    fireEvent.click(await screen.findByTestId("platform-engine-org-pick"));
-    fireEvent.click(await screen.findByRole("option", { name: "globex" }));
+    const pick = await screen.findByTestId("platform-engine-org-pick");
+    fireEvent.click(pick);
+    await waitFor(() => expect(pick).toHaveAttribute("aria-controls"));
+    const list = document.getElementById(pick.getAttribute("aria-controls") as string);
+    fireEvent.click(within(list as HTMLElement).getByRole("option", { name: "globex", hidden: true }));
     await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("globex"));
     expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
   });
