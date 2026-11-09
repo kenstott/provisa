@@ -436,7 +436,7 @@ class AdminGovernance:
                                 "input": {
                                     "tagId": tag,
                                     "roleId": role,
-                                    "filterExpr": f"{table.base_column} IS NOT NULL",
+                                    "filterExpr": f"{table.base_column} IS NOT NULL OR {i} < 0",
                                     "description": f"Benchmark governance: row rule {i}, every row",
                                 }
                             },
