@@ -86847,7 +86847,28 @@ And its prod source reads the shop's database with it, while the stored source k
   feature: connector-catalog-streams-logs-and-public-data
   priority: MUST
   type: behavioral
-  description: "Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get (REQ-2104), settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as REQ-2105 routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm (REQ-2105) and log and metric (attached to the request the call serves). The host puts the module on the path of every local worker and of every built image; it is not distributed, and outside Provisa it is absent, so authors test by mocking it. With no $PROVISA_SERVICES every call raises, naming the service. Each services request names the call it serves, so its work reports into that request. Telemetry: every call to the code is a stage of the triggering request (REQ-1910: its facts on the request span at normal detail, a child span at debug detail) -- function, kind, argument count (no values), rows, batches, duration, the worker's CPU, local or remote, code hash -- and every services call is a stage too (cache hit or miss, model and tokens, HTTP host and status, secret name, never a value). The request's traceparent goes to the worker, so the code's own OpenTelemetry joins the same trace. Remote hosts' services wait for remote wiring."
+  description: 'Provisa''s services to a code source''s code are a module always present where the code
+    runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls --
+    secrets.get (REQ-2104), settings.get (the source''s declared non-secret settings, mapping settings,
+    edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers,
+    JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source''s own vector collection,
+    embedded through the org''s vector models as REQ-2105 routes them; never a governed table''s data, which
+    reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress
+    allow-list the worker''s own egress is, through the deployment''s outbound proxy and CA bundle, recorded
+    in the org''s trail), llm (REQ-2105) and log and metric (attached to the request the call serves). The
+    host puts the module on the path of every local worker and of every built image; it is not distributed,
+    and outside Provisa it is absent, so authors test by mocking it. With no $PROVISA_SERVICES every call
+    raises, naming the service. Each services request names the call it serves, so its work reports into
+    that request. Telemetry: every call to the code is a stage of the triggering request (REQ-1910: its
+    facts on the request span at normal detail, a child span at debug detail) -- function, kind, argument
+    count (no values), rows, batches, duration, the worker''s CPU, local or remote, code hash -- and every
+    services call is a stage too (cache hit or miss, model and tokens, HTTP host and status, secret name,
+    never a value). The request''s traceparent goes to the worker, so the code''s own OpenTelemetry joins
+    the same trace. Remote hosts'' services wait for remote wiring. (Amended 2026-11-09, THE CODE CAN WRITE
+    TO THE TRAIL:) Maintainer 2026-11-09: provisa_services gains an audit call beside log and metric: a
+    structured event the code writes to the org''s trail, attached to the request the call serves. A Spark
+    script can record its application id, a link to its UI, its input paths and its row counts, so the trail
+    shows what Provisa called and points to what Spark ran.'
   use_case: "A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them."
   scenario: "Given a python source scorer with settings {threshold: 0.8} whose code calls ps.settings.get('threshold') and ps.cache.set('rates', r, ttl=3600)
 
@@ -93991,7 +94012,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     for its @requires values and for standard source settings, and fixed values. A default is applied when
     the source is created and a steward can change it; a fixed value is shown read-only and a save that
     changes it is refused. Tables and commands stay in the code''s tags. A project with no file builds as
-    before.'
+    before. (Amended 2026-11-09, LIFECYCLE TAGS:) Maintainer 2026-11-09: a connector''s code can tag a function
+    @on-start, @on-stop or @health, once each. @on-start runs once when the host has its setup values: at
+    join, and again on each later restart of a joined host. @on-stop runs when the host shuts down. @health
+    returns a status; Provisa calls it periodically and shows the result on the source in Sources. There
+    are no per-statement or error tags: a function''s own code covers those. (Amended 2026-11-09, WHEN ON-START
+    FAILS:) Maintainer 2026-11-09: when @on-start fails at a first join, the join is refused by name. When
+    it fails on a later restart of a joined host, the source stays and shows as unhealthy.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94120,21 +94147,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     function runs against the configured cluster. [SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types
     are dropped. Kept here for history; do not implement against it.] A table''s columns come from its tags,
     or from the DataFrame''s schema when the script does not declare them. [END SUPERSEDED BLOCK] (Amended
-    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: a connector can declare
-    values for the source it creates: a default, applied when the source is created and changeable by a
-    steward, or a fixed value, shown read-only, a save that changes it refused. The Spark connector defaults
-    replication on, so a long job is built and refreshed without a query. A steward with a fast script can
-    turn replication off; queries then run the script live, held to the request timeout. (Amended 2026-11-09,
-    THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09: the Spark connector''s documentation covers small
-    jobs, big jobs, replication and caching, and what each means for performance and timeliness. (Amended
-    2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer 2026-11-09: the script declares each table''s
-    row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.
-    (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:) Maintainer 2026-11-09: the Spark connector
-    states replication on by default in the standard file of REQ-2221. (Amended 2026-11-09, A COMMAND CAN
-    TAKE A TABLE:) Maintainer 2026-11-09: a code source''s @command, in any language and so in the Spark
-    script, can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference
-    to a governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view
-    can then have table inputs, a command that runs Spark, and a table output.'
+    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2221,
+    2026-11-09 -- the standard file states this for every connector. Kept here for history; do not implement
+    against it.] a connector can declare values for the source it creates: a default, applied when the source
+    is created and changeable by a steward, or a fixed value, shown read-only, a save that changes it refused.
+    [END SUPERSEDED BLOCK] The Spark connector defaults replication on, so a long job is built and refreshed
+    without a query. A steward with a fast script can turn replication off; queries then run the script
+    live, held to the request timeout. (Amended 2026-11-09, THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09:
+    the Spark connector''s documentation covers small jobs, big jobs, replication and caching, and what
+    each means for performance and timeliness. (Amended 2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer
+    2026-11-09: the script declares each table''s row type, as any code source does (REQ-1984), so a table''s
+    shape changes only when the script does. (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:)
+    Maintainer 2026-11-09: the Spark connector states replication on by default in the standard file of
+    REQ-2221. (Amended 2026-11-09, A COMMAND CAN TAKE A TABLE:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2226,
+    2026-11-09 -- moved to its own requirement, since it holds for every code source. Kept here for history;
+    do not implement against it.] a code source''s @command, in any language and so in the Spark script,
+    can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference to a
+    governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view can
+    then have table inputs, a command that runs Spark, and a table output. [END SUPERSEDED BLOCK] (Amended
+    2026-11-09, BUILT BY THE STANDARD CONNECTOR BUILD:) Maintainer 2026-11-09: the Spark connector is an
+    ordinary connector project built by the standard connector build (REQ-2221), with its standard file
+    and icon. What differs is that Provisa offers it to every organization, and that its tables and commands
+    come from the script given at setup rather than from the image: the host reads the script''s tags at
+    join. The standard file marks the script as multi-line text and states replication on by default. A
+    @table in the script is the frontier, like any connector''s table: it brings data from outside and lineage
+    starts there. A @command with table inputs is inside the boundary (REQ-2226). On a live read a function
+    is given the statement''s read context (REQ-2100), which the script may apply to its DataFrame. (Amended
+    2026-11-09, THE STREAMING RECIPE:) Maintainer 2026-11-09: the documentation recommends this for streaming
+    from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
+    reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
+    job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
+    which needs a cluster sized for the subscribers.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
@@ -94155,5 +94198,152 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     Then the join is refused by name'
+  stakeholders:
+  - data-engineer
+- id: REQ-2226
+  value: A code source's command can take a governed table as an argument, so a materialized view can
+    be table inputs, code, and a table output.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A @command of a code source, in any language (REQ-1984, REQ-1993,
+    REQ-2200), can take a table as an argument, as a registered function does (REQ-885 table_ref, REQ-1159):
+    a reference to a governed Provisa table, which the code reads over a scoped pgwire session as the calling
+    role, so what the role cannot see the code cannot read. It composes inline in SQL like any command (REQ-1159),
+    so a materialized view can have table inputs, a command that runs code such as Spark, and a table output.
+    As for any command, one that writes is never composed in a view or a materialized view (REQ-1924, REQ-1928).
+    The command declares its input and output columns, so it is a lineage node like any command (REQ-1160).
+    (Amended 2026-11-09, A QUERY IS A COMMAND THE MODEL CALLS A QUERY:) Maintainer 2026-11-09: a code source''s
+    function tagged @query is identical to one tagged @command, in its signature, its arguments and how
+    it is called, except that within Provisa its kind is query and not mutation, with what that kind already
+    means (REQ-1156, REQ-1928): it composes in a view or a materialized view and is called once per distinct
+    argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
+    2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
+    each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
+  scenario: 'Given a code source command that takes a table and declares its input and output columns
+
+
+    And a materialized view over that command with a governed table as its input
+
+
+    When the view is built as a role that cannot see a column of the input
+
+
+    Then the code reads the table as that role and the column is not available to it
+
+
+    And the view''s lineage runs from the input table through the command to its output columns'
+  stakeholders:
+  - data-engineer
+- id: REQ-2227
+  value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
+    or Go code source.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
+    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
+    the same manifest from the code's exported functions and types, a host program that speaks the worker
+    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
+    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
+    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
+    detects it from the project's standard files.
+  scenario: 'Given a Rust code source whose exported functions return rows
+
+
+    When it is registered
+
+
+    Then its exports are offered as tables, commands and streams with columns from their Rust types
+
+
+    When a query reads one of its tables
+
+
+    Then the function runs in the sandbox and its rows are returned'
+  stakeholders:
+  - data-engineer
+- id: REQ-2228
+  value: 'A dbt project is a source type: its manifest offers its models as governed tables and commands,
+    while dbt keeps building them.'
+  status: proposed
+  target: 2026-Q4
+  group: 12. Migration & Compatibility (Hasura)
+  category: Hasura Migration
+  feature: hasura-migration-import
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. dbt survives: a team keeps its dbt project and goes on running it.
+    [SUPERSEDED by REQ-2228, 2026-11-09 -- dbt survives, so it is a source that stays in sync and not a
+    one-time import. Kept here for history; do not implement against it.] The dbt manifest comes in through
+    the Import page, with a preview before anything is applied, as the Hasura import does (REQ-1483); it
+    brings definitions, never data. [END SUPERSEDED BLOCK] The tables dbt builds become governed tables,
+    with the descriptions the manifest holds. Each model joins lineage, its columns traced from its compiled
+    SQL (REQ-1160), through dbt''s models and on to what consumes them. Freshness comes from dbt''s run
+    results (REQ-858), and dbt test results are data quality observations (REQ-1443). [SUPERSEDED by REQ-2228,
+    2026-11-09 -- every model gets a command, not only incremental ones. Kept here for history; do not implement
+    against it.] A model whose materialization is incremental is identified from the manifest and recorded
+    as a command that runs dbt for that model (REQ-885 script): a mutation, so it is never composed in a
+    view or a materialized view, and Provisa can schedule it. [END SUPERSEDED BLOCK] Its lineage still comes
+    from its compiled SQL. (Amended 2026-11-09, EVERY MODEL HAS A COMMAND:) Maintainer 2026-11-09: every
+    model in the manifest is recorded as a command that runs dbt for that model (REQ-885 script): a mutation,
+    so it is never composed in a view or a materialized view. Control is mixed: dbt can go on running on
+    its own schedule, and Provisa can run any model through its command, by a call, a trigger or a schedule.
+    Nothing runs a command unless one of those does. (Amended 2026-11-09, A CONTROL SURFACE OVER DBT:) Maintainer
+    2026-11-09: this does not replace dbt; it adds a control surface. dbt stays what builds. Tests, snapshots
+    and seeds are recorded as commands as models are. A command''s target is wherever dbt already runs:
+    an http command for dbt Cloud''s API, a script command, or an operator-run connector (REQ-885, REQ-2221).
+    Provisa holds no dbt logic and no copy of the project. (Amended 2026-11-09, A DBT SOURCE TYPE:) Maintainer
+    2026-11-09: dbt is a source type, like the OpenAPI source (REQ-314), not an import. Its spec is the
+    manifest, from a URL, an artifact location or an upload; it brings definitions, never data. It offers
+    models as tables, and models, tests, snapshots and seeds as commands; nothing is registered until a
+    steward registers it. A new manifest updates the descriptions, the lineage and the commands on offer.
+    The rows live in the warehouse and are read through a warehouse source: the manifest names the adapter
+    and each model''s database, schema and relation, so the warehouse source is identified from the manifest.
+    Credentials are not in the manifest and are the warehouse source''s. (Amended 2026-11-09, WHERE THE
+    WAREHOUSE CREDENTIAL COMES FROM:) Maintainer 2026-11-09: when a registered warehouse source matches
+    the manifest''s adapter and database, the dbt source uses it and needs no credential. Otherwise its
+    setup form offers to create one, filled in with what the manifest knows and asking for the account or
+    host and the credential, held as any source''s credential is. dbt''s profiles file is not read. (Amended
+    2026-11-09, DBT CLOUD''S TOKEN:) Maintainer 2026-11-09: with dbt Cloud, the dbt source holds a dbt Cloud
+    API token as its credential, held as any source''s credential is: it fetches the manifest and run results
+    through dbt Cloud''s API and runs its commands through the jobs API. With dbt Core there is no service
+    to connect to: the manifest and run results are files, uploaded or read from where the team publishes
+    them, and commands run where dbt is installed.'
+  scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
+
+
+    When a steward opens Register Table
+
+
+    Then the models are offered as tables and nothing is registered
+
+
+    When the steward registers a model
+
+
+    Then it is read through the warehouse source the manifest names, with the manifest''s descriptions
+
+
+    And lineage runs through its compiled SQL
+
+
+    And each model, test and snapshot is offered as a mutation command
+
+
+    When a new manifest arrives
+
+
+    Then the descriptions, lineage and commands on offer are updated'
   stakeholders:
   - data-engineer
