@@ -19,7 +19,7 @@ map (``provisa/federation/engine.py``) is the authority; a test holds the two eq
 
 from __future__ import annotations
 
-import duckdb
+from provisa.core.engine_memory import motherduck_extension_limit
 
 ENGINE_KINDS: frozenset[str] = frozenset(
     {
@@ -62,22 +62,6 @@ ENGINE_KINDS: frozenset[str] = frozenset(
 #: may not serve an org that keeps data in another region. The engine layer's backends are the
 #: authority (``EngineBackend.reads_other_regions``); a test holds the two equal.
 REGION_READERS: frozenset[str] = frozenset({"duckdb", "motherduck", "pg", "trino", "trino-byo"})
-
-
-#: The newest DuckDB MotherDuck's extension loads on (its own refusal on 2.0.0, 2026-11-06:
-#: "Your DuckDB version (v2.0.0) is not yet supported by MotherDuck. The latest supported version
-#: is v1.5.6."). Raised when MotherDuck supports a later one.
-MOTHERDUCK_LATEST_DUCKDB = (1, 5, 6)
-
-
-def motherduck_extension_limit() -> str | None:
-    """Why MotherDuck's extension does not load on the DuckDB this install runs, or None where it
-    does."""
-    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
-    if running <= MOTHERDUCK_LATEST_DUCKDB:
-        return None
-    latest = ".".join(map(str, MOTHERDUCK_LATEST_DUCKDB))
-    return f"MotherDuck's extension supports DuckDB up to {latest} and this install runs DuckDB {duckdb.__version__}"
 
 
 def unavailable_engine_kind(kind: str) -> str | None:

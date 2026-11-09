@@ -37,7 +37,7 @@ from pathlib import Path
 import duckdb
 
 from provisa.core import engine_memory
-from provisa.core.engine_kinds import motherduck_extension_limit
+from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine, duckdb_engine_connectors
