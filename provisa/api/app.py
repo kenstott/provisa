@@ -3076,13 +3076,20 @@ def rebuild_in_progress() -> bool:
     return _rebuild_lock().locked()
 
 
-async def _model_loaded_current() -> bool:
-    """Whether the bound runtime is built at the ``model`` stamp the control plane holds now."""
+async def _built_current() -> bool:
+    """Whether the bound runtime is built at the ``build`` stamp the control plane holds now. When
+    it is, nothing a build reads has changed since, so the runtime now holds the stored model and
+    takes its ``model`` stamp (REQ-1914). Called holding the rebuild lock, so a build finishing
+    cannot be overtaken by the older stamp read here."""
     from provisa.core import config_stamp
 
     assert state.model_db is not None
-    stored = (await config_stamp.read(state.model_db))[config_stamp.MODEL]
-    return state._active_runtime().model_stamp == stored
+    stored = await config_stamp.read(state.model_db)
+    runtime = state._active_runtime()
+    if runtime.build_stamp != stored[config_stamp.BUILD]:
+        return False
+    runtime.model_stamp = stored[config_stamp.MODEL]
+    return True
 
 
 def start_replica_convergence() -> None:
@@ -3117,7 +3124,7 @@ async def _rebuild_schemas(
     announce: bool = True,
     converge: bool = True,
     if_stale: bool = False,
-) -> None:
+) -> bool:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -3132,14 +3139,18 @@ async def _rebuild_schemas(
     #
     # ``if_stale=True`` (REQ-1914) is the config watcher's reload: it saw a stamp newer than the
     # runtime's, which the change's own rebuild -- running, or waited for here -- often records
-    # first. A runtime already built at the stored stamp is what the reload was for, and building
-    # it again spent a whole rebuild after every write.
+    # first. A runtime already built at the stored ``build`` stamp is what the reload was for, and
+    # building it again spent a whole rebuild after every write. Answers True when that reload
+    # found only the ``model`` stamp behind, a change the build does not read (a data product's
+    # status): the runtime took the stamp and there is nothing else to reload. Otherwise False.
     #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
     asked = time.monotonic()
     async with _rebuild_lock():
-        if if_stale and state.model_db is not None and await _model_loaded_current():
-            return
+        if if_stale and state.model_db is not None:
+            loaded = state._active_runtime().model_stamp
+            if await _built_current():
+                return state._active_runtime().model_stamp != loaded
         began = time.monotonic()
         # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
         # landed tables' reconcile and the routes it publishes alike.
@@ -3156,6 +3167,7 @@ async def _rebuild_schemas(
             began - asked,
             time.monotonic() - began,
         )
+    return False
 
 
 async def _rebuild_schemas_impl(
@@ -3170,9 +3182,10 @@ async def _rebuild_schemas_impl(
         _rebuild_log.warning("_rebuild_schemas: model_db is None, returning")
         return
 
-    # REQ-1914: the ``model`` stamp this build is loaded at, read BEFORE the model. A change that
-    # lands while the build reads leaves the runtime at the older stamp, so the config watcher
-    # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
+    # REQ-1914: the ``model`` and ``build`` stamps this build is loaded at, read in one statement
+    # BEFORE the model. A change that lands while the build reads leaves the runtime at the older
+    # stamps, so the config watcher rebuilds once more; reading them afterwards would record stamps
+    # newer than the model built.
     from provisa.core import config_stamp as _config_stamp
     from provisa.core.relationship_names import store_effective_names
 
@@ -3184,7 +3197,7 @@ async def _rebuild_schemas_impl(
         await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
-    _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
+    _stamps = await _config_stamp.read(state.model_db)
 
     # REQ-1919: the process's configuration follows the default org's model store — the file's
     # settings with every model section as the store holds it now, so an admin's change governs.
@@ -3792,7 +3805,8 @@ async def _rebuild_schemas_impl(
     }
     with _schema_version_guard:
         state.schema_version += 1
-    _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
+    _stamped_runtime.model_stamp = _stamps[_config_stamp.MODEL]  # REQ-1914
+    _stamped_runtime.build_stamp = _stamps[_config_stamp.BUILD]
     await _finalize_rebuild_state(_rebuild_log)
     # REQ-1494: the measured values faked reads compute from, taken from the model just built.
     from provisa.fakes.measured import measure_model

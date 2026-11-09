@@ -388,8 +388,9 @@ async def init_schema(
 def layout_digest(schema_sql: str, audit_sql: str) -> str:
     """The digest of the layout init_schema and init_audit_schema give an org schema: the
     ``schema.sql`` script, the metadata add_missing_columns reconciles against, the standard roles
-    assert_standard_roles writes, the tables config_stamp.install triggers, and the audit DDL. A
-    schema stamped with it (:func:`read_layout_digest`) is laid out as this release lays it out."""
+    assert_standard_roles writes, the tables config_stamp.install triggers and the function those
+    triggers call, and the audit DDL. A schema stamped with it (:func:`read_layout_digest`) is
+    laid out as this release lays it out."""
     import hashlib
     from pathlib import Path
 
@@ -405,6 +406,7 @@ def layout_digest(schema_sql: str, audit_sql: str) -> str:
         (Path(__file__).parent / "standard_roles.yaml").read_text(),
         repr(sorted(config_stamp.TENANT_TABLES.items())),
         repr(config_stamp.TENANT_ADVANCED),
+        config_stamp.trigger_function_body(),
         audit_sql,
     )
     digest = hashlib.sha256()
