@@ -86605,9 +86605,12 @@ And reaffirming it records the tag again with today's decider and evidence and r
     There is no transaction across the key read and the call (BEGIN and COMMIT are no-ops by design), and
     the author docs say so. (Amended 2026-11-09, A CAPPED SORT HAS A LIMIT:) Maintainer 2026-11-09: below
     a certain memory per thread DuckDB cannot spill a sort: it merges every sorted run in one pass and keeps
-    a block of each pinned, so the rows it can sort rise with the cap and fall with the threads. A sort
-    past that point is refused by name, naming the settings to raise. The settings refuse a memory per thread
-    below a minimum.'
+    a block of each pinned, so the rows it can sort rise with the cap and fall with the threads. [SUPERSEDED
+    by REQ-2100, 2026-11-09 -- more threads make this failure worse, so the refusal cannot only name settings
+    to raise. Kept here for history; do not implement against it.] A sort past that point is refused by
+    name, naming the settings to raise. [END SUPERSEDED BLOCK] The settings refuse a memory per thread below
+    a minimum. (Amended 2026-11-09, THE REFUSAL SAYS WHICH WAY:) Maintainer 2026-11-09: a sort past that
+    point is refused by name, saying to raise the memory, lower the threads, or narrow the statement.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
@@ -93915,7 +93918,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     checks it against the digest and code hash; the server never builds a connector or reads its build settings.
     The connectors block lives in a control-plane table that promotes with the model, so the model''s branches
     decide where a version runs. provisa connector build takes --package-registries FILE to name the indexes
-    for private dependencies; credentials stay with the operator.'
+    for private dependencies; credentials stay with the operator. (Amended 2026-11-09, HOW A JOIN IS CHECKED:)
+    Maintainer 2026-11-09: a container cannot know its own digest, so Provisa reads the labels of the image
+    at the block''s digest from the registry; if Provisa cannot reach the registry the join is refused.
+    Pairing spends the one-time code: after a later refusal the host stays paired and the operator resets
+    its state to retry.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94003,7 +94010,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - app-developer
 - id: REQ-2224
-  value: A table can say how long a read waits for its first landing.
+  value: 'A table can say what a read does when nothing has landed yet: wait up to a time of its own, or
+    answer no rows.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -94017,7 +94025,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS
     GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table
     does without the freshness guarantee (REQ-860). This requirement is the read wait alone: a read with
-    nothing landed waits up to that long, in place of the request timeout.'
+    nothing landed waits up to that long, in place of the request timeout. (Amended 2026-11-09, THE FIRST
+    READ CAN ANSWER NO ROWS:) Maintainer 2026-11-09: if configured, a read with nothing landed answers zero
+    rows with the table''s columns and triggers the landing.'
   scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
     read waits for the rows
   stakeholders:
