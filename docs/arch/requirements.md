@@ -26860,7 +26860,7 @@ Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer 
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type ([REQ-2228](#REQ-2228)). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables dbt built governed by role, lineage running through its models and on to a consumer, freshness and test results from its run, and a model run from Provisa through its command.
+Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type ([REQ-2228](#REQ-2228)). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables dbt built governed by role, lineage running through its models and on to a consumer, freshness and test results from its run, and a model run from Provisa through its command. (Amended 2026-11-09, POINT TO OPENLINEAGE:) Maintainer 2026-11-09: the demo's words also say that a team with Flink, Airflow or another tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver ([REQ-2229](#REQ-2229)).
 
 **Code:** —
 
