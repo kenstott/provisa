@@ -12,11 +12,13 @@
 // pairing code that host printed, and each value its code requires. A required secret is picked
 // from the organization's secrets; its value is never entered here.
 
+// Requirements: REQ-2221, REQ-2225
+
 import { useEffect, useState } from "react";
-import { PasswordInput, Select, Text, TextInput } from "@mantine/core";
+import { PasswordInput, Select, Text, Textarea, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { fetchSecrets } from "../../api/secrets";
-import type { Connector } from "../../api/connectors";
+import type { Connector, ConnectorRequirement } from "../../api/connectors";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useAuth } from "../../context/AuthContext";
 import { requiredField } from "./connector";
@@ -25,6 +27,70 @@ interface Props {
   connector: Connector;
   fields: Record<string, string>;
   setFields: (fields: Record<string, string>) => void;
+}
+
+/** A required value that is not a secret: read-only when its connector fixes it. */
+function RequiredValue({
+  required,
+  value,
+  onChange,
+}: {
+  required: ConnectorRequirement;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const fixed = required.fixed_value !== undefined;
+  const common = {
+    required: !fixed,
+    readOnly: fixed,
+    label: required.name,
+    value: required.fixed_value ?? value,
+    onChange: (e: { currentTarget: { value: string } }) => onChange(e.currentTarget.value),
+    "data-testid": `connector-require-${required.name}`,
+  };
+  return (
+    <FormField
+      size={required.multiline ? "full" : "medium"}
+      hint={fixed ? t("connectorSetup.fixedHint") : undefined}
+    >
+      {required.multiline ? (
+        <Textarea
+          {...common}
+          autosize
+          minRows={6}
+          maxRows={24}
+          styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+        />
+      ) : (
+        <TextInput {...common} />
+      )}
+    </FormField>
+  );
+}
+
+/** A saved connector source's values: each one its code requires, as they are kept. */
+export function ConnectorSourceValues({ connector, fields, setFields }: Props) {
+  const settings = JSON.parse(fields.code_connector_settings || "{}") as Record<string, unknown>;
+  return (
+    <>
+      {connector.requires
+        .filter((r) => !r.secret)
+        .map((r) => (
+          <RequiredValue
+            key={r.name}
+            required={r}
+            value={String(settings[r.name] ?? "")}
+            onChange={(value) =>
+              setFields({
+                ...fields,
+                code_connector_settings: JSON.stringify({ ...settings, [r.name]: value }),
+              })
+            }
+          />
+        ))}
+    </>
+  );
 }
 
 export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
@@ -91,13 +157,9 @@ export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
           data-testid="connector-pairing"
         />
       </FormField>
-      {connector.requires.map((r) => (
-        <FormField
-          key={r.name}
-          size="medium"
-          hint={r.secret ? t("connectorSetup.secretHint") : undefined}
-        >
-          {r.secret ? (
+      {connector.requires.map((r) =>
+        r.secret ? (
+          <FormField key={r.name} size="medium" hint={t("connectorSetup.secretHint")}>
             <Select
               required
               searchable
@@ -108,17 +170,16 @@ export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
               error={secretsFailed || undefined}
               data-testid={`connector-require-${r.name}`}
             />
-          ) : (
-            <TextInput
-              required
-              label={r.name}
-              value={fields[requiredField(r.name)] ?? ""}
-              onChange={(e) => set(requiredField(r.name), e.currentTarget.value)}
-              data-testid={`connector-require-${r.name}`}
-            />
-          )}
-        </FormField>
-      ))}
+          </FormField>
+        ) : (
+          <RequiredValue
+            key={r.name}
+            required={r}
+            value={fields[requiredField(r.name)] ?? ""}
+            onChange={(value) => set(requiredField(r.name), value)}
+          />
+        ),
+      )}
     </>
   );
 }

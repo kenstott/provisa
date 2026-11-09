@@ -42,6 +42,9 @@ async def upsert(conn: "Connection", connector: "ConnectorConfig") -> None:
     """Add the connector, or replace its definition."""
     model_change.name("upsert", "connector", connector.name)
     values = connector.model_dump(mode="json")
+    # Each entry as the block writes it: what its file did not set is not stored as a null.
+    for key, entries in (("requires", connector.requires), ("settings", connector.settings)):
+        values[key] = [e.model_dump(mode="json", exclude_defaults=True) for e in entries]
     await conn.upsert(
         connectors,
         values,

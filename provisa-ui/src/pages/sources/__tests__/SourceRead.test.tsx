@@ -27,6 +27,7 @@ const noop = () => {};
 function props(seedOf: Source): SourceFormFieldsProps {
   const seed = seedSource(seedOf, null);
   return {
+    dbt: {} as SourceFormFieldsProps["dbt"],
     form: seed.form,
     setForm: noop,
     authType: seed.authType,

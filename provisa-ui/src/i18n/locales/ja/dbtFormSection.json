@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "マニフェストの取得元",
+    "specLocation": "URL またはアーティファクトの場所",
+    "specUpload": "アップロード",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "マニフェストの URL またはアーティファクトの場所",
+    "locationPlaceholder": "https://example.com/manifest.json または s3://bucket/target/manifest.json",
+    "uploadLabel": "manifest.json ファイル",
+    "cloudHostLabel": "dbt Cloud の URL",
+    "accountLabel": "アカウント ID",
+    "jobLabel": "ジョブ ID",
+    "tokenLabel": "API トークン",
+    "tokenHint": "このソースとともに保持され、マニフェストの読み取りとジョブの実行に使われます。",
+    "commandLineLabel": "dbt を実行するコマンド",
+    "commandLineHint": "dbt がインストールされた場所でこのコマンドを通じて実行されます。例: dbt --project-dir /srv/project",
+    "previewButton": "マニフェストをプレビュー",
+    "summary": "{{project}} ({{adapter}}): モデル {{models}} 件、コマンド {{commands}} 件を提供。",
+    "warehouseFound": "{{database}} はソース {{source}} を通じて読み取られます。",
+    "warehouseMissing": "{{adapter}} データベース {{database}} を読み取る登録済みソースがありません。作成してください:",
+    "warehouseId": "新しいソースの ID",
+    "warehouseHost": "アカウントまたはホスト",
+    "warehouseUser": "ユーザー名",
+    "warehouseCredential": "認証情報",
+    "adapterUnknown": "{{adapter}} アダプターに対応するソースタイプがありません。先にそのウェアハウスを登録してから、このソースを追加してください。"
+  }
+}

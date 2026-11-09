@@ -9,6 +9,7 @@
     "port": "Port",
     "pairing": "Pairing-Code",
     "pairingHint": "Die Zeile, die der Container bei seinem ersten Start nach \"pairing code:\" ausgegeben hat. Sie wird einmal verwendet und nicht gespeichert.",
-    "secretHint": "Das zu verwendende Secret der Organisation. Sein Wert wird hier nie eingegeben."
+    "secretHint": "Das zu verwendende Secret der Organisation. Sein Wert wird hier nie eingegeben.",
+    "fixedHint": "Von diesem Connector festgelegt. Der Wert kann nicht geändert werden."
   }
 }

@@ -9,6 +9,7 @@
     "port": "Puerto",
     "pairing": "Código de emparejamiento",
     "pairingHint": "La línea que el contenedor imprimió en su primer inicio, después de \"pairing code:\". Se usa una vez y no se conserva.",
-    "secretHint": "El secreto de la organización que se va a usar. Su valor nunca se introduce aquí."
+    "secretHint": "El secreto de la organización que se va a usar. Su valor nunca se introduce aquí.",
+    "fixedHint": "Definido por este conector. No se puede cambiar."
   }
 }

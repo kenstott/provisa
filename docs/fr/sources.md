@@ -26,7 +26,7 @@ Les sources à **matérialisation** n'ont pas non plus de connecteur fédéré. 
 
 ## Toutes les sources {: #all-sources }
 
-Provisa enregistre **77** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 77 ; l'index correspond au décompte.
+Provisa enregistre **78** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 78 ; l'index correspond au décompte.
 
 | # | Groupe | Types de sources |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa enregistre **77** types de sources, ceux que propose le formulaire Sourc
 | 49–53 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [Sources API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Profileur de données](#data-profiler) | `data_profiler` |
-| 76 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
+| 65–72 | [Sources API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Profileur de données](#data-profiler) | `data_profiler` |
+| 77 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
 
 Référence de chaque type de source pris en charge par Provisa. « Pilote direct » signifie que les requêtes mono-source s'exécutent nativement contre la source (moins de 100 ms). Le « nom du connecteur » est le connecteur fédéré employé lorsque la source participe à des JOIN multi-sources.
 

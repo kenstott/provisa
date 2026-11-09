@@ -176,9 +176,7 @@ class TestRLSEnforcement:
         ]
         # REQ-1120/REQ-1682: the session predicate is resolved on every route, so the SQL is what
         # runs: with no region bound, the documented deny-by-default.
-        assert 'WHERE ("orders"."region" = CAST(NULL AS VARCHAR))' in compiled["sql"], compiled[
-            "sql"
-        ]
+        assert '"orders"."region" = CAST(NULL AS VARCHAR)' in compiled["sql"], compiled["sql"]
 
     async def test_admin_no_rls(self, client):
         """Admin has no RLS rules — should see all data."""

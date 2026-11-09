@@ -75,6 +75,8 @@ export interface SourceFormFieldsProps {
   setForm: (f: SourceFormState) => void;
   /** The connector the organization offers that this source is being made from, if any. */
   connector?: Connector | null;
+  /** The connector a saved source was made from, whose fixed values it is held to. */
+  heldBy?: Connector | null;
   authType: string;
   setAuthType: (v: string) => void;
   authFields: Record<string, string>;
@@ -133,6 +135,7 @@ export interface SourceFormFieldsProps {
   openapiPreviewing: boolean;
   openapiPreviewError: string | null;
   onOpenapiPreview: () => void;
+  dbt: import("./dbt").DbtSourceForm; // REQ-2228
   gqlNamespace: string;
   setGqlNamespace: (v: string) => void;
   brandSetup: Record<string, string>;

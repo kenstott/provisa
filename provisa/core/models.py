@@ -155,6 +155,9 @@ class SourceType(str, Enum):
     prometheus = "prometheus"
     graphql_remote = "graphql_remote"
     openapi = "openapi"
+    # REQ-2228: a dbt project: its manifest offers its models as tables and everything dbt can run
+    # as commands; the rows are read through the warehouse source the manifest names.
+    dbt = "dbt"
     grpc_remote = "grpc_remote"
     airport = "airport"  # Arrow Flight server — DuckDB airport community extension (REQ-899)
     # Push receiver — external services POST JSON events (Phase AS)
@@ -3699,6 +3702,112 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
 
     name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
     secret: bool = False
+    # From the project's standard file (connector.yaml). A secret takes none of these: its value is
+    # the organization's, and the block is committed with the model.
+    multiline: bool = False  # REQ-2225: entered as multi-line text
+    default_value: str | None = None
+    fixed_value: str | None = None
+
+    @model_validator(mode="after")
+    def _one_value_and_no_secret_value(self) -> "ConnectorRequirement":
+        if self.default_value is not None and self.fixed_value is not None:
+            raise ValueError(f"{self.name} has both a default and a fixed value")
+        if self.secret and (
+            self.multiline or self.default_value is not None or self.fixed_value is not None
+        ):
+            raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
+        return self
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _bad_cache_ttl(value: object) -> str | None:
+    from provisa.core.cache_ttl import cache_ttl_refusal
+
+    return "is a whole number of seconds" if not _is_int(value) else cache_ttl_refusal(value)  # type: ignore[arg-type]
+
+
+def _bad_change_signal(value: object) -> str | None:
+    from provisa.core.change_signal import resolve
+
+    if not isinstance(value, str):
+        return "is a change signal's name"
+    try:
+        resolve(None, value)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def _bad_zone(value: object) -> str | None:
+    from zoneinfo import ZoneInfo
+
+    if not isinstance(value, str):
+        return "is a time zone's name"
+    try:
+        ZoneInfo(value)
+    except (KeyError, ValueError, OSError):
+        return f"names no time zone: {value}"
+    return None
+
+
+def _flag(value: object) -> str | None:
+    return None if isinstance(value, bool) else "is true or false"
+
+
+def _text(value: object) -> str | None:
+    return None if isinstance(value, str) else "is text"
+
+
+#: The standard source settings a connector's file may set (REQ-2221), each a source field of that
+#: name, with what says a value will not do.
+CONNECTOR_SETTINGS: dict[str, Any] = {
+    "cache_enabled": _flag,
+    "cache_ttl": _bad_cache_ttl,
+    "replicate": lambda v: None if _is_int(v) and v >= -1 else "is -1, 0 or a whole number above 0",
+    "change_signal": _bad_change_signal,
+    "load_protected": _flag,
+    "off_peak_window": lambda v: (
+        None
+        if isinstance(v, str) and re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", v)
+        else "is HH:MM-HH:MM"
+    ),
+    "off_peak_tz": _bad_zone,
+    "sentinel_path": _text,
+    "max_live_concurrency": lambda v: None if _is_int(v) and v >= 1 else "is a whole number from 1",
+    "freshness_gate": _flag,
+}
+
+
+class ConnectorSetting(BaseModel):  # REQ-2221
+    """A standard source setting a connector's file sets: a default a steward can change, or a
+    fixed value that no save may change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    default_value: bool | int | str | None = None
+    fixed_value: bool | int | str | None = None
+
+    @model_validator(mode="after")
+    def _one_valid_value(self) -> "ConnectorSetting":
+        check = CONNECTOR_SETTINGS.get(self.name)
+        if check is None:
+            raise ValueError(
+                f"{self.name} is not a source setting; one of {', '.join(CONNECTOR_SETTINGS)}"
+            )
+        if (self.default_value is None) == (self.fixed_value is None):
+            raise ValueError(f"{self.name} has a default or a fixed value, and not both")
+        problem = check(self.fixed_value if self.default_value is None else self.default_value)
+        if problem:
+            raise ValueError(f"{self.name} {problem}")
+        return self
+
+
+#: How large an icon the block may carry, encoded: it travels with the model and to every browser.
+CONNECTOR_ICON_MAX = 128 * 1024
 
 
 class ConnectorConfig(BaseModel):  # REQ-2221
@@ -3724,6 +3833,22 @@ class ConnectorConfig(BaseModel):  # REQ-2221
     # An image is built for one architecture, so a rebuild has to be told which.
     arch: Literal["amd64", "arm64"]
     requires: list[ConnectorRequirement] = Field(default_factory=list)
+    # From the project's standard file (connector.yaml): what the connector store shows, and the
+    # standard source settings it sets. A project with no file has none of these.
+    description: str = ""
+    icon: str = ""  # a data: URI, so the block is the whole of what is shown
+    settings: list[ConnectorSetting] = Field(default_factory=list)
+
+    @field_validator("icon")
+    @classmethod
+    def _icon_is_an_image(cls, value: str) -> str:
+        if value and not re.match(
+            r"^data:image/(svg\+xml|png|jpeg|webp);base64,[A-Za-z0-9+/=]+$", value
+        ):
+            raise ValueError("icon is a base64 data: URI of an SVG, PNG, JPEG or WebP image")
+        if len(value) > CONNECTOR_ICON_MAX:
+            raise ValueError(f"icon is over {CONNECTOR_ICON_MAX} bytes encoded")
+        return value
 
     @field_validator("git")
     @classmethod
@@ -3765,6 +3890,9 @@ class ConnectorConfig(BaseModel):  # REQ-2221
         names = [r.name for r in self.requires]
         if len(set(names)) != len(names):
             raise ValueError(f"connector {self.name}: a required value is named more than once")
+        settings = [s.name for s in self.settings]
+        if len(set(settings)) != len(settings):
+            raise ValueError(f"connector {self.name}: a source setting is named more than once")
         return self
 
 

@@ -9,6 +9,7 @@
     "port": "Port",
     "pairing": "Pairing code",
     "pairingHint": "The line the container printed on its first start, after \"pairing code:\". It is used once and not kept.",
-    "secretHint": "The organization secret to use. Its value is never entered here."
+    "secretHint": "The organization secret to use. Its value is never entered here.",
+    "fixedHint": "Set by this connector. It cannot be changed."
   }
 }

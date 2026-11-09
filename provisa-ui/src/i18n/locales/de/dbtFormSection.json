@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "Herkunft des Manifests",
+    "specLocation": "URL oder Artefakt-Speicherort",
+    "specUpload": "Hochladen",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "Manifest-URL oder Artefakt-Speicherort",
+    "locationPlaceholder": "https://example.com/manifest.json oder s3://bucket/target/manifest.json",
+    "uploadLabel": "Datei manifest.json",
+    "cloudHostLabel": "dbt-Cloud-URL",
+    "accountLabel": "Konto-ID",
+    "jobLabel": "Job-ID",
+    "tokenLabel": "API-Token",
+    "tokenHint": "Wird mit dieser Quelle gespeichert und zum Lesen des Manifests und Ausführen von Jobs verwendet.",
+    "commandLineLabel": "Befehl, der dbt ausführt",
+    "commandLineHint": "Befehle laufen darüber dort, wo dbt installiert ist, zum Beispiel dbt --project-dir /srv/project.",
+    "previewButton": "Manifest prüfen",
+    "summary": "{{project}} ({{adapter}}): {{models}} Modelle und {{commands}} Befehle im Angebot.",
+    "warehouseFound": "{{database}} wird über die Quelle {{source}} gelesen.",
+    "warehouseMissing": "Keine registrierte Quelle liest die {{adapter}}-Datenbank {{database}}. Quelle anlegen:",
+    "warehouseId": "Neue Quellen-ID",
+    "warehouseHost": "Konto oder Host",
+    "warehouseUser": "Benutzername",
+    "warehouseCredential": "Anmeldedaten",
+    "adapterUnknown": "Für den Adapter {{adapter}} gibt es keinen passenden Quelltyp. Registrieren Sie zuerst sein Warehouse und fügen Sie dann diese Quelle hinzu."
+  }
+}

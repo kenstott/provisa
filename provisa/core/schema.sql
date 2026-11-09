@@ -1224,8 +1224,16 @@ CREATE TABLE IF NOT EXISTS connectors (
     digest          TEXT NOT NULL,
     code_hash       TEXT NOT NULL,
     arch            TEXT NOT NULL CHECK (arch IN ('amd64', 'arm64')),
-    requires        JSONB NOT NULL DEFAULT '[]'
+    requires        JSONB NOT NULL DEFAULT '[]',
+    -- From the project's standard file (connector.yaml): what the connector store shows, and the
+    -- standard source settings it sets.
+    description     TEXT NOT NULL DEFAULT '',
+    icon            TEXT NOT NULL DEFAULT '',
+    settings        JSONB NOT NULL DEFAULT '[]'
 );
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '';
+ALTER TABLE connectors ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '[]';
 
 -- Kafka Sources (Phase V)
 CREATE TABLE IF NOT EXISTS kafka_sources (
@@ -1277,6 +1285,13 @@ ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
 -- row and never the binding, and an empty value is not an absent one, so an unbound API source is
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
 ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
+
+-- REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+CREATE TABLE IF NOT EXISTS dbt_manifests (
+    source_id   TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    definitions TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,
