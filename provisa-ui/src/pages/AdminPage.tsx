@@ -330,7 +330,7 @@ export function AdminPage() {
       <Stack
         gap="lg"
         data-tour="admin-content"
-        style={fills ? { flex: 1, minHeight: 0 } : undefined}
+        style={isGlossary ? { flex: 1, minHeight: 0 } : undefined}
       >
         {activeTab === "Dashboard" && (
           <>

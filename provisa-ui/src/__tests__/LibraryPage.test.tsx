@@ -8,16 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2185: the Admin Reference library page lists the library's documents; the selected one's
-// panel shows its facts and passages and keeps, refreshes, replaces, rescopes or removes it; and a
-// document is added by a file or a URL with its domains, the whole org standing alone.
+// REQ-2185: the Library page lists the documents the caller may read under the shared filter; the
+// selected one's panel shows it in section tabs and keeps, refreshes, replaces, rescopes or removes
+// it; a document is added in one step, a file or a URL and its readers, and indexed in the
+// background; and only the library-editing right sees the controls that change the library.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { act, fireEvent, render, screen, waitFor, within } from "../test-utils/render";
 
 const api = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchCitedBy: vi.fn(),
+  retryLibraryDocument: vi.fn(),
   addLibraryDocument: vi.fn(),
   setLibraryDomains: vi.fn(),
   keepLibraryDocument: vi.fn(),
@@ -39,7 +44,10 @@ vi.mock("../hooks/useAdminQueries", () => ({
   }),
 }));
 
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
+const rights = vi.hoisted(() => ({ canEdit: true }));
+vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }));
+
+import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
 
 const URL_DOC = {
@@ -49,6 +57,12 @@ const URL_DOC = {
   source: "https://policies.example.com/client.html",
   media_type: "text/html",
   status: "kept",
+  index_status: "ready",
+  index_error: null,
+  index_step: null,
+  index_done: null,
+  index_total: null,
+  terms_note: null,
   domains: ["sales"],
   embedding_model: "embed-small",
   needs_reembedding: false,
@@ -70,6 +84,8 @@ const PROPOSED = {
 
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
+  rights.canEdit = true;
+  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0 });
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
   api.fetchRetrieval.mockResolvedValue("passage");
   api.saveRetrieval.mockImplementation(async (r: string) => r);
@@ -89,9 +105,229 @@ describe("scopeChange", () => {
   });
 });
 
-describe("ReferenceLibraryTab", () => {
+describe("the Library in the app", () => {
+  const SRC = resolve(__dirname, "..");
+  const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
+
+  it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
+    const nav = read("components/NavBar.tsx");
+    const ontology = nav.indexOf('to="/admin/ontology"');
+    const library = nav.indexOf('to="/library"');
+    const groups = nav.indexOf("NAV_GROUPS.filter(");
+    expect(ontology).toBeGreaterThan(-1);
+    expect(library).toBeGreaterThan(ontology);
+    expect(library).toBeLessThan(groups);
+    expect(nav.slice(ontology, library)).toContain('<CapabilityGate capability="glossary_read">');
+    expect(read("App.tsx")).toMatch(
+      /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
+    );
+  });
+
+  it("is no longer an Admin page", () => {
+    expect(read("components/navGroups.ts")).not.toContain("reference-library");
+    expect(read("pages/AdminPage.tsx")).not.toContain("Reference library");
+    expect(read("App.tsx")).not.toContain("/admin/reference-library");
+  });
+});
+
+describe("LibraryPage", () => {
+  it("says why the page is there, in one line above the list", async () => {
+    render(<LibraryPage />);
+    expect(await screen.findByTestId("reflib-why")).toHaveTextContent(
+      "Why: the documents that give your data its meaning",
+    );
+    expect(screen.getByTestId("page-title")).toHaveTextContent("Library");
+  });
+
+  it("filters the list by title, source or reader", async () => {
+    render(<LibraryPage />);
+    await screen.findByTestId("reflib-row-3");
+    fireEvent.change(screen.getByTestId("reflib-filter"), { target: { value: "payments" } });
+    await waitFor(() => expect(screen.queryByTestId("reflib-row-3")).toBeNull());
+    expect(screen.getByTestId("reflib-row-2")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("reflib-filter"), { target: { value: "sales" } });
+    expect(await screen.findByTestId("reflib-row-3")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("reflib-row-2")).toBeNull());
+  });
+
+  it("shows only what reading needs to a role without the library-editing right", async () => {
+    rights.canEdit = false;
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    for (const control of ["reflib-add", "reflib-retrieval", "reflib-refresh", "reflib-remove"]) {
+      expect(screen.queryByTestId(control)).toBeNull();
+    }
+    expect(api.fetchRetrieval).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("reflib-tab-readers"));
+    expect(await screen.findByTestId("reflib-readers-3")).toHaveTextContent("sales");
+    expect(screen.queryByTestId("reflib-domains")).toBeNull();
+  });
+
+  it("shows a document's sections in one set of tabs", async () => {
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    const detail = await screen.findByTestId("reflib-detail-3");
+    for (const tab of ["overview", "sections", "cited", "readers"]) {
+      expect(within(detail).getByTestId(`reflib-tab-${tab}`)).toBeInTheDocument();
+    }
+    expect(within(detail).getByTestId("reflib-read-3")).toHaveTextContent("Index status");
+  });
+
+  it("lists what cites a document and flags a drifted citation", async () => {
+    api.fetchCitedBy.mockResolvedValue({
+      drifted: 1,
+      terms: [
+        {
+          term_id: 1,
+          term: "Client",
+          ordinal: 0,
+          section: "Who is a Client",
+          page: null,
+          quote: "A Client holds an account.",
+          state: "current",
+        },
+        {
+          term_id: 2,
+          term: "Dormant",
+          ordinal: 4,
+          section: "Closing",
+          page: null,
+          quote: "A dormant account is closed.",
+          state: "drifted",
+        },
+      ],
+    });
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    expect(await screen.findByTestId("reflib-drifted-count")).toHaveTextContent("1");
+    fireEvent.click(screen.getByTestId("reflib-tab-cited"));
+    expect(await screen.findByTestId("reflib-cite-1")).toHaveTextContent("Client");
+    expect(screen.getByTestId("reflib-cite-2")).toHaveTextContent("A dormant account is closed.");
+    expect(within(screen.getByTestId("reflib-cite-2")).getByTestId("reflib-drifted")).toBeTruthy();
+    expect(within(screen.getByTestId("reflib-cite-1")).queryByTestId("reflib-drifted")).toBeNull();
+  });
+
+  it("says when nothing cites a document", async () => {
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(screen.getByTestId("reflib-tab-cited"));
+    expect(await screen.findByTestId("reflib-cited-empty")).toBeInTheDocument();
+  });
+
+  it("shows indexing progress and reads the list again until it is ready", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const indexing = {
+        ...URL_DOC,
+        index_status: "indexing",
+        index_step: "indexing",
+        index_done: 64,
+        index_total: 128,
+        passages: 0,
+      };
+      api.fetchLibrary.mockResolvedValueOnce([indexing]).mockResolvedValue([URL_DOC]);
+      render(<LibraryPage />);
+      expect(await screen.findByTestId("reflib-index-3")).toHaveTextContent("Indexing 64 of 128");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      await waitFor(() => expect(screen.getByTestId("reflib-index-3")).toHaveTextContent("Ready"));
+      const reads = api.fetchLibrary.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9000);
+      });
+      expect(api.fetchLibrary.mock.calls.length).toBe(reads);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says a document's passages wait for it to be indexed, and does not read them", async () => {
+    api.fetchLibrary.mockResolvedValue([
+      { ...URL_DOC, index_status: "indexing", index_step: "reading", passages: 0 },
+    ]);
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(screen.getByTestId("reflib-tab-sections"));
+    expect(await screen.findByTestId("reflib-not-indexed")).toBeInTheDocument();
+    expect(api.fetchLibraryDocument).not.toHaveBeenCalled();
+    expect(api.fetchCitedBy).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("reflib-refresh")).toBeNull();
+  });
+
+  it("shows why a document failed and retries it", async () => {
+    const failed = {
+      ...URL_DOC,
+      index_status: "failed",
+      index_error: "the org has no vector model",
+      passages: 0,
+    };
+    api.fetchLibrary.mockResolvedValue([failed]);
+    api.retryLibraryDocument.mockResolvedValue({
+      ...failed,
+      index_status: "indexing",
+      index_error: null,
+    });
+    render(<LibraryPage />);
+    expect(await screen.findByTestId("reflib-index-3")).toHaveTextContent("Failed");
+    fireEvent.click(screen.getByTestId("reflib-row-3"));
+    expect(await screen.findByTestId("reflib-read-3")).toHaveTextContent(
+      "the org has no vector model",
+    );
+    fireEvent.click(screen.getByTestId("reflib-retry"));
+    await waitFor(() => expect(api.retryLibraryDocument).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(screen.getByTestId("reflib-index-3")).toHaveTextContent("Indexing"));
+    expect(screen.queryByTestId("reflib-retry")).toBeNull();
+  });
+
+  it("says why a ready document's terms were not looked for", async () => {
+    const noted = { ...URL_DOC, terms_note: "no model is named for term finding" };
+    api.fetchLibrary.mockResolvedValue([noted]);
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    expect(await screen.findByTestId("reflib-read-3")).toHaveTextContent(
+      "no model is named for term finding",
+    );
+  });
+
+  it("adds a document in one step, with no title to fill in, and selects it", async () => {
+    const added = {
+      ...URL_DOC,
+      id: 9,
+      title: "records.html",
+      index_status: "indexing",
+      passages: 0,
+    };
+    api.addLibraryDocument.mockResolvedValue(added);
+    api.fetchLibrary.mockResolvedValueOnce([URL_DOC]).mockResolvedValue([added, URL_DOC]);
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-add"));
+    expect(screen.queryByTestId("reflib-add-title")).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "URL" }));
+    fireEvent.change(screen.getByTestId("reflib-add-url"), {
+      target: { value: "https://x.example.com/records.html" },
+    });
+    const field = screen.getByTestId("reflib-add-domains");
+    fireEvent.click(field);
+    const listbox = document.getElementById(field.getAttribute("aria-controls") ?? "");
+    if (!listbox) throw new Error("Readers opened no list");
+    fireEvent.click(within(listbox).getByRole("option", { name: "sales", hidden: true }));
+    fireEvent.click(screen.getByTestId("reflib-add-save"));
+    await waitFor(() =>
+      expect(api.addLibraryDocument).toHaveBeenCalledWith({
+        url: "https://x.example.com/records.html",
+        domains: ["sales"],
+      }),
+    );
+    expect(await screen.findByTestId("reflib-detail-9")).toBeInTheDocument();
+    expect(screen.getByTestId("reflib-index-9")).toHaveTextContent("Indexing");
+  });
+
   it("shows the library's retrieval setting and saves a change to it", async () => {
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const setting = await screen.findByTestId("reflib-retrieval");
     expect(setting).toHaveTextContent("Retrieval");
     const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
@@ -105,7 +341,7 @@ describe("ReferenceLibraryTab", () => {
 
   it("puts the setting back and says why when it is refused", async () => {
     api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const setting = await screen.findByTestId("reflib-retrieval");
     await waitFor(() =>
       expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
@@ -117,12 +353,13 @@ describe("ReferenceLibraryTab", () => {
     expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
   });
 
-  it("lists each document with its source, status and domains", async () => {
-    render(<ReferenceLibraryTab />);
+  it("lists each document with its source, index status and readers, marking a proposed one", async () => {
+    render(<LibraryPage />);
     const row = await screen.findByTestId("reflib-row-3");
     expect(row).toHaveTextContent("Client onboarding policy");
     expect(row).toHaveTextContent("https://policies.example.com/client.html");
-    expect(row).toHaveTextContent("Kept");
+    expect(row).toHaveTextContent("Ready");
+    expect(row).not.toHaveTextContent("Proposed");
     expect(row).toHaveTextContent("sales");
     const proposed = screen.getByTestId("reflib-row-2");
     expect(proposed).toHaveTextContent("Proposed");
@@ -134,9 +371,10 @@ describe("ReferenceLibraryTab", () => {
       ...URL_DOC,
       refreshed_at: "2026-10-29T10:00:00Z",
     });
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-row-3"));
     const detail = await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(within(detail).getByTestId("reflib-tab-sections"));
     expect(await within(detail).findByText("A Client holds an account.")).toBeInTheDocument();
     expect(screen.queryByTestId("reflib-upload-version")).toBeNull();
     fireEvent.click(screen.getByTestId("reflib-refresh"));
@@ -146,12 +384,14 @@ describe("ReferenceLibraryTab", () => {
   it("keeps or discards a proposed document", async () => {
     api.keepLibraryDocument.mockResolvedValue({ ...PROPOSED, status: "kept" });
     api.removeLibraryDocument.mockResolvedValue(undefined);
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-row-2"));
     expect(await screen.findByTestId("reflib-upload-version")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("reflib-keep"));
     await waitFor(() => expect(api.keepLibraryDocument).toHaveBeenCalledWith(2));
-    await waitFor(() => expect(screen.getByTestId("reflib-row-2")).toHaveTextContent("Kept"));
+    await waitFor(() =>
+      expect(screen.getByTestId("reflib-row-2")).not.toHaveTextContent("Proposed"),
+    );
     expect(screen.queryByTestId("reflib-keep")).toBeNull();
     fireEvent.click(screen.getByTestId("reflib-remove"));
     fireEvent.click(await screen.findByTestId("reflib-confirm-confirm"));
@@ -160,7 +400,7 @@ describe("ReferenceLibraryTab", () => {
   });
 
   it("offers eCFR's XML as a file it reads, as it reads an eCFR URL", async () => {
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-add"));
     const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
     expect(pickers.length).toBeGreaterThan(0);
@@ -170,7 +410,7 @@ describe("ReferenceLibraryTab", () => {
   });
 
   it("offers the whole organization and the user's domains, never a system domain", async () => {
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-add"));
     const field = screen.getByTestId("reflib-add-domains");
     fireEvent.click(field);
@@ -187,7 +427,7 @@ describe("ReferenceLibraryTab", () => {
 
   it("adds a document by its URL with its domains", async () => {
     api.addLibraryDocument.mockResolvedValue({ ...URL_DOC, id: 9, title: "Records schedule" });
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-add"));
     fireEvent.click(screen.getByRole("radio", { name: "URL" }));
     fireEvent.click(screen.getByTestId("reflib-add-save"));
@@ -207,7 +447,7 @@ describe("ReferenceLibraryTab", () => {
     api.fetchLibrary.mockResolvedValue([old, PROPOSED]);
     api.fetchLibraryDocument.mockResolvedValue({ ...old, passage_list: [] });
     api.reembedLibraryDocument.mockResolvedValue({ ...URL_DOC, embedding_model: "embed-small" });
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     expect(await screen.findByTestId("reflib-stale-3")).toHaveTextContent("Needs re-embedding");
     expect(screen.queryByTestId("reflib-stale-2")).toBeNull();
     fireEvent.click(screen.getByTestId("reflib-row-3"));
@@ -228,7 +468,7 @@ describe("ReferenceLibraryTab", () => {
       reembedded: [3],
       failed: [{ document_id: 2, title: "Payments standard", reason: "quota exceeded" }],
     });
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const all = await screen.findByTestId("reflib-reembed-all");
     expect(all).toHaveTextContent("Re-embed all (2)");
     fireEvent.click(all);
@@ -243,13 +483,13 @@ describe("ReferenceLibraryTab", () => {
   });
 
   it("offers no Re-embed when every document is on the current model", async () => {
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     await screen.findByTestId("reflib-row-3");
     expect(screen.queryByTestId("reflib-reembed-all")).toBeNull();
   });
 
   it("carries the page's (?) help, last among its actions", async () => {
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     await screen.findByTestId("reflib-row-3");
     const help = screen.getByRole("button", { name: "About the reference library" });
     expect(help).toBe(screen.getByTestId("reflib-page-help"));

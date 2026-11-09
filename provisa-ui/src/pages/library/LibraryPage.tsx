@@ -365,7 +365,7 @@ export function LibraryPage() {
                       </Table.Td>
                       <Table.Td>
                         <Group gap={4} wrap="wrap">
-                          <IndexBadge doc={d} />
+                          <IndexBadge doc={d} testId={`reflib-index-${d.id}`} />
                           <StaleBadge doc={d} />
                         </Group>
                       </Table.Td>

@@ -33,6 +33,7 @@ vi.mock("../api/glossary", () => ({ generateGlossaryRelationships: vi.fn() }));
 const library = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchCitedBy: vi.fn(),
   fetchRetrieval: vi.fn(),
   saveRetrieval: vi.fn(),
   addLibraryDocument: vi.fn(),
@@ -45,6 +46,10 @@ const library = vi.hoisted(() => ({
   removeLibraryDocument: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => library);
+vi.mock("../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useCapability")>()),
+  useCapability: () => false,
+}));
 vi.mock("../hooks/useAdminQueries", () => ({
   useDomains: () => ({ domains: [{ id: "bank" }] }),
 }));
@@ -267,6 +272,12 @@ describe("a library step", () => {
         source: RULE,
         media_type: "application/xml",
         status: "proposed",
+        index_status: "ready",
+        index_error: null,
+        index_step: null,
+        index_done: null,
+        index_total: null,
+        terms_note: null,
         domains: ["bank"],
         embedding_model: "sentence-transformers/all-MiniLM-L6-v2",
         needs_reembedding: false,

@@ -53,9 +53,8 @@ export function StaleBadge({ doc }: { doc: LibraryDocument }) {
 }
 
 /** A document's index status: indexing with its progress where known, ready, or failed. */
-export function IndexBadge({ doc }: { doc: LibraryDocument }) {
+export function IndexBadge({ doc, testId }: { doc: LibraryDocument; testId?: string }) {
   const { t } = useTranslation();
-  const testId = `reflib-index-${doc.id}`;
   if (doc.index_status === "ready") {
     return (
       <Badge size="xs" variant="light" color="green" data-testid={testId}>
