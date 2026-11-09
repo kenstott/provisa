@@ -300,6 +300,28 @@ def _remote_argument_si() -> SchemaInput:
     )
 
 
+@pytest.mark.parametrize(
+    ("held", "injected"),
+    [
+        ({"column_name": "_nf_breed_name", "native_filter_type": "graphql_arg"}, False),
+        ({"column_name": "breed_name"}, True),
+    ],
+    ids=["declared-parameter", "data-column-of-that-name"],
+)
+def test_a_remote_argument_is_injected_only_when_no_parameter_holds_it(held, injected):
+    """REQ-1986: the parameter the table already holds is the argument; a data column is not."""
+    table = {"source_id": "s", "table_name": "t", "columns": [held]}
+    remote = {
+        "s": {
+            "source_id": "s",
+            "tables": [{"name": "t", "required_args": [{"name": "breedName"}]}],
+        }
+    }
+    _inject_gql_required_args([table], remote)
+    names = [c["column_name"] for c in table["columns"]]
+    assert ("breedName" in names) is injected
+
+
 def test_a_remote_argument_declared_as_a_parameter_is_one_field_and_the_proto_compiles():
     """REQ-1986: one parameter is one field; two spellings of it are a JSON name conflict that
     protoc refuses, which took every RPC of the role's service down."""
