@@ -139,7 +139,7 @@ function CitedByTab({ cited }: { cited: LibraryCitedBy | null }) {
         {cited.terms.map((c) => (
           <Table.Tr key={`${c.term_id}-${c.ordinal}-${c.quote}`} data-testid={`reflib-cite-${c.term_id}`}>
             <Table.Td>
-              <Group gap={4} wrap="nowrap">
+              <Group gap={4} wrap="wrap">
                 <Text size="sm">{c.term}</Text>
                 {c.state === "drifted" && (
                   <Tip text={t("referenceLibrary.citedByDriftedHelp")}>
