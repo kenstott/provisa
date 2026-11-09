@@ -707,6 +707,11 @@ def main(argv: list[str] | None = None) -> int:
 
     register_env(sub)
 
+    # REQ-2222: drive and explain a query in any language against a running instance.
+    from provisa.cli_query import register as register_query
+
+    register_query(sub)
+
     # REQ-2222: one generic call to anything else the API offers.
     from provisa.cli_api import register as register_api
 

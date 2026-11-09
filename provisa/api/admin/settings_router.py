@@ -1080,6 +1080,7 @@ async def get_federation_engine(request: Request):  # REQ-916
 async def set_federation_engine(request: Request):  # REQ-916
     """Persist the federation-engine selection + connection config. Applied on service restart."""
     require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
+    from provisa.core.engine_kinds import unavailable_engine_kind
     from provisa.federation.engine import engine_registry
 
     from provisa.api.app import state
@@ -1095,6 +1096,11 @@ async def set_federation_engine(request: Request):  # REQ-916
             f"unknown engine {engine!r}; valid: {sorted(valid)}",
             engine=str(engine),
             valid=sorted(valid),
+        )
+    unavailable = unavailable_engine_kind(engine)  # REQ-1999: refused here, never at a first query
+    if unavailable is not None:
+        raise ApiError(
+            400, "settings.engine_unavailable", unavailable, engine=str(engine), reason=unavailable
         )
 
     path = config_path()

@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains moet true, false of null zijn",
       "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa.",
       "federation_unknown_field": "Geen federatie-instelling: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Ongeldige federatie-instelling: {{error}}",
       "federation_role_unknown": "De federatierol '{{role}}' is geen rol van deze organisatie"
     },
