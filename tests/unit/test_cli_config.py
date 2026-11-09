@@ -57,7 +57,9 @@ _CONFIG: dict[str, Any] = {
             "columns": [{"name": "id", "visible_to": ["analyst"]}],
         }
     ],
-    "roles": [{"id": "analyst", "capabilities": [], "domain_access": ["sales"]}],
+    "roles": [
+        {"id": "analyst", "description": "reads", "capabilities": [], "domain_access": ["sales"]}
+    ],
 }
 
 
@@ -251,7 +253,7 @@ def test_diff_keeps_what_only_the_instance_has_apart(monkeypatch, capsys, tmp_pa
 
 def test_diff_a_stated_default_is_no_change(monkeypatch, capsys, tmp_path):
     ours = _config()
-    ours["sources"][0]["min_connections"] = 1
+    ours["sources"][0]["pool_min"] = 1
     report = _diff(monkeypatch, capsys, tmp_path, ours, _config())
     assert report["changes"] is False
 
