@@ -634,6 +634,10 @@ tables:
     naming_convention: snake  # overrides source for this table
 ```
 
+### Per-org override
+
+The  block above sets deployment-wide defaults. Each organisation can override ,  and  individually in Admin > Settings. The org's value layers over the deployment default: set  for one org and all other orgs inherit the deployment value unchanged.
+
 ### Domain Prefix
 
 When `domain_prefix: true`, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator:
@@ -648,6 +652,19 @@ This prevents name collisions when different domains have tables with the same n
 ### Naming Rules
 
 Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution.
+
+### Names table
+
+After every model build, Provisa materialises a  meta table: every model object's client-facing name on every surface — SQL, GraphQL, Cypher, proto and PostgreSQL constraint names — alongside any naming problems the convention produced (collisions, reserved words, truncations). Query it like any other meta table:
+
+```sql
+SELECT object_kind, object_id, surface, name, problem
+FROM model_names
+WHERE problem IS NOT NULL
+ORDER BY object_kind, object_id;
+```
+
+The table covers only the last build. Use it to audit naming before cutting a release, or to confirm that a convention change had the effect you expected.
 
 ## Tables
 
