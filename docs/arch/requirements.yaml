@@ -94343,7 +94343,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to connect to: the manifest and run results are files, uploaded or read from where the team publishes
     them, and commands run where dbt is installed. (Amended 2026-11-09, EVERYTHING THAT CAN BE A COMMAND
     IS ONE:) Maintainer 2026-11-09: anything dbt can run is surfaced as a command: beside models, tests,
-    snapshots and seeds, also build, source freshness, and each macro through run-operation.'
+    snapshots and seeds, also build, source freshness, and each macro through run-operation. (Amended 2026-11-09,
+    A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: a model the manifest marks public
+    with an enforced contract is offered as a candidate data product, its schema promise, tests, owner and
+    version carried from the manifest. A steward decides whether it becomes one.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
@@ -94461,7 +94464,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     dbt built governed by role, lineage running through its models and on to a consumer, freshness and test
     results from its run, and a model run from Provisa through its command. (Amended 2026-11-09, POINT TO
     OPENLINEAGE:) Maintainer 2026-11-09: the demo''s words also say that a team with Flink, Airflow or another
-    tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver (REQ-2229).'
+    tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver (REQ-2229). (Amended
+    2026-11-09, DBT BUILDS IT, PROVISA DELIVERS IT:) Maintainer 2026-11-09: the demo''s main thread is that
+    dbt builds a model and Provisa delivers it as a governed data product.'
   scenario: 'Given the dbt demo
 
 
