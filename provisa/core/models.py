@@ -594,6 +594,7 @@ class DataProduct(BaseModel):  # REQ-1634
     status_reason: str | None = None
     retire_on: date | None = None
     successor: str | None = None
+    created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
     # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
@@ -2067,7 +2068,7 @@ class Table(
 
     @model_validator(mode="before")
     @classmethod
-    def _pending_profile_result_name(cls, data: Any) -> Any:
+    def _pending_profile_result_name(cls, data: Any, info: ValidationInfo) -> Any:
         """REQ-2052: a result table named by ``profile_of`` and ``kind`` has no table name yet;
         it takes the pending one, ``<member>_profile_<kind>``, until the seed resolves it."""
         if not isinstance(data, dict) or data.get("profile_of") is None:
@@ -2075,7 +2076,10 @@ class Table(
         kind = data.get("kind", data.get("profile_kind"))
         if kind is None:
             raise ValueError(f"table profile_of {data['profile_of']!r} names no kind")
-        if data.get("table", data.get("table_name")) is not None:
+        held = data.get("table", data.get("table_name"))
+        if held is not None:
+            if (info.context or {}).get(STORED_MODEL):
+                return data  # REQ-2222: the store's model names it by its member and its stored id
             raise ValueError(
                 f"table profile_of {data['profile_of']!r}: its name is resolved from its member; "
                 "it names no table"
@@ -2351,6 +2355,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     # current_setting('provisa.<name>') reads when the request binds nothing of that name. A child
     # takes its ancestors' under its own (nearest wins).
     session_vars: dict[str, str] = Field(default_factory=dict)
+    # REQ-2219: what a holder gets with no list. Left out, a save writes it from domain_access
+    # when domain_access changed, and keeps what is stored when it did not.
+    default_entitlements: dict[str, list[str]] | None = None
 
     @field_validator("description")
     @classmethod

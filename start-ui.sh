@@ -285,7 +285,7 @@ _start_backend() {
     export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
     export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
   fi
-  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port "$PROVISA_API_PORT" \
+  "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port "$PROVISA_API_PORT" \
     >> "$LOG_DIR/server.log" 2>&1 &
   BACKEND_PID=$!
 }

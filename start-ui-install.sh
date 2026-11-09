@@ -963,8 +963,10 @@ start_backend() {
     _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
     _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
   fi
+  # scripts/serve_backend.py: with --reload, a failed first start ends this process, which the
+  # wait below sees; plain uvicorn's reloader would keep running with no server under it.
   env "${_BACKEND_ENV[@]}" \
-    "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
+    "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app \
       "${_serve_args[@]}" \
       "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &

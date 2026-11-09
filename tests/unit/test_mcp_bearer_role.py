@@ -71,7 +71,7 @@ async def test_valid_bearer_sets_request_role(monkeypatch):
 
     async def _fake_validate(token, state):
         assert token == "good-token"
-        return SimpleNamespace(user_id="alice", raw_claims={})
+        return SimpleNamespace(user_id="alice", raw_claims={}, entitlements_claim=None)
 
     monkeypatch.setattr(mcp_server, "_validate_mcp_token", _fake_validate)
     monkeypatch.setattr(mcp_server, "_role_for_identity", lambda identity, state: "analyst")

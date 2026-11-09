@@ -14,7 +14,9 @@ name: UI e2e (swap lane, amd64-only sources)
 # swap tests query through the Trino engine after the DuckDB-registered source is swapped.
 
 on:
-  # During alpha the full suites run only on request (maintainer 2026-10-15): dispatch only.
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     # A retest of named specs: each a file or file:line under provisa-ui (e2e/x.spec.ts,
     # e2e/x.spec.ts:42), space-separated. The lane's provisioning runs as on a full run; Playwright

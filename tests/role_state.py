@@ -50,6 +50,9 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("meta_qualifiers", {})
         # As the real state of a generation no request has acted as a set of roles in yet.
         attrs.setdefault("meta_roles", {})
+        # As the real state: the runtime always holds the entitlements it loaded (REQ-2219),
+        # none until an org grants any.
+        attrs.setdefault("held_entitlements", {})
         # As the real state bound to no org: no control plane (AppState.model_db).
         attrs.setdefault("model_db", None)
         # As the real state before startup: no gRPC server started and no HTTP surface mounted.
