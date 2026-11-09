@@ -16,6 +16,8 @@ store and its config stamps are as they were, no model commit is made, the engin
 pools are not touched, and a model a real apply refuses is refused by name. The last test applies
 the same file for real: it proves the assertions above can fail."""
 
+# Requirements: REQ-2222
+
 from __future__ import annotations
 
 import os
@@ -29,14 +31,18 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 APPLY = "/admin/import/hasura/apply"
-ADMIN = {"x-provisa-role": "admin"}
+ROLE = "org_admin"  # holds every right the file's sections ask for (SECTION_RIGHTS)
+ADMIN = {"x-provisa-role": ROLE}
 BASE_URL = "http://test"
 TABLE = "j1146_dry_run_orders"
+SOURCE = "j1146pg"
+DOMAIN = "j1146"
 
 
 def _config(**table) -> str:
     return yaml.safe_dump(
         {
+            "roles": [],  # required by the config model; org_admin is a standard role of the org
             "domains": [{"id": "j1146"}],
             "sources": [
                 {
@@ -55,7 +61,7 @@ def _config(**table) -> str:
                     "domain_id": "j1146",
                     "schema": "public",
                     "table": TABLE,
-                    "columns": [{"name": "id", "data_type": "integer", "visible_to": ["admin"]}],
+                    "columns": [{"name": "id", "data_type": "integer", "visible_to": [ROLE]}],
                     **table,
                 }
             ],
@@ -95,7 +101,12 @@ async def plane(client, tenant_db):
                 rows = await conn.fetch(f"SELECT kind, stamp FROM {schema}.config_stamp")
             return {r["kind"]: int(r["stamp"]) for r in rows}
 
-    return Plane()
+    yield Plane()
+    # The control test applies for real: its source (port 1) must not reach later modules' boots.
+    # Deleting these two cascades to the table and its columns.
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"DELETE FROM {schema}.sources WHERE id = $1", SOURCE)
+        await conn.execute(f"DELETE FROM {schema}.domains WHERE id = $1", DOMAIN)
 
 
 @pytest.fixture
@@ -178,7 +189,7 @@ class TestDryRun:
         model = yaml.safe_load(_config())
         for name in ("Code", "code"):
             model["tables"][0]["columns"].append(
-                {"name": name, "data_type": "integer", "visible_to": ["admin"]}
+                {"name": name, "data_type": "integer", "visible_to": [ROLE]}
             )
         stamps = await plane.stamps()
         resp = await client.post(
