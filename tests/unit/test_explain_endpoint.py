@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 30766bf6-21a6-4d05-9b64-3e58214a7c0a
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -112,7 +113,7 @@ def _assert_explained(response, language: str) -> None:
     assert statement["route_reason"] == "one source"
     assert statement["dialect"] == "postgres"
     assert statement["analyzed"] is False
-    assert statement["plan"][0]["node_type"] == "Seq Scan"
+    assert statement["plan"][0]["op"] == "Seq Scan orders"
 
 
 def _compiled_handoff(door, sdl_joins: bool) -> tuple:
