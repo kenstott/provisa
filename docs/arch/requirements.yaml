@@ -94149,7 +94149,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     join. The standard file marks the script as multi-line text and states replication on by default. A
     @table in the script is the frontier, like any connector''s table: it brings data from outside and lineage
     starts there. A @command with table inputs is inside the boundary (REQ-2226). On a live read a function
-    is given the statement''s read context (REQ-2100), which the script may apply to its DataFrame.'
+    is given the statement''s read context (REQ-2100), which the script may apply to its DataFrame. (Amended
+    2026-11-09, THE STREAMING RECIPE:) Maintainer 2026-11-09: the documentation recommends this for streaming
+    from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
+    reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
+    job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
+    which needs a cluster sized for the subscribers.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
