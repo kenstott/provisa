@@ -166,6 +166,23 @@ def _q(name: str) -> str:
     return urllib.parse.quote(name, safe="")
 
 
+#: REQ-2225: a script connector's setup values, given by the host's front end; memory only.
+_setup_values: dict[str, Any] = {}
+
+
+def _set_values(values: dict[str, Any]) -> None:
+    _setup_values.clear()
+    _setup_values.update(values)
+
+
+def setup_value(name: str) -> Any:
+    """REQ-2225: the setup value ``name`` of a connector that serves a script; KeyError naming it
+    when the host has not been given it."""
+    if name not in _setup_values:
+        raise KeyError(f"this host has no setup value {name!r}")
+    return _setup_values[name]
+
+
 class secrets:  # noqa: N801 -- a namespace, named as the service
     @staticmethod
     def get(name: str) -> str:

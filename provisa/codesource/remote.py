@@ -170,6 +170,9 @@ class Paired:
     #: REQ-2221: the manifest the host handed over as it paired; None from an image that carries
     #: none (built before REQ-2221).
     manifest: dict | None = None
+    #: REQ-2225: a script connector's script as the host read it: ``{hash, document}``, the
+    #: document as the language's reader wrote it; None for any other connector.
+    script: dict | None = None
 
 
 def pair(
@@ -179,12 +182,14 @@ def pair(
     identity: Identity,
     duckdb: dict[str, int],
     timeout: float = 10.0,
+    script: str | None = None,
 ) -> Paired:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's, and ``duckdb``, the bounds of its DuckDB
     (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin, and its
     certificate, read on this dial: what an engine attaching the host verifies it by (REQ-2100),
-    so connecting dials no third time for it."""
+    so connecting dials no third time for it. ``script`` (REQ-2225): a script connector's script,
+    which the host keeps, reads the tags of, and answers with."""
     fingerprint, secret = parse_pairing_code(code)
     try:
         conn = _dial(address, port, fingerprint, None, timeout)
@@ -201,6 +206,7 @@ def pair(
                         "secret": secret,
                         "certificate": identity.certificate,
                         "duckdb": duckdb,
+                        **({"script": script} if script is not None else {}),
                     }
                 )
             )
@@ -218,6 +224,7 @@ def pair(
         pin=fingerprint,
         certificate=ssl.DER_cert_to_PEM_cert(der),
         manifest=answer.get("manifest"),
+        script=answer.get("script"),
     )
 
 
@@ -238,6 +245,8 @@ class RemoteWorker(Worker):
         identity: Identity,
         exports: Sequence[str] | None = None,
         setup: Callable[[], dict[str, Any]] | None = None,
+        script_hash: str | None = None,
+        names: dict | None = None,
     ) -> None:
         # No process to start: the connection is dialled (start).
         super().__init__(source_id, content_hash, command=None)  # pyright: ignore[reportArgumentType]
@@ -252,6 +261,10 @@ class RemoteWorker(Worker):
         self._setup_done = threading.Event()
         self._setup_done.set()
         self._setup_failure: str | None = None
+        #: REQ-2225: the hash of the script a script connector's host is held to, on every dial.
+        self._script_hash = script_hash
+        #: REQ-2225: the script's name tables, which only Provisa can make, given with the setup.
+        self._names_to_give = names
 
     @property
     def where(self) -> str:
@@ -296,7 +309,8 @@ class RemoteWorker(Worker):
             except (ServiceRefused, ValueError) as unread:
                 self._setup_failure = f"its setup values could not be given: {unread}"
                 return
-            answer = self._exchange({"op": "setup", "values": values}, ON_START_TIMEOUT_S)
+            given = {} if self._names_to_give is None else {"names": self._names_to_give}
+            answer = self._exchange({"op": "setup", "values": values, **given}, ON_START_TIMEOUT_S)
             if answer is None:
                 self._setup_failure = (
                     f"its @on-start function did not finish within {ON_START_TIMEOUT_S:g}s"
@@ -336,7 +350,11 @@ class RemoteWorker(Worker):
             hello = None
         if hello is None or hello.get("op") != "hello":
             raise WorkerFailed(self.source_id, f"remote host {self.where} did not say it was ready")
-        refused = refusal(hello, self.content_hash) or self._other_exports(hello)
+        refused = (
+            refusal(hello, self.content_hash)
+            or self._other_script(hello)
+            or self._other_exports(hello)
+        )
         if refused is not None:
             try:
                 conn.sendall(_frame({"op": "refused", "message": refused}))
@@ -350,6 +368,15 @@ class RemoteWorker(Worker):
         """REQ-2100: every call to a host carries the operator's DuckDB bounds, which its front
         end applies (and keeps) before the call."""
         return {**super()._call_frame(*args, **kwargs), "duckdb": duckdb_bounds()}
+
+    def _other_script(self, hello: dict) -> str | None:
+        """REQ-2225: why a script connector's hello is refused for its script, or None."""
+        if self._script_hash is None:
+            return None
+        held = hello.get("script_hash")
+        if held == self._script_hash:
+            return None
+        return f"its host runs script {held}, not the {self._script_hash} in the source's config"
 
     def _other_exports(self, hello: dict) -> str | None:
         if self._pinned_exports is None:
