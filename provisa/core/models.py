@@ -3681,6 +3681,84 @@ class ReferenceLibraryConfig(BaseModel):  # REQ-2185
     retrieval: Literal["passage", "graph"] = "passage"
 
 
+class ConnectorRequirement(BaseModel):  # REQ-2221
+    """A named value a connector needs from whoever sets it up: a ``@requires`` tag in its code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    secret: bool = False
+
+
+class ConnectorConfig(BaseModel):  # REQ-2221
+    """A connector the organization offers: where its code is, and the image built from it. The
+    operator's own deployment runs the image; Provisa pairs with it (REQ-2098)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    git: str
+    ref: str = Field(min_length=1)
+    commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    # Where the standard project is in the repository, once any build_command has run. Build
+    # settings: the CLI reads these two, the server never does.
+    path: str = ""
+    build_command: str = ""
+    image: str
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    # An image is built for one architecture, so a rebuild has to be told which.
+    arch: Literal["amd64", "arm64"]
+    requires: list[ConnectorRequirement] = Field(default_factory=list)
+
+    @field_validator("git")
+    @classmethod
+    def _git_carries_no_credential(cls, value: str) -> str:
+        # The block is committed with the model. A credential belongs to the git of whoever runs
+        # the build; the message leaves the address out, since the address is what holds it.
+        if re.match(r"^https?://[^/]*@", value):
+            raise ValueError("the git address carries a credential; give it to git instead")
+        if not value:
+            raise ValueError("a connector names its git project")
+        return value
+
+    @field_validator("ref")
+    @classmethod
+    def _ref_is_not_a_commit(cls, value: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{40}", value):
+            raise ValueError(f"ref {value} is a commit; ref names the branch or tag to follow")
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def _path_stays_in_the_repository(cls, value: str) -> str:
+        if value.startswith("/") or ".." in value.split("/"):
+            raise ValueError(f"path {value!r} is not a path within the repository")
+        return value
+
+    @field_validator("image")
+    @classmethod
+    def _image_is_a_repository(cls, value: str) -> str:
+        host, slash, repository = value.partition("/")
+        if not slash or not repository or not ("." in host or ":" in host or host == "localhost"):
+            raise ValueError(f"image {value!r} is a registry host and a repository")
+        if "@" in repository or ":" in repository:
+            raise ValueError(f"image {value!r} names no tag or digest; digest holds the digest")
+        return value
+
+    @model_validator(mode="after")
+    def _requires_are_unique(self) -> "ConnectorConfig":
+        names = [r.name for r in self.requires]
+        if len(set(names)) != len(names):
+            raise ValueError(f"connector {self.name}: a required value is named more than once")
+        return self
+
+
+def repeated_connector_names(connectors: list[ConnectorConfig]) -> list[str]:  # REQ-2221
+    """The names used by more than one connector, sorted."""
+    names = [c.name for c in connectors]
+    return sorted({n for n in names if names.count(n) > 1})
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3794,6 +3872,15 @@ class ProvisaConfig(BaseModel):
     # into the store once (repositories.kafka_source) and read from it after; each topic is also a
     # table of its source (config_loader.kafka_topics_as_tables).
     kafka_sources: list[dict[str, Any]] = Field(default_factory=list)
+    # REQ-2221: the connectors this organization offers, built by `provisa connector build`.
+    connectors: list[ConnectorConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _connector_names_are_unique(self) -> "ProvisaConfig":
+        repeated = repeated_connector_names(self.connectors)
+        if repeated:
+            raise ValueError(f"connector names used more than once: {repeated}")
+        return self
 
     @model_validator(mode="after")
     def _assignments_source_fits_the_tenancy(self) -> "ProvisaConfig":

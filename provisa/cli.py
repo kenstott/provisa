@@ -712,6 +712,11 @@ def main(argv: list[str] | None = None) -> int:
 
     register_api(sub)
 
+    # REQ-2221: an organization's own code connectors, built wherever the operator runs this.
+    from provisa.cli_connector import register as register_connector
+
+    register_connector(sub)
+
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,
     # and neither step should need a browser.

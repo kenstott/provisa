@@ -39,9 +39,10 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -194,10 +195,26 @@ READ_CONTEXT = "ReadContext"
 WRITE_TAGS = ("insert", "update", "delete")
 
 
+#: REQ-2221: ``@requires NAME`` for a plain value, ``@requires NAME:secret`` for a secret. One
+#: argument, so each language's reader carries it as it carries any tag's.
+REQUIRES = "requires"
+_REQUIRES_ARGUMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(:secret)?$")
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """REQ-2221: a named value the code needs from whoever sets it up."""
+
+    name: str
+    secret: bool = False
+
+
 @dataclass(frozen=True)
 class Manifest:
     exports: tuple[Export, ...]
     types: dict[str, ObjectType]
+    #: REQ-2221: what the code declares it needs, across its exports, by name.
+    requires: tuple[Requirement, ...] = ()
 
     def export(self, name: str) -> Export:
         return next(e for e in self.exports if e.name == name)
@@ -291,6 +308,7 @@ def manifest_json(manifest: Manifest) -> dict:
             name: {"name": t.name, "fields": [_field_json(f) for f in t.fields]}
             for name, t in manifest.types.items()
         },
+        "requires": [{"name": r.name, "secret": r.secret} for r in manifest.requires],
     }
 
 
@@ -324,7 +342,9 @@ def manifest_from_json(raw: dict) -> Manifest:
         name: ObjectType(t["name"], tuple(_field(f) for f in t["fields"]))
         for name, t in raw["types"].items()
     }
-    return Manifest(tuple(exports), types)
+    # A manifest kept before REQ-2221 was read when no code could declare one.
+    requires = tuple(Requirement(r["name"], r["secret"]) for r in raw.get("requires", ()))
+    return Manifest(tuple(exports), types, requires)
 
 
 class ManifestRefused(BundleRefused):
@@ -557,6 +577,26 @@ def _read_signature(
     return parameters, shape
 
 
+def _read_requires(
+    name: str, entry: dict, requires: dict[str, Requirement], problems: list[str]
+) -> None:
+    """REQ-2221: an export's ``@requires`` tags, added to what the code requires by name. A value
+    is one thing across the code: declared a secret in one place and plain in another is refused."""
+    arguments = [t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == REQUIRES]
+    # Node's reader lists every tag with its text, empty when it has none; Python's and Go's list
+    # a tag with no argument under "tags" alone.
+    if "" in arguments or entry["tags"].count(REQUIRES) > len(arguments):
+        problems.append(f"{name}: @requires names a value: @requires NAME or NAME:secret")
+    for text in filter(None, arguments):
+        match = _REQUIRES_ARGUMENT.match(text)
+        if match is None:
+            problems.append(f"{name}: @requires {text}: write NAME or NAME:secret")
+            continue
+        found = Requirement(match[1], match[2] is not None)
+        if requires.setdefault(found.name, found) != found:
+            problems.append(f"{name}: @requires {found.name} is a secret in one place only")
+
+
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     """The bundle's tables, commands and streams, from the reader's output, under its language's
     ``rules``; refused with every problem when any rule is broken."""
@@ -565,6 +605,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     for diagnostic in raw.get("diagnostics", []):
         problems.append(f"the declarations do not type-check: {diagnostic}")
     exports: list[Export] = []
+    requires: dict[str, Requirement] = {}
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
         binds = tuple(
@@ -573,10 +614,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             if t["tag"] in WRITE_TAGS and t["text"]
         )
         for tag in tags:
-            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER}:
+            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER, REQUIRES}:
                 problems.append(f"{name}: unknown tag @{tag}")
         for argued in entry.get("tag_arguments", []):
-            known = PROVISA_TAGS | rules.standard_tags | {LOADER, *WRITE_TAGS}
+            known = PROVISA_TAGS | rules.standard_tags | {LOADER, REQUIRES, *WRITE_TAGS}
             if argued["text"] and argued["tag"] not in known:
                 problems.append(f"{name}: unknown tag @{argued['tag']}")
         kinds = sorted(PROVISA_TAGS.intersection(tags))
@@ -586,6 +627,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             problems.append(f"{name}: tagged {', '.join('@' + k for k in kinds)}; an export is one")
             continue
         kind = kinds[0]
+        _read_requires(name, entry, requires, problems)
         signatures = entry["signatures"]
         if len(signatures) != 1:
             problems.append(
@@ -688,4 +730,4 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             )
     if problems:
         raise ManifestRefused(problems)
-    return Manifest(tuple(exports), mapper.types)
+    return Manifest(tuple(exports), mapper.types, tuple(requires.values()))
