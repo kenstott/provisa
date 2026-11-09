@@ -29,13 +29,15 @@ import yaml
 from pydantic import ValidationError
 
 from provisa import cli, cli_connector
-from provisa.codesource.manifest import Manifest, Requirement
+from provisa.codesource.manifest import Manifest, Requirement, manifest_json
 from provisa.core.models import ConnectorConfig, ConnectorRequirement
 
 pytestmark = pytest.mark.unit
 
 _DIGEST = "sha256:" + "a" * 64
 _NEW_DIGEST = "sha256:" + "b" * 64
+_CODE_HASH = "d" * 64
+_NEW_CODE_HASH = "e" * 64
 _IMAGE = "registry.example/data/crm"
 
 
@@ -71,8 +73,10 @@ def _entry(repo: Path, commit: str, **overrides: Any) -> dict:
         "git": str(repo),
         "ref": "main",
         "commit": commit,
+        "language": "python",
         "image": _IMAGE,
         "digest": _DIGEST,
+        "code_hash": _CODE_HASH,
         "arch": "amd64",
         **overrides,
     }
@@ -96,16 +100,17 @@ def built(monkeypatch) -> list[dict]:
     """The image build stubbed: what each call was given, and a digest and requires as its answer."""
     calls: list[dict] = []
 
-    def fake(entry, root, language, workdir, registry):
+    def fake(entry, root, language, workdir, registry, package_registries):
         calls.append(
             {
                 "entry": entry,
                 "files": sorted(p.name for p in root.iterdir()),
                 "language": language,
                 "registry": registry,
+                "package_registries": package_registries,
             }
         )
-        return _NEW_DIGEST, [ConnectorRequirement(name="db_uri", secret=True)]
+        return _NEW_DIGEST, [ConnectorRequirement(name="db_uri", secret=True)], _NEW_CODE_HASH
 
     monkeypatch.setattr(cli_connector, "_build_and_push", fake)
     return calls
@@ -122,8 +127,10 @@ class TestBuild:
                 "git": str(repo),
                 "ref": "main",
                 "commit": head,
+                "language": "python",
                 "image": _IMAGE,
                 "digest": _NEW_DIGEST,
+                "code_hash": _NEW_CODE_HASH,
                 "arch": "amd64",
                 "requires": [{"name": "db_uri", "secret": True}],
             }
@@ -216,6 +223,100 @@ class TestBuild:
         assert "hunter2" not in captured.err + captured.out
         assert built == []
 
+    def _registries(self, tmp_path: Path, *entries: dict) -> Path:
+        path = tmp_path / "indexes.yaml"
+        path.write_text(yaml.safe_dump({"registries": list(entries)}))
+        return path
+
+    def test_package_registries_name_indexes_and_read_credentials_from_the_environment(
+        self, tmp_path, repo, built, capsys, monkeypatch
+    ):
+        monkeypatch.setenv("ACME_PYPI", "s3cret-token")
+        file = self._registries(
+            tmp_path,
+            {
+                "kind": "pypi",
+                "address": "https://pypi.acme.dev/simple",
+                "credential_env": "ACME_PYPI",
+            },
+        )
+        assert cli.main(_build_args(repo, "--package-registries", str(file))) == 0
+        (given,) = built[0]["package_registries"]
+        assert (given.kind, given.address, given.credential) == (
+            "pypi",
+            "https://pypi.acme.dev/simple",
+            "s3cret-token",
+        )
+        captured = capsys.readouterr()
+        assert "s3cret-token" not in captured.out + captured.err
+
+    def test_a_credential_written_in_the_file_is_refused_without_repeating_it(
+        self, tmp_path, repo, built, capsys
+    ):
+        file = self._registries(
+            tmp_path,
+            {
+                "kind": "pypi",
+                "address": "https://pypi.acme.dev/simple",
+                "credential": "hunter2",
+                "credential_env": "ACME_PYPI",
+            },
+        )
+        assert cli.main(_build_args(repo, "--package-registries", str(file))) == 2
+        captured = capsys.readouterr()
+        assert "credential" in captured.err
+        assert "hunter2" not in captured.out + captured.err
+        assert built == []
+
+    def test_an_unset_credential_variable_is_usage_naming_the_variable(
+        self, tmp_path, repo, built, capsys, monkeypatch
+    ):
+        monkeypatch.delenv("ACME_PYPI", raising=False)
+        file = self._registries(
+            tmp_path,
+            {
+                "kind": "npm",
+                "address": "https://npm.acme.dev",
+                "scope": "@acme",
+                "credential_env": "ACME_PYPI",
+            },
+        )
+        assert cli.main(_build_args(repo, "--package-registries", str(file))) == 2
+        assert "ACME_PYPI" in capsys.readouterr().err
+        assert built == []
+
+    def test_an_unknown_index_kind_and_an_unreadable_file_are_usage(
+        self, tmp_path, repo, built, capsys, monkeypatch
+    ):
+        monkeypatch.setenv("ACME_PYPI", "t")
+        file = self._registries(
+            tmp_path, {"kind": "maven", "address": "https://m", "credential_env": "ACME_PYPI"}
+        )
+        assert cli.main(_build_args(repo, "--package-registries", str(file))) == 2
+        assert "kind" in capsys.readouterr().err
+        assert cli.main(_build_args(repo, "--package-registries", str(tmp_path / "none"))) == 2
+        assert built == []
+
+    def test_rebuild_takes_the_same_flag(self, tmp_path, repo, built, monkeypatch):
+        monkeypatch.setenv("ACME_PYPI", "t")
+        file = self._registries(
+            tmp_path,
+            {"kind": "pypi", "address": "https://p/simple", "credential_env": "ACME_PYPI"},
+        )
+        head = _git(repo, "rev-parse", "HEAD")
+        config = _config(tmp_path, _entry(repo, head))
+        assert (
+            cli.main(
+                ["connector", "rebuild", "--config", str(config), "--package-registries", str(file)]
+            )
+            == 0
+        )
+        assert built[0]["package_registries"][0].address == "https://p/simple"
+
+    def test_with_no_flag_there_are_no_named_indexes(self, repo, built, capsys):
+        assert cli.main(_build_args(repo)) == 0
+        assert built[0]["package_registries"] == []
+
     def test_registry_password_comes_from_the_named_variable(
         self, repo, built, capsys, monkeypatch
     ):
@@ -271,14 +372,24 @@ class TestBuildAndPush:
         monkeypatch.setattr(oci.Registry, "push", push)
 
         entry = ConnectorConfig(**_entry(Path("/r"), "a" * 40))
-        digest, requires = cli_connector._build_and_push(
-            entry, tmp_path, "python", tmp_path / "image", {"username": "bot", "password": "p"}
+        named = [object()]
+        digest, requires, code_hash = cli_connector._build_and_push(
+            entry,
+            tmp_path,
+            "python",
+            tmp_path / "image",
+            {"username": "bot", "password": "p"},
+            named,
         )
 
         assert digest == _NEW_DIGEST
+        assert code_hash == "c" * 64
         assert [(r.name, r.secret) for r in requires] == [("db_uri", True), ("region", False)]
         assert seen["prepared"] == ("crm", "python", None, str(tmp_path))
         assert seen["plan"].code_hash == "c" * 64
+        # What the handshake is later checked by is the code's own manifest, as built.
+        assert seen["plan"].manifest == manifest_json(manifest)
+        assert seen["plan"].registries == named
         assert seen["arch"] == "amd64"
         assert seen["push"] == ("registry.example", "bot", "data/crm", "the-tag", "the-image")
 

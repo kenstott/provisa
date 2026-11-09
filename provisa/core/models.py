@@ -3707,8 +3707,12 @@ class ConnectorConfig(BaseModel):  # REQ-2221
     # settings: the CLI reads these two, the server never does.
     path: str = ""
     build_command: str = ""
+    # REQ-2221: the source type it becomes, read from the project's standard files when it is built.
+    language: Literal["node", "python", "go"]
     image: str
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    # What a paired host is held to: the hash of the code the image at ``digest`` was built from.
+    code_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     # An image is built for one architecture, so a rebuild has to be told which.
     arch: Literal["amd64", "arm64"]
     requires: list[ConnectorRequirement] = Field(default_factory=list)

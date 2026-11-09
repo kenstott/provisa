@@ -87,6 +87,7 @@ TENANT_TABLES: dict[str, str] = {
     "api_endpoints": MODEL,
     "kafka_sources": MODEL,
     "kafka_topics": MODEL,
+    "connectors": MODEL,  # REQ-2221
     "table_meta_links": MODEL,
     "calendars": MODEL,
     "materialized_views": MODEL,

@@ -42,6 +42,8 @@ Every problem is collected, and the bundle is refused with all of them at once.
 # Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -310,6 +312,13 @@ def manifest_json(manifest: Manifest) -> dict:
         },
         "requires": [{"name": r.name, "secret": r.secret} for r in manifest.requires],
     }
+
+
+def manifest_hash(raw: dict) -> str:
+    """REQ-2221: what names a manifest (:func:`manifest_json`'s form): the SHA-256 of its one
+    canonical JSON text, which an image's label carries and a host's handshake is checked by."""
+    text = json.dumps(raw, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def manifest_from_json(raw: dict) -> Manifest:

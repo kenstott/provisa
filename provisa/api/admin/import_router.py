@@ -54,6 +54,7 @@ SECTION_RIGHTS: dict[str, tuple[str, ...]] = {
     "regions": (_C.PLATFORM_SETTINGS.value, _C.CROSS_ORG.value),
     "sources": (_C.SOURCE_REGISTRATION.value,),
     "kafka_sources": (_C.SOURCE_REGISTRATION.value,),
+    "connectors": (_C.SOURCE_REGISTRATION.value,),  # REQ-2221
     "domains": (_C.ORG_SETTINGS.value,),
     "roles": (_C.USER_MANAGEMENT.value,),
     "data_products": (_C.DATA_PRODUCT_RW.value,),

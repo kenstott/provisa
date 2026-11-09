@@ -60,6 +60,8 @@ _STANDARD_FILES = {
 #: Stand-ins that pass validation while the flags are checked, before anything is built.
 _UNBUILT_COMMIT = "0" * 40
 _UNBUILT_DIGEST = "sha256:" + "0" * 64
+_UNBUILT_CODE_HASH = "0" * 64
+_UNBUILT_LANGUAGE = "python"
 
 
 class _Usage(Exception):
@@ -168,14 +170,21 @@ def _runtime(language: str, root: Path) -> str:
 
 
 def _build_and_push(
-    entry: ConnectorConfig, root: Path, language: str, workdir: Path, registry: dict[str, str]
-) -> tuple[str, list[ConnectorRequirement]]:
+    entry: ConnectorConfig,
+    root: Path,
+    language: str,
+    workdir: Path,
+    registry: dict[str, str],
+    package_registries: list[Any],
+) -> tuple[str, list[ConnectorRequirement], str]:
     """The code source image build (REQ-2098) on the project at ``root``: its digest once pushed,
-    and what its code declares it requires. With no server there are no organization package
-    registries: dependencies come from the public ones."""
+    what its code declares it requires, and the hash of that code. With no server there are no
+    organization package registries: ``package_registries`` are the indexes the operator named
+    for private dependencies (:func:`_package_registries`); the rest come from the public ones."""
     from provisa.codesource import image_build, oci
     from provisa.codesource.install import DirectoryCode
     from provisa.codesource.languages import LANGUAGES
+    from provisa.codesource.manifest import manifest_json
     from provisa.codesource.names import name_tables
     from provisa.codesource.source import CodeConfig, Context
     from provisa.core.demo_bundles import running_provisa
@@ -185,7 +194,7 @@ def _build_and_push(
     code = DirectoryCode(str(root))
     runtime = _runtime(language, root)
     # admin_db and org_id serve a source's uploads and service grant; a project has neither here.
-    ctx = Context(default_cache_root(), [], [], cast(Any, None), "")
+    ctx = Context(default_cache_root(), package_registries, [], cast(Any, None), "")
     config = CodeConfig(
         language, runtime, {"kind": "directory", "path": str(root)}, None, None, None
     )
@@ -198,7 +207,8 @@ def _build_and_push(
         entry=None,
         exports=[e.name for e in prepared.manifest.exports],
         names=name_tables(prepared.manifest),
-        registries=[],
+        manifest=manifest_json(prepared.manifest),
+        registries=list(package_registries),
         cache_root=ctx.cache_root,
         version=running_provisa(),
     )
@@ -211,10 +221,15 @@ def _build_and_push(
     requires = [
         ConnectorRequirement(name=r.name, secret=r.secret) for r in prepared.manifest.requires
     ]
-    return digest, requires
+    return digest, requires, prepared.content_hash
 
 
-def _build(entry: ConnectorConfig, commit: str, registry: dict[str, str]) -> ConnectorConfig:
+def _build(
+    entry: ConnectorConfig,
+    commit: str,
+    registry: dict[str, str],
+    package_registries: list[Any],
+) -> ConnectorConfig:
     """``entry`` built at ``commit``: the build system's answer, taken as it comes."""
     with tempfile.TemporaryDirectory(prefix="provisa-connector-") as scratch:
         work = Path(scratch)
@@ -224,8 +239,18 @@ def _build(entry: ConnectorConfig, commit: str, registry: dict[str, str]) -> Con
             _run_build_command(entry.build_command, checkout)
         root = _project_root(checkout, entry.path)
         language = _detect_language(root, entry.path)
-        digest, requires = _build_and_push(entry, root, language, work / "image", registry)
-    return entry.model_copy(update={"commit": commit, "digest": digest, "requires": requires})
+        digest, requires, code_hash = _build_and_push(
+            entry, root, language, work / "image", registry, package_registries
+        )
+    return entry.model_copy(
+        update={
+            "commit": commit,
+            "digest": digest,
+            "requires": requires,
+            "code_hash": code_hash,
+            "language": language,
+        }
+    )
 
 
 def _failures() -> tuple[type[Exception], ...]:
@@ -257,6 +282,77 @@ def _registry_sign_in(args: argparse.Namespace) -> dict[str, str]:
     if not password:
         raise _Usage(f"the environment variable {args.registry_password_env} is not set")
     return {"username": args.registry_user, "password": password}
+
+
+def _package_registries(path: str | None) -> list[Any]:
+    """The indexes ``--package-registries`` names for private dependencies: a YAML file with one
+    ``registries:`` list, each entry its ``kind``, ``address``, and -- the file carries no secret
+    -- ``credential_env``, the environment variable holding its credential. A CI's secret store
+    fills the variable; the credential stays with the operator and is written nowhere. Refused,
+    naming the entry and never a value, when one cannot be used."""
+    from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+    from provisa.core.package_registries import KINDS, Resolved
+
+    if path is None:
+        return []
+
+    class _Named(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        kind: str
+        address: str = Field(min_length=1)
+        scope: str | None = None
+        mirror: bool = False
+        credential_env: str = Field(min_length=1)
+        ca_file: str | None = None
+
+    try:
+        raw = yaml.safe_load(Path(path).read_text())
+    except OSError as exc:
+        raise _Usage(f"cannot read {path}: {exc.strerror}") from exc
+    except yaml.YAMLError as exc:
+        # The position only: the parser's message quotes the file.
+        mark = getattr(exc, "problem_mark", None)
+        raise _Usage(
+            f"{path} is not valid YAML{f' (line {mark.line + 1})' if mark else ''}"
+        ) from exc
+    if not isinstance(raw, dict) or not isinstance(raw.get("registries"), list):
+        raise _Usage(f"{path} has no registries: list")
+    out: list[Resolved] = []
+    for at, given in enumerate(raw["registries"]):
+        try:
+            named = _Named.model_validate(given)
+        except ValidationError as exc:
+            raise _Usage(f"{path}: registries[{at}]: {_problems(exc)}") from exc
+        if named.kind not in KINDS:
+            raise _Usage(f"{path}: registries[{at}]: kind is one of {', '.join(KINDS)}")
+        credential = os.environ.get(named.credential_env)
+        if not credential:
+            raise _Usage(
+                f"{path}: registries[{at}]: the environment variable {named.credential_env} "
+                "is not set"
+            )
+        ca_bundle = None
+        if named.ca_file is not None:
+            try:
+                ca_bundle = Path(named.ca_file).read_text()
+            except OSError as exc:
+                raise _Usage(
+                    f"{path}: registries[{at}]: cannot read {named.ca_file}: {exc.strerror}"
+                ) from exc
+        out.append(
+            Resolved(
+                f"registries[{at}]",
+                named.kind,
+                named.address,
+                named.scope,
+                credential,
+                named.mirror,
+                ca_bundle,
+            )
+        )
+    return out
 
 
 def _block(connectors: list[ConnectorConfig]) -> str:
@@ -330,16 +426,19 @@ def _cmd_build(args: argparse.Namespace) -> int:
             commit=args.commit or _UNBUILT_COMMIT,
             path=args.path,
             build_command=args.build_command,
+            language=_UNBUILT_LANGUAGE,
             image=args.image,
             digest=_UNBUILT_DIGEST,
+            code_hash=_UNBUILT_CODE_HASH,
             arch=args.arch,
         )
     except ValidationError as exc:
         raise _Usage(_problems(exc)) from exc
     registry = _registry_sign_in(args)
+    package_registries = _package_registries(args.package_registries)
     try:
         commit = args.commit or _latest_commit(planned.git, planned.ref)
-        built = _build(planned, commit, registry)
+        built = _build(planned, commit, registry, package_registries)
     except _failures() as exc:
         print(f"connector {planned.name}: {exc}", file=sys.stderr)
         return 1
@@ -368,6 +467,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
 def _cmd_rebuild(args: argparse.Namespace) -> int:
     connectors = _load_connectors(args.config)
     registry = _registry_sign_in(args)
+    package_registries = _package_registries(args.package_registries)
     failures = _failures()
     updated: list[ConnectorConfig] = []
     code = 0
@@ -376,7 +476,7 @@ def _cmd_rebuild(args: argparse.Namespace) -> int:
             commit = (
                 _latest_commit(connector.git, connector.ref) if args.latest else connector.commit
             )
-            updated.append(_build(connector, commit, registry))
+            updated.append(_build(connector, commit, registry, package_registries))
             print(f"connector {connector.name}: built at {commit}", file=sys.stderr)
         except failures as exc:
             print(f"connector {connector.name}: {exc}", file=sys.stderr)
@@ -415,6 +515,15 @@ def _registry_flags(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="VARIABLE",
         help="The environment variable holding the container registry password",
+    )
+    parser.add_argument(
+        "--package-registries",
+        default=None,
+        metavar="FILE",
+        help=(
+            "A YAML file naming the indexes for private dependencies; each entry names, in "
+            "credential_env, the environment variable holding its credential"
+        ),
     )
 
 
