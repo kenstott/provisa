@@ -26775,3 +26775,15 @@ Maintainer 2026-11-09. Two settings of a table, for any slow source, a code tabl
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2225 · Source Connectors {#REQ-2225}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-09. Provisa offers a Spark connector: one image with Spark in it, shown in Sources. A required value of the connector ([REQ-2221](#REQ-2221)) is a single annotated Spark script, multi-line text in the setup form, and its cluster is another. The script carries the same @table and @command tags as a code source, and those tags are the source's tables and commands, so a new job needs no build. The host reads the tags and sends that manifest in the handshake; the image's digest and code hash prove the image, and the script is checked by its own hash, recorded in the source's config. Each tagged function runs against the configured cluster. A table's columns come from its tags, or from the DataFrame's schema when the script does not declare them.
+
+**Code:** —
+
+**Tests:** —

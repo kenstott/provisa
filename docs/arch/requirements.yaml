@@ -94044,3 +94044,43 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     read waits for the rows
   stakeholders:
   - data-engineer
+- id: REQ-2225
+  value: Provisa offers a Spark connector whose tables and commands come from one annotated Spark script
+    given at setup.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Provisa offers a Spark connector: one image with Spark in it, shown
+    in Sources. A required value of the connector (REQ-2221) is a single annotated Spark script, multi-line
+    text in the setup form, and its cluster is another. The script carries the same @table and @command
+    tags as a code source, and those tags are the source''s tables and commands, so a new job needs no
+    build. The host reads the tags and sends that manifest in the handshake; the image''s digest and code
+    hash prove the image, and the script is checked by its own hash, recorded in the source''s config.
+    Each tagged function runs against the configured cluster. A table''s columns come from its tags, or
+    from the DataFrame''s schema when the script does not declare them.'
+  scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
+    a command
+
+
+    When the source is created
+
+
+    Then the two tables and the command are the source''s, with no image built for them
+
+
+    When a read of one table runs
+
+
+    Then its function runs on the configured cluster and the rows are answered
+
+
+    When the host''s script does not match the hash in the source''s config
+
+
+    Then the join is refused by name'
+  stakeholders:
+  - data-engineer
