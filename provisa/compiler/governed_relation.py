@@ -230,36 +230,72 @@ def read_outputs(tree: exp.Expr, relation: ReadThrough) -> set[str] | None:
     return _read_names(tree, relation.relation, relation.alias, relation.columns)
 
 
+class _Reads:
+    """What a statement's columns and joins name, tallied in one scan: a statement of many
+    governed relations (an unlabelled Cypher MATCH has one per table) is asked of each, and a scan
+    of the whole statement per relation spent the request's time budget in this pass."""
+
+    def __init__(self, scope: exp.Expr) -> None:
+        self.columns: dict[tuple[str, str], int] = {}
+        self.stars: dict[str, int] = {}
+        self.using: dict[str, int] = {}
+        self.method_joins = 0
+        self.add(scope, 1)
+
+    def add(self, scope: exp.Expr, sign: int) -> None:
+        """Count every read under ``scope``, or take them back with a ``sign`` of -1."""
+        for node in scope.walk():
+            if isinstance(node, exp.Column):
+                qualifier = _folded(node.args.get("table")).lower()
+                if isinstance(node.this, exp.Star):
+                    self.stars[qualifier] = self.stars.get(qualifier, 0) + sign
+                else:
+                    key = (qualifier, node.name.lower())
+                    self.columns[key] = self.columns.get(key, 0) + sign
+            elif isinstance(node, exp.Join):
+                if node.args.get("method"):
+                    self.method_joins += sign
+                for ident in node.args.get("using") or []:
+                    name = ident.name.lower()
+                    self.using[name] = self.using.get(name, 0) + sign
+
+
 def _read_names(
-    tree: exp.Expr, relation: exp.Subquery, alias: str, names: Iterable[str]
+    tree: exp.Expr,
+    relation: exp.Subquery,
+    alias: str,
+    names: Iterable[str],
+    reads: _Reads | None = None,
 ) -> set[str] | None:
     """The ``names`` of ``relation``'s outputs that ``tree`` reads outside it (see
-    :func:`read_outputs`); None when it reads them all."""
+    :func:`read_outputs`); None when it reads them all. ``reads`` is ``tree``'s tally, when the
+    caller keeps one across its relations."""
     exposed: dict[str, list[str]] = {}
     for name in names:
         exposed.setdefault(name.lower(), []).append(name)
-    if any(j.args.get("method") for j in tree.find_all(exp.Join)):
+    tally = reads if reads is not None else _Reads(tree)
+    if tally.method_joins > 0:
         return None
     holder = relation.parent
     outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
     if isinstance(outer, exp.Select) and any(isinstance(p, exp.Star) for p in outer.expressions):
         return None
-    read: set[str] = set()
-    for column in tree.find_all(exp.Column):
-        if _inside(column, relation):
-            continue
-        qualifier = _folded(column.args.get("table")).lower()
-        if qualifier and qualifier != alias.lower():
-            continue
-        if isinstance(column.this, exp.Star):
+    inside = _Reads(relation)
+    own = alias.lower()
+
+    def outside(qualifier: str, name: str) -> int:
+        key = (qualifier, name)
+        return tally.columns.get(key, 0) - inside.columns.get(key, 0)
+
+    for qualifier in ("", own):
+        if tally.stars.get(qualifier, 0) - inside.stars.get(qualifier, 0) > 0:
             return None
-        name = column.name.lower()
-        if not qualifier and name == alias.lower() and name not in exposed:
-            return None  # a whole-row reference: SELECT t0 FROM ...
-        read.update(exposed.get(name, ()))
-    for join in tree.find_all(exp.Join):
-        for ident in join.args.get("using") or []:
-            read.update(exposed.get(ident.name.lower(), ()))
+    if own not in exposed and outside("", own) > 0:
+        return None  # a whole-row reference: SELECT t0 FROM ...
+    read: set[str] = set()
+    for name, spelled in exposed.items():
+        if outside("", name) > 0 or outside(own, name) > 0 or tally.using.get(name, 0) > 0:
+            read.update(spelled)
     return read
 
 
@@ -268,18 +304,32 @@ def keep_read_outputs(tree: exp.Expr, relation: ReadThrough) -> None:
     keep_read(tree, relation.relation, relation.alias)
 
 
-def keep_read(tree: exp.Expr, relation: exp.Subquery, alias: str) -> None:
+def keep_read(
+    tree: exp.Expr, relation: exp.Subquery, alias: str, reads: _Reads | None = None
+) -> None:
     """Drop, IN PLACE, the outputs of the governed relation ``relation`` (read under ``alias``)
     that ``tree`` never reads, and then, level by level down its chain (the faked, kept and member
     projections, REQ-1494/1942/1620), each output the level above no longer reads: an engine
     reads, and a live source is asked for, only the columns the statement and the relation's own
     rules use, as for a table read as itself. A SELECT keeps its first output when none is read
-    (``count(*)``): it has at least one."""
+    (``count(*)``): it has at least one. ``reads`` is ``tree``'s tally, kept true here, for a
+    caller pruning several relations of one statement (:func:`keep_each_read`)."""
     body = relation.this
     if not isinstance(body, exp.Select):
         return
-    read = _read_names(tree, relation, alias, [p.alias_or_name for p in body.expressions])
+    read = _read_names(tree, relation, alias, [p.alias_or_name for p in body.expressions], reads)
+    if reads is not None:
+        reads.add(relation, -1)
     _keep(body, read)
+    if reads is not None:
+        reads.add(relation, 1)
+
+
+def keep_each_read(tree: exp.Expr, relations: list[tuple[exp.Subquery, str]]) -> None:
+    """:func:`keep_read` for each ``(relation, alias)`` of ``tree``, on one tally of it."""
+    reads = _Reads(tree)
+    for relation, alias in relations:
+        keep_read(tree, relation, alias, reads)
 
 
 #: What a SELECT whose outputs may be dropped does not carry: each reads its outputs as a whole
