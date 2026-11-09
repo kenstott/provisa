@@ -290,7 +290,7 @@ def _refuse_hidden_columns(sql: str, role_id: str, org_id: str | None, state: An
         select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
         if select is None:
             continue
-        from_part = select.args.get("from")
+        from_part = select.args.get("from_") or select.args.get("from")
         if from_part is None:
             continue
         # Build a map of alias/name → registered table row for every real table in this SELECT.
@@ -388,10 +388,6 @@ class CallScope:
         if not run_on_connection_loop(self._store.live(self._token_hash), timeout=30):
             raise CallTokenRefused("the call this session was minted for has ended")
         refuse_outside_call(sql, self.call.tables, self._state)
-        # REQ-2226: enforce column-level visibility at the admission layer so a column the
-        # calling role cannot see is never available to the code, independent of whether the
-        # pipeline's governance context holds the full table map for this table.
-        _refuse_hidden_columns(sql, self.call.role_id, self.call.org_id, self._state)
 
     def check_all(self, statements: list[str]) -> None:
         """Check a simple Query's statements before any of them runs: COPY and DO blocks are

@@ -50,6 +50,7 @@ class Order:
     id: int
     region: str
     secret: str
+    tag: str
 
 
 @dataclass
@@ -64,6 +65,17 @@ class Secret:
 
 
 @dataclass
+class Tag:
+    tag: str
+
+
+@dataclass
+class Clip:
+    id: int
+    region: str
+
+
+@dataclass
 class Outcome:
     status: str
     body: str
@@ -71,12 +83,17 @@ class Outcome:
 
 def orders() -> list[Order]:
     """@table"""
-    return [Order(1, "emea", "s1"), Order(2, "amer", "s2")]
+    return [Order(1, "emea", "s1", "t1"), Order(2, "amer", "s2", "t2")]
 
 
 def vault() -> list[Order]:
     """@table"""
-    return [Order(7, "apac", "v7")]
+    return [Order(7, "apac", "v7", "tv")]
+
+
+def clips() -> list[Clip]:
+    """@table"""
+    return [Clip(1, "emea"), Clip(2, "amer")]
 
 
 def _messages(sock):
@@ -140,6 +157,50 @@ def _read(table: TableRef) -> Outcome:
     return Outcome("refused", "the connection ended")
 
 
+def _read_sql(table: TableRef, sql: str) -> Outcome:
+    """Like _read but runs a caller-supplied SQL statement over the same minted connection."""
+    target = table.connection
+    sock = socket.create_connection((target.host, target.port), timeout=30)
+    start = b"user\0" + target.user.encode() + b"\0database\0" + target.database.encode() + b"\0\0"
+    sock.sendall(struct.pack("!ii", 8 + len(start), 196608) + start)
+    frames = _messages(sock)
+    kind, body = next(frames)
+    if kind != b"R":
+        return Outcome("refused", _error_of(body))
+    cred = target.password.encode() + b"\0"
+    sock.sendall(b"p" + struct.pack("!i", 4 + len(cred)) + cred)
+    for kind, body in frames:
+        if kind == b"E":
+            return Outcome("refused", _error_of(body))
+        if kind == b"Z":
+            break
+    query = sql.encode() + b"\0"
+    sock.sendall(b"Q" + struct.pack("!i", 4 + len(query)) + query)
+    names: list[str] = []
+    rows: list[dict] = []
+    for kind, body in frames:
+        if kind == b"E":
+            return Outcome("refused", _error_of(body))
+        if kind == b"T":
+            count, at = struct.unpack("!h", body[:2])[0], 2
+            for _ in range(count):
+                end = body.index(b"\0", at)
+                names.append(body[at:end].decode())
+                at = end + 19
+        elif kind == b"D":
+            count, at = struct.unpack("!h", body[:2])[0], 2
+            row = {}
+            for name in names[:count]:
+                size = struct.unpack("!i", body[at:at + 4])[0]
+                at += 4
+                row[name] = body[at:at + size].decode()
+                at += size
+            rows.append(row)
+        elif kind == b"Z":
+            return Outcome("ok", json.dumps(rows))
+    return Outcome("refused", "the connection ended")
+
+
 def read_lean(orders: TableRef[Lean]) -> list[Outcome]:
     """@query"""
     return [_read(orders)]
@@ -153,6 +214,26 @@ def read_secret(orders: TableRef[Secret]) -> list[Outcome]:
 def read_whole(orders: TableRef[Order]) -> list[Outcome]:
     """@query"""
     return [_read(orders)]
+
+
+def read_tag(orders: TableRef[Tag]) -> list[Outcome]:
+    """@query"""
+    return [_read(orders)]
+
+
+def read_clips(clips: TableRef[Clip]) -> list[Outcome]:
+    """@query"""
+    return [_read(clips)]
+
+
+def read_star(orders: TableRef[Lean]) -> list[Outcome]:
+    """@query — sends SELECT * so the governed pipeline determines the visible columns."""
+    return [_read_sql(orders, "SELECT * FROM fx.orders")]
+
+
+def read_qualified_secret(orders: TableRef[Secret]) -> list[Outcome]:
+    """@query — uses a table alias so the qualified-column visibility check fires."""
+    return [_read_sql(orders, "SELECT o.secret FROM fx.orders AS o")]
 ''',
 }
 
@@ -160,6 +241,18 @@ def read_whole(orders: TableRef[Order]) -> list[Outcome]:
 def _column(name: str, data_type: str, *roles: str) -> str:
     visible = ", ".join(f'"{r}"' for r in roles)
     return f'{{name: "{name}", visibleTo: [{visible}], dataType: "{data_type}"}}'
+
+
+def _column_masked(
+    name: str, data_type: str, mask_value: str, unmasked_role: str, *other_roles: str
+) -> str:
+    """Column visible to all named roles; ``unmasked_role`` sees the real value, the rest see
+    ``mask_value`` (a constant mask applied by the governed pipeline, REQ-2226)."""
+    all_visible = ", ".join(f'"{r}"' for r in [unmasked_role, *other_roles])
+    return (
+        f'{{name: "{name}", visibleTo: [{all_visible}], dataType: "{data_type}", '
+        f'masks: [{{to: ["{unmasked_role}"]}}, {{mask: {{type: "constant", value: "{mask_value}"}}}}]}}'
+    )
 
 
 @pytest.fixture(scope="module")
@@ -243,10 +336,13 @@ def ledger(server):
     # A view is built as the organisation's administrator (mv.governed_build), so "vault" grants
     # its secret to a role that is not that administrator's ancestor.
     for table, secret_reader in (("orders", _ROLE), ("vault", _ANALYST)):
+        # "tag" is visible to both roles but masked for _ANALYST (REQ-2226: masking runs through
+        # the same governed pipeline as column visibility).
         columns = [
             _column("id", "bigint", _ROLE, _ANALYST),
             _column("region", "text", _ROLE, _ANALYST),
             _column("secret", "text", secret_reader),
+            _column_masked("tag", "text", "***", _ROLE, _ANALYST),
         ]
         registered = _admin(
             server,
@@ -254,7 +350,32 @@ def ledger(server):
             f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
         _admin(server, release_field(registered_id(registered["message"])))
-    for function in ("read_lean", "read_secret", "read_whole"):
+    # "clips" carries a row-level security rule: analyst may only read the row whose id = 1,
+    # so the governed pipeline's RLS enforcement is covered on the minted-token listener (REQ-2226).
+    clips_cols = [
+        _column("id", "bigint", _ROLE, _ANALYST),
+        _column("region", "text", _ROLE, _ANALYST),
+    ]
+    registered_clips = _admin(
+        server,
+        'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
+        f'tableName: "clips", cacheTtl: 300, columns: [{", ".join(clips_cols)}]}})',
+    )
+    _admin(server, release_field(registered_id(registered_clips["message"])))
+    _admin(
+        server,
+        f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
+        'description: "Analyst reads only clip 1."})',
+    )
+    for function in (
+        "read_lean",
+        "read_secret",
+        "read_whole",
+        "read_tag",
+        "read_clips",
+        "read_star",
+        "read_qualified_secret",
+    ):
         _command(server, function)
 
 
@@ -315,7 +436,8 @@ def test_the_read_composes_inline_with_a_where_clause(server, ledger):
 def test_the_input_is_readable_by_a_role_granted_its_every_column(server, ledger):
     row = _call(server, _ANALYST, "SELECT * FROM read_whole('fx.vault')")
     assert row["status"] == "ok", row
-    assert json.loads(row["body"]) == [{"id": "7", "region": "apac", "secret": "v7"}]
+    # vault grants every column (id, region, secret, tag) to _ANALYST (REQ-2226).
+    assert json.loads(row["body"]) == [{"id": "7", "region": "apac", "secret": "v7", "tag": "tv"}]
 
 
 def test_a_view_built_as_a_role_that_cannot_see_a_column_reads_as_that_role(server, vault_digest):
@@ -363,6 +485,51 @@ def test_the_views_lineage_runs_from_the_input_through_the_command(server, vault
                     commands |= {o["name"] for o in edge["ops"] if o["kind"] == "command"}
         assert "fx.vault.id" in reached, reached
         assert "read_whole" in commands, commands
+
+
+def test_a_select_star_excludes_a_column_the_role_cannot_see(server, ledger):
+    """SELECT * through the minted listener expands only to the visible columns (REQ-2226):
+    ``secret`` is hidden from ``ledger_analyst``, so it must not appear in the result."""
+    row = _call(server, _ANALYST, "SELECT * FROM read_star('fx.orders')")
+    assert row["status"] == "ok", row
+    rows = json.loads(row["body"])
+    assert len(rows) == 2, rows
+    assert all("secret" not in r for r in rows), rows
+    assert [r["id"] for r in rows] == ["1", "2"]
+
+
+def test_a_qualified_column_the_role_cannot_see_is_refused(server, ledger):
+    """A qualified reference ``o.secret`` is refused just like an unqualified one (REQ-2226):
+    the governed pipeline's column-visibility check covers the alias/qualified path."""
+    row = _call(server, _ANALYST, "SELECT * FROM read_qualified_secret('fx.orders')")
+    assert row["status"] == "refused", row
+    assert "secret" in row["body"]
+
+
+def test_a_masked_column_returns_the_mask_value(server, ledger):
+    """A column the calling role can read but that carries a mask delivers the mask value,
+    not the raw value, through the minted-token listener (REQ-2226)."""
+    # _ANALYST: visible but masked — must receive the constant "***".
+    row = _call(server, _ANALYST, "SELECT * FROM read_tag('fx.orders')")
+    assert row["status"] == "ok", row
+    assert json.loads(row["body"]) == [{"tag": "***"}, {"tag": "***"}]
+    # _ROLE: exempt from the mask — must receive the real values.
+    row = _call(server, _ROLE, "SELECT * FROM read_tag('fx.orders')")
+    assert row["status"] == "ok", row
+    assert json.loads(row["body"]) == [{"tag": "t1"}, {"tag": "t2"}]
+
+
+def test_a_row_rule_narrows_the_rows_the_calling_role_reads(server, ledger):
+    """A domain row rule scoped to a role restricts what that role reads through the minted
+    listener, while a role without that rule reads all rows (REQ-2226)."""
+    # _ANALYST has an RLS rule on "clips": only id = 1 passes.
+    row = _call(server, _ANALYST, "SELECT * FROM read_clips('fx.clips')")
+    assert row["status"] == "ok", row
+    assert json.loads(row["body"]) == [{"id": "1", "region": "emea"}]
+    # _ROLE has no RLS rule — reads both rows.
+    row = _call(server, _ROLE, "SELECT * FROM read_clips('fx.clips')")
+    assert row["status"] == "ok", row
+    assert json.loads(row["body"]) == [{"id": "1", "region": "emea"}, {"id": "2", "region": "amer"}]
 
 
 def test_the_listener_refuses_a_wrong_token(server, ledger, minted_port):
