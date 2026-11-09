@@ -1638,9 +1638,11 @@ class Query:  # REQ-021, REQ-042
         from a different source.
         """
         require_capability(info, "table_registration")
-        from provisa.compiler.naming import apply_convention
+        from provisa.compiler.naming import apply_convention, source_to_catalog
 
         pool = await _get_pool()
+        # The source's catalog name, not its id: a hyphen is no SQL identifier character.
+        source = source_to_catalog(source_id)
 
         def _conflict_stmt(name: str):
             return (
@@ -1669,14 +1671,14 @@ class Query:  # REQ-021, REQ-042
             conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
             if not conflict:
                 return candidate
-            # Prefix with source_id to disambiguate
-            prefixed: str = apply_convention(f"{source_id}_{table_name}", convention)
+            # Prefix with the source to disambiguate
+            prefixed: str = apply_convention(f"{source}_{table_name}", convention)
             conflict2 = (await conn.execute_core(_conflict_stmt(prefixed))).fetchone()
             if not conflict2:
                 return prefixed
             # Last resort: add numeric suffix
             for i in range(1, 100):
-                suffixed: str = apply_convention(f"{source_id}_{table_name}_{i}", convention)
+                suffixed: str = apply_convention(f"{source}_{table_name}_{i}", convention)
                 taken = (await conn.execute_core(_conflict_stmt(suffixed))).fetchone()
                 if not taken:
                     return suffixed
