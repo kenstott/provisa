@@ -820,6 +820,10 @@
       "duckdb_threads": {
         "label": "Threads do DuckDB da fonte de código",
         "help": "As threads em que o DuckDB de uma fonte de código responde às suas instruções."
+      },
+      "health_poll_interval": {
+        "label": "Intervalo de verificação de integridade do conector",
+        "help": "Com que frequência cada processo do Provisa pergunta ao host de um conector pelo seu estado e mostra o resultado na origem. Um host reiniciado é detetado na verificação seguinte, que executa novamente a sua função on-start."
       }
     },
     "config": {
