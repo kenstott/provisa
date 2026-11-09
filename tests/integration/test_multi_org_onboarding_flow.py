@@ -64,6 +64,7 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources, user_role_assignments
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from tests.helpers import create_pgvector
 
 pytestmark = [pytest.mark.integration]
@@ -123,6 +124,15 @@ def _prepare_sync():
                     is_active=True,
                 )
             )
+
+        # REQ-2190: a node start creates the admin terminal's client role once per database
+        # (startup_seed._seed_catalog_client); provisioning grants it the new org's registry view.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         create_pgvector(conn)  # a fresh database: the org metadata has vector columns
