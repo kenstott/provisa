@@ -459,13 +459,66 @@ def test_an_open_release_branch_holding_main_means_nothing_new(lines, capsys):
     _skipped(nightly, work, capsys, origin)
 
 
-def test_an_open_release_branch_takes_its_number_from_the_next_one(lines, capsys):
+def _skipped_for_open(nightly, work, capsys, origin, branch: str) -> None:
+    before = _git(origin, "for-each-ref")
+    assert nightly.main(["--repo", str(work)]) == 0
+    captured = capsys.readouterr()
+    assert _output(captured.out) == {"skip": "true"}
+    assert branch in captured.err
+    assert _git(origin, "for-each-ref") == before
+
+
+def test_an_open_alpha_branch_skips_the_night_though_main_moved(lines, capsys):
     origin, work = lines
     nightly = _module("release_nightly")
     _git(work, "push", "-q", "origin", "main:refs/heads/release/v0.1.0-alpha.6")
     _land_on_main(work, "c.txt")
+    _skipped_for_open(nightly, work, capsys, origin, "release/v0.1.0-alpha.6")
+
+
+def test_an_open_alpha_below_the_newest_tag_still_skips_the_night(lines, capsys):
+    origin, work = lines
+    nightly = _module("release_nightly")
+    _git(work, "push", "-q", "origin", "main:refs/heads/release/v0.1.0-alpha.6")
+    _git(work, "tag", "-a", "v0.1.0-alpha.7", "-m", "x", "main")
+    _git(work, "push", "-q", "origin", "refs/tags/v0.1.0-alpha.7")
+    _land_on_main(work, "c.txt")
+    _skipped_for_open(nightly, work, capsys, origin, "release/v0.1.0-alpha.6")
+
+
+def test_a_tagged_alpha_not_yet_merged_back_is_still_open(lines, capsys):
+    origin, work = lines
+    nightly = _module("release_nightly")
+    _git(work, "checkout", "-q", "-b", "release/v0.1.0-alpha.6", "main")
+    _commit(work, "notes", **{"notes.md": "n\n"})
+    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x")
+    _git(work, "push", "-q", "origin", "release/v0.1.0-alpha.6", "refs/tags/v0.1.0-alpha.6")
+    _land_on_main(work, "c.txt")
+    _skipped_for_open(nightly, work, capsys, origin, "release/v0.1.0-alpha.6")
+
+
+def test_an_alpha_tagged_and_merged_back_lets_the_night_proceed(lines, capsys):
+    origin, work = lines
+    nightly = _module("release_nightly")
+    _git(work, "checkout", "-q", "-b", "release/v0.1.0-alpha.6", "main")
+    _commit(work, "notes", **{"notes.md": "n\n"})
+    _git(work, "tag", "-a", "v0.1.0-alpha.6", "-m", "x")
+    _git(work, "push", "-q", "origin", "release/v0.1.0-alpha.6", "refs/tags/v0.1.0-alpha.6")
+    _module("release_merge").merge(work, "v0.1.0-alpha.6")
+    capsys.readouterr()
+    assert _git(origin, "for-each-ref", "refs/heads/release/") == ""
+    _land_on_main_after_merge(work, "c.txt")
     assert nightly.main(["--repo", str(work)]) == 0
     assert _output(capsys.readouterr().out) == {"version": "v0.1.0-alpha.7"}
+    assert _remote(origin, "refs/heads/release/v0.1.0-alpha.7") == _remote(
+        origin, "refs/heads/main"
+    )
+
+
+def _land_on_main_after_merge(work: Path, name: str) -> None:
+    _git(work, "checkout", "-q", "main")
+    _git(work, "pull", "-q", "--ff-only", "origin", "main")
+    _land_on_main(work, name)
 
 
 def test_a_scheduled_run_outside_its_offset_does_nothing(lines, capsys, monkeypatch):
