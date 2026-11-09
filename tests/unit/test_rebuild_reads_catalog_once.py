@@ -14,8 +14,9 @@ REQ-2190).
 The meta domain registers every SQL catalog view (hundreds of them), each with its columns. The
 rebuild runs on a request thread, and reading those columns where nothing uses them made every
 rebuild slower as the catalog grew: the replica routing read (twice per rebuild) routes no
-table of a built-in source, and the store model leaves the built-in system tables out but their
-ids; demo-seeded tables (graphql-demo) ARE model tables and appear in config.tables (REQ-1634).
+table of a built-in source, and the store model leaves the seeded tables out but their ids;
+demo-seeded tables (graphql-demo) stay out of it too, and ``seeded_table_names`` reports them
+(REQ-1634).
 
 The control plane is real; the model is ``sales.orders`` (two columns) and three catalog views
 on the built-in ``provisa-admin`` source (four columns each).
@@ -261,23 +262,22 @@ async def plane_with_graphql_demo(control_plane) -> Any:
     return db
 
 
-async def test_the_store_model_includes_graphql_demo_table_with_columns(
+async def test_the_store_model_leaves_a_seeded_table_out_and_reports_its_names(
     plane_with_graphql_demo,
 ) -> None:
-    """Root Cause #1: a graphql-demo (demo-seeded) table must appear in store_model's
-    ``tables`` with its columns so product_memberships can resolve it.  Built-in system
-    tables (provisa-admin catalog views) must still be excluded.  REQ-1634."""
-    from provisa.core.store_config import store_model
+    """REQ-1634 EXPORT KEEPS SEEDED MEMBERS: a seeded table is not the model's, so a graphql-demo
+    table stays out of store_model's ``tables`` as a built-in catalog view does, while
+    ``seeded_table_names`` reports it by both names a data product may use for a member."""
+    from provisa.core.store_config import seeded_table_names, store_model
 
     async with plane_with_graphql_demo.acquire() as conn:
         model = await store_model(conn)
+        seeded = await seeded_table_names(conn)
 
-    table_names = [t["table"] for t in model["tables"]]
-    # graphql-demo table is a model table — must be present
-    assert "assignments" in table_names
-    # provisa-admin catalog views are built-in system tables — still excluded
-    for view in _VIEWS:
-        assert view not in table_names
-    # the assignments table must have its columns
-    [asgn] = [t for t in model["tables"] if t["table"] == "assignments"]
-    assert [c["name"] for c in asgn["columns"]] == ["id"]
+    assert [t["table"] for t in model["tables"]] == ["orders"]
+    assert seeded == {
+        "assignments",
+        "graphql-demo.graphql.assignments",
+        *_VIEWS,
+        *(f"provisa-admin.pg_catalog.{name}" for name in _VIEWS),
+    }
