@@ -69,10 +69,10 @@ async def serve() -> None:
     proto_text = _PROTO_PATH.read_text()
     # A remote, not a Provisa node: it serves no org, so its stubs are compiled in a temporary
     # directory of its own (an org's are compiled in the org's folder, REQ-1992).
-    pb2_path, pb2_grpc_path = compile_proto_stubs(
+    pb2_path, _ = compile_proto_stubs(
         proto_text, proto_name="animal_catalog", out_dir=tempfile.mkdtemp(prefix="demo_grpc_stubs_")
     )
-    pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+    pb2 = load_stubs(pb2_path)
 
     server = grpc.aio.server()
     server.add_generic_rpc_handlers((_make_handler(pb2),))

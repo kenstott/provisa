@@ -196,7 +196,9 @@ def compile_proto_stubs(  # REQ-329
     import_paths: list[str] | None = None,
     out_dir: str | None = None,
 ) -> tuple[str, str]:
-    """Compile proto text to Python stubs using grpc_tools.protoc.
+    """Compile proto text to Python stubs using grpc_tools.protoc, and beside them its descriptor
+    set, its imports included (``<proto_name>.desc``), which executor.load_stubs builds the
+    source's message classes from.
 
     Returns:
         (pb2_path, pb2_grpc_path) — absolute paths to the generated modules.
@@ -230,6 +232,8 @@ def compile_proto_stubs(  # REQ-329
         *include_flags,
         f"--python_out={tmp}",
         f"--grpc_python_out={tmp}",
+        f"--descriptor_set_out={os.path.join(tmp, f'{proto_name}.desc')}",
+        "--include_imports",
         proto_file,
     ]
     ret = protoc.main(args)

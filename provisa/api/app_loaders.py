@@ -1762,44 +1762,73 @@ def register_role_surface(state: Any, role: dict, rls: Any) -> None:
 
     runtime = state._active_runtime()
     inputs = state.role_build_inputs  # this generation's (OrgRuntime.role_build_inputs)
-    install_surface(
-        runtime,
-        role["id"],
-        LazySurface(role["id"], lambda: _build_role_surface(state, runtime, inputs, role, rls)),
-    )
+    parts = _RoleParts(state, runtime, inputs, role, rls)
+    install_surface(runtime, role["id"], LazySurface(role["id"], parts.surface, parts.reading))
 
 
-def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls: Any) -> Any:
-    """One role's surface, every part built before any of it is served."""
-    from provisa.api.role_surface import RoleSurface
-    from provisa.compiler.schema_gen import build_table_path_map
-    from provisa.grpc.proto_gen import generate_proto
+class _RoleParts:
+    """One role's surface from one generation's build inputs. What the role reads -- its schema
+    input and context -- is built once, for the reading parts a meta-role's build takes of a
+    member (:meth:`reading`) and the whole surface alike. Called under the LazySurface's lock."""
 
-    # Built for the runtime that registered it, whoever reads it first: the build reads that
-    # runtime's model through ``state`` -- its org's and its environment's, registered or not yet.
-    from provisa.api.org_runtime import serving
+    def __init__(self, state: Any, runtime: Any, inputs: dict, role: dict, rls: Any) -> None:
+        self._state = state
+        self._runtime = runtime
+        self._inputs = inputs
+        self._role = role
+        self._rls = rls
+        self._read: tuple[Any, Any] | None = None  # (SchemaInput, CompilationContext)
 
-    with serving(runtime):
-        # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
-        reads = bool(role.get("capabilities"))
-        si = schema_input_for(
-            state, role, inputs["tables"] if reads else [], inputs["metrics"] if reads else []
-        )
-        # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
-        # surface holds that failure -- logged as an ERROR naming the role, and raised to every
-        # read of it -- rather than serving a permanently cached "no schema available". An
-        # unmapped column type is a real gap in the proto type map, not a reason to silently
-        # disable gRPC for the role.
-        ctx = build_context(si)
-        ctx.refusal = runtime.data_refusal  # REQ-1942
-        ctx.kept = dict(runtime.kept)  # REQ-1942
-        return RoleSurface(
-            schema=generate_schema(si),
-            context=ctx,
-            rls=rls,
-            table_path_map=build_table_path_map(si),
-            proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
-        )
+    def _schema_input_and_context(self) -> tuple[Any, Any]:
+        if self._read is None:
+            # Built for the runtime that registered it, whoever reads it first: the build reads
+            # that runtime's model through ``state`` -- its org's and its environment's,
+            # registered or not yet.
+            from provisa.api.org_runtime import serving
+
+            state, runtime, inputs, role = self._state, self._runtime, self._inputs, self._role
+            with serving(runtime):
+                # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
+                reads = bool(role.get("capabilities"))
+                si = schema_input_for(
+                    state,
+                    role,
+                    inputs["tables"] if reads else [],
+                    inputs["metrics"] if reads else [],
+                )
+                ctx = build_context(si)
+                ctx.refusal = runtime.data_refusal  # REQ-1942
+                ctx.kept = dict(runtime.kept)  # REQ-1942
+            self._read = (si, ctx)
+        return self._read
+
+    def reading(self) -> Any:
+        """The role's context and row filters: no schema, path map or proto is built."""
+        from provisa.api.role_surface import RoleSurface
+
+        return RoleSurface(context=self._schema_input_and_context()[1], rls=self._rls)
+
+    def surface(self) -> Any:
+        """The role's surface, every part built before any of it is served."""
+        from provisa.api.org_runtime import serving
+        from provisa.api.role_surface import RoleSurface
+        from provisa.compiler.schema_gen import build_table_path_map
+        from provisa.grpc.proto_gen import generate_proto
+
+        si, ctx = self._schema_input_and_context()
+        with serving(self._runtime):
+            # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
+            # surface holds that failure -- logged as an ERROR naming the role, and raised to
+            # every read of it -- rather than serving a permanently cached "no schema available".
+            # An unmapped column type is a real gap in the proto type map, not a reason to
+            # silently disable gRPC for the role.
+            return RoleSurface(
+                schema=generate_schema(si),
+                context=ctx,
+                rls=self._rls,
+                table_path_map=build_table_path_map(si),
+                proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
+            )
 
 
 #: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.
@@ -1982,7 +2011,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             _drop_data_surface(state, role["id"])
             continue
         # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
-        # and its surface holds that and no table (_build_role_surface).
+        # and its surface holds that and no table (_RoleParts).
         if not role.get("capabilities"):
             inputs = state.role_build_inputs
             if any(
