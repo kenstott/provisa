@@ -22,6 +22,7 @@ SQL."""
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -431,7 +432,14 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
             nodes[node.name].copy() if isinstance(node, exp.Column) and node.name in nodes else node
         )
 
-    return sqlglot.parse_one(sql, read=_D).transform(filled)
+    return _form(sql).transform(filled)
+
+
+@functools.lru_cache(maxsize=256)
+def _form(sql: str) -> exp.Expr:
+    """``sql`` as DuckDB reads it, once: a form is one of this module's own, and a statement
+    writes one for each member of each JSON it builds. ``transform`` copies it before filling."""
+    return sqlglot.parse_one(sql, read=_D)
 
 
 #: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
@@ -443,6 +451,8 @@ _TO_JSON = (
 )
 #: What already is JSON, or holds a value that was written on its way in.
 _JSON_NODES = (exp.JSONObject, exp.JSONArray, exp.JSONArrayAgg)
+#: What _TO_JSON's typeof test can never find to be a timestamp.
+_NEVER_AN_INSTANT = (exp.Map, exp.Array)
 _JSON_CALLS = frozenset(
     {
         "json_group_array",
@@ -464,7 +474,11 @@ def _is_json_call(node: exp.Expr) -> bool:
 
 def json_encoded(value: exp.Expr) -> exp.Expr:
     """``value`` as its JSON value on DuckDB, whatever its type: one form for every JSON a
-    statement builds, so a timestamp reads alike at any depth."""
+    statement builds, so a timestamp reads alike at any depth. A map or a list is never an
+    instant, so it takes the form's ELSE alone: the form names its value three times, and around
+    each level of a nested statement that multiplied the text."""
+    if isinstance(value.unnest(), _NEVER_AN_INSTANT):
+        return exp.Anonymous(this="to_json", expressions=[value])
     return _duckdb(_TO_JSON, _v=value)
 
 
@@ -803,7 +817,12 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     if name in _POPULATE or name == "jsonb_populate_record_valid":
         return _populated(name, args)
     if name in ("to_json", "to_jsonb") and len(args) == 1:
-        return _duckdb(_TO_JSON, _v=args[0].transform(inner))
+        written_value = args[0].transform(inner)
+        if _is_json_call(
+            args[0].unnest()
+        ):  # already JSON, so never an instant: json_encoded's ELSE
+            return exp.Anonymous(this="to_json", expressions=[written_value])
+        return json_encoded(written_value)
     if name in ("row_to_json", "array_to_json") and len(args) == 2:
         if _is_null(args[0]):
             return exp.cast(exp.Null(), "JSON")
