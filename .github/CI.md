@@ -41,12 +41,14 @@ and passes each leg the same `version` and `publish`.
 
 | Trigger | Workflows |
 | --- | --- |
-| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Integration suite, Deploy Site, NixOS, amd64-only engines, windows-container-smoke |
-| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, amd64-only engines, windows-container-smoke |
-| tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds, the three UI e2e lanes |
-| push to `release/**` | the three UI e2e lanes |
-| nightly | the warehouse lane, CVE Audit, NixOS |
+| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke (when the container changed), Deploy Site (when `docs/**`, `site/**` or the like changed), Demo bundles (when a named demo changed) |
+| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
+| tag `v*` | nothing: a tag tracks the stage, and Release: cut starts the release workflows on it |
+| push to `release/**` | Everything that gates a release: Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke, Integration suite, UI E2E Core, UI E2E Trino, UI E2E Swap, every Conformance suite |
+| nightly | Integration suite, CVE Audit |
+| 17:00 America/New_York (schedule, from `main`) | Release: alpha nightly, which starts the alpha's suites and dry-run build on the new `release/<version>` (a workflow token's push starts nothing) |
 | push to `ci/**` touching `.github/` or `scripts/ci/` | CI leaf check |
+| push to `ci/**` touching the dev container | devcontainer-smoke |
 
 The warehouse lane, the Salesforce lane and the core UI lane read live credentials. The core UI
 lane also resumes a paid Fabric capacity. They run on the triggers above and on a dispatch.
@@ -76,6 +78,8 @@ lane's first step checks its secrets and fails naming the empty ones.
 marker and `tests/conftest.py` starts it; CI has nothing per source. Check which lane's marker
 expression in `scripts/ci/run_lane.py` now selects the test, and whether that lane's memory
 still holds the new container.
+
+**Finish a release.** After a release is published, the lead runs `python scripts/release_merge.py --version <tag>` from any clone. It merges the release back to `main`, deletes the branch, prints each ref's move, refuses on a conflict and never forces.
 
 **Add a release artifact.** Name it in `release-metadata`, build it in the leg for its platform,
 and add it to the one file list in `release-publish.yml` ("Release assets present"). Not yet

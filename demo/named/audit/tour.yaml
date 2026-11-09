@@ -50,7 +50,7 @@ steps:
 - key: auditTerms
   route: /admin/ontology
   capability: glossary_read
-  term: Schedule of Expenditures of Federal Awards
+  term: schedule of expenditures of federal awards
 - key: auditRequest
   route: /sql
   capability: query_development
