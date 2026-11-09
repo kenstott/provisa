@@ -25,7 +25,7 @@ import logging
 
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, source_to_catalog
+from provisa.compiler.naming import apply_convention, prefixed_field_name, source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
@@ -72,7 +72,10 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "data_product_tables": "data_product_tables_meta",  # REQ-1634
+    "data_product_commands": "data_product_commands_meta",  # REQ-1634
     "sources": "sources_meta",  # REQ-1443: identity and type only
+    "model_names": "model_names_meta",  # REQ-194
 }
 
 
@@ -1468,7 +1471,7 @@ async def _load_kept(conn: Any) -> None:  # REQ-1942
         return
     schema = org_schema(require_current_org(), runtime.env)
     tables = await logged(conn, schema)
-    kept: dict[int, tuple[str, list[str]]] = {}
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = {}
     for table_id in sorted(tables):
         rows = (
             await conn.execute_core(
@@ -1483,7 +1486,7 @@ async def _load_kept(conn: Any) -> None:  # REQ-1942
             raise RuntimeError(
                 f"table {table_id} has kept mutations but no primary key to apply them by"
             )
-        kept[table_id] = (f'"provisa_admin"."{schema}"."{log_name(table_id)}"', key)
+        kept[table_id] = (("provisa_admin", schema, log_name(table_id)), key)
     runtime.kept = kept
 
 
@@ -1670,7 +1673,9 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             return
         gql = _apply_conv(called, _conv)
         key = (
-            f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
+            prefixed_field_name(_domain_prefix(item["domain_id"]), gql)
+            if _dp and item.get("domain_id")
+            else gql
         )
         if key != item["name"]:
             target[key] = item  # GraphQL field name (convention-cased, maybe domain-prefixed)
@@ -1757,44 +1762,73 @@ def register_role_surface(state: Any, role: dict, rls: Any) -> None:
 
     runtime = state._active_runtime()
     inputs = state.role_build_inputs  # this generation's (OrgRuntime.role_build_inputs)
-    install_surface(
-        runtime,
-        role["id"],
-        LazySurface(role["id"], lambda: _build_role_surface(state, runtime, inputs, role, rls)),
-    )
+    parts = _RoleParts(state, runtime, inputs, role, rls)
+    install_surface(runtime, role["id"], LazySurface(role["id"], parts.surface, parts.reading))
 
 
-def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls: Any) -> Any:
-    """One role's surface, every part built before any of it is served."""
-    from provisa.api.role_surface import RoleSurface
-    from provisa.compiler.schema_gen import build_table_path_map
-    from provisa.grpc.proto_gen import generate_proto
+class _RoleParts:
+    """One role's surface from one generation's build inputs. What the role reads -- its schema
+    input and context -- is built once, for the reading parts a meta-role's build takes of a
+    member (:meth:`reading`) and the whole surface alike. Called under the LazySurface's lock."""
 
-    # Built for the runtime that registered it, whoever reads it first: the build reads that
-    # runtime's model through ``state`` -- its org's and its environment's, registered or not yet.
-    from provisa.api.org_runtime import serving
+    def __init__(self, state: Any, runtime: Any, inputs: dict, role: dict, rls: Any) -> None:
+        self._state = state
+        self._runtime = runtime
+        self._inputs = inputs
+        self._role = role
+        self._rls = rls
+        self._read: tuple[Any, Any] | None = None  # (SchemaInput, CompilationContext)
 
-    with serving(runtime):
-        # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
-        reads = bool(role.get("capabilities"))
-        si = schema_input_for(
-            state, role, inputs["tables"] if reads else [], inputs["metrics"] if reads else []
-        )
-        # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
-        # surface holds that failure -- logged as an ERROR naming the role, and raised to every
-        # read of it -- rather than serving a permanently cached "no schema available". An
-        # unmapped column type is a real gap in the proto type map, not a reason to silently
-        # disable gRPC for the role.
-        ctx = build_context(si)
-        ctx.refusal = runtime.data_refusal  # REQ-1942
-        ctx.kept = dict(runtime.kept)  # REQ-1942
-        return RoleSurface(
-            schema=generate_schema(si),
-            context=ctx,
-            rls=rls,
-            table_path_map=build_table_path_map(si),
-            proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
-        )
+    def _schema_input_and_context(self) -> tuple[Any, Any]:
+        if self._read is None:
+            # Built for the runtime that registered it, whoever reads it first: the build reads
+            # that runtime's model through ``state`` -- its org's and its environment's,
+            # registered or not yet.
+            from provisa.api.org_runtime import serving
+
+            state, runtime, inputs, role = self._state, self._runtime, self._inputs, self._role
+            with serving(runtime):
+                # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
+                reads = bool(role.get("capabilities"))
+                si = schema_input_for(
+                    state,
+                    role,
+                    inputs["tables"] if reads else [],
+                    inputs["metrics"] if reads else [],
+                )
+                ctx = build_context(si)
+                ctx.refusal = runtime.data_refusal  # REQ-1942
+                ctx.kept = dict(runtime.kept)  # REQ-1942
+            self._read = (si, ctx)
+        return self._read
+
+    def reading(self) -> Any:
+        """The role's context and row filters: no schema, path map or proto is built."""
+        from provisa.api.role_surface import RoleSurface
+
+        return RoleSurface(context=self._schema_input_and_context()[1], rls=self._rls)
+
+    def surface(self) -> Any:
+        """The role's surface, every part built before any of it is served."""
+        from provisa.api.org_runtime import serving
+        from provisa.api.role_surface import RoleSurface
+        from provisa.compiler.schema_gen import build_table_path_map
+        from provisa.grpc.proto_gen import generate_proto
+
+        si, ctx = self._schema_input_and_context()
+        with serving(self._runtime):
+            # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
+            # surface holds that failure -- logged as an ERROR naming the role, and raised to
+            # every read of it -- rather than serving a permanently cached "no schema available".
+            # An unmapped column type is a real gap in the proto type map, not a reason to
+            # silently disable gRPC for the role.
+            return RoleSurface(
+                schema=generate_schema(si),
+                context=ctx,
+                rls=self._rls,
+                table_path_map=build_table_path_map(si),
+                proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
+            )
 
 
 #: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.
@@ -1908,6 +1942,40 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     def _schema_input(role: dict, tbls: list[dict], mtrcs: list[dict]) -> SchemaInput:
         return schema_input_for(state, role, tbls, mtrcs)
 
+    # A view's SQL is a model object: it is lowered to physical against the WHOLE model, not
+    # against whichever role's context came first (which named only the tables THAT role could
+    # see, and left a view over any other table unresolved — its refresh failed "schema does not
+    # exist", and an inline view's meaning depended on role-id order). This context belongs to no
+    # role and never answers a request; a view's rows are governed when the view is read.
+    _model_role = {
+        "id": "__model__",
+        "domain_access": ["*", *SYSTEM_DOMAINS],
+        # The catalog's governance columns are part of the model a view may read.
+        "capabilities": [Capability.VIEW_GOVERNANCE.value],
+    }
+    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
+    _model_tables = [
+        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
+        for t in tables
+    ]
+    _model_input = _schema_input(
+        _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
+    )
+    _view_context = build_context(_model_input)
+    # REQ-194: this model version's names table, from the whole model's context. Built before any
+    # role's surface is registered or the model context replaced: under the refuse policy a clash
+    # stops the build here, naming both objects, and the roles keep the surfaces they had.
+    from provisa.compiler.names_table import build_model_names, clash_policy
+
+    _names_table = build_model_names(
+        _view_context, _model_input, clash_policy(state.settings_overrides)
+    )
+    state.view_context = _view_context
+    state.names_table = _names_table
+    from provisa.compiler.schema_gen import build_table_path_map
+
+    state.view_path_map = build_table_path_map(_model_input)
+
     # ``roles`` is every role the control plane holds now. The registry and the per-role maps
     # are built up across rebuilds of a live runtime, so a role deleted since the last build is
     # still in them: without this it keeps its rights (capability resolution reads state.roles)
@@ -1943,7 +2011,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             _drop_data_surface(state, role["id"])
             continue
         # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
-        # and its surface holds that and no table (_build_role_surface).
+        # and its surface holds that and no table (_RoleParts).
         if not role.get("capabilities"):
             inputs = state.role_build_inputs
             if any(
@@ -1979,30 +2047,6 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # projects through state.contexts[role] (grpc/server.py _handle_query_bound) and is governed by
     # _govern_and_route_compiled, so a column the role cannot see is never SELECTed and its proto
     # field is left unset. Per-role client stubs still come from GET /data/proto/{role}.
-    # A view's SQL is a model object: it is lowered to physical against the WHOLE model, not
-    # against whichever role's context came first (which named only the tables THAT role could
-    # see, and left a view over any other table unresolved — its refresh failed "schema does not
-    # exist", and an inline view's meaning depended on role-id order). This context belongs to no
-    # role and never answers a request; a view's rows are governed when the view is read.
-    _model_role = {
-        "id": "__model__",
-        "domain_access": ["*", *SYSTEM_DOMAINS],
-        # The catalog's governance columns are part of the model a view may read.
-        "capabilities": [Capability.VIEW_GOVERNANCE.value],
-    }
-    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
-    _model_tables = [
-        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
-        for t in tables
-    ]
-    _model_input = _schema_input(
-        _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
-    )
-    state.view_context = build_context(_model_input)
-    from provisa.compiler.schema_gen import build_table_path_map
-
-    state.view_path_map = build_table_path_map(_model_input)
-
     _wire_role = {
         "id": "__wire__",
         "domain_access": ["*", *SYSTEM_DOMAINS],
@@ -2099,10 +2143,14 @@ _META_TABLES = [
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    # REQ-1634: data-product membership, one row per product and member; view-only
+    "data_product_tables",
+    "data_product_commands",
     "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
+    "model_names",  # REQ-194: the names table of the last model version built
     # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
     *NEUTRAL_VIEW_NAMES,
     *CATALOG_VIEW_NAMES,

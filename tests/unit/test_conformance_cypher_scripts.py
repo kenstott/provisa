@@ -994,7 +994,10 @@ def test_a_void_procedure_is_a_void_command(procedure_scenarios):
     function = Function(**entry)
     assert function.kind == "query" and is_void(function.model_dump())
     found = declared(entry["name"], entry["binding"], [])
-    assert duckdb.execute(sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0])
+    # Read to the end: from DuckDB 2.0 an unread result keeps the shared default connection busy
+    # and every later duckdb.sql() on it is refused.
+    sql = sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0]
+    assert duckdb.execute(sql).fetchall() == [(1,)]
 
 
 def test_a_void_procedure_s_statement_uses_each_argument():

@@ -167,6 +167,9 @@ export interface DemoTourStepDef {
   demo?: string;
 }
 
+/** The graph a term's page or a product's panel draws: a step there keeps its text off it. */
+const GRAPH_ON_THE_PAGE = ".g3d-panel-view";
+
 /** View Profile Runs' close button: a graph step leaves the window as it found it. */
 const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
 /** View Profile Runs on a table with no run: a graph step has nothing to draw (REQ-2052). */
@@ -501,6 +504,7 @@ function demoTourStep(
       ...page,
       clickBefore: `[data-glossary-term="${def.term}"]`,
       element: '[data-testid="glossary-detail"]',
+      clearOf: { selector: GRAPH_ON_THE_PAGE, reveal: true },
     };
   }
   if (def.find_terms !== undefined) {
@@ -552,6 +556,7 @@ function demoTourStep(
       ...page,
       route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
       element: '[data-testid="data-product-detail"]',
+      clearOf: { selector: GRAPH_ON_THE_PAGE, reveal: false },
     };
   }
   if (def.report !== undefined) {

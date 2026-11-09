@@ -287,7 +287,6 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
-    Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
     # its own (provisa.core.models.DataContract); NULL for a table in no product.
     Column("contract", JSON(none_as_null=True)),
@@ -952,6 +951,34 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-194: the names table of the last model version built
+# (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+model_names = Table(
+    "model_names",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("physical_name", Text, nullable=False),
+    Column("label", Text, nullable=False),
+    Column("domain_id", Text, nullable=False, server_default=""),
+    Column("table_id", Integer),
+    Column("is_alias", Boolean, nullable=False, server_default=false()),
+    Column("warnings", JSON, nullable=False, server_default="[]"),
+)
+
+# REQ-194: the name clashes the last model build refused, each naming both objects.
+model_name_clashes = Table(
+    "model_name_clashes",
+    metadata,
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("holder", Text, nullable=False),
+    Column("newcomer", Text, primary_key=True),
+    Column("message", Text, nullable=False),
+)
+
 # REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
 # check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
 # A table with no row has never run. The dry run writes none.
@@ -1143,9 +1170,6 @@ tracked_functions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
-    Column(
-        "product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")
-    ),  # REQ-1634: optional data-product membership; FK mirrors schema.sql so copies order after data_products
     Column("return_schema", JSON(none_as_null=True)),
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
     Column("output_columns", JSON(none_as_null=True)),
@@ -1159,6 +1183,32 @@ tracked_functions = Table(
     Column("writes_table", Text),
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
+)
+
+
+# REQ-1634: data-product membership, many-to-many: one row per product and member table (or view),
+# and one per product and member command (schema.sql).
+data_product_tables = Table(
+    "data_product_tables",
+    metadata,
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    PrimaryKeyConstraint("product_id", "table_id"),
+)
+
+data_product_commands = Table(
+    "data_product_commands",
+    metadata,
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "command_name",
+        Text,
+        ForeignKey("tracked_functions.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    PrimaryKeyConstraint("product_id", "command_name"),
 )
 
 tracked_webhooks = Table(

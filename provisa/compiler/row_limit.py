@@ -44,7 +44,11 @@ class RowLimit:
 def binds(sql: str, limit: int) -> bool:
     """Whether a ceiling of ``limit`` is what bounds ``sql``: the statement gives no LIMIT of its
     own, one above the ceiling, or one whose value is not written in it."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    return binds_tree(sqlglot.parse_one(sql, read="postgres"), limit)
+
+
+def binds_tree(tree: exp.Expr, limit: int) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """:func:`binds`, for a statement already a tree."""
     node = tree if isinstance(tree, (exp.Select, exp.SetOperation)) else tree.find(exp.Select)
     if node is None:
         return False

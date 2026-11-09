@@ -902,9 +902,17 @@ export interface PlatformSettings {
     default_format: string;
     ttl: number;
   };
-  sampling?: {
+  sampling: {
     default_sample_size: number;
   };
+  // REQ-1327: the org's hot-table and replicate settings.
+  hot_tables: {
+    auto_threshold: number;
+    max_rows: number;
+    max_bytes: number;
+    refresh_interval: number | null;
+  };
+  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
   cache: {
     default_ttl: number;
   };
@@ -914,12 +922,16 @@ export interface PlatformSettings {
     subgraph_name: string;
     role: string | null;
   };
+  // REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+  names: {
+    clash_policy: "refuse" | "disambiguate";
+  };
   naming: {
-    // Deployment-wide, so absent for an org administrator.
-    domain_prefix?: boolean;
-    // REQ-194: the GraphQL convention, read by every caller (writing it is the platform's).
+    // REQ-1327: the org's own, inherited from the deployment where it set none.
+    domain_prefix: boolean;
+    // REQ-194: the GraphQL convention the org's schema is named by.
     convention: string;
-    sql_convention?: string;
+    sql_convention: string;
     use_domains: boolean | null;
     default_domain: string;
   };
@@ -943,10 +955,11 @@ export interface PlatformSettings {
     // SubsystemTracesConfig declares.
     subsystem_traces: SubsystemTraces;
   };
-  graphql_remote?: {
-    max_object_depth: number;
-    max_list_depth: number;
-    max_list_items: number;
+  // The row limit is the org's (REQ-1327); the traversal limits are absent for an org administrator.
+  graphql_remote: {
+    max_object_depth?: number;
+    max_list_depth?: number;
+    max_list_items?: number;
     max_rows: number;
   };
   cdc?: {
@@ -1338,14 +1351,6 @@ export async function searchCatalog(
 
 export interface CacheStorageState {
   cache: { enabled: boolean; redis_url: string; default_ttl: number | null };
-  hot_tables: {
-    auto_threshold: number;
-    max_rows: number;
-    max_bytes: number;
-    refresh_interval: number | null;
-  };
-  // REQ-826: when a busy table is replicated (Default threshold, window, size ceiling).
-  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
   materialized_views: { default_ttl: number | null };
   materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
@@ -1360,8 +1365,6 @@ export async function fetchCacheStorage(): Promise<CacheStorageState> {
 export async function setCacheStorage(
   body: Partial<{
     cache: Partial<CacheStorageState["cache"]>;
-    hot_tables: Partial<CacheStorageState["hot_tables"]>;
-    replication: Partial<CacheStorageState["replication"]>;
     materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
   }>,
@@ -1628,6 +1631,9 @@ export async function runSql(
   statement: string | { sql: string; params: (string | number)[] },
   role: string,
   statsEnabled: boolean = false,
+  /** True for one page the caller bounds with its own LIMIT (a grid reading pageSize+1 rows): the
+      server does not measure it against the large-result threshold. */
+  paged: boolean = false,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1651,13 +1657,14 @@ export async function runSql(
       // api/acting_role.py), because the server's acting role is one member of the set.
       method: "POST",
       headers,
-      body: JSON.stringify(
-        typeof statement === "string"
+      body: JSON.stringify({
+        ...(typeof statement === "string"
           ? { sql: statement }
           : statement.params.length > 0
             ? statement
-            : { sql: statement.sql },
-      ),
+            : { sql: statement.sql }),
+        ...(paged ? { paged: true } : {}),
+      }),
     });
     if (!resp.ok) {
       return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };

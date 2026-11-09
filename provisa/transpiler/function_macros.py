@@ -98,6 +98,8 @@ _REGEXP_SUBSTRS = frozenset({"snowflake", "oracle", "mysql", "bigquery", "redshi
 _CASTS_CHECKED = _DUCKDB | _TRINO | {
     "snowflake", "bigquery", "clickhouse", "tsql", "redshift", "oracle",
 }  # fmt: skip
+#: round/trunc(numeric, n) on DuckDB: NULL where the scale is NULL, which DuckDB 2.0 refuses to bind.
+_NULL_SCALE = "CASE WHEN n IS NULL THEN NULL ELSE {}(x, COALESCE(n, 0)) END"
 
 
 class Pg(str):
@@ -1474,8 +1476,17 @@ _ROWS: tuple[Macro, ...] = (
             )
         },
     ),
-    Macro("round_numeric", ("x", "n"), {_EVERY: Pg("ROUND(x, n)")}),
-    Macro("trunc_numeric", ("x", "n"), {_EVERY: Pg("TRUNC(x, n)")}),
+    # DuckDB 2.0 refuses a NULL scale when it binds (1.5 answered NULL, as PostgreSQL does).
+    Macro(
+        "round_numeric",
+        ("x", "n"),
+        {_DUCKDB: Pg(_NULL_SCALE.format("ROUND")), _EVERY: Pg("ROUND(x, n)")},
+    ),
+    Macro(
+        "trunc_numeric",
+        ("x", "n"),
+        {_DUCKDB: Pg(_NULL_SCALE.format("TRUNC")), _EVERY: Pg("TRUNC(x, n)")},
+    ),
     Macro("inet_text", ("value",), {_EVERY: Pg(strict("value", "TEXT", _INET_TEXT))}),
     # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
     _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value))"),
@@ -2060,7 +2071,7 @@ _MENTIONED = re.compile(
     r"\b("
     + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
     + r")\"?\s*\(|"
-    + pg_forms_json.OPERATORS,
+    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}",
     re.IGNORECASE,
 )
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.

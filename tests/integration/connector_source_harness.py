@@ -96,6 +96,12 @@ async def connector_client():
     two lines startup uses for a dedicated per-org engine (``app.py:860-861``) — and both the env
     pin and the previous engine are restored on teardown, leaving the rest of the session on the
     default engine.
+
+    The deployment org's ``source_catalogs`` and ``source_types`` are restored with it. A boot on
+    Trino names a source Trino cannot read in place under Trino's materialize-store catalog
+    (``catalog_name_for_source``: ``provisa_admin``), and the next boot fills those maps only for an
+    id not already in them (``app.py`` schema build), so a later in-process app on DuckDB would
+    keep the Trino-era name and attach the source under the control plane's catalog.
     """
     import provisa.api.app as app_mod
     from provisa.federation.engine import build_engine
@@ -109,6 +115,8 @@ async def connector_client():
     # The engine is the deployment org's, set as its boot sets it (REQ-1266).
     with as_deployment_org():
         prior_engine = app_mod.state.federation_engine
+        prior_catalogs = dict(app_mod.state.source_catalogs)
+        prior_types = dict(app_mod.state.source_types)
         app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
         app_mod.state.federation_engine.bind_terminal()
     try:
@@ -120,6 +128,12 @@ async def connector_client():
     finally:
         with as_deployment_org():
             app_mod.state.federation_engine = prior_engine
+            for live, prior in (
+                (app_mod.state.source_catalogs, prior_catalogs),
+                (app_mod.state.source_types, prior_types),
+            ):
+                live.clear()
+                live.update(prior)
         if prior_env is None:
             os.environ.pop("PROVISA_ENGINE", None)
         else:

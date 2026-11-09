@@ -907,9 +907,9 @@ def test_the_setup_status_carries_the_demo_s_landing_page():
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_a_demo_names_its_fields_as_its_sandbox_does(path):
-    """domain_prefix is deployment-wide (org_settings: not org-overridable): a sandbox's schema is
-    built with the sandbox tier's naming, which prefixes each domain (config/provisa-install-base),
-    not the demo's own. A demo that turned it off had examples and Cypher its sandbox refused."""
+    """A sandbox's schema prefixes each domain as the sandbox tier's naming does
+    (config/provisa-install-base). A demo that turned it off had examples and Cypher its sandbox
+    refused, so a demo states the tier's value."""
     base = yaml.safe_load((_REPO / "config" / "provisa-install-base.yaml").read_text())
     config = yaml.safe_load((path.parent / "config.yaml").read_text())
     assert config["naming"]["domain_prefix"] == base["naming"]["domain_prefix"], path.parent.name

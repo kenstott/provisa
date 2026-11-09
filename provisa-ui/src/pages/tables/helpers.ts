@@ -59,8 +59,6 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     mvAllowedLateness: t.mvAllowedLateness, // REQ-961
     mvExpectedEvents: t.mvExpectedEvents, // REQ-961
     mvBusinessDayGrain: t.mvBusinessDayGrain, // REQ-962
-    // REQ-1634. REQ-1443 PRODUCT ASSIGNMENT: a checker table's product is its own, as any member's.
-    productId: t.productId,
     enableAggregates: t.enableAggregates,
     enableGroupBy: t.enableGroupBy,
     // REQ-1141: the table's load protection, saved with it (left out, the update cleared it).

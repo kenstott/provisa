@@ -51,7 +51,6 @@ def _table_input(**overrides):
         mv_allowed_lateness=0.0,
         mv_expected_events=None,
         mv_business_day_grain=False,
-        product_id=None,
         enable_aggregates=False,
         enable_group_by=False,
         modeling_role=None,  # REQ-1320

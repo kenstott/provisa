@@ -36,6 +36,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from tests.unit.product_members import with_members
 
 
 def _source(source_id: str = "wh", description: str = "warehouse") -> Source:
@@ -48,17 +49,13 @@ def _table(
     table_name: str,
     domain_id: str = "sales",
     columns: list[Column] | None = None,
-    product_id: str | None = "prod",
     **kwargs,
 ) -> Table:
-    # product_id defaults to a non-None value here: these tests exercise what a PUBLISHED table
-    # carries, and only tables marked Data Product publish at all (the export filter).
     return Table(
         source_id=source_id,
         domain_id=domain_id,
         schema_name="public",
         table_name=table_name,
-        product_id=product_id,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
@@ -66,7 +63,10 @@ def _table(
     )
 
 
-def _config(**kwargs) -> ProvisaConfig:
+def _config(*, members: dict[str, list[str]] | None = None, **kwargs) -> ProvisaConfig:
+    """``members``: product id -> the names of its member tables (REQ-1634). Left out, every
+    table is a member of "prod": these tests exercise what a PUBLISHED table carries, and only
+    product members publish at all (the export filter)."""
     base = {
         "sources": [_source()],
         "domains": [Domain(id="sales", description="Sales", steward="data-steward")],
@@ -74,6 +74,13 @@ def _config(**kwargs) -> ProvisaConfig:
         "roles": [],
     }
     base.update(kwargs)
+    tables = base["tables"]
+    chosen = (
+        {"prod": tables}
+        if members is None
+        else {pid: [t for t in tables if t.table_name in names] for pid, names in members.items()}
+    )
+    base["data_products"] = with_members(base.get("data_products", []), chosen)
     return ProvisaConfig(**base)
 
 
@@ -120,8 +127,9 @@ def test_only_data_product_tables_are_published():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="staging_orders", product_id=None),
-        ]
+            _table(table_name="staging_orders"),
+        ],
+        members={"prod": ["orders"]},
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -129,12 +137,13 @@ def test_only_data_product_tables_are_published():
     assert [t.ref.fqn() for t in snapshot.tables] == ["wh.public.orders"]
 
 
-def test_tables_sharing_a_product_id_publish_as_one_data_product():
+def test_tables_sharing_a_product_publish_as_one_data_product():
     config = _config(
         tables=[
-            _table(table_name="orders", product_id="customer_360"),
-            _table(table_name="customers", product_id="customer_360"),
+            _table(table_name="orders"),
+            _table(table_name="customers"),
         ],
+        members={"customer_360": ["orders", "customers"]},
         data_products=[
             DataProduct(
                 id="customer_360",
@@ -165,7 +174,8 @@ def test_data_product_with_no_exported_members_does_not_publish():
     # A DataProduct listed in config but with zero tables actually exported (e.g. every member
     # table is unmarked) would tell the catalog about a listing with nothing behind it.
     config = _config(
-        tables=[_table(table_name="orders", product_id=None)],
+        tables=[_table(table_name="orders")],
+        members={},
         data_products=[
             DataProduct(
                 id="customer_360", domain_id="sales", name="Customer 360", owner_role="alice"
@@ -180,7 +190,8 @@ def test_data_product_with_no_exported_members_does_not_publish():
 
 def test_data_product_without_owner_publishes_with_no_owner_ref():
     config = _config(
-        tables=[_table(table_name="orders", product_id="customer_360")],
+        tables=[_table(table_name="orders")],
+        members={"customer_360": ["orders"]},
         data_products=[
             DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner_role=None)
         ],
@@ -198,7 +209,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="customers", product_id=None),
+            _table(table_name="customers"),
             _table(
                 table_name="order_totals",
                 view_sql="SELECT id FROM customers",
@@ -220,6 +231,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
             Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
             Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
+        members={"prod": ["orders", "order_totals"]},
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -457,7 +469,8 @@ def test_data_product_carries_its_page_url_when_a_public_origin_is_configured():
     """REQ-1659: the listing's documentation link is the product's own page, at the org's public
     origin; without a configured origin there is no link rather than a guessed one."""
     config = _config(
-        tables=[_table(table_name="orders", product_id="customer_360")],
+        tables=[_table(table_name="orders")],
+        members={"customer_360": ["orders"]},
         data_products=[
             DataProduct(id="customer_360", domain_id="sales", name="Customer 360", purpose="x")
         ],

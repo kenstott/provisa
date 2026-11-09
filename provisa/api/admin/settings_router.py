@@ -41,6 +41,8 @@ from provisa.api.errors import ApiError
 from provisa.compiler.sampling import get_sample_size as _get_sample_size
 from provisa.core import deployment_settings as _deployment_settings
 from provisa.core import settings_registry as _settings_registry
+from provisa.core.org_settings import graphql_remote_max_rows
+from provisa.core.request_context import acting_org_overrides
 
 router = APIRouter()
 
@@ -227,20 +229,26 @@ _PLATFORM_BLOCKS = (
     "relationships",
     "cdc",
     "materialize",
-    "sampling",
     "otel",
-    "graphql_remote",
 )
 
-# `naming` is split rather than dropped: the domain mode is the org's (REQ-1266), the conventions
-# configure the process-global naming module and are the deployment's. The GraphQL convention is
-# still read by the org: it shapes every name the org's schema serves, so it is no secret, and the
-# relationships page suggests a GraphQL alias by it (REQ-194). Writing it stays the platform's.
-_NAMING_ORG_SUBKEYS = ("use_domains", "default_domain", "convention")
+# REQ-1327: the org's fields of the `naming` block PUT writes. The domain mode (use_domains,
+# default_domain) has its own door, POST /admin/domain-policy.
+_NAMING_FIELDS = ("convention", "sql_convention", "domain_prefix")
+
+# REQ-1327: the org-owned operator settings, block by field: each is ``<block>.<field>`` in the
+# settings registry, which validates it and layers the org's value over the deployment's.
+_ORG_REGISTRY_BLOCKS = {
+    "sampling": ("default_sample_size",),
+    "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
+    "replication": ("hot_threshold", "hot_interval", "hot_max_rows"),
+}
 
 # The PUT blocks an org administrator may write with ``org_settings`` alone. A body touching
-# anything else is checked against ``platform_settings`` as well.
-_ORG_BLOCKS = ("redirect", "cache", "federation")
+# anything else is checked against the deployment right as well. `graphql_remote` is both: its
+# row limit is the org's (REQ-1327), its traversal limits the deployment's (_GRAPHQL_REMOTE_ORG).
+_ORG_BLOCKS = ("redirect", "cache", "federation", "names", "naming", *_ORG_REGISTRY_BLOCKS)
+_GRAPHQL_REMOTE_ORG = frozenset({"max_rows"})
 
 
 @router.get("/admin/settings")
@@ -261,7 +269,11 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
 
     rc = RedirectConfig.from_env()
     cfg = read_config()
-    naming_cfg = cfg.get("naming", {})
+    org_naming = acting_org_overrides().get("naming") or {}
+    naming_cfg = {
+        **cfg.get("naming", {}),
+        **org_naming,
+    }  # REQ-1327: the org's over the deployment's
     gqr_cfg = cfg.get("graphql_remote", {}) or {}
 
     def _eng(key: str):
@@ -307,6 +319,8 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         },
         # REQ-259: the org's Apollo Federation subgraph and the role it serves as.
         "federation": _federation.subgraph(state).model_dump(),
+        # REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+        "names": {"clash_policy": _names_clash_policy(state.settings_overrides)},
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
@@ -326,6 +340,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         "sampling": {
             "default_sample_size": _get_sample_size(),
         },
+        **_org_processing_blocks(),
         "otel": _otel_block(),
         "graphql_remote": {  # remote-GraphQL source traversal limits
             "max_object_depth": gqr_cfg.get(
@@ -337,8 +352,8 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
             "max_list_items": gqr_cfg.get(
                 "max_list_items", GraphQLRemoteConfig.model_fields["max_list_items"].default
             ),
-            "max_rows": gqr_cfg.get(
-                "max_rows", GraphQLRemoteConfig.model_fields["max_rows"].default
+            "max_rows": graphql_remote_max_rows(
+                gqr_cfg.get("max_rows", GraphQLRemoteConfig.model_fields["max_rows"].default)
             ),
         },
     }
@@ -346,14 +361,54 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
     if not is_platform:
         for block in _PLATFORM_BLOCKS:
             payload.pop(block)
-        payload["naming"] = {k: payload["naming"][k] for k in _NAMING_ORG_SUBKEYS}
+        # REQ-1327: the row limit is the org's; the traversal limits are the deployment's.
+        payload["graphql_remote"] = {"max_rows": payload["graphql_remote"]["max_rows"]}
     return payload
+
+
+def _org_processing_blocks() -> dict:
+    """REQ-1327: the org's replicate and hot-table settings, each at the acting org's value."""
+    value = _settings_registry.value
+    hot = {f: value(f"hot_tables.{f}") for f in _ORG_REGISTRY_BLOCKS["hot_tables"]}
+    # REQ-230: with no ceiling of its own the hot tier's row ceiling is its auto threshold.
+    if hot["max_rows"] is None:
+        hot["max_rows"] = hot["auto_threshold"]
+    return {
+        "hot_tables": hot,
+        # REQ-826: when a busy table is replicated (Default threshold, window, size ceiling)
+        "replication": {f: value(f"replication.{f}") for f in _ORG_REGISTRY_BLOCKS["replication"]},
+    }
 
 
 # The `redirect` fields an org owns: WHEN its results redirect and how long the link lives. The
 # object store they land in — bucket, endpoint, credentials, region — is the deployment's and has
 # no representation here (REQ-1349); RedirectConfig.from_env reads those from the platform env.
 _REDIRECT_ORG_KEYS = ("enabled", "threshold", "default_format", "ttl")
+
+
+def _invalid_convention(n: dict) -> str | None:
+    """Why a convention the body names cannot be saved, before anything in it is written."""
+    from provisa.compiler.naming import VALID_CONVENTIONS
+
+    for field in ("convention", "sql_convention"):
+        if n.get(field) is not None and n[field] not in VALID_CONVENTIONS:
+            return f"Invalid convention: {n[field]!r}"
+    return None
+
+
+def _graphql_remote_is_org_only(body: dict) -> bool:
+    return set(body.get("graphql_remote") or {}) <= _GRAPHQL_REMOTE_ORG
+
+
+def _touches_org_blocks(body: dict) -> bool:
+    return bool(set(body) & set(_ORG_BLOCKS)) or "max_rows" in (body.get("graphql_remote") or {})
+
+
+def _touches_deployment_blocks(body: dict) -> bool:
+    blocks = set(body) - set(_ORG_BLOCKS)
+    if "graphql_remote" in blocks and _graphql_remote_is_org_only(body):
+        blocks.remove("graphql_remote")
+    return bool(blocks)
 
 
 def _org_federation(state, f: dict) -> dict:
@@ -385,9 +440,88 @@ def _org_federation(state, f: dict) -> dict:
     return block.model_dump()
 
 
+def _naming_block(n: dict, overrides: dict, updated: list) -> dict | None:  # REQ-1327
+    """The org's whole ``naming`` row after this save: the fields ``n`` names applied over what it
+    holds (its domain mode stays). A null clears a field back to the deployment's value."""
+    from provisa.compiler.naming import stored_convention
+
+    unknown = set(n) - set(_NAMING_FIELDS)
+    if unknown:
+        raise ApiError(
+            400,
+            "settings.naming_not_org_field",
+            f"not a naming setting: {', '.join(sorted(unknown))}",
+            fields=", ".join(sorted(unknown)),
+        )
+    merged = dict(overrides.get("naming") or {})
+    for field in _NAMING_FIELDS:
+        if field not in n:
+            continue
+        raw = n[field]
+        if raw is None:
+            merged.pop(field, None)
+        elif field == "domain_prefix":
+            merged[field] = bool(raw)
+        else:
+            merged[field] = stored_convention(raw)
+        updated.append(f"naming.{field}")
+    return merged or None
+
+
+def _registry_block(block: str, given: dict, overrides: dict, updated: list) -> dict | None:
+    """The org's whole row for an org-owned registry block after this save (REQ-1327), each value
+    checked as the setting declares; a null or blank clears it back to the deployment's."""
+    from provisa.api.admin.settings_catalog_router import _invalid
+
+    fields = _ORG_REGISTRY_BLOCKS[block]
+    unknown = set(given) - set(fields)
+    if unknown:
+        raise ApiError(
+            400,
+            "settings.not_org_overridable",
+            f"not org-overridable: {', '.join(sorted(unknown))}",
+        )
+    merged = dict(overrides.get(block) or {})
+    for field in fields:
+        if field not in given:
+            continue
+        key = f"{block}.{field}"
+        raw = given[field]
+        if raw is None or raw == "":
+            merged.pop(field, None)
+        else:
+            try:
+                _settings_registry.validate({key: raw})
+            except _settings_registry.SettingInvalid as err:
+                raise _invalid(err) from None
+            merged[field] = raw
+        updated.append(key)
+    return merged or None
+
+
+def _graphql_remote_org_block(g: dict, overrides: dict, updated: list) -> dict | None:  # REQ-1327
+    """The org's remote GraphQL row limit after this save; a null clears it."""
+    merged = dict(overrides.get("graphql_remote") or {})
+    raw = g["max_rows"]
+    if raw is None:
+        merged.pop("max_rows", None)
+    elif isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise ApiError(
+            400,
+            "settings.invalid_value",
+            "setting graphql_remote.max_rows refused: below_min",
+            field="graphql_remote.max_rows",
+            reason="below_min",
+        )
+    else:
+        merged["max_rows"] = raw
+    updated.append("graphql_remote.max_rows")
+    return merged or None
+
+
 async def _apply_org_blocks(request, body: dict, updated: list) -> None:
-    """Persist the blocks whose subject is the ACTING ORG: `redirect`, `cache.default_ttl` and
-    `federation`.
+    """Persist the blocks whose subject is the ACTING ORG: `redirect`, `cache.default_ttl`,
+    `federation`, `names`, its conventions and its processing settings (REQ-1327).
 
     Written to the org's ``org_settings`` rows rather than to process env or the deployment YAML.
     On a shared shard those are one storage location for every org, so the previous env-backed
@@ -397,7 +531,7 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
     from provisa.api.app import state
     from provisa.core.org_settings import read_org_overrides, write_org_overrides
 
-    if not set(body) & set(_ORG_BLOCKS):
+    if not _touches_org_blocks(body):
         return  # nothing org-scoped in this body — do not demand the org right for a platform save
     assert state.model_db is not None
     require_org_settings(request)  # REQ-1349
@@ -439,6 +573,21 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
         updates["federation"] = _org_federation(state, body["federation"] or {})
         updated.extend(f"federation.{k}" for k in body["federation"] or {})
 
+    if "names" in body:
+        updates["names"] = _names_block(body["names"] or {}, overrides, updated)
+
+    if "naming" in body:
+        updates["naming"] = _naming_block(body["naming"] or {}, overrides, updated)
+
+    for block in _ORG_REGISTRY_BLOCKS:
+        if block in body:
+            updates[block] = _registry_block(block, body[block] or {}, overrides, updated)
+
+    if "max_rows" in (body.get("graphql_remote") or {}):
+        updates["graphql_remote"] = _graphql_remote_org_block(
+            body["graphql_remote"], overrides, updated
+        )
+
     if not updates:
         return
     identity = getattr(request.state, "identity", None)
@@ -448,6 +597,48 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
     # The query path reads these off the bound runtime, so the cached copy is refreshed here —
     # otherwise the org's next query still redirects and caches on the pre-save values.
     state.settings_overrides = await read_org_overrides(state.model_db)
+    if "names" in updates or "naming" in updates:
+        # REQ-194: the policy settles the clashes of the next names table; built now.
+        # REQ-1327: the org's schema is named by its conventions; built now under the new ones.
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+
+
+def _names_clash_policy(overrides: dict) -> str:  # REQ-194
+    from provisa.compiler.names_table import clash_policy
+
+    return clash_policy(overrides)
+
+
+def _names_block(n: dict, overrides: dict, updated: list) -> dict | None:  # REQ-194
+    """The org's ``names`` override after this save: its clash policy, refuse or disambiguate
+    (REQ-194, CLASH POLICY). Null clears it back to refuse."""
+    from provisa.compiler.names_table import CLASH_POLICIES
+
+    unknown = set(n) - {"clash_policy"}
+    if unknown:
+        raise ApiError(
+            400,
+            "settings.names_unknown_key",
+            f"not a names setting: {', '.join(sorted(unknown))}",
+        )
+    merged = dict(overrides.get("names") or {})
+    if "clash_policy" in n:
+        policy = n["clash_policy"]
+        if policy is None:
+            merged.pop("clash_policy", None)
+        elif policy not in CLASH_POLICIES:
+            raise ApiError(
+                400,
+                "settings.names_clash_policy_invalid",
+                f"unknown clash policy {policy!r}; expected one of {', '.join(CLASH_POLICIES)}",
+                field="names.clash_policy",
+            )
+        else:
+            merged["clash_policy"] = policy
+        updated.append("names.clash_policy")
+    return merged or None
 
 
 # The `otel` block's fields, by the operator setting each one is (REQ-1913). A field left out of
@@ -589,11 +780,12 @@ def _apply_engine(e: dict, state, updated: list, *, updated_by: str = "anonymous
 
 
 def _apply_graphql_remote(g: dict, updated: list) -> None:
-    """Apply the remote-GraphQL traversal limits (applied on reload)."""
+    """Apply the remote-GraphQL traversal limits (applied on reload). ``max_rows`` is the org's
+    (REQ-1327) and is saved with the org blocks."""
     path = config_path()
     cfg = read_config()
     gqr = dict(cfg.get("graphql_remote", {}) or {})
-    for k in ("max_object_depth", "max_list_depth", "max_list_items", "max_rows"):
+    for k in ("max_object_depth", "max_list_depth", "max_list_items"):
         if k in g:
             gqr[k] = int(g[k])
             updated.append(f"graphql_remote.{k}")
@@ -601,48 +793,11 @@ def _apply_graphql_remote(g: dict, updated: list) -> None:
     write_config(path, cfg)
 
 
-async def _apply_naming(n: dict, updated: list) -> str | None:
-    """Apply naming (domain_prefix / convention). Returns an error message on invalid input.
-
-    use_domains / default_domain are NOT editable here — changing the domain policy is
-    destructive and handled by POST /admin/domain-policy.
-    """
-    from provisa.api.app import _load_and_build
-
-    path = config_path()
-    cfg = read_config()
-    needs_reload = False
-    if "domain_prefix" in n:
-        cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
-        updated.append("naming.domain_prefix")
-        needs_reload = True
-    # REQ-471 keeps the GraphQL and SQL planes on separate conventions, so each is its own key:
-    # `convention` names GraphQL fields (and Cypher property keys), `sql_convention` names the SQL
-    # plane the pgwire/Bolt/semantic surfaces read.
-    from provisa.compiler.naming import VALID_CONVENTIONS
-
-    for key in ("convention", "sql_convention"):
-        if key not in n:
-            continue
-        if n[key] not in VALID_CONVENTIONS:
-            return f"Invalid convention: {n[key]!r}"
-        cfg.setdefault("naming", {})[key] = n[key]
-        updated.append(f"naming.{key}")
-        needs_reload = True
-    if needs_reload:
-        write_config(path, cfg)
-        try:
-            await _load_and_build(str(path))
-        except Exception:
-            pass
-    return None
-
-
 def _apply_scalars(body: dict, state, updated: list, updated_by: str = "anonymous") -> None:
-    """Apply the deployment-wide env-backed scalar blocks (limits/sampling/relationships).
+    """Apply the deployment-wide env-backed scalar blocks (limits/relationships).
 
-    `cache.default_ttl` is NOT here — it governs the org's own results and is written as an org
-    override by _apply_org_blocks.
+    `cache.default_ttl` and `sampling` are NOT here — each is the org's own and is written as an
+    org override by _apply_org_blocks.
     """
     # REQ-1900: stored in the platform control plane, where every worker process and every
     # instance reads them (provisa/core/deployment_settings.py) — these used to be written to
@@ -650,8 +805,6 @@ def _apply_scalars(body: dict, state, updated: list, updated_by: str = "anonymou
     values: dict = {}
     if "limits" in body and "default_row_limit" in body["limits"]:
         values["limits.default_row_limit"] = int(body["limits"]["default_row_limit"])
-    if "sampling" in body and "default_sample_size" in body["sampling"]:
-        values["sampling.default_sample_size"] = int(body["sampling"]["default_sample_size"])
     if "relationships" in body and "auto_track_fk" in body["relationships"]:
         values["relationships.auto_track_fk"] = bool(body["relationships"]["auto_track_fk"])
     # REQ-1905: the request timeout, default and per transport. Stored through the settings
@@ -688,9 +841,9 @@ def _apply_scalars(body: dict, state, updated: list, updated_by: str = "anonymou
 async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-416, REQ-1349
     """Update settings at runtime, gated per block by whose settings the block is.
 
-    `redirect` and `cache` are the acting org's and need only ``org_settings``; every other block
-    is deployment-wide and still needs ``platform_settings``. A body carrying both is checked
-    against both rights.
+    The blocks in ``_ORG_BLOCKS`` and ``graphql_remote.max_rows`` are the acting org's and need
+    only ``org_settings``; every other block is deployment-wide and still needs
+    ``platform_settings``. A body carrying both is checked against both rights.
     """
     from provisa.api.app import state
 
@@ -700,11 +853,17 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
 
     # Every right the body needs is checked before any of it is written: the org blocks used to
     # be stored first, so a body refused for its deployment blocks was left half applied.
-    if set(body) & set(_ORG_BLOCKS):
+    if _touches_org_blocks(body):
         require_org_settings(request)  # REQ-1349
-    if set(body) - set(_ORG_BLOCKS):
+    if _touches_deployment_blocks(body):
         require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
+    refused = _invalid_convention(body.get("naming") or {})
+    if refused is not None:
+        return {"success": False, "message": refused}
     await _apply_org_blocks(request, body, updated)
+    # REQ-1327: the hot tier is built when the org's runtime is (as its deployment half is).
+    if "hot_tables" in body:
+        restart_required = True
 
     if "engine" in body:
         restart_required = (
@@ -722,10 +881,6 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
     _apply_scalars(body, state, updated, getattr(_identity, "user_id", "anonymous"))
     if "graphql_remote" in body:
         _apply_graphql_remote(body["graphql_remote"], updated)
-    if "naming" in body:
-        err = await _apply_naming(body["naming"], updated)
-        if err is not None:
-            return {"success": False, "message": err}
     if "otel" in body:
         _apply_otel(body["otel"], updated, updated_by=getattr(_identity, "user_id", "anonymous"))
 
@@ -771,6 +926,19 @@ async def _catalog_counts(conn) -> dict[str, int]:  # REQ-1919
         kind: int((await conn.execute_core(statement)).scalar_one())
         for kind, statement in statements.items()
     }
+
+
+def naming_after_domain_policy(
+    before: dict | None, use_domains: bool | None, default_domain: str
+) -> dict | None:
+    """The org's ``naming`` row after a domain-policy change: the domain mode is replaced and the
+    conventions the row holds stay (REQ-1327). ``None`` when nothing is left to hold."""
+    naming = {k: v for k, v in (before or {}).items() if k not in ("use_domains", "default_domain")}
+    if use_domains is not None:
+        naming["use_domains"] = use_domains
+        if use_domains is False:
+            naming["default_domain"] = default_domain
+    return naming or None
 
 
 @router.post("/admin/domain-policy")
@@ -833,11 +1001,9 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
 
     # 2. Persist the org's policy. `None` means "inherit the deployment's", which is the same value
     #    that clears the override row outright.
-    naming: dict | None = None
-    if use_domains is not None:
-        naming = {"use_domains": use_domains}
-        if use_domains is False:
-            naming["default_domain"] = default_domain
+    naming = naming_after_domain_policy(
+        (await read_org_overrides(model_db)).get("naming"), use_domains, default_domain
+    )
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
         model_db, {"naming": naming}, updated_by=getattr(identity, "user_id", "anonymous")
@@ -991,15 +1157,14 @@ async def set_federation_engine(request: Request):  # REQ-916
 # The blocks of /admin/cache-storage that are operator settings (REQ-1913), by block and field.
 _CACHE_STORAGE_SETTINGS = {
     "cache": ("enabled", "redis_url", "default_ttl"),
-    "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
-    "replication": ("hot_threshold", "hot_interval", "hot_max_rows"),
     "materialized_views": ("default_ttl",),
 }
 
 
 @router.get("/admin/cache-storage")
 async def get_cache_storage(request: Request):  # REQ-917
-    """Hot-cache (Redis) + materialize-store settings for the admin UI."""
+    """Hot-cache (Redis) + materialize-store settings for the admin UI, the platform's half of the
+    Cache page. Hot tables and replication are the org's (GET /admin/settings, REQ-1327)."""
     require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.api.app import state
 
@@ -1018,10 +1183,6 @@ async def get_cache_storage(request: Request):  # REQ-917
     def _tier(block: str, *fields: str) -> dict:
         return {field: saved(f"{block}.{field}").value for field in fields}
 
-    hot = _tier("hot_tables", "auto_threshold", "max_bytes", "refresh_interval")
-    # REQ-230: with no ceiling of its own the hot tier's row ceiling is its auto threshold.
-    own_max_rows = saved("hot_tables.max_rows").value
-    hot["max_rows"] = own_max_rows if own_max_rows is not None else hot["auto_threshold"]
     redis_url = saved("cache.redis_url").value
     return {
         "cache": {
@@ -1031,9 +1192,6 @@ async def get_cache_storage(request: Request):  # REQ-917
             "redis_url": redact_url_password(redis_url) if redis_url is not None else "",
             "default_ttl": saved("cache.default_ttl").value,
         },
-        "hot_tables": hot,
-        # REQ-826: when a busy table is replicated (Default threshold, window, size ceiling)
-        "replication": _tier("replication", "hot_threshold", "hot_interval", "hot_max_rows"),
         # REQ-543: default MV refresh TTL for MVs without their own
         "materialized_views": _tier("materialized_views", "default_ttl"),
         "materialize": {

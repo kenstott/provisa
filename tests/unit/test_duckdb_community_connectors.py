@@ -90,7 +90,13 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
     assert c.mechanism is expected
     assert c.reads_in_place is True
     assert c.install_from_community is True  # community registry
-    assert c._install_sql() == f"INSTALL {ext} FROM community"
+    if ext == "airport":  # DuckDB 2.0: Query.Farm's repository, not community
+        assert c._bring_up()[-2:] == [
+            "INSTALL airport FROM query_farm",
+            "LOAD airport FROM query_farm",
+        ]
+    else:
+        assert c._bring_up() == [f"INSTALL {ext} FROM community", f"LOAD {ext}"]
 
 
 def test_all_seven_community_connectors_are_present():
@@ -116,7 +122,9 @@ async def test_probe_available_when_extension_loads_and_symbol_registers(spec):
     fetch = _FakeDuckDB(registered={sym})
     result = await cls().probe(fetch)
     assert result.available is True
-    assert fetch.installs == [f"INSTALL {ext} FROM community"]  # staged from community, not core
+    # staged from community, not core; airport from Query.Farm's repository on DuckDB 2.0
+    source = "query_farm" if ext == "airport" else "community"
+    assert fetch.installs == [f"INSTALL {ext} FROM {source}"]
 
 
 @pytest.mark.asyncio
@@ -152,6 +160,17 @@ def test_mssql_attach_uses_tds_dsn():
     )
     assert "ATTACH" in d["attach"] and "(TYPE mssql)" in d["attach"]
     assert "Server=mssqlhost,1433" in d["attach"]
+
+
+def test_mssql_attach_trusts_the_server_certificate_only_where_the_source_pins_it():
+    # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate; a self-signed one
+    # (an on-prem or test SQL Server) is accepted only where the source says so, as Trino's URL is.
+    pinned = DuckDBMssqlConnector().details(
+        _src("sql", SourceType.sqlserver, federation_hints={"trust_server_certificate": "true"})
+    )
+    assert ";TrustServerCertificate=yes'" in pinned["attach"]
+    plain = DuckDBMssqlConnector().details(_src("sql", SourceType.sqlserver))
+    assert "TrustServerCertificate" not in plain["attach"]
 
 
 def test_snowflake_attach_is_read_only_via_secret():

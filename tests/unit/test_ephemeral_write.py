@@ -71,8 +71,8 @@ def test_the_values_are_read_by_the_statements_own_clauses(written):
     assert made == write.Created(nodes=2, relationships=0, labels=2)
     [w] = written
     assert [(n.node_id, n.anchor, n.labels, n.properties) for n in w.nodes] == [
-        ("e:1", "cypher__anchor__Temp", ("Temp",), {"n": 1, "d": 2}),
-        ("e:2", "cypher__anchor__Temp", ("Temp",), {"n": 3, "d": 6}),
+        ("e:1", store.anchor_table("Temp"), ("Temp",), {"n": 1, "d": 2}),
+        ("e:2", store.anchor_table("Temp"), ("Temp",), {"n": 3, "d": 6}),
     ]
 
 
@@ -81,7 +81,7 @@ def test_a_create_with_no_leading_clause_reads_one_row(written):
     assert asked == ["RETURN 1 AS _n1_k"]
     assert [(n.anchor, n.labels) for n in written[0].nodes] == [
         ("cypher__anchor", ()),
-        ("cypher__anchor__A", ("A", "B")),
+        (store.anchor_table("A"), ("A", "B")),
     ]
 
 
@@ -102,7 +102,7 @@ def test_relationships_join_new_nodes_and_matched_model_nodes(written):
 def test_a_model_node_is_tagged_by_its_labels_on_an_ephemeral_node(written):
     _run("CREATE (:Person:Temp {name: 'x'})", [{"_n0_name": "x"}])
     [node] = written[0].nodes
-    assert (node.anchor, node.labels) == ("cypher__anchor__Temp", ("Person", "Temp"))
+    assert (node.anchor, node.labels) == (store.anchor_table("Temp"), ("Person", "Temp"))
 
 
 def test_the_anchor_a_free_label_creates_anchors_its_later_nodes(written):
@@ -110,8 +110,8 @@ def test_the_anchor_a_free_label_creates_anchors_its_later_nodes(written):
     _run("CREATE (:Scratch {k: 1})", [{"_n0_k": 1}], session)
     _run("CREATE (:Temp:Scratch {k: 2})", [{"_n0_k": 2}], session)
     assert [n.anchor for w in written for n in w.nodes] == [
-        "cypher__anchor__Scratch",
-        "cypher__anchor__Scratch",
+        store.anchor_table("Scratch"),
+        store.anchor_table("Scratch"),
     ]
 
 
@@ -143,7 +143,7 @@ def test_a_mixed_create_writes_its_governed_row_and_its_session_parts(written):
     assert governed == [("CREATE (n:Person {id: $id})", {"id": 42})]
     [w] = written
     assert [(n.anchor, n.labels, n.properties) for n in w.nodes] == [
-        ("cypher__anchor__Note", ("Note",), {"text": "x"})
+        (store.anchor_table("Note"), ("Note",), {"text": "x"})
     ]
     # The session relationship ends on the model node the governed write made.
     assert [(r.rel_type, r.from_id, r.to_id, r.from_labels) for r in w.rels] == [

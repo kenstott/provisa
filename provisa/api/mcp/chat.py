@@ -626,6 +626,23 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "set_data_product_members",
+        "description": (
+            "Make a data product's members exactly these tables (by id) and commands (by name). "
+            "A table or command may belong to any number of products, but only to products of "
+            "its own domain. Pass the full lists: a member left out is removed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "table_ids": {"type": "array", "items": {"type": "integer"}},
+                "command_names": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["id", "table_ids", "command_names"],
+        },
+    },
+    {
         "name": "delete_data_product",
         "description": (
             "Delete a data product by id. Irreversible — always confirm with the user "
@@ -1154,7 +1171,8 @@ _SYSTEM = (
     "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
-    "delete_data_product, and change a product's status (draft, live, deprecated, retired) with "
+    "set_data_product_members/delete_data_product -- a product's members are set on the product "
+    "with set_data_product_members, never on a table or command -- and change a product's status (draft, live, deprecated, retired) with "
     "publish_data_product/deprecate_data_product/retire_data_product/restore_data_product -- "
     "create_data_product never changes it -- and governed metrics with upsert_metric/delete_metric, directly — no "
     "admin_mutation needed, they carry their own capability check and fail loud if the "
@@ -1254,7 +1272,10 @@ _SYSTEM = (
     "navigate to /graph instead. Asked for data as a file (CSV or Parquet), call run_sql with "
     "file_format. A run_sql result that carries `redirect` was delivered as a file the user "
     "can download in the chat: say how many rows it holds and that the download is there, "
-    "never list its rows.\n"
+    "never list its rows. Say a file or download exists only when a run_sql result in this "
+    "reply carries `redirect`: a result that says 'No file was delivered', a failed call, no "
+    "call at all and a download mentioned earlier in the conversation are not one. Asked for a "
+    "file with none delivered, call run_sql with file_format; if that fails, say it failed.\n"
     "The Graph page's view -- group by, collapse every group, layout, max nodes -- is set through "
     "navigate's state.view, never by rewriting the query: asked to group the graph on screen by "
     "an attribute, navigate to /graph with only state.view.groupBy (the node property name) and "
@@ -1437,6 +1458,11 @@ async def _resolve_model(state: Any) -> str | None:
     return "claude-opus-4-8" if await _resolve_vendor(state) == "anthropic" else None
 
 
+#: What a run_sql result says when it carries no file: the model may claim a download only from a
+#: result that has one.
+_NO_FILE = "No file was delivered."
+
+
 async def _run_sql(state: Any, role: str, sql: str, args: dict) -> dict:
     """run_sql for the chat. The model always gets the result's first rows: a file delivery alone
     answers only how many rows it holds, and a model that asked for a file it did not need read
@@ -1456,13 +1482,23 @@ async def _run_sql(state: Any, role: str, sql: str, args: dict) -> dict:
         else None
     )
     if deliver_as is not None:
-        delivered = await mcp_tools.run_sql(
-            state, role, sql, redirect=True, redirect_format=deliver_as
-        )
+        try:
+            delivered = await mcp_tools.run_sql(
+                state, role, sql, redirect=True, redirect_format=deliver_as
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the model as the failed delivery it is
+            raise ValueError(
+                f"{_NO_FILE} The delivery failed: {exc}. Tell the user it failed."
+            ) from exc
         result["redirect"] = delivered["redirect"]
     if "redirect" in result:
         result["artifact"] = {"kind": "file", **result["redirect"]}
         result["shown"] = "The user has a download for this file in the chat."
+    else:
+        result["file"] = (
+            f"{_NO_FILE} There is no download in the chat from this call. If the user asked for "
+            "a file, call run_sql with file_format."
+        )
     return result
 
 
@@ -1679,6 +1715,7 @@ async def _execute_tool(
         "list_data_products",
         "list_data_product_findings",
         "create_data_product",
+        "set_data_product_members",
         "delete_data_product",
         "publish_data_product",
         "deprecate_data_product",
@@ -1721,6 +1758,15 @@ async def _execute_tool(
             )
         if name == "delete_data_product":
             return await mcp_tools.delete_data_product(state, role, request, args["id"])
+        if name == "set_data_product_members":
+            return await mcp_tools.set_data_product_members(
+                state,
+                role,
+                request,
+                args["id"],
+                [int(t) for t in args["table_ids"]],
+                list(args["command_names"]),
+            )
         if name == "upsert_metric":
             return await mcp_tools.upsert_metric(
                 state,

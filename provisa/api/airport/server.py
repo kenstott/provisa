@@ -10,10 +10,13 @@
 
 """Provisa airport Flight server (REQ-1120).
 
-Serves the DuckDB `airport` community extension's Flight application protocol so
+Serves the DuckDB `airport` extension's (Query.Farm's) Flight application protocol so
 an external DuckDB client can::
 
-    INSTALL airport FROM community; LOAD airport;
+    SET allow_extension_repositories = 'allowed';
+    CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm
+        WITH PREFIX 'https://duckdb-extensions.query.farm';
+    INSTALL airport FROM query_farm; LOAD airport FROM query_farm;
     ATTACH 'grpc://host:port' AS provisa (TYPE AIRPORT);
     SELECT ... FROM provisa.<schema>.<table>;
     INSERT INTO provisa.<schema>.<table> VALUES (...);

@@ -46,7 +46,7 @@ const LINEAGE: ProductLineage = {
     domain_id: "pet-store",
     table_name: `a_rather_long_table_name_${i}`,
     alias: null,
-    product_id: null,
+    product_ids: [],
     source_id: null,
     source_type: null,
     source_schema: null,
@@ -64,6 +64,7 @@ function panel() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       contractsVersion={0}
       lineageError=""

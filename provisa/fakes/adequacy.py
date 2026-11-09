@@ -196,30 +196,35 @@ def fake_pairs(
     beside its fake. Under the process's platform key; nothing leaves the process."""
     from provisa.core import engine_memory
     import pandas as pd
-    import sqlglot
+    import sqlglot.expressions as exp
 
     from provisa.fakes import duckdb_functions
     from provisa.fakes.checks import family
     from provisa.fakes.digest import fingerprint, platform_key
     from provisa.fakes.projection import faked_projection
-    from provisa.fakes.read_sql import Column, _q
+    from provisa.fakes.read_sql import Column
+    from provisa.fakes.read_sql import column as ref
 
     fam = family(data_type)
     faked = Column(column, data_type, fam, kind, stable, None, stable_version)
     projection = faked_projection(
-        "sample",
+        exp.table_("sample"),
         "t",
         [(column, data_type, fam)],
         {column: faked},
         fingerprint(platform_key()),
         None,
-        carried={"__real__": f"t.{_q(column)}"},
+        carried={
+            "__real__": exp.Column(
+                this=exp.to_identifier(column, quoted=True), table=exp.to_identifier("t")
+            )
+        },
     )
-    statement = sqlglot.transpile(
-        f"SELECT {_q('__real__')}, {_q(column)} FROM {projection} AS t",
-        read="postgres",
-        write="duckdb",
-    )[0]
+    statement = (
+        exp.select(ref("__real__"), ref(column))
+        .from_(exp.Subquery(this=projection, alias=exp.TableAlias(this=exp.to_identifier("t"))))
+        .sql(dialect="duckdb")
+    )
     con = engine_memory.connect()
     try:
         duckdb_functions.register(con)

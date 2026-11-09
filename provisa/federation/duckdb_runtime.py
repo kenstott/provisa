@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import re
 import threading
 from collections.abc import Callable, Iterator
@@ -47,6 +46,7 @@ from provisa.federation.engine import build_duckdb_engine
 from provisa.core import engine_memory
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.session_time_zone import StatementZone, carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.federation.replica_address import is_replicas_schema
 from provisa.federation.runtime_support import (
@@ -57,6 +57,17 @@ from provisa.federation.runtime_support import (
 from provisa.transpiler.transpile import transpile
 
 log = logging.getLogger(__name__)
+
+
+def _tz_name(zone: StatementZone) -> str | None:
+    """What DuckDB's ICU reads: a name of the tz database. It reads no offset, and reads ``UTC+5``
+    as five hours EAST, where PostgreSQL's is west: the word the session said is never sent."""
+    return zone.name
+
+
+def _set_zone(zone: str) -> str:
+    return "SET SESSION TimeZone = '" + zone.replace("'", "''") + "'"
+
 
 _T = TypeVar("_T")
 
@@ -140,6 +151,18 @@ def _local_store_name(schema: str, table: str) -> str:
     return f'"{_LOCAL_STORE_SCHEMA}"."{schema}__{table}"'
 
 
+class ReservedCatalog(ValueError):
+    """A source handed over under the catalog name the control plane is attached as
+    (``provisa_admin``): its tables would stand in an in-memory catalog of that name, which the
+    control plane's attach then finds taken and a drop of the source detaches. Refused by name."""
+
+    def __init__(self, source_id: Any, catalog: str) -> None:
+        super().__init__(
+            f"source {source_id!r} is named under catalog {catalog!r}, which is reserved for the "
+            "control plane"
+        )
+
+
 class WriteConflict(RuntimeError):
     """REQ-2006: a statement collided with another transaction's write to the same rows, and DuckDB
     refused it. Refused by name, never retried here: the caller decides whether to write again."""
@@ -217,12 +240,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # from the provisa-duckdb-ext PyPI package), load extensions from it and DISABLE network
         # autoinstall — an air-gapped/enterprise install must never silently reach extensions.duckdb.org;
         # a missing extension fails loud instead. Unset (dev/server) keeps DuckDB's default network path.
-        _ext_dir = os.environ.get("PROVISA_DUCKDB_EXT_DIR")
-        _cfg: dict[str, str | bool | int | float | list[str]] = (
-            {"extension_directory": _ext_dir, "autoinstall_known_extensions": False}
-            if _ext_dir
-            else {}
-        )
+        # The staged named repositories' trust anchors come with it (DuckDB 2.0 reads them at startup).
+        from provisa.federation.duckdb_extensions import extension_config
+
+        _cfg: dict[str, str | bool | int | float | list[str]] = dict(extension_config())
         # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
         # literal with no zone compared to one is UTC -- never the host's zone.
         _cfg["TimeZone"] = "UTC"
@@ -307,7 +328,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._ext_loaded: set[str] = (
             set()
         )  # community/extension connectors LOADed on this connection
-        self._control_plane_attached = False  # provisa_admin catalog (native path only)
         # A region's own stores, attached read-only for the ops views over them, by alias.
         self._region_stores_attached: set[str] = set()
         # A held file's pause is invisible to concurrent queries only if they are excluded from it
@@ -338,16 +358,43 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             return attach_catalog(source)
         return _to_catalog_name(source.id)
 
+    def _on_instance(self, sql: str, params: list | None = None) -> None:
+        """Run ``sql`` on the database instance through a cursor of its own. DuckDB 2.0 refuses a
+        second call on a connection busy with another ("connection is busy with another call; it
+        refuses instead of waiting"), where 1.5 waited: the engine's shared connection is reached
+        from many request threads at once, so nothing but its cursors runs on it. Every statement
+        here acts on the instance (ATTACH, a view, a schema, a secret, SET GLOBAL), which a cursor
+        reaches as the connection does."""
+        cur = open_cursor(self._con)
+        try:
+            if params is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, params)
+        finally:
+            close_cursor(cur)
+
+    def _install_and_load(self, extension: str, *, from_community: bool) -> None:
+        """install_and_load on a cursor of its own (:meth:`_on_instance`): a LOAD and its SET
+        GLOBAL settings act on the instance."""
+        cur = open_cursor(self._con)
+        try:
+            install_and_load(cur, extension, from_community=from_community)
+        finally:
+            close_cursor(cur)
+
     def _phys_name(self, source: Any) -> str:
         """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``."""
         catalog = self._catalog_of(source)
+        if catalog == self._CONTROL_PLANE:
+            raise ReservedCatalog(source.id, catalog)
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
-            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._on_instance(f"ATTACH ':memory:' AS \"{catalog}\"")
             self._phys_catalogs.add(catalog)
             self._attach_source[catalog] = source.id
-        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{source.schema_name}"')
+        self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{source.schema_name}"')
         return f'"{catalog}"."{source.schema_name}"."{source.table_name}"'
 
     def attach_source(self, source: Any) -> None:
@@ -371,19 +418,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             connector = self._engine.connector_for(source.type.value)
             ext = getattr(connector, "extension", None)
             if ext and ext not in self._ext_loaded:
-                install_and_load(
-                    self._con,
+                self._install_and_load(
                     ext,
                     from_community=getattr(connector, "install_from_community", False),
                 )
                 self._ext_loaded.add(ext)
             secret_ddl = details.get("secret_ddl")
             if secret_ddl and not self._httpfs_loaded:
-                install_and_load(self._con, "httpfs", from_community=False)
+                self._install_and_load("httpfs", from_community=False)
                 self._httpfs_loaded = True
             self._reach_location(details)
             scan = details["view_ddl"].split(" AS ", 1)[1]
-            self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS {scan}")
+            self._on_instance(f"CREATE OR REPLACE VIEW {phys} AS {scan}")
         else:  # ATTACH postgres / sqlite / extension source once, then view the remote table
             raw_alias = self._attach_raw(source, details)
             remote_schema = details.get("remote_schema", source.schema_name)
@@ -398,7 +444,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             else:
                 self._column_fields[phys] = fields
             renamed = "".join(f", {_quoted(field)} AS {_quoted(name)}" for field, name in fields)
-            self._con.execute(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
+            self._on_instance(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
             view = (self._catalog_of(source), source.schema_name, source.table_name)
             self._remote_tables[view] = (raw_alias, remote_schema, source.table_name)
 
@@ -414,17 +460,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._dbx_relations.pop(f'"{parts[0]}"."{parts[1]}"."{parts[2]}"', None)
         if parts[0] not in self._phys_catalogs:
             return  # nothing of this source was ever exposed on this connection
-        is_view = self._listing(
-            lambda: engine_memory.first_row(
-                self._con.execute(
-                    "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
-                    "AND view_name = ?",
-                    parts,
+
+        def view_row() -> Any:
+            # A cursor of its own (see _on_instance), read before it closes.
+            cur = open_cursor(self._con)
+            try:
+                return engine_memory.first_row(
+                    cur.execute(
+                        "SELECT 1 FROM duckdb_views() WHERE database_name = ? "
+                        "AND schema_name = ? AND view_name = ?",
+                        parts,
+                    )
                 )
-            )
-        )
+            finally:
+                close_cursor(cur)
+
+        is_view = self._listing(view_row)
         if is_view is not None:
-            self._con.execute(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
+            self._on_instance(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
 
     def drop_source(self, source_id: str) -> None:
         """Let go of everything this connection attached for the deleted source ``source_id``:
@@ -435,7 +488,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         aliases = [a for a, sid in self._attach_source.items() if sid == source_id]
         with self._catalog_gate.write():
             for alias in aliases:
-                self._con.execute(f'DETACH "{alias}"')
+                self._on_instance(f'DETACH "{alias}"')
                 del self._attach_source[alias]
                 self._raw_attached.discard(alias)
                 self._raw_attach_ddl.pop(alias, None)
@@ -463,9 +516,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         with self._catalog_gate.write():
             for alias in sorted(self._raw_attached):
                 try:
-                    self._con.execute(f'SELECT 1 FROM "{alias}"."__provisa_probe__"."x" LIMIT 0')
+                    self._on_instance(f'SELECT 1 FROM "{alias}"."__provisa_probe__"."x" LIMIT 0')
                 except duckdb.IOException as exc:
-                    self._con.execute(f'DETACH "{alias}"')
+                    self._on_instance(f'DETACH "{alias}"')
                     self._raw_attached.discard(alias)
                     self._unreachable[alias] = self._raw_attach_ddl[alias]
                     gone.append(alias)
@@ -487,7 +540,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             if not any(f'"{c}"'.lower() in duck_sql.lower() for c in catalogs):
                 continue
             try:
-                self._con.execute(attach)
+                self._on_instance(attach)
             except duckdb.IOException as exc:
                 log.warning("source %s is still unreachable: %s", source_id, exc)
                 raise SourceUnreachable(source_id) from exc
@@ -500,8 +553,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         loaded once on this connection."""
         for ext in ("httpfs", "iceberg"):
             if ext not in self._ext_loaded:
-                self._con.execute(f"INSTALL {ext}")
-                self._con.execute(f"LOAD {ext}")
+                self._on_instance(f"INSTALL {ext}")
+                self._on_instance(f"LOAD {ext}")
                 self._ext_loaded.add(ext)
         self._httpfs_loaded = True
         with self._dbx_lock:
@@ -522,10 +575,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             options = ", ".join(
                 f"{k} '{_sql_text(v)}'" for k, v in s3_secret_options(credential).items()
             )
-            self._con.execute(
+            self._on_instance(
                 f'CREATE OR REPLACE SECRET "_dbx_{source.id}_{i}" (TYPE s3, {options})'
             )
-        self._con.execute(
+        self._on_instance(
             f"CREATE OR REPLACE VIEW {phys} AS SELECT * FROM "
             f"iceberg_scan('{_sql_text(table.metadata_location)}'{scan_args})"
         )
@@ -595,9 +648,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         )
 
         if not self._httpfs_loaded:
-            install_and_load(self._con, "httpfs", from_community=False)
+            self._install_and_load("httpfs", from_community=False)
             self._httpfs_loaded = True
-        self._con.execute(details["secret_ddl"])
+        self._on_instance(details["secret_ddl"])
         base_url = details["clickhouse_http"]
         url = read_url(
             base_url,
@@ -651,29 +704,36 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         rewritten = rewrite(duck_sql, params, relations, deadline_s=deadline_s, describe=describe)
         return (duck_sql, False) if rewritten is None else (rewritten, True)
 
-    def _open_cursor(self, *, live_http: bool) -> Any:
+    def _open_cursor(self, *, live_http: bool, sql: str = "") -> Any:
         """A private cursor; for a statement reading ClickHouse over HTTP it downloads each result
         whole (``force_download``): ClickHouse answers per request with no range support, and
         DuckDB's default HEAD + ranged GETs made ClickHouse execute the query twice. It also turns
         httpfs retries off: a retry re-runs the whole ClickHouse query with a fresh
         max_execution_time, so three retries carried a 2s-budget read to 13s (integration test); a
         failed read raises instead. Both settings are session-scoped, so they stay on this cursor
-        (verified: a sibling cursor still reads the defaults)."""
+        (verified: a sibling cursor still reads the defaults).
+
+        The session's TimeZone is told to this cursor too (REQ-2171): session-scoped like the others,
+        so it ends with the cursor, and a sibling cursor stays on the connection's UTC.
+        ``sql`` is the statement the cursor is for: none for the runtime's own reads."""
+        zone = told_as(sql, _tz_name, "DuckDB")
         cur = open_cursor(self._con)
-        if live_http:
-            try:
+        try:
+            if live_http:
                 cur.execute("SET force_download = true")
                 cur.execute("SET http_retries = 0")
-            except BaseException:
-                close_cursor(cur)
-                raise
+            if zone is not None:
+                cur.execute(_set_zone(zone))
+        except BaseException:
+            close_cursor(cur)
+            raise
         return cur
 
     def _ensure_postgres_loaded(self) -> None:
         """The postgres extension on this connection, once, with the settings every postgres load
         has (``duckdb_extensions.install_and_load``; #241)."""
         if not self._pg_ext_loaded:
-            install_and_load(self._con, "postgres", from_community=False)
+            self._install_and_load("postgres", from_community=False)
             self._pg_ext_loaded = True
 
     def _sign_in_motherduck(self, source: Any) -> None:
@@ -690,7 +750,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         account = hashlib.sha256(token.encode()).hexdigest()
         if self._motherduck_account is None:
-            self._con.execute("SET GLOBAL motherduck_token = ?", [token])
+            self._on_instance("SET GLOBAL motherduck_token = ?", [token])
             self._motherduck_account = account
         elif self._motherduck_account != account:
             raise ValueError(
@@ -704,13 +764,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         for ext in details.get("extensions", ()):
             if ext == "httpfs":
                 if not self._httpfs_loaded:
-                    install_and_load(self._con, "httpfs", from_community=False)
+                    self._install_and_load("httpfs", from_community=False)
                     self._httpfs_loaded = True
             elif ext not in self._ext_loaded:
-                install_and_load(self._con, ext, from_community=False)
+                self._install_and_load(ext, from_community=False)
                 self._ext_loaded.add(ext)
         if details.get("secret_ddl"):
-            self._con.execute(details["secret_ddl"])
+            self._on_instance(details["secret_ddl"])
 
     def _attach_raw(self, source: Any, details: dict) -> str:
         """ATTACH the source's remote database under its private alias (once), loading the DuckDB
@@ -718,7 +778,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         it exposes tables (postgres keeps its own schema, sqlite lands everything under ``main``,
         mongo maps databases to schemas); the runtime never hardcodes a per-type layout."""
         if source.type.value == "sqlite" and not self._sqlite_loaded:
-            install_and_load(self._con, "sqlite", from_community=False)
+            self._install_and_load("sqlite", from_community=False)
             self._sqlite_loaded = True
         elif source.type.value == "postgresql" and not self._pg_ext_loaded:
             self._ensure_postgres_loaded()
@@ -728,8 +788,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             connector = self._engine.connector_for(source.type.value)
             ext = getattr(connector, "extension", None)
             if ext and ext not in self._ext_loaded:
-                install_and_load(
-                    self._con,
+                self._install_and_load(
                     ext,
                     from_community=getattr(connector, "install_from_community", False),
                 )
@@ -752,16 +811,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 and self._raw_attach_ddl[catalog_alias] != attach
             ):
                 # The environment's binding changed: its old connection is let go.
-                self._con.execute(f'DETACH "{catalog_alias}"')
+                self._on_instance(f'DETACH "{catalog_alias}"')
                 self._raw_attached.discard(catalog_alias)
                 self._let_file_go(catalog_alias)
             raw_alias = catalog_alias
         if raw_alias not in self._raw_attached:
-            self._con.execute(attach)
+            self._on_instance(attach)
             if "configure_pool" in details:  # REQ-1909: the source's share of its live-read cap
                 # The pool is the catalog's as attached: an environment's own attach is named for
                 # its catalog above, and so is the pool its statement configures.
-                self._con.execute(
+                self._on_instance(
                     details["configure_pool"].replace(
                         f"catalog_name='{details.get('raw_alias', source.id)}'",
                         f"catalog_name='{raw_alias}'",
@@ -791,11 +850,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         @contextmanager
         def paused() -> Iterator[None]:
             with self._catalog_gate.write():
-                self._con.execute(f'DETACH "{raw_alias}"')
+                self._on_instance(f'DETACH "{raw_alias}"')
                 try:
                     yield
                 finally:
-                    self._con.execute(self._raw_attach_ddl[raw_alias])
+                    self._on_instance(self._raw_attach_ddl[raw_alias])
 
         self._file_holders[raw_alias] = (path, file_locks.register(path, paused))
 
@@ -913,15 +972,31 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         read-only and live, once: DuckDB's postgres extension maps every schema of it -- the org's
         ``org_<id>`` and the meta views it holds -- 1:1 under the catalog, so a row it commits is
         read by the next statement. Trino parity: there ``provisa_admin`` is a real catalog over
-        the same database. Called from NativeEngineBackend's registry walk."""
-        if self._control_plane_attached:
-            return
+        the same database. Called from NativeEngineBackend's registry walk, on every walk: whether
+        it is attached is read from the connection itself, never remembered beside it.
+
+        postgres_scanner 2.0 keeps the catalog's schemas as it first read them, so a schema made
+        since (a later org's ``org_<id>``) is missing until its cache is cleared: a walk that
+        finds the control plane attached clears it (postgres_clear_cache), as a store's
+        write is made readable (``_see_store_writes``)."""
         catalog = self._CONTROL_PLANE
+        cur = open_cursor(self._con)
+        try:
+            held = cur.execute(
+                "SELECT type FROM duckdb_databases() WHERE database_name = ?", [catalog]
+            ).fetchall()
+        finally:
+            close_cursor(cur)
+        if held and held[0][0] == "postgres":
+            self._on_instance("CALL postgres_clear_cache()")
+            return
+        if held:
+            raise RuntimeError(
+                f"catalog {catalog!r} is attached as a {held[0][0]} database, not the control "
+                "plane: the control plane cannot be attached under its name"
+            )
         self._ensure_postgres_loaded()
-        if catalog not in self._phys_catalogs:
-            self._con.execute(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
-            self._phys_catalogs.add(catalog)
-        self._control_plane_attached = True
+        self._on_instance(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
 
     def attach_region_ops(
         self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]
@@ -934,14 +1009,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._ensure_postgres_loaded()
         for alias, dsn in stores.items():
             if alias not in self._region_stores_attached:
-                self._con.execute(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)")
+                self._on_instance(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)")
                 self._region_stores_attached.add(alias)
         if catalog not in self._phys_catalogs:
-            self._con.execute(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._on_instance(f"ATTACH ':memory:' AS \"{catalog}\"")
             self._phys_catalogs.add(catalog)
-        self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema}"')
+        self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema}"')
         for name, select in views.items():
-            self._con.execute(f'CREATE OR REPLACE VIEW "{catalog}"."{schema}"."{name}" AS {select}')
+            self._on_instance(f'CREATE OR REPLACE VIEW "{catalog}"."{schema}"."{name}" AS {select}')
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
@@ -967,9 +1042,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         reads the store through its ATTACH, which caches the store's catalog: a schema created
         since is missing from it, and a read of a table in it fails "schema ... does not exist"
         (a view's first build, staged into an org schema the store did not hold yet). A Postgres
-        store's cache is cleared; an attached SQLite file has none."""
+        store's cache is cleared (postgres_scanner 2.0's postgres_clear_cache; pg_clear_cache is
+        gone); an attached SQLite file has none."""
         if self._ATTACH_TYPE_BY_SCHEME[self._store_scheme()] == "postgres":
-            self._con.cursor().execute("CALL pg_clear_cache()")
+            self._on_instance("CALL postgres_clear_cache()")
 
     def mv_store_schema(self, org_id: str) -> str:
         """The schema materialized views are written to: one that holds nothing else (REQ-1912).
@@ -1053,8 +1129,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             else:
                 if store_type not in self._NO_EXTENSION_TYPES:
                     # A Postgres store loads the extension with its settings too (#241).
-                    install_and_load(self._con, store_type, from_community=False)
-                self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
+                    self._install_and_load(store_type, from_community=False)
+                self._on_instance(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
             self._attached_store_dsn = dsn
         return self._MAT_STORE
@@ -1075,11 +1151,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not url.database:
             raise RuntimeError("the MotherDuck materialize store URL names no database")
         if "motherduck" not in self._ext_loaded:
-            install_and_load(self._con, "motherduck", from_community=False)
+            self._install_and_load("motherduck", from_community=False)
             self._ext_loaded.add("motherduck")
         self._sign_in_motherduck_as(token, "The materialize store")
         md = sql_literal("md:" + url.database, "duckdb")
-        self._con.execute(f"ATTACH {md} AS {self._MAT_STORE}")
+        self._on_instance(f"ATTACH {md} AS {self._MAT_STORE}")
         self._store_broker = EngineAttachedStore(self._con, self._listing)
 
     def region_table_address(self, name: str, schema: str, table: str) -> tuple[str, str, str]:
@@ -1114,8 +1190,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
         if store_type not in self._NO_EXTENSION_TYPES:
             # A Postgres store loads the extension with its settings too (#241).
-            install_and_load(self._con, store_type, from_community=False)
-        self._con.execute(
+            self._install_and_load(store_type, from_community=False)
+        self._on_instance(
             f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
         )
         self._region_stores.add(alias)
@@ -1360,7 +1436,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not refs:
             return duck_sql
         with self._store_relation_lock:
-            self._con.execute(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
+            self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
             for schema, table in refs:
                 self._copy_store_table(schema, table, _local_store_name(schema, table))
         return _MAT_STORE_REF.sub(lambda m: _local_store_name(*_store_ref(m)), duck_sql)
@@ -1483,25 +1559,25 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # queries intermittently come back with no rows under the parallel e2e suite while
                 # the control plane plainly held the data (run_sync and run_arrow_stream already
                 # took a cursor for this reason).
-                cur = self._open_cursor(live_http=live_http)
+                cur = self._open_cursor(live_http=live_http, sql=sql)
                 try:
                     cur.execute(LOSSLESS_ARROW)
                     with request_deadline.cancel_on_deadline(cur.interrupt):
                         with named_write_conflict():
-                            res = cur.execute(sql, params) if params else cur.execute(sql)
-                        if not res.description:
+                            rel = cur.sql(sql, params=params)
+                        if not rel.description:
                             return QueryResult(rows=[], column_names=[], column_types=[])
-                        types = [str(d[1]) for d in res.description]
+                        types = [str(d[1]) for d in rel.description]
                         # REQ-2194: the engine's Arrow, never its DB-API rows
                         # (duckdb_arrow.arrow_rows builds the rows from it).
-                        table = res.to_arrow_table()
+                        table = rel.to_arrow_table()
                     # Rows are built here, on the executor thread: the awaiting consumer must do
                     # no per-row work on the event loop.
                     return ArrowResult(table, types, to_rows=arrow_rows).with_rows()
                 finally:
                     close_cursor(cur)
 
-        return await loop.run_in_executor(None, _run)
+        return await loop.run_in_executor(None, carrying_zone(_run))
 
     def write_result(self, copy_sql: str, params: list | None, *, secret_sql: str | None) -> int:
         """Run ``copy_sql`` (``result_sink.duckdb_copy``: the statement's query wrapped in
@@ -1520,10 +1596,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             if secret_sql is not None:
                 if not self._httpfs_loaded:
-                    install_and_load(self._con, "httpfs", from_community=False)
+                    self._install_and_load("httpfs", from_community=False)
                     self._httpfs_loaded = True
-                self._con.execute(secret_sql)
-            cur = self._open_cursor(live_http=live_http)
+                self._on_instance(secret_sql)
+            cur = self._open_cursor(live_http=live_http, sql=copy_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     cur.execute(copy_sql, params) if params else cur.execute(copy_sql)
@@ -1551,14 +1627,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             duck_sql, live_http = self._rewrite_clickhouse_relations(
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 cur.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(cur.interrupt):
+                    # The statement as a relation: DuckDB 2.0's DB-API result hands its Arrow
+                    # reader over only once it has computed the whole result, so a later batch's
+                    # error would be raised here, not as that batch is read.
                     with named_write_conflict():
-                        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                        rel = cur.sql(duck_sql, params=params)
                     reader = (
-                        cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS) if cur.description else None
+                        rel.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS) if rel.description else None
                     )
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).
@@ -1577,7 +1656,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             return QueryResult(rows=[], column_names=[])
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
-        types = [str(d[1]) for d in cur.description]
+        types = [str(d[1]) for d in rel.description]
         # REQ-2194: the engine's Arrow batches, never its DB-API rows. A consumer that reads rows
         # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows); an engine error
         # met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches).
@@ -1616,7 +1695,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def run_arrow(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
-        (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
+        (``to_arrow_table``), so no Python rows are materialized for the Flight transport."""
         with self._catalog_gate.read():
             duck_sql = self._prepare_sql(duck_sql)
             duck_sql, live_http = self._rewrite_clickhouse_relations(
@@ -1625,12 +1704,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # PRIVATE cursor for the same reason as run_sync/run_arrow_stream: a concurrent query on
             # the shared connection replaces this one's pending result, and the fetch then yields
             # nothing instead of raising.
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
-                        res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    return res.to_arrow_table()
+                        rel = cur.sql(duck_sql, params=params)
+                    return rel.to_arrow_table()
             finally:
                 close_cursor(cur)
 
@@ -1639,8 +1718,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         streaming through the Flight server's GeneratorStream (REQ-986, REQ-1214).
 
         Truly lazy: the batches are pulled from a PRIVATE cursor's Arrow record-batch reader
-        (``to_arrow_reader`` — ``fetch_record_batch`` is deprecated as of duckdb 1.x, same
-        batch_size arg and RecordBatchReader return) on demand, so the full result never
+        (the statement's relation's ``to_arrow_reader``: DuckDB 2.0's DB-API result computes the
+        whole result before it hands its reader over) on demand, so the full result never
         materializes — peak memory is bounded by one record batch, not the total result size. A
         private cursor (not the shared connection) keeps concurrent worker-thread streams from
         corrupting each other's fetch state; it is closed when the generator drains or the
@@ -1652,12 +1731,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             duck_sql, live_http = self._rewrite_clickhouse_relations(
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
-                        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
+                        rel = cur.sql(duck_sql, params=params)
+                    reader = rel.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
                 schema = reader.schema
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).

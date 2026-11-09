@@ -16,6 +16,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from provisa.compiler.rls import rule_text
+
 
 log = logging.getLogger(__name__)
 
@@ -41,11 +43,11 @@ def _build_enforcement_metadata(  # REQ-040, REQ-041, REQ-263
     rls_filters: list[str] = []
     root_table = ctx.tables.get(compiled.root_field)
     if root_table and root_table.table_id in rls.rules:
-        rls_filters.append(rls.rules[root_table.table_id])
+        rls_filters.append(rule_text(rls.rules[root_table.table_id]))
     for (type_name, _), join_meta in ctx.joins.items():
         if root_table and type_name == root_table.type_name:
             if join_meta.target.table_id in rls.rules:
-                rls_filters.append(rls.rules[join_meta.target.table_id])
+                rls_filters.append(rule_text(rls.rules[join_meta.target.table_id]))
 
     compiled_column_names = {c.column for c in compiled.columns}
     excluded: list[str] = []

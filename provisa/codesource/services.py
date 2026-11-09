@@ -75,9 +75,10 @@ class ServiceGrant:
     #: REQ-2133: the role the dq service answers as for every call under this grant -- a view's
     #: preflight's, the role its build runs as. None: each call's own request role (a code source).
     role: str | None = None
-    #: REQ-2133: the product of the view whose preflight holds this grant, which dq relates each
-    #: checker to (promise, expectation or partner DQ). None for a code source, or a view of none.
-    product_id: str | None = None
+    #: REQ-2133: the products of the view whose preflight holds this grant (REQ-1634: any number),
+    #: which dq relates each checker to (promise, expectation or partner DQ). Empty for a code
+    #: source, or a view in no product.
+    product_ids: tuple[str, ...] = ()
 
 
 class ServiceRefused(Exception):

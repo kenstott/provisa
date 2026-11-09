@@ -5,7 +5,8 @@
       "encryption": "加密",
       "authentication": "身分驗證",
       "localUsers": "本機使用者",
-      "secrets": "密鑰"
+      "secrets": "密鑰",
+      "secretsService": "密鑰服務"
     }
   }
 }

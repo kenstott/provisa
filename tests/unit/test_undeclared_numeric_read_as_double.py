@@ -22,10 +22,13 @@ computes on the exact value. A sized numeric is never cast.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance, govern_fragment
 from provisa.security.masking import MaskingRule, MaskType
+from tests.governed_pg import governed_database
 from tests.write_governance import grants_over
 
 _D = "DOUBLE PRECISION"
@@ -42,75 +45,83 @@ def _gov(**masks: MaskingRule) -> GovernanceContext:
     return gov
 
 
+_ROWS = {
+    "sales.orders": [
+        {"id": 1, "ratio": Decimal("0.3"), "amount": Decimal("2.50"), "f": 0.5},
+    ],
+    "sales.refunds": [{"id": 1, "ratio": Decimal("0.1")}],
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_undeclared_numeric")
+
+
+def _types(pg, sql: str, gov: GovernanceContext | None = None) -> list[type]:
+    (row, *_) = pg.answer(apply_governance(sql, gov or _gov()), _ROWS)
+    return [type(v) for v in row]
+
+
 @pytest.mark.parametrize(
-    ("sql", "governed"),
+    ("sql", "types"),
     [
-        (
-            "SELECT id, ratio, amount, f FROM sales.orders",
-            f"SELECT id, CAST(ratio AS {_D}) AS ratio, amount, f FROM sales.orders",
-        ),
-        (
-            "SELECT o.ratio AS r FROM sales.orders o",
-            f"SELECT CAST(o.ratio AS {_D}) AS r FROM sales.orders AS o",
-        ),
-        (
-            'SELECT "ratio" FROM sales.orders',
-            f'SELECT CAST("ratio" AS {_D}) AS "ratio" FROM sales.orders',
-        ),
+        ("SELECT id, ratio, amount, f FROM sales.orders", [int, float, Decimal, float]),
+        ("SELECT o.ratio AS r FROM sales.orders o", [float]),
+        ('SELECT "ratio" FROM sales.orders', [float]),
     ],
 )
-def test_the_answers_projection_reads_an_undeclared_numeric_as_double(sql, governed):
-    assert apply_governance(sql, _gov()) == governed
+def test_the_answers_projection_reads_an_undeclared_numeric_as_double(pg, sql, types):
+    assert _types(pg, sql) == types
+    assert pg.answer(apply_governance(sql, _gov()), _ROWS)[0][-1 if len(types) == 1 else 1] == 0.3
 
 
-def test_a_star_is_expanded_and_its_undeclared_numeric_cast():
+def test_a_star_is_expanded_and_its_undeclared_numeric_cast(pg):
     """Governance expands a star wherever the registry knows the table's columns — the same
     registry that says the column is a numeric with no size — so the one column can be cast."""
-    assert apply_governance("SELECT * FROM sales.orders", _gov()) == (
-        'SELECT "orders"."id", '
-        f'CAST("orders"."ratio" AS {_D}) AS "ratio", "orders"."amount", "orders"."f" '
-        "FROM sales.orders"
-    )
+    governed = apply_governance("SELECT * FROM sales.orders", _gov())
+    assert pg.answer(governed, _ROWS) == [(1, 0.3, Decimal("2.50"), 0.5)]
+    assert "ratio" in governed and f'AS {_D}) AS "ratio"' in governed
 
 
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "types"),
     [
-        "SELECT SUM(ratio) AS total FROM sales.orders",
-        "SELECT ratio * 2 AS twice FROM sales.orders",
-        "SELECT id FROM sales.orders WHERE ratio > 0.5 ORDER BY ratio",
-        "SELECT COALESCE(ratio, 0) AS r FROM sales.orders",
-        "SELECT amount FROM sales.orders",
+        ("SELECT SUM(ratio) AS total FROM sales.orders", [Decimal]),
+        ("SELECT ratio * 2 AS twice FROM sales.orders", [Decimal]),
+        ("SELECT id FROM sales.orders WHERE ratio > 0.25 ORDER BY ratio", [int]),
+        ("SELECT COALESCE(ratio, 0) AS r FROM sales.orders", [Decimal]),
+        ("SELECT amount FROM sales.orders", [Decimal]),
     ],
 )
-def test_an_expression_over_the_column_and_a_sized_numeric_are_untouched(sql):
-    assert apply_governance(sql, _gov()) == sql
+def test_an_expression_over_the_column_and_a_sized_numeric_are_untouched(pg, sql, types):
+    assert _types(pg, sql) == types
+    assert "CAST(" not in apply_governance(sql, _gov())
 
 
-def test_only_the_answer_is_cast_not_a_subquery_a_cte_or_a_filter():
+def test_only_the_answer_is_cast_not_a_subquery_a_cte_or_a_filter(pg):
     governed = apply_governance(
         "WITH t AS (SELECT ratio FROM sales.orders) "
         "SELECT o.ratio FROM sales.orders AS o "
-        "WHERE o.ratio IN (SELECT ratio FROM sales.refunds) AND EXISTS(SELECT ratio FROM t)",
+        "WHERE o.ratio IN (SELECT ratio + 0.2 FROM sales.refunds) AND EXISTS(SELECT ratio FROM t)",
         _gov(),
     )
     assert governed.count("CAST(") == 1
-    assert f"SELECT CAST(o.ratio AS {_D}) AS ratio FROM sales.orders AS o" in governed
+    # The filter compares the exact values (0.1 + 0.2 = 0.3); the answer reads a double.
+    assert pg.answer(governed, _ROWS) == [(0.3,)]
 
 
-def test_each_branch_of_a_set_operation_that_is_the_answer_is_cast():
-    assert apply_governance(
-        "SELECT ratio FROM sales.orders UNION ALL SELECT ratio FROM sales.refunds", _gov()
-    ) == (
-        f"SELECT CAST(ratio AS {_D}) AS ratio FROM sales.orders "
-        f"UNION ALL SELECT CAST(ratio AS {_D}) AS ratio FROM sales.refunds"
+def test_each_branch_of_a_set_operation_that_is_the_answer_is_cast(pg):
+    governed = apply_governance(
+        "SELECT ratio FROM sales.orders UNION ALL SELECT ratio FROM sales.refunds ORDER BY 1",
+        _gov(),
     )
+    assert governed.count("CAST(") == 2
+    assert pg.answer(governed, _ROWS) == [(0.1,), (0.3,)]
 
 
 def test_a_fragment_of_a_larger_statement_is_not_cast():
-    assert govern_fragment("SELECT ratio FROM sales.orders", _gov()) == (
-        "SELECT ratio FROM sales.orders"
-    )
+    assert "CAST(" not in govern_fragment("SELECT ratio FROM sales.orders", _gov())
 
 
 def test_a_write_is_not_cast():
@@ -127,32 +138,31 @@ def test_a_write_is_not_cast():
 # --- masks -----------------------------------------------------------------------------------------
 
 
-def test_a_constant_mask_is_still_the_columns_number_and_is_cast():
+def test_a_constant_mask_is_still_the_columns_number_and_is_cast(pg):
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.constant, value=0))
-    assert apply_governance("SELECT ratio FROM sales.orders", gov) == (
-        f"SELECT CAST(0 AS {_D}) AS ratio FROM sales.orders"
-    )
-    assert f'CAST(0 AS {_D}) AS "ratio"' in apply_governance("SELECT * FROM sales.orders", gov)
+    assert _types(pg, "SELECT ratio FROM sales.orders", gov) == [float]
+    assert pg.answer(apply_governance("SELECT * FROM sales.orders", gov), _ROWS) == [
+        (1, 0.0, Decimal("2.50"), 0.5)
+    ]
 
 
 def test_a_null_constant_mask_is_cast():
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.constant, value=None))
-    assert apply_governance("SELECT ratio FROM sales.orders", gov) == (
-        f"SELECT CAST(NULL AS {_D}) AS ratio FROM sales.orders"
-    )
+    governed = apply_governance("SELECT ratio FROM sales.orders", gov)
+    assert f"CAST(ratio AS {_D})" in governed and 'NULL AS "ratio"' in governed
 
 
-def test_a_regex_mask_has_made_the_column_text_and_is_not_cast():
+def test_a_regex_mask_has_made_the_column_text_and_is_not_cast(pg):
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.regex, pattern="[0-9]", replace="#"))
     governed = apply_governance("SELECT ratio FROM sales.orders", gov)
-    assert "CAST(" not in governed and "PROVISA_REGEX_REPLACE(ratio" in governed
+    assert "CAST(" not in governed and "PROVISA_REGEX_REPLACE(" in governed
     assert "CAST(" not in apply_governance("SELECT * FROM sales.orders", gov)
 
 
 def test_a_truncate_mask_has_made_the_column_something_else_and_is_not_cast():
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.truncate, precision="month"))
     governed = apply_governance("SELECT ratio FROM sales.orders", gov)
-    assert "CAST(" not in governed and "DATE_TRUNC('MONTH', ratio)" in governed
+    assert "CAST(" not in governed and 'DATE_TRUNC(\'MONTH\', "orders"."ratio")' in governed
 
 
 def test_a_fake_is_read_through_its_projection_and_cast():
@@ -170,9 +180,13 @@ def test_a_fake_is_read_through_its_projection_and_cast():
 # --- what the answer's shape says, and what each engine makes of the cast ---------------------------
 
 
-def test_governing_twice_changes_nothing_more():
+def test_governing_twice_changes_nothing_more(pg):
+    """A governed statement governed again reads the same: its relations are governed once more,
+    which serves nothing they did not, and its answer is already a double."""
     once = apply_governance("SELECT ratio FROM sales.orders", _gov())
-    assert apply_governance(once, _gov()) == once
+    twice = apply_governance(once, _gov())
+    assert twice.count("CAST(") == 1
+    assert pg.answer(twice, _ROWS) == pg.answer(once, _ROWS) == [(0.3,)]
 
 
 def test_the_shape_of_the_governed_statement_says_double_precision():

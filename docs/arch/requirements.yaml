@@ -11401,12 +11401,16 @@
   type: behavioral
   description: Large results above threshold redirect to blob storage with presigned URL and TTL. (Amended
     2026-09-30, the operator's threshold is a floor:) A request's redirect threshold (X-Provisa-Redirect-Threshold,
-    @redirect(threshold:), Bolt provisa_redirect_threshold) may only lower the operator's large-result
-    threshold (redirect sooner); a higher one would put a larger inline body through the platform than
-    the operator allows and is rejected with RedirectFloorViolation (REQ-030). executor.redirect.request_redirect_config
+    @redirect(threshold:), Bolt provisa_redirect_threshold) may only lower the operator's large-result threshold
+    (redirect sooner); a higher one would put a larger inline body through the platform than the operator
+    allows and is rejected with RedirectFloorViolation (REQ-030). executor.redirect.request_redirect_config
     is the one place a request threshold meets the operator's, used by the GraphQL endpoint and delivery_from_request.
-    With redirect disabled, a request threshold only makes that result redirect sooner than never. The
-    request config keeps every operator field (encrypt, local_dir); the GraphQL path previously rebuilt it and dropped them.
+    With redirect disabled, a request threshold only makes that result redirect sooner than never. The request
+    config keeps every operator field (encrypt, local_dir); the GraphQL path previously rebuilt it and dropped
+    them. (Amended 2026-11-08, THE DEFAULT THRESHOLD IS 100,000 ROWS:) A result is written to the results
+    store above 100,000 rows by default; the threshold stays editable in the settings UI. Where a result
+    lands in the store, the view that asked for it keeps its controls, so the person can change the query
+    or go back. (Maintainer 2026-11-08.)
   use_case: Large-result redirect to blob storage prevents memory exhaustion on the Provisa server for
     big datasets.
   code:
@@ -18410,8 +18414,31 @@
     WHAT THE INSTALLERS CARRY:) No new package names are created to fit a size limit: provisa-duckdb-ext
     stays one PyPI project with per-platform wheels under PyPI''s limit, and what does not fit is staged
     at build time by the DMG, AppImage, Windows and Docker installers. A connector''s pgwire bundle is never
-    downloaded at runtime either: a missing one fails naming it and the staging command. The installers
-    carry every connector bundle except govdata, which is staged by a build or devops step (maintainer 2026-11-08).'
+    downloaded at runtime either: a missing one fails naming it and the staging command. [SUPERSEDED by
+    REQ-294, 2026-11-08 -- assets come from package repositories an enterprise proxy carries. Kept here
+    for history; do not implement against it.] The installers carry every connector bundle except govdata,
+    which is staged by a build or devops step (maintainer 2026-11-08). [END SUPERSEDED BLOCK] (Amended 2026-11-08,
+    EVERY INSTALLER WORKS THE SAME:) Every installer works the same way (maintainer 2026-11-08), superseding
+    that installers carry the extensions and bundles: an installer stays small, because Apple will not accept
+    unsigned packages in a DMG, and one stage command places the DuckDB extensions and connector bundles
+    in a local directory outside the installed application. It runs once at install or first launch (for
+    the container image, at image build). A directory already filled, as a devops step does for an air-gapped
+    site, is used without fetching anything. DuckDB and the connectors never download at runtime. (Amended
+    2026-11-08, ONE PLACE TO FETCH FROM:) [SUPERSEDED by REQ-294, 2026-11-08 -- assets come from package
+    repositories an enterprise proxy carries. Kept here for history; do not implement against it.] The DMG,
+    AppImage, Windows and pip installs fetch the DuckDB extensions and every connector bundle (govdata included)
+    from one location, the project''s own release assets, for that platform and DuckDB version; no install
+    reaches DuckDB''s extension servers. The provisa-duckdb-ext wheel is dropped from the install path.
+    [END SUPERSEDED BLOCK] The container image is not an installer: it is built with these assets inside
+    it. An air-gapped site downloads the same files once and pre-fills the local directory (maintainer 2026-11-08).
+    (Amended 2026-11-08, ASSETS COME FROM PACKAGE REPOSITORIES:) All assets come from package repositories
+    an enterprise Artifactory proxy typically carries. On DuckDB 2.0: core extensions from the existing
+    duckdb-extension-* packages on PyPI; community extensions in provisa-duckdb-ext, one project, split
+    across version parts each under PyPI''s per-file limit; connector bundles, govdata included, promoted
+    to Maven Central when a bundle changes. One stage command for the DMG, AppImage, Windows and pip installs
+    runs once at install or first launch, using the machine''s configured package index, and a directory
+    already filled is used without fetching. The container image is built with these assets inside it; it
+    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08).'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -44868,7 +44895,15 @@
     the caller holds. The tag list stays readable by every admin surface that shows tags, as model metadata;
     changing tags keeps its own rights. A role''s data_residency capability is added or removed by the org
     admin with the role (user_management); which regions it covers (its residency values) is set by the
-    steward and asks access_config.'
+    steward and asks access_config. (Amended 2026-11-08, NAMING IS THE ORG''S; CDC GROUP IS THE DEPLOYMENT''S:)
+    Naming conventions are an org''s setting: the acting org''s convention reaches the naming module through
+    the compile context, not a process-wide value. Default sample size and the remote GraphQL row limit
+    are also an org''s. The CDC consumer group stays with the deployment: it is one Debezium receiver''s
+    identity for the process (maintainer 2026-11-08). (Amended 2026-11-08, ADMIN AND DOCS ARE IN THE USER
+    MENU:) Admin and Docs leave the top navigation for the user menu, below a divider after Profile, Settings
+    and What''s new; Admin is shown only to a caller with an admin right (maintainer 2026-11-08). (Amended
+    2026-11-08, NO SETTINGS ENTRY IN THE USER MENU:) The user menu has no Settings entry: Admin is the one
+    way into administration. (Maintainer 2026-11-08.)'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -59224,7 +59259,10 @@
     to none; it offers no control to set or change them. The note that a product is published to the catalog
     and exported to catalogs belongs with the product, not the table (maintainer 2026-11-07). (Amended 2026-11-07,
     ONE CONTRACT PER TABLE:) A table in several data products carries one data contract, shared by every
-    product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08).'
+    product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08). (Amended
+    2026-11-08, EXPORT KEEPS SEEDED MEMBERS:) A config export lists a data product''s members that are seeded
+    tables, and relationships to seeded tables. On import the loader holds those names until the seeded
+    tables exist, so a round trip restores what was exported. (Maintainer 2026-11-08.)'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -81322,7 +81360,73 @@
     CARRY UPGRADE CODE:) Maintainer 2026-10-31: from the first beta release, each release that changes stored
     structure or the meaning of stored data carries the code that upgrades an existing install, keeping
     what it holds, and an upgrade test proves it on an older install. Until then no migrations are written,
-    and the first beta release is the baseline they start from.'
+    and the first beta release is the baseline they start from. (Amended 2026-11-08, A RELEASE MOVES THROUGH
+    STAGES:) [SUPERSEDED by REQ-1989, 2026-11-08 -- main is the current release; work lands on dev and each
+    release has its own branch. Kept here for history; do not implement against it.] Work moves feature,
+    dev (main), test, pre-prod, prod. Each stage is a branch that only takes what passed the stage before,
+    so main is never frozen for a release and a landing on main cancels nothing on the others. [END SUPERSEDED
+    BLOCK] test runs the product''s suites on a commit chosen from main. pre-prod runs the whole release
+    build as a dry run, publishing nothing, and is where packaging and install are tested. A failure on
+    either stage is fixed on that branch and merged back to main, so a failed build costs no version. The
+    release is cut from pre-prod: its notes and tag are made on that commit, the release is published, prod
+    moves to it, and the notes merge back to main. (Maintainer 2026-11-08.) (Amended 2026-11-08, MAIN IS
+    THE CURRENT RELEASE:) main always matches the current release, and only a release merges to it. Work
+    moves feature, dev, release branch, main: landings go to dev and never stop for a release. Each release
+    has its own branch, release/<version>, cut from dev, so a release in flight and newer code being tested
+    never touch each other, and the next release can start while one is publishing. On its branch the release
+    passes the product''s suites and then the whole release build as a dry run, publishing nothing, where
+    packaging and install are tested. A failure is fixed on that branch and merged back to dev, and no version
+    is lost, because the tag is made last. The notes and the tag are made on the release branch, the release
+    is published, the branch merges to main and to dev, and it is deleted. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, THE RULE OF THE RELEASE LINES:) A feature lands on dev when its unit tests, its UI unit
+    tests when it touches the UI, and its own tests pass; dev runs no integration or end-to-end suite. [SUPERSEDED
+    by REQ-1989, 2026-11-08 -- a release branch starts from main and takes its landings from dev. Kept here
+    for history; do not implement against it.] While in alpha a schedule cuts a release branch from dev
+    every night; beta and production are cut deliberately. [END SUPERSEDED BLOCK] A release branch never
+    takes a feature. It runs integration, end-to-end and conformance, and each failure becomes a bug fix
+    branched from it and landed on it, so its bugs wind down. Then the release build runs on it as a dry
+    run, the pre-production step, where packaging and install are tested. An alpha ships at the end of its
+    time box with what is left listed; beta and production ship at zero bugs. Every fix on a release branch
+    cascades, by merging that branch forward, to every newer open release and to dev, so the next release
+    has it. When a release is published its branch merges to main, so main is always the current release.
+    (Maintainer 2026-11-08.) (Amended 2026-11-08, A RELEASE STARTS FROM MAIN:) A release branch starts from
+    main, the last release. It takes landings from dev when it is created and never after: all of them by
+    merging dev, which early on is the usual case because features are still malleable, or a chosen subset
+    by cherry-picking their landings, one merge commit each. Anything wrong in that combination is found
+    by its suites and filed as a bug fix on the branch. Converged, with the full suites clean, it becomes
+    a beta: feature complete. The beta goes through the packaging and install testing of the pre-production
+    step and then it is gold: tag, published, merged to main. During alpha the nightly is the same path,
+    compressed and scheduled: start from main, merge all of dev, converge for a time box, package, tag alpha.N
+    with what is left listed, and merge to main, so main is the latest alpha. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, MANUAL TESTING AND REQUIREMENTS DEFECTS:) main is what shipped, because the repository is
+    public; every other branch is an interim state. A converged release is packaged first and then tested
+    by hand as a beta on the installed product. Manual testing can find a defect in a requirement rather
+    than in the code: it is recorded as a requirement amendment first, and the maintainer decides whether
+    a small change goes on the release branch like a fix or the change goes to dev for the next release.
+    (Maintainer 2026-11-08.) (Amended 2026-11-08, MAIN IS THE TRUNK:) This replaces the earlier amendments
+    of this date wherever they say main is the shipped state or that work lands on a dev branch, so that
+    the process is what most developers expect. main is the trunk: a feature starts from main and lands
+    on main, on its unit tests, its UI unit tests when it touches the UI, its own tests, and the smoke check,
+    and the check keeps main always startable. The smoke check starts the default demo from a clean install
+    on DuckDB, the engine a developer first meets, loads the UI and runs a query in it, runs one known query
+    through each front door (SQL over HTTP and pgwire, GraphQL, Cypher over HTTP and Bolt, SPARQL, gRPC,
+    Flight SQL, REST, MCP), reads each of four easily started sources (a Parquet file, SQLite, a remote
+    GraphQL service and embedded PostgreSQL), and shows that a restricted role gets less. What shipped is
+    on the Releases page and its tags. A branch that passed merges without being tested again unless git
+    reports a conflict. A release branch starts from a main commit, taking everything on main at that point,
+    or from the last release with a subset cherry-picked. The rest stands: it converges on the full suites
+    with fixes on the branch, is packaged, is tested by hand as a beta, and is tagged and published; every
+    fix cascades to newer open releases and to main. (Maintainer 2026-11-08.) (Amended 2026-11-08, SMOKE
+    READS THE DEMO''S SOURCES:) The sources the smoke check reads are those of the default demo, the first
+    thing a developer meets, such as a Parquet file, SQLite, a remote GraphQL service, an OpenAPI service
+    and embedded PostgreSQL, each started without an external service. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, A MISSED DAY IS FINE:) A nightly alpha that is not ready does not ship, and missing a day
+    is acceptable: a release is never forced out to keep the schedule. One release branch goes through every
+    stage, tags track the stage, and a tag does not publish. A fix does not cascade without a test that
+    failed before it. (Maintainer 2026-11-08.) (Amended 2026-11-08, ALPHA IS THE LATEST FOR NOW:) For now
+    no release moves to beta or production. A release converges, is packaged, and is published as an alpha
+    marked latest, and latest needs a successful set of release assets, so a release whose packaging fails
+    is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -89593,7 +89697,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
     specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
     generated description takes a table filter beside role and domains, and the contract''s address uses
-    it.'
+    it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S COLUMNS:) A contract holds no columns of
+    its own and its editor has no column selection, superseding the 2026-10-30 text that a contract declares
+    its columns. Each saved version snapshots its member table''s columns, and a version''s field differences
+    compare snapshots, so a field removed or renamed, a type changed incompatibly or a field made required
+    is still marked breaking (maintainer 2026-11-08).'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -93709,7 +93817,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the role. They are the role''s ceiling: defaults, grants and identity-provider lists all stay inside
     them, and there is no separate ceiling. As a shortcut, setting them also writes the role''s default
     entitlements, every capability the role holds scoped to those domains, which can then be narrowed (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-08, HOW THE LISTS ARE NAMED IN A TOKEN:) The claim that carries the nested
+    form is named per identity provider, in that provider''s settings, which the admin UI edits; with no
+    name set, that provider sends no nested lists. The flat form is provisa:<role>:<kind>:<id>, and an empty
+    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -93753,3 +93864,96 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     show their real rows
 
     And the audit query as of the day after the expiry shows the access gone'
+- id: REQ-2221
+  value: An organization publishes its own code connectors from its own repositories, and offers them
+    as sources through its model, with no publishing step in Provisa.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-08. A code source (REQ-1984, REQ-1993, REQ-2200) declares what it needs
+    with a @requires tag beside @table and @command: a named value, which may be a secret. A CLI command,
+    run offline in any CI, builds a connector from a git project: the language is detected from the project''s
+    standard files, so the project writes no build instructions, and a project that does not follow the
+    pattern is refused saying what is missing. A connector entry may name a path within the repository,
+    for a monorepo, and a build command that produces the one artifact, itself a standard project. It reuses
+    the code source image build (REQ-2098), and its output is an image in the organization''s container
+    registry and a config block. The model''s config lists the connectors the organization offers, each
+    with its git project, ref and commit, its image pinned by digest, and its requires. Sources shows them
+    beside the built-in connectors and builds the setup form from requires. A command updates all of an
+    organization''s connectors from the config: at the pinned commit by default, or at the latest of its
+    ref. Whether a connector is up to date is the build system''s answer: Provisa asks it to build, and
+    takes what it produces. A command reports a connector behind its git ref. The connector''s repository
+    has its own code promotion, and the model''s branches decide where a version runs, so Provisa has no
+    publish right and no approval flow. The server never builds a connector or reads its build settings:
+    where the CLI runs is the operator''s choice. (Amended 2026-11-08, THE OPERATOR RUNS THE CONTAINER:)
+    The operator runs an organization''s connector container, as in built mode (REQ-2098): the connectors
+    block names the image and its digest, the operator''s own deployment runs it, and Provisa pairs with
+    it. Provisa does not start connector containers. (Maintainer 2026-11-08.)'
+  use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
+    model's config names the new digest on a feature branch. Someone adds the connector as a source from
+    Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
+    prod puts it in production.
+  scenario: 'Given a git project with a function tagged @table that declares @requires db_uri as a secret
+
+    When the connector is built and its block is added to a model branch
+
+    Then Sources offers it in that branch''s environment with a setup field for db_uri, and updating all
+    connectors asks each one''s build system to build'
+  notes: 'Who runs the connector''s container is open: today BUILT mode (REQ-2098) has someone run the image
+    and enter its host, port and pairing code.'
+  related_reqs:
+  - REQ-1984
+  - REQ-1993
+  - REQ-2098
+  - REQ-2200
+
+- id: REQ-2222
+  value: The config is the change surface, and the CLI moves it, runs what are actions rather than state, and drives and explains a query in any language.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Command Line
+  feature: admin-console-surface
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-08. State (sources, tables, roles, products, settings) changes through
+    the config, so there is no command for each thing the UI can do. The CLI moves the config: validate,
+    diff (what would change against this instance), apply, export, and promotion between environments. A
+    secret stays a reference in the file, never a value. Everything changed in the UI comes back out in
+    export and goes back in with apply, with nothing lost, and a test exports every shipped model, applies
+    it to an empty store and compares. Actions, which are not state, have commands: running an instance,
+    the license, maintenance, building connectors (REQ-2221). One generic command, provisa api, calls anything
+    else the API offers, so the long tail needs no code per feature. provisa query drives a query in SQL,
+    GraphQL, Cypher or SPARQL, a gRPC method with its request, a REST call or an MCP tool call, through
+    the same front doors a client uses. It takes the role and the org as flags, and a person once entitlements
+    (REQ-2219) apply. Its output is machine-readable and stable, a refusal exits non-zero and prints its
+    error code, and an expected refusal can be asserted. provisa explain takes the same inputs and the same
+    flags and shows exactly what SQL is generated: the one semantic statement with views expanded, that
+    statement governed, the optimized statement with the rules that fired, the route, the native statement
+    in the target dialect, and the engine''s own plan, with an option to run it and report real timings.
+    A statement refused for that role prints the refusal and its code. Every language reaches explain where
+    it hands SQL to the one pipeline (REQ-1519), so explain describes what would run. There is no interactive
+    mode: pgwire and Bolt already give psql and cypher-shell. (Amended 2026-11-08, WHAT THE OTHER CLIS TAUGHT:)
+    apply takes a dry run that performs the whole model build and name checks on the server and saves nothing.
+    diff can write a plan that apply then applies exactly. diff can exit non-zero when the instance has
+    moved from the config, for a scheduled drift check. can-i answers whether a role or person may do something,
+    and why not. query takes a changed selection against a prior state, so a branch tests only what it affects
+    and what depends on it. Named contexts hold an instance and its credentials, and a production context
+    asks for confirmation. Every command shares one output option (json, yaml, table) and one filter. wait
+    blocks until an instance is ready or a replica is current. schema prints the config fields for a kind,
+    generated from the model. Generated help, shell completion and documented exit codes come with them.
+    (Maintainer 2026-11-08.)'
+  use_case: A CI pipeline validates a model branch, diffs it against test and applies it, then runs the same Cypher as two roles, compares the answers, and asserts that a third role is refused with the expected code. When an answer looks wrong, a developer runs provisa explain on the query and sees the exact SQL that ran.
+  scenario: 'Given a running instance and a Cypher statement
+    When provisa explain runs it for a role
+    Then it prints the semantic, governed, optimized and native SQL and the route for that role
+    And when provisa query runs a statement that role may not read
+    Then it exits non-zero and prints the refusal code'
+  related_reqs:
+  - REQ-1519
+  - REQ-2219
+  - REQ-2221

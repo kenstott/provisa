@@ -67,7 +67,6 @@
     "tourStart": "Rondleiding starten",
     "userMenu": "Gebruikersmenu",
     "profile": "Profiel",
-    "settings": "Instellingen",
     "whatsNew": "Wat is er nieuw",
     "logout": "Afmelden",
     "dev": "DEV",
@@ -81,6 +80,7 @@
     "itemContainerRegistries": "Containerregisters",
     "itemSparql": "SPARQL",
     "itemCatalogs": "Catalogi",
-    "itemReferenceLibrary": "Referentiebibliotheek"
+    "itemReferenceLibrary": "Referentiebibliotheek",
+    "itemPlatformObservability": "Platform-observability"
   }
 }

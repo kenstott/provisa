@@ -27,6 +27,7 @@ import pytest
 from provisa.api.metadata_export import workbook as wb
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.refs import metric_uri
+from tests.unit.product_members import assigned, assigned_members, with_members
 from provisa.core.models import (
     Column,
     Domain,
@@ -46,20 +47,21 @@ def _table(name: str, **kwargs) -> Table:
     columns = kwargs.pop("columns", None) or [
         Column(name="id", data_type="integer", visible_to=["*"])
     ]
-    return Table(
+    product_id = kwargs.pop("product_id", "prod")
+    table = Table(
         source_id="wh",
         domain_id=kwargs.pop("domain_id", "sales"),
         schema_name="public",
         table_name=name,
         description=kwargs.pop("description", f"{name} table"),
-        product_id=kwargs.pop("product_id", "prod"),
         columns=columns,
         **kwargs,
     )
+    return assigned(table, product_id)
 
 
 def _config() -> ProvisaConfig:
-    return ProvisaConfig(
+    config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         tables=[
@@ -86,6 +88,10 @@ def _config() -> ProvisaConfig:
             Metric(name="held", expression="SUM(staging.id)"),
         ],
         roles=[],
+    )
+    # REQ-1634: each table's product lists it.
+    return config.model_copy(
+        update={"data_products": with_members([], assigned_members(config.tables))}
     )
 
 
@@ -1105,14 +1111,15 @@ def test_the_ontology_sheet_states_each_terms_axioms():
 
 def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
     """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
-    usage, limitations and the columns it promises, a column the caller is not served absent."""
+    usage, limitations and its schema: the member's columns the caller is served (a contract
+    selects none of its own)."""
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
         MetadataSnapshot,
     )
-    from provisa.core.models import ContractColumn, ContractTerms, DataContract, DataProduct
+    from provisa.core.models import ContractTerms, DataContract, DataProduct
 
     orders = dataclasses.replace(
         _asset_table("orders", ["id", "total"]),
@@ -1122,11 +1129,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             status="active",
             description="every order placed",
             terms=ContractTerms(usage="reporting", limitations="no PII"),
-            columns=[
-                ContractColumn(name="id", type="integer", required=True),
-                ContractColumn(name="total", type="decimal"),
-                ContractColumn(name="margin", type="decimal"),  # not served to this caller
-            ],
         ),
     )
     drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
@@ -1170,6 +1172,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             "purpose": "every order placed",
             "usage": "reporting",
             "limitations": "no PII",
-            "columns": "id (integer, required), total (decimal)",
+            "columns": "id (int), total (int)",
         }
     ]

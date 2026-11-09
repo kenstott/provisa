@@ -249,6 +249,15 @@ def test_a_null_scale_answers_null():
     assert _on_duckdb("SELECT round(NULL::numeric, NULL::integer) AS v") is None
 
 
+def test_a_null_scale_truncates_to_null():
+    assert _on_duckdb("SELECT trunc(1.25::numeric, NULL::integer) AS v") is None
+
+
+def test_a_scale_still_rounds_and_truncates():
+    assert str(_on_duckdb("SELECT round(1.255::numeric, 2) AS v")) == "1.26"
+    assert str(_on_duckdb("SELECT trunc(1.257::numeric, 2) AS v")) == "1.25"
+
+
 def test_a_clickhouse_time_is_a_time_on_the_wire():
     casts = result_casts("SELECT time_larger('12:30:45'::time, '12:30:45'::time) AS v")
     assert casts is not None and casts[0] is not None and casts[0].coerce is not None

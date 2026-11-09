@@ -185,8 +185,9 @@ async def test_the_listing_reads_one_query_per_kind_whatever_the_number_of_table
     monkeypatch.setattr(mapper, "parse_spec", _counted)
     tables, statements = await _listed(plane)
     assert len(tables) == _TABLES
-    # Columns, pii tags, sources, write grants: one each, not one each per table.
-    assert statements == 4, statements
+    # Columns, pii tags, sources, write grants, product memberships: one each, not one each per
+    # table.
+    assert statements == 5, statements
     assert parsed == 1  # the OpenAPI source's spec, once for its 20 tables
     by_name = {t.table_name: t for t in tables}
     assert [c.column_name for c in by_name["t1"].columns] == ["id", "name", "email"]

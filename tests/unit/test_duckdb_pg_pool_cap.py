@@ -98,7 +98,15 @@ def test_the_runtime_configures_the_pool_right_after_the_attach(workers):
     workers(2)
     executed: list[str] = []
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
-    runtime._con = type("_Con", (), {"execute": lambda _self, sql: executed.append(sql)})()
+    runtime._con = type(  # its cursors record alike: the runtime runs statements on them
+        "_Con",
+        (),
+        {
+            "execute": lambda _self, sql: executed.append(sql),
+            "cursor": lambda self: self,
+            "close": lambda _self: None,
+        },
+    )()
     runtime._pg_ext_loaded = False
     runtime._raw_attached = set()
     runtime._raw_attach_ddl = {}
@@ -121,7 +129,15 @@ def test_an_environments_own_attach_has_its_own_pool_configured(workers):
     workers(2)
     executed: list[str] = []
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
-    runtime._con = type("_Con", (), {"execute": lambda _self, sql: executed.append(sql)})()
+    runtime._con = type(  # its cursors record alike: the runtime runs statements on them
+        "_Con",
+        (),
+        {
+            "execute": lambda _self, sql: executed.append(sql),
+            "cursor": lambda self: self,
+            "close": lambda _self: None,
+        },
+    )()
     runtime._pg_ext_loaded = True
     runtime._raw_attached = set()
     runtime._raw_attach_ddl = {}

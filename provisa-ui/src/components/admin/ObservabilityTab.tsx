@@ -33,6 +33,8 @@ import {
 } from "../../api/admin";
 import { SUBSYSTEM_TRACE_KEYS } from "../../api/admin";
 import type { PlatformSettings } from "../../api/admin";
+import { useAuth } from "../../context/AuthContext";
+import { useCapability } from "../../hooks/useCapability";
 import { DebugTracePanel } from "./DebugTracePanel";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { FilterInput } from "./FilterInput";
@@ -323,7 +325,9 @@ function OtelSettingsSection({
 
   const active = Boolean(otel.endpoint);
   // The endpoint the process is exporting to is the saved one, not what is being typed.
-  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(Boolean(saved.endpoint));
+  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(
+    Boolean(saved.endpoint),
+  );
   // A failed check leaves the last answer stale, so the failure is shown instead of it.
   const tableStale =
     tableFailure === null &&
@@ -581,16 +585,41 @@ function OtelSettingsSection({
   );
 }
 
-export function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
+// REQ-1327: the org's page. The caller's own trace feed for every observability holder; beside it
+// what the org administers, on the org_settings the routes behind it ask.
+export function ObservabilityTab() {
+  const { t } = useTranslation();
+  const { activeOrgId } = useAuth();
+  const administers = useCapability("org_settings");
+  return (
+    <div className="observability-layout">
+      <TraceFeed />
+      {administers && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {activeOrgId !== null && (
+            <div className="settings-section">
+              <Title order={4} mb="sm">
+                {t("debugTracePanel.tabTitle")}
+              </Title>
+              <DebugTracePanel orgId={activeOrgId} />
+            </div>
+          )}
+          <SchemaClusterActions />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// REQ-1327: the platform's page, the deployment check on its route: the exporter, org-wide debug
+// tracing and the query engine's lifecycle.
+export function PlatformObservabilityTab({ settings, setSettings }: ObsTabProps) {
   return (
     <div className="observability-layout">
       {settings.otel && (
         <OtelSettingsSection settings={settings} setSettings={setSettings} otel={settings.otel} />
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <TraceFeed />
-        <QueryEngineActions />
-      </div>
+      <QueryEngineActions />
     </div>
   );
 }
@@ -599,10 +628,8 @@ function QueryEngineActions() {
   const { t } = useTranslation();
   const [reloadStatus, setReloadStatus] = useState<string>("");
   const [restartStatus, setRestartStatus] = useState<string>("");
-  const [clusterStatus, setClusterStatus] = useState<string>("");
   const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
-  const [reclustering, setReclustering] = useState(false);
 
   const handleReload = async () => {
     setReloading(true);
@@ -634,19 +661,6 @@ function QueryEngineActions() {
     }
   };
 
-  const handleRecluster = async () => {
-    setReclustering(true);
-    setClusterStatus("");
-    try {
-      const result = await recomputeSchemaClusters();
-      setClusterStatus(t("observabilityTab.clustered", { count: result.tables_clustered }));
-    } catch (e: unknown) {
-      setClusterStatus(e instanceof Error ? e.message : t("observabilityTab.failed"));
-    } finally {
-      setReclustering(false);
-    }
-  };
-
   return (
     <div className="settings-section">
       <Title order={4}>{t("observabilityTab.queryEngineTitle")}</Title>
@@ -662,16 +676,6 @@ function QueryEngineActions() {
         >
           {restarting ? t("observabilityTab.restarting") : t("observabilityTab.restartEngine")}
         </Button>
-        <Button
-          variant="default"
-          className="btn-secondary"
-          onClick={handleRecluster}
-          disabled={reclustering}
-        >
-          {reclustering
-            ? t("observabilityTab.clustering")
-            : t("observabilityTab.recomputeClusters")}
-        </Button>
       </Group>
       {reloadStatus && (
         <Text className="upload-msg" size="sm" mt="0.5rem">
@@ -683,9 +687,48 @@ function QueryEngineActions() {
           {restartStatus}
         </Text>
       )}
-      {clusterStatus && (
+    </div>
+  );
+}
+
+// REQ-1327: the org's schema clusters, recomputed on the org_settings its route asks.
+function SchemaClusterActions() {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState<string>("");
+  const [reclustering, setReclustering] = useState(false);
+
+  const handleRecluster = async () => {
+    setReclustering(true);
+    setStatus("");
+    try {
+      const result = await recomputeSchemaClusters();
+      setStatus(t("observabilityTab.clustered", { count: result.tables_clustered }));
+    } catch (e: unknown) {
+      setStatus(e instanceof Error ? e.message : t("observabilityTab.failed"));
+    } finally {
+      setReclustering(false);
+    }
+  };
+
+  return (
+    <div className="settings-section">
+      <Title order={4}>{t("observabilityTab.schemaClustersTitle")}</Title>
+      <Group gap="0.75rem" align="center" wrap="wrap" mt="sm">
+        <Button
+          variant="default"
+          className="btn-secondary"
+          onClick={handleRecluster}
+          disabled={reclustering}
+          data-testid="observability-recompute-clusters"
+        >
+          {reclustering
+            ? t("observabilityTab.clustering")
+            : t("observabilityTab.recomputeClusters")}
+        </Button>
+      </Group>
+      {status && (
         <Text className="upload-msg" size="sm" mt="0.5rem">
-          {clusterStatus}
+          {status}
         </Text>
       )}
     </div>

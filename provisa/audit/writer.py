@@ -235,16 +235,30 @@ async def _meter(pool: Any, org_id: str) -> None:
 
 
 def _count(records: "list[AuditRecord]") -> None:
-    """Add a landed batch to its tables' Hot counts (REQ-826), one round trip per count store."""
+    """Add a landed batch to its tables' Hot counts (REQ-826), one round trip per org environment
+    of a count store: each is counted in buckets of that org's interval (REQ-1327), the same the
+    promotion judge reads them with."""
     from provisa.core import settings_registry
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
     from provisa.federation.replica_hot import batch_hits
 
-    interval = settings_registry.value("replication.hot_interval")
-    by_store: dict[int, list[AuditRecord]] = {}
+    by_store: dict[tuple[int, str, str], list[AuditRecord]] = {}
     for rec in records:
         if rec.hot_counts is not None:
-            by_store.setdefault(id(rec.hot_counts), []).append(rec)
-    for group in by_store.values():
+            by_store.setdefault((id(rec.hot_counts), rec.meter_org, rec.model_env), []).append(rec)
+    for (_, org, env), group in by_store.items():
+        org_token = set_current_org(org)
+        env_token = set_current_env(env)
+        try:
+            interval = settings_registry.value("replication.hot_interval")
+        finally:
+            reset_current_env(env_token)
+            reset_current_org(org_token)
         group[0].hot_counts.add(batch_hits(group), interval)
 
 

@@ -23,6 +23,7 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 from __future__ import annotations
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.session_time_zone import carrying_zone
 import asyncio
 import logging
 from contextlib import contextmanager
@@ -1589,14 +1590,16 @@ class TrinoBackend(EngineBackend):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: execute_trino(
-                _conn,
-                sql,
-                params=params,
-                session_hints=session_hints,
-                conn_kwargs=conn_kwargs,
-                span_attrs=span_attrs,
-                extra_table_attrs=extra_table_attrs,
+            carrying_zone(
+                lambda: execute_trino(
+                    _conn,
+                    sql,
+                    params=params,
+                    session_hints=session_hints,
+                    conn_kwargs=conn_kwargs,
+                    span_attrs=span_attrs,
+                    extra_table_attrs=extra_table_attrs,
+                )
             ),
         )
 

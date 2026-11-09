@@ -140,7 +140,8 @@ function ConflictNotice({ head, conflicts }: { head: string; conflicts: Conflict
 export function EnvironmentsTab() {
   const { t } = useTranslation();
   const { activeOrgId, capabilities } = useAuth();
-  const canAdminister = capabilities.includes("org_settings");
+  // REQ-1573, REQ-1327: what _guard asks of the org's environments.
+  const canAdminister = capabilities.includes("environment_management");
 
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [name, setName] = useState("");

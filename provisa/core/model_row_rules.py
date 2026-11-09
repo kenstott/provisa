@@ -42,7 +42,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-import sqlglot
 import sqlglot.expressions as exp
 from sqlalchemy import Delete, Update, literal_column
 
@@ -73,9 +72,15 @@ class ModelRule:
     the session values it reads, and the ``*_meta`` view the model is registered through, which a
     column the table does not hold is read from."""
 
-    predicate: str
+    predicate: Any
     session_vars: dict[str, str] = field(default_factory=dict)
     view: str | None = None
+
+    def __post_init__(self) -> None:
+        from provisa.compiler.rls import as_rule
+
+        # REQ-913: the rule is an expression; one given as text is a rule entering, read here.
+        object.__setattr__(self, "predicate", as_rule(self.predicate))
 
 
 #: (acting role, table, right) -> its rule. The application registers it; a process with no
@@ -113,11 +118,11 @@ class Narrowing:
     predicate: Any
 
 
-def _column_names(tree: exp.Expression) -> set[str]:
+def _column_names(tree: exp.Expr) -> set[str]:  # pyright: ignore[reportPrivateImportUsage]
     return {c.name for c in tree.find_all(exp.Column)}
 
 
-def _rendered(tree: exp.Expression, dialect: str) -> str:
+def _rendered(tree: exp.Expr, dialect: str) -> str:  # pyright: ignore[reportPrivateImportUsage]
     return tree.sql(dialect=_SQLGLOT_DIALECT.get(dialect, dialect))
 
 
@@ -126,22 +131,25 @@ def _predicate(
 ) -> Any:
     """The rule as a criterion on ``table``: over its own columns where it holds them all; else,
     a column only the model's view holds, as the rows of the view it admits."""
-    parsed = sqlglot.parse_one(rule.predicate, read="postgres")
-    tree = resolve_session_terms(parsed, rule.session_vars)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    tree = resolve_session_terms(rule.predicate.copy(), rule.session_vars)
     outside = _column_names(tree) - set(table.c.keys())
-    if not outside:
-        # literal_column, not text(): a literal in a rule may hold a colon (a meta-role's id),
-        # which text() would take for a bind parameter.
-        return literal_column(f"({_rendered(tree, dialect)})")
-    key = list(table.primary_key.columns)
-    if rule.view is None or len(key) != 1:
-        raise refuse(f"reads {sorted(outside)}, which {table.name} does not hold")
-    column = key[0].name
-    through_view = sqlglot.parse_one(
-        f'"{column}" IN (SELECT "{column}" FROM "{rule.view}" WHERE {tree.sql(dialect="postgres")})',
-        read="postgres",
-    )
-    return literal_column(f"({_rendered(through_view, dialect)})")  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    if outside:
+        key = list(table.primary_key.columns)
+        if rule.view is None or len(key) != 1:
+            raise refuse(f"reads {sorted(outside)}, which {table.name} does not hold")
+        column = key[0].name
+        tree = exp.In(
+            this=exp.column(column, quoted=True),
+            query=exp.Subquery(
+                this=exp.select(exp.column(column, quoted=True))
+                .from_(exp.table_(rule.view, quoted=True))
+                .where(tree, copy=False)
+            ),
+        )
+    # REQ-913: the statement is SQLAlchemy's, which takes a criterion as text: the rule is
+    # rendered once, here, in the store's dialect. literal_column, not text(): a literal in a rule
+    # may hold a colon (a meta-role's id), which text() would take for a bind parameter.
+    return literal_column(f"({_rendered(tree, dialect)})")
 
 
 def narrowing_of(stmt: Any, dialect: str) -> Narrowing | None:

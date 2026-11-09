@@ -67,6 +67,11 @@ def test_duckdb_run_arrow_interrupts_its_cursor(monkeypatch) -> None:
         def execute(self, *_: Any) -> Any:
             b.block()
 
+        def sql(
+            self, *_: Any, **__: Any
+        ) -> Any:  # the Arrow terminals read through the relation API
+            b.block()
+
         def close(self) -> None:
             pass
 

@@ -5,7 +5,8 @@
       "encryption": "加密",
       "authentication": "身份验证",
       "localUsers": "本地用户",
-      "secrets": "密钥"
+      "secrets": "密钥",
+      "secretsService": "密钥服务"
     }
   }
 }

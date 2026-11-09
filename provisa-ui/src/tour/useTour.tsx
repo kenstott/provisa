@@ -72,6 +72,8 @@ import { readBulk, removeBulk, writeBulk } from "../lib/bulkStorage";
 import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
+import { keepClearOf } from "./clearOfGraph";
+import { TourRunningContext } from "./tourRunning";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -885,6 +887,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const ends = landing !== null;
         // A provider the copy names is named as a user sees it: "(beta)" while unproven.
         const copy = { atlan: exportProviderName("atlan", "Atlan", t) };
+        const clear = step.clearOf ? keepClearOf(step.clearOf, abort.signal) : null;
         const popover: DriverPopover = {
           title: t(`tour.steps.${step.key}.title`),
           description: step.image
@@ -1031,6 +1034,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           },
         };
         driverRef.current.highlight({ element, popover });
+
         // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
         // leaves the step lighting a node no longer on the page, its popover in a corner: the
         // step's anchor as it is now is lit again.
@@ -1041,6 +1045,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           if (!now || !driverRef.current) return;
           lit = now;
           driverRef.current.highlight({ element: now, popover });
+          clear?.();
         });
         relight.observe(document.body, { childList: true, subtree: true });
         abort.signal.addEventListener("abort", () => relight.disconnect(), { once: true });
@@ -1230,58 +1235,60 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }));
 
   return (
-    <TourContext.Provider
-      value={{
-        startTour,
-        coreSeen: hasSeenTour(),
-        running: activeStep !== null,
-        canResume: tourResumeStep() !== null,
-        status,
-        available:
-          TOPIC_IDS.some((id) => itineraries[id].length > 0) ||
-          itineraries.core.length > 0 ||
-          itineraries.demo.length > 0,
-      }}
-    >
-      {children}
-      <TourMenu
-        opened={menuOpen}
-        topics={menuTopics}
-        completed={completedTopics()}
-        demo={
-          namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
-            ? {
-                name: namedDemo.name,
-                steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
-                done: trackDone,
-              }
-            : null
-        }
-        onDemo={() => launch("demo", true)}
-        onPick={(id: TopicId) => launch(id, true)}
-        // REQ-2013: the product tour's own start, when the org has what it shows.
-        onCore={orgHas !== null && offered("core", orgHas) ? () => launch("core", true) : null}
-        onClose={() => setMenuOpen(false)}
-      />
-      <TourStatusOverlay
-        status={status}
-        onRetry={() => {
-          setStatus(null);
-          setAttempt((n) => n + 1);
+    <TourRunningContext.Provider value={activeStep !== null}>
+      <TourContext.Provider
+        value={{
+          startTour,
+          coreSeen: hasSeenTour(),
+          running: activeStep !== null,
+          canResume: tourResumeStep() !== null,
+          status,
+          available:
+            TOPIC_IDS.some((id) => itineraries[id].length > 0) ||
+            itineraries.core.length > 0 ||
+            itineraries.demo.length > 0,
         }}
-        onSkip={() => {
-          const i = activeStepRef.current;
-          if (i === null) return;
-          setStatus(null);
-          // The next step on this viewer's itinerary — skipping a step never lands on one their
-          // rights would deny.
-          const next = itineraryRef.current.find((n) => n > i);
-          if (next === undefined) endTour("completed");
-          else setActiveStep(next);
-        }}
-        onExit={() => endTour("dismissed")}
-      />
-    </TourContext.Provider>
+      >
+        {children}
+        <TourMenu
+          opened={menuOpen}
+          topics={menuTopics}
+          completed={completedTopics()}
+          demo={
+            namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
+              ? {
+                  name: namedDemo.name,
+                  steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
+                  done: trackDone,
+                }
+              : null
+          }
+          onDemo={() => launch("demo", true)}
+          onPick={(id: TopicId) => launch(id, true)}
+          // REQ-2013: the product tour's own start, when the org has what it shows.
+          onCore={orgHas !== null && offered("core", orgHas) ? () => launch("core", true) : null}
+          onClose={() => setMenuOpen(false)}
+        />
+        <TourStatusOverlay
+          status={status}
+          onRetry={() => {
+            setStatus(null);
+            setAttempt((n) => n + 1);
+          }}
+          onSkip={() => {
+            const i = activeStepRef.current;
+            if (i === null) return;
+            setStatus(null);
+            // The next step on this viewer's itinerary — skipping a step never lands on one their
+            // rights would deny.
+            const next = itineraryRef.current.find((n) => n > i);
+            if (next === undefined) endTour("completed");
+            else setActiveStep(next);
+          }}
+          onExit={() => endTour("dismissed")}
+        />
+      </TourContext.Provider>
+    </TourRunningContext.Provider>
   );
 }
 

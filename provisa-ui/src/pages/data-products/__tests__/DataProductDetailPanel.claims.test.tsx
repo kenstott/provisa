@@ -59,7 +59,7 @@ const check = (
   table_name: `check_${checker}`,
   alias: null,
   description: `Claim ${checker}`,
-  owner_product_id: owner,
+  owner_product_ids: owner === null ? [] : [owner],
   checked_table_id: checked[0],
   checked_table: { id: checked[0], domain_id: "sales", table_name: checked[1], alias: null },
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
@@ -90,7 +90,7 @@ const input = (id: number, relation: string): ProductInput => ({
   domain_id: relation.split(".")[0],
   table_name: relation.split(".")[1],
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,
@@ -110,7 +110,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       domain_id: "sales",
       table_name: "revenue_daily",
       alias: null,
-      product_id: null,
+      product_ids: [],
       reads: ["sales.orders"],
     },
     {
@@ -120,7 +120,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       domain_id: "finance",
       table_name: "ledger",
       alias: "gl",
-      product_id: "billing",
+      product_ids: ["billing", "ledger"],
       reads: ["sales.customers", "sales.orders"],
     },
   ],
@@ -156,6 +156,7 @@ function panel() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
@@ -231,6 +232,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         canEdit={false}
         canDelete={false}
         owner
+        seesConsumers
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}
@@ -285,6 +287,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         canEdit={canEdit}
         canDelete={canEdit}
         owner={owner}
+        seesConsumers={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}
@@ -300,7 +303,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     // Its consumers one hop downstream, each by its model name, what it is and its product.
     const consumers = screen.getByTestId("data-product-detail-consumers-c360");
     expect(consumers).toHaveTextContent("sales.revenue_daily (view)");
-    expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing)");
+    expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing, ledger)");
     // The contract no longer says who reads a port, so this card says which ports each reads.
     const reads = (relation: string) =>
       screen.getByTestId(`data-product-detail-consumers-c360-reads-${relation}`);
@@ -314,14 +317,12 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.queryByTestId("data-product-detail-dq-expectations-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
-    // REQ-2160: the two cards are shown, holding no list (the owner's) and no "None".
-    for (const [card, list] of [
-      ["inputPorts", "inputs"],
-      ["consumers", "consumers"],
-    ]) {
-      expect(screen.getByTestId(`data-product-card-${card}-c360`)).toBeInTheDocument();
-      expect(screen.queryByTestId(`data-product-detail-${list}-c360`)).toBeNull();
-    }
+    // REQ-2160: Input Ports is shown, holding no list (the owner's) and no "None"; REQ-2174
+    // (amended 2026-11-07): Consumers is the owner's alone, not shown at all.
+    expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-product-detail-inputs-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-consumers-c360")).toBeNull();
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
   });
@@ -342,6 +343,7 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         canEdit={canEdit}
         canDelete={canEdit}
         owner={owner}
+        seesConsumers={owner}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}
@@ -431,6 +433,7 @@ describe("Related Tables (REQ-2126)", () => {
         canEdit={false}
         canDelete={false}
         owner
+        seesConsumers
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}

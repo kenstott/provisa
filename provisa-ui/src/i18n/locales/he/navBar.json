@@ -67,7 +67,6 @@
     "tourStart": "התחלת סיור מודרך",
     "userMenu": "תפריט משתמש",
     "profile": "פרופיל",
-    "settings": "הגדרות",
     "whatsNew": "מה חדש",
     "logout": "התנתקות",
     "dev": "DEV",
@@ -81,6 +80,7 @@
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
     "itemCatalogs": "קטלוגים",
-    "itemReferenceLibrary": "ספריית עיון"
+    "itemReferenceLibrary": "ספריית עיון",
+    "itemPlatformObservability": "ניטור הפלטפורמה"
   }
 }

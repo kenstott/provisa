@@ -818,6 +818,25 @@ async def _cache_prometheus_label_columns(pool, state, model) -> None:  # REQ-17
     state.prometheus_label_columns = cache
 
 
+def engine_unreachable(state, source_id: str, source_type: str) -> MutationResult | None:
+    """A source no reader in this deployment can read, shown when it is added, never at its first
+    query, naming what is missing (REQ-1142, NOT ATTACHABLE MEANS REPLICA; REQ-1998). A source the
+    engine cannot read in place but Provisa lands is a replica and is added."""
+    runtime = getattr(state, "federation_engine", None)
+    engine = getattr(runtime, "engine", None)
+    if engine is None:
+        return None
+    why = engine.unreachable_reason(source_type)
+    if why is None:
+        return None
+    return MutationResult(
+        success=False,
+        message=f"Source {source_id!r} is unreachable on the {engine.name!r} engine: {why}",
+        code="schema.source_unreachable",
+        params={"source": source_id, "type": source_type, "missing": why},
+    )
+
+
 def _register_source_on_engine(state, model, input: SourceInput) -> None:
     """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets
@@ -982,7 +1001,7 @@ async def _sync_view_mv(
     preprocess: str | None = None,  # REQ-957
     hold_on_failing_checks: bool = False,  # REQ-2133
     table_id: int | None = None,  # REQ-2133: the view table this build is of
-    product_id: str | None = None,  # REQ-2133: that table's data product
+    product_ids: list[str] | None = None,  # REQ-2133, REQ-1634: that table's data products
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
     valid_time: str | None = None,  # REQ-2109: the column its reads travel on
     recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
@@ -1060,7 +1079,7 @@ async def _sync_view_mv(
         preprocess=preprocess,  # REQ-957
         hold_on_failing_checks=hold_on_failing_checks,  # REQ-2133
         table_id=table_id,  # REQ-2133
-        product_id=product_id,  # REQ-2133
+        product_ids=list(product_ids or []),  # REQ-2133, REQ-1634
         bitemporal=bitemporal,  # REQ-1162
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970
@@ -1193,3 +1212,15 @@ async def restart_source_server(model) -> None:
 
         async with _bound_for_start():
             start_when_saved(model)
+
+
+async def _view_products(table_id: int | None) -> list[str]:  # REQ-2133, REQ-1634
+    """The data products the view table ``table_id`` is a member of (none for no table): what its
+    build's preflight relates each checker to."""
+    if table_id is None:
+        return []
+    from provisa.core.repositories import data_product as data_product_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        return await data_product_repo.products_of_table(cast("Connection", conn), table_id)

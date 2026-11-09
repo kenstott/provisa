@@ -52,6 +52,7 @@ from provisa.api.admin._table_settings import (
 from provisa.api.admin.schema_common import (
     _queue_creation_request,
     _sync_view_mv,
+    _view_products,
     check_view_mv,
 )
 
@@ -304,12 +305,9 @@ async def register_table(
         # convention is its authority. The GraphQL surface applies gql conventions at schema
         # generation — it never mints the SQL name (deriving the alias from a source's
         # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet).
-        from provisa.api.app import state as _app_state
-        from provisa.compiler.naming import apply_convention
+        from provisa.compiler.naming import active_sql_convention, apply_convention
 
-        _sql_name = apply_convention(
-            input.table_name, getattr(_app_state, "global_sql_naming_convention", "snake")
-        )
+        _sql_name = apply_convention(input.table_name, active_sql_convention())
         alias = None if _sql_name == input.table_name else _sql_name
 
     # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
@@ -810,7 +808,7 @@ async def register_table(
             preprocess=input.mv_preprocess,  # REQ-957
             hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
             table_id=table_id,  # REQ-2133
-            product_id=input.product_id,  # REQ-2133
+            product_ids=await _view_products(table_id),  # REQ-2133, REQ-1634
             business_key=list(input.business_key),  # REQ-2109
             valid_time=input.valid_time,  # REQ-2109
             recorded_time=input.recorded_time,  # REQ-2109

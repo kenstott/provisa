@@ -13,13 +13,14 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import type { ContractColumn, ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
+import type { ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
 import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   CreateDataProduct,
   UpdateDataProduct,
   DeleteDataProduct,
+  SetDataProductMembers,
   SaveDataContract,
   PublishDataProduct,
   DeprecateDataProduct,
@@ -74,6 +75,23 @@ export function useUpdateDataProduct() {
   };
 }
 
+export function useSetDataProductMembers() {
+  // REQ-1634: a product's members are set on the product, any number of tables and commands.
+  const [setMembers, { loading }] = useMutation<{ setDataProductMembers: MutationResult }>(
+    SetDataProductMembers,
+  );
+  return {
+    setDataProductMembers: async (id: string, tableIds: number[], commandNames: string[]) => {
+      const result = await setMembers({ variables: { id, tableIds, commandNames } });
+      return (result.data?.setDataProductMembers ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
 export function useDeleteDataProduct() {
   // REQ-1634
   const [deleteDataProduct, { loading }] = useMutation<{ deleteDataProduct: MutationResult }>(
@@ -96,7 +114,6 @@ export interface DataContractInput {
   description: string | null;
   terms: ContractTerms;
   sla: ContractSlaProperty[];
-  columns: ContractColumn[];
 }
 
 export function useSaveDataContract() {

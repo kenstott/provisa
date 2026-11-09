@@ -72,8 +72,8 @@ export interface TrackedFunction {
   requiresApproval?: boolean;
   // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
   writesTable?: string | null;
-  // REQ-1634: optional data-product membership.
-  productId?: string | null;
+  // REQ-1634: the products the command is a member of, read-only: set on the product.
+  productIds?: string[];
   // REQ-2001: a statement command's contract, derived from its statement at every build.
   contract?: StatementContract;
   // REQ-2168: the command's name per language.
@@ -156,7 +156,6 @@ export async function saveFunction(
     requiresApproval?: boolean;
     // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
     writesTable?: string | null;
-    productId?: string | null;
     // REQ-2168: the command's name per language.
     languageBindings?: Record<string, LanguageBinding>;
   },

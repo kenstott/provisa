@@ -337,9 +337,15 @@ glossary_terms:
   domains:
   - audit
   edges:
-  - to: amount expended
-    rel_type: RELATED_TO
   - to: single audit
+    rel_type: PART_OF
+- name: amount expended
+  approve: true
+  definition: 'What an auditee spent of a federal award in the audit year in USD, as its schedule states it.'
+  domains:
+  - audit
+  edges:
+  - to: schedule of expenditures of federal awards
     rel_type: PART_OF
 - name: assistance listing
   approve: true
@@ -348,7 +354,7 @@ glossary_terms:
   - audit
   edges:
   - to: aln
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: pass-through entity
   approve: true
   definition: 'A state or local agency that receives a federal award and passes it on to a subrecipient. The money reaches the subrecipient as a subaward, so no federal award record names the subrecipient.'
@@ -356,15 +362,20 @@ glossary_terms:
   - audit
   edges:
   - to: passthrough entity
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: obligation
   approve: true
   definition: 'The federal government binding itself to pay an award, recorded in the federal fiscal year (October to September) it is made in; a multi-year award may be obligated years before it is spent.'
   domains:
   - audit
+- name: obligated amount
+  approve: true
+  definition: 'The dollars an obligation binds, as the award records show them.'
+  domains:
+  - audit
   edges:
-  - to: obligated amount
-    rel_type: RELATED_TO
+  - to: obligation
+    rel_type: PART_OF
 - name: timing difference
   approve: true
   definition: 'An award spent in the audit year whose money was obligated in an earlier federal fiscal year: it is on the schedule and on the award records, in different years.'

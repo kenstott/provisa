@@ -238,9 +238,14 @@ glossary_terms:
   definition: 'EAL: the loss a hazard is expected to cause in a place in an average year. FEMA''s National Risk Index rates it for every county.'
   domains:
   - insurance
+- name: eal rating
+  approve: true
+  definition: 'FEMA''s National Risk Index rating of a county''s expected annual loss across every hazard.'
+  domains:
+  - insurance
   edges:
-  - to: eal rating
-    rel_type: RELATED_TO
+  - to: expected annual loss
+    rel_type: DERIVED_FROM
 - name: catastrophe peril
   approve: true
   definition: 'A natural hazard that can strike many risks at once -- hurricane, earthquake, wildfire, severe convective storm, flood.'

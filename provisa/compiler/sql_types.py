@@ -16,6 +16,7 @@ Extracted from sql_gen.py; pure data structures, no compilation logic.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -61,6 +62,37 @@ class TableMeta:
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
+
+
+def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152
+    """Whether a path column of ``table``, on a source of ``source_type``, is served as the
+    extraction from its JSON column (a SQL database) rather than by its name (a source whose
+    connector resolves the path), as the type declares (``core.source_registry.PATH_COLUMNS``).
+    A table whose source type is not known, or declares neither, cannot say which, and is
+    refused."""
+    from provisa.core.source_registry import PATHS_EXTRACTED, path_columns
+
+    if not source_type:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type is not known: "
+            "a path column is served by its name or extracted from its JSON column by the type"
+        )
+    served = path_columns(source_type)
+    if served is None:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type "
+            f"{source_type!r} serves no path column: its connector neither resolves the path nor "
+            "holds the document in a JSON column it is extracted from"
+        )
+    return served == PATHS_EXTRACTED
+
+
+def stored_path(column: str, path: str) -> tuple[str, list[str]]:  # REQ-151, REQ-152
+    """The JSON column and the keys into it a path column registered as ``column`` at ``path``
+    reads, on a SQL database: ``source.key...`` reads ``source``; a one-key path reads that key
+    of the column itself (the column is the JSON column, exposed under its alias)."""
+    first, *keys = path.split(".")
+    return (column, [first]) if not keys else (first, keys)
 
 
 def key_list(stored: str) -> tuple[str, ...]:
@@ -142,7 +174,7 @@ class CompilationContext:
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key columns.
-    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = field(default_factory=dict)
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
@@ -155,8 +187,6 @@ class CompilationContext:
     listed_only: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
-    # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
-    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # REQ-1908: (schema, physical table) lowercased → {column lowercased: (epoch unit, data_type)}
     # for every registered temporal column its source stores as an epoch number.
     epoch_columns: dict[tuple[str, str], dict[str, tuple[str, str]]] = field(default_factory=dict)
@@ -168,6 +198,8 @@ class CompilationContext:
     subtype_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-2171: the registered columns of a subtype held as text, read through its read form.
     read_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-2171: the registered timestamptz columns, which to_json is told it reads.
+    instant_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-1915: the tables replicated row by row on the bound engine (flagged, and the engine
     # cannot attach their source). A to-one relationship into one compiles to a JOIN.
     row_level_tables: frozenset[int] = frozenset()
@@ -219,6 +251,9 @@ class CompilationContext:
 # --- Compiled query result ---
 
 
+# Asked for every column of every table each role's context is built from: a type is answered
+# from the memo.
+@functools.lru_cache(maxsize=1024)
 def is_json_type(data_type: str | None) -> bool:
     """REQ-1867: a column type whose values are JSON -- PostgreSQL's json and jsonb, as a
     registration or an engine names them."""
@@ -237,6 +272,7 @@ _INTEGER_TYPES = frozenset(
 )  # fmt: skip
 
 
+@functools.lru_cache(maxsize=1024)
 def is_integer_type(data_type: str | None) -> bool:
     """REQ-1867: a column type whose values are integers, written as JSON numbers by the type --
     not by how a reader represented the value (a DuckDB HUGEINT read through Arrow is a Decimal)."""

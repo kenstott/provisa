@@ -34,10 +34,11 @@ from urllib.parse import urlsplit
 from provisa.core.environments import SCHEMA_SUFFIXES
 from provisa.core.org_ids import SANDBOX_PREFIX
 
-#: An engine's excerpt of the statement it ran: ``LINE n: ...`` and the caret line under it.
-_EXCERPT = re.compile(r"\n+LINE \d+:[^\n]*(?:\n[ \t]*\^)?")
+#: An engine's excerpt of the statement it ran: ``LINE n: ...`` and the caret line under it, one
+#: caret (DuckDB 1.x) or one for each character it marks (2.0).
+_EXCERPT = re.compile(r"\n+LINE \d+:[^\n]*(?:\n[ \t]*\^+)?")
 #: The same inside a JSON string: newlines escaped, and the string ending at an unescaped quote.
-_EXCERPT_JSON = re.compile(r"(?:\\n)+LINE \d+:.*?(?:\\n[ \t]*\^|(?=(?<!\\)\"))")
+_EXCERPT_JSON = re.compile(r"(?:\\n)+LINE \d+:.*?(?:\\n[ \t]*\^+|(?=(?<!\\)\"))")
 #: httpx.Response.raise_for_status's message, with the URL it failed on.
 _HTTPX_STATUS = re.compile(
     r"(?:Informational response|Redirect response|Client error|Server error|Invalid status code)"

@@ -568,7 +568,9 @@ def answer_reads(
     try:
         for relation, held in relations.items():
             con.register(relation, held)
-        answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
+        # The statement as a relation: DuckDB 2.0's DB-API result hands its Arrow reader over
+        # only once it has computed and held the whole answer.
+        answered = con.sql(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
     except duckdb.Error as exc:
         done()
         if failed:
@@ -591,6 +593,15 @@ def answer_reads(
             if named is exc:
                 raise
             raise named from None
+        except OSError as streamed:
+            # DuckDB's error met in a later batch, as its Arrow reader raises it: carrying only
+            # DuckDB's message, raised as the exception DuckDB raises for it.
+            if failed:
+                raise failed[0] from None
+            engine = duckdb_sql.engine_error(streamed)
+            if not isinstance(engine, duckdb.Error):
+                raise
+            raise _named(engine) from None
         except pa.ArrowException:
             if failed:
                 raise failed[0] from None

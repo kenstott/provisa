@@ -41,7 +41,7 @@ const PRODUCT = {
   name: "Pet Health",
 } as unknown as DataProduct;
 
-// Member tables as data_products_meta's memberTables answers them.
+// Member tables as the product's membership rows (dataProductTables { registeredTable }) reach them.
 function makeTable(overrides: Partial<CoreTable>): CoreTable {
   return {
     id: 1,
@@ -84,7 +84,7 @@ const VETS_PROMISE: ProductDqEntry = {
   table_name: "vets_scan",
   alias: null,
   description: "Soda contract over vets",
-  owner_product_id: "pet_health",
+  owner_product_ids: ["pet_health"],
   checked_table_id: 1,
   checked_table: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
@@ -107,6 +107,7 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       contractsVersion={0}
       lineageError=""

@@ -758,6 +758,9 @@
         "successor_retired": "The successor '{{successor}}' is retired. Choose a data product that is in service.",
         "successor_other_domain": "The successor '{{successor}}' is in domain {{domain}}. A product's members share its domain, so choose a successor in the same domain."
       },
+      "members": {
+        "domain_has_members": "Data product {{data_product}} cannot move to domain {{domain}} while it has members from another domain: {{members}}. Take them out of the product first."
+      },
       "finding": {
         "no_members": "No table, view or command belongs to this data product.",
         "member_deprecated": "Member table {{table}} is deprecated.",

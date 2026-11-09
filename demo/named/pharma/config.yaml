@@ -244,25 +244,40 @@ glossary_terms:
   definition: 'National Drug Code: the labeler, product and package code FDA lists every drug under. The product code (labeler-product) names a drug of one strength and form.'
   domains:
   - pharma
+- name: product ndc
+  approve: true
+  definition: 'The labeler and product segments of an NDC, the code for a drug of one strength and form.'
+  domains:
+  - pharma
   edges:
-  - to: product ndc
-    rel_type: RELATED_TO
+  - to: ndc
+    rel_type: PART_OF
 - name: formulary
   approve: true
   definition: 'The list of drugs the pharmacy stocks and its prescribers may order, chosen by its pharmacy and therapeutics (P&T) committee.'
   domains:
   - pharma
+- name: therapeutic class
+  approve: true
+  definition: 'The therapeutic class a formulary files a product under.'
+  domains:
+  - pharma
   edges:
-  - to: therapeutic class
-    rel_type: RELATED_TO
+  - to: formulary
+    rel_type: PART_OF
 - name: drug shortage
   approve: true
   definition: 'A period when the supply of a drug in the US does not meet demand. FDA posts each one, with the availability of each affected package.'
   domains:
   - pharma
+- name: shortage availability
+  approve: true
+  definition: 'The availability FDA states for a package in a shortage.'
+  domains:
+  - pharma
   edges:
-  - to: shortage availability
-    rel_type: RELATED_TO
+  - to: drug shortage
+    rel_type: PART_OF
 - name: recall class
   approve: true
   definition: 'FDA''s severity of a recall: Class I may cause serious harm or death, Class II temporary or reversible harm, Class III is unlikely to cause harm.'
@@ -270,7 +285,7 @@ glossary_terms:
   - pharma
   edges:
   - to: classification
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: supply risk
   approve: true
   definition: 'The chance that the pharmacy cannot give a drug when it is ordered: a shortage of it, a recall by its maker, or too few days of supply on hand.'
@@ -278,11 +293,11 @@ glossary_terms:
   - pharma
   edges:
   - to: drug shortage
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM
   - to: recall class
     rel_type: RELATED_TO
   - to: days of supply
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM
 - name: days of supply
   approve: true
   definition: 'How long the stock on hand lasts at the current daily use: units on hand divided by units used a day.'
@@ -290,4 +305,4 @@ glossary_terms:
   - pharma
   edges:
   - to: on hand units
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM

@@ -58,6 +58,13 @@ def pg():
             cur.execute(f"DROP TABLE IF EXISTS {schema}.items")
             cur.execute(f"CREATE TABLE {schema}.items(id int PRIMARY KEY, score int, name text)")
             cur.executemany(f"INSERT INTO {schema}.items VALUES (%s, %s, %s)", _ROWS)
+        # Enough rows for the scanner's parallel ctid tasks, where #564 showed on 1.5.5 with
+        # pushdown on: a DESC NULLS FIRST page past the NULLs came back as the NULL-key rows alone.
+        cur.execute("DROP TABLE IF EXISTS remote.many")
+        cur.execute(
+            "CREATE TABLE remote.many AS SELECT g AS id, CASE WHEN g % 10 = 0 THEN NULL ELSE g END "
+            "AS score, 'n' || g AS name FROM generate_series(1, 20000) g"
+        )
     yield SimpleNamespace(uri=uri, conn=conn)
     conn.close()
 
@@ -116,3 +123,33 @@ async def test_a_postgresql_source_answers_a_sorted_page_as_postgres_does(pg, tm
     rt = DuckDBFederationRuntime(materialize_dsn=f"duckdb:///{tmp_path / 'store.duckdb'}")
     rt.attach_source(src)
     await _pages_match(rt, rt._phys_name(src), pg, "remote")
+
+
+async def test_a_large_sorted_page_past_the_nulls_holds_the_keyed_rows_too(pg, tmp_path):
+    # postgres_scanner 2.0.0 is loaded with filter pushdown on (#241's setting dropped): the page
+    # Postgres answers, 2,000 NULL keys then the five highest.
+    p = _libpq(pg.uri)
+    src = SimpleNamespace(
+        id="pgmany",
+        catalog="pgmany",
+        type=SimpleNamespace(value="postgresql"),
+        host=p["host"],
+        port=p["port"],
+        database=p["database"],
+        username=p["username"],
+        password=None,
+        schema_name="remote",
+        table_name="many",
+        path=None,
+        max_live_concurrency=None,
+    )
+    rt = DuckDBFederationRuntime(materialize_dsn=f"duckdb:///{tmp_path / 'store.duckdb'}")
+    rt.attach_source(src)
+    order_by = '"score" DESC NULLS FIRST, "id" ASC'
+    with pg.conn.cursor() as cur:
+        cur.execute(f"SELECT id, score, name FROM remote.many ORDER BY {order_by} LIMIT 2005")
+        expected = [tuple(r) for r in cur.fetchall()]
+    sql = f"SELECT id, score, name FROM {rt._phys_name(src)} ORDER BY {order_by} LIMIT 2005"
+    got = [tuple(r) for r in rt.run_sync(sql).rows]
+    assert len(got) == 2005
+    assert got == expected

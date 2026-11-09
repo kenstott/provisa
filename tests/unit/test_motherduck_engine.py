@@ -78,6 +78,14 @@ class _Recording:
         self.statements.append((sql, params))
         return self
 
+    def cursor(self):
+        # The runtime runs each statement on a cursor of its own (DuckDB 2.0 refuses a busy
+        # connection); a cursor's statements reach the same instance, recorded here alike.
+        return self
+
+    def close(self) -> None:
+        pass
+
 
 @pytest.fixture
 def runtime(monkeypatch):
