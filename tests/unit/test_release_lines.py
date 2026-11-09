@@ -527,7 +527,8 @@ def test_no_workflow_starts_on_a_dev_branch():
     assert _pushed_on("dev") == set()
 
 
-_NO_DEV_BRANCH = re.compile(r"\bdev\b(?! container| box|/null)")
+# A branch named dev; not the domain provisa.dev, the dev container or /dev/null.
+_NO_DEV_BRANCH = re.compile(r"(?<![.])\bdev\b(?! container| box|/null)")
 
 
 @pytest.mark.parametrize(
