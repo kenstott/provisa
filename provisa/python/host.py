@@ -59,7 +59,6 @@ _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
 _IR_KEY = b"provisa.ir"
-_WHOLE_ROW = "$row"
 #: REQ-2100: the field a loader call's row carries its key in.
 _KEY = "$key"
 #: An argument the read does not give: left out of the call, so the function's default applies.
@@ -253,17 +252,13 @@ class Host:
     async def send_rows(self, call_id: int, rows: list, schema: typing.Any) -> None:
         """``rows`` as one Arrow IPC frame, against ``schema`` (a pyarrow Schema)."""
         pa = _arrow()
-        if schema.names == [_WHOLE_ROW]:
-            field = schema.field(_WHOLE_ROW)
-            values = [{_WHOLE_ROW: _for_field(row, field)} for row in rows]
-        else:
-            fields = [schema.field(i) for i in range(len(schema))]
-            values = []
-            for row in rows:
-                plain = _plain(row)
-                if not isinstance(plain, dict):
-                    raise TypeError(f"a {type(row).__name__} is not a row")
-                values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
+        fields = [schema.field(i) for i in range(len(schema))]
+        values = []
+        for row in rows:
+            plain = _plain(row)
+            if not isinstance(plain, dict):
+                raise TypeError(f"a {type(row).__name__} is not a row")
+            values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
         await self.send_batch(call_id, pa.RecordBatch.from_pylist(values, schema=schema))
 
     async def send_batch(self, call_id: int, batch: typing.Any) -> None:  # a pyarrow RecordBatch

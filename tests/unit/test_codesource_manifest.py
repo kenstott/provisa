@@ -143,11 +143,10 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
         )
     )
     (orders,) = manifest.exports
-    assert (orders.kind, orders.description, orders.returns, orders.preview) == (
+    assert (orders.kind, orders.description, orders.returns) == (
         "table",
         "Orders of one customer.",
         Named("Order"),
-        False,
     )
     assert [(p.name, p.shape, p.required, p.nullable) for p in orders.parameters] == [
         ("customerId", Scalar("text"), True, False),
