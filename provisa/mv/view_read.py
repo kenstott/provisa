@@ -323,6 +323,19 @@ def semantic_statement(
     return marked, expand_view_refs(marked, judged, mark=True)
 
 
+def statement_as_read(sql: str, view_sql_map: dict[str, str], state: Any) -> str:
+    """``sql`` with every view it reads replaced by its definition, whoever reads it: all a
+    statement touches, read before anything judges a view for its reader (REQ-2219). A view
+    another region keeps stays: its inputs are not read here."""
+    from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
+
+    definitions = _definitions(view_sql_map, state)
+    home_copies = {view for view in views_read(sql, definitions) if _home_copy(view, state)}
+    return expand_view_refs(
+        sql, {view: body for view, body in definitions.items() if view not in home_copies}
+    )
+
+
 def _class_bodies(
     sql: str, definitions: dict[str, str], state: Any, gov: "GovernanceContext"
 ) -> dict[str, str]:

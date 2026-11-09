@@ -932,6 +932,9 @@ async def create_data_product(  # REQ-1855
     from provisa.api.admin.capabilities import require_right_in_domains_request
     from provisa.api.admin.schema_helpers import _rebuild_schemas
 
+    from provisa.api.admin.glossary_router import _caller_id
+
+    creator = _caller_id(request)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
@@ -970,8 +973,14 @@ async def create_data_product(  # REQ-1855
                 else {}
             ),
             support=support,
+            created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
         await data_product_repo.upsert(conn, model)
+        if stored is None and creator is not None:
+            # REQ-2219: creating a product grants its creator read-write on it, as an entitlement.
+            from provisa.entitlements.store import record_product_creator
+
+            await record_product_creator(conn, creator, role, domain_id, id)
     if (None if stored is None else stored["owner_role"]) != owner_role:
         await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"id": id}
