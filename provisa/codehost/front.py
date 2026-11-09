@@ -753,15 +753,16 @@ class Lifecycle:
             if self._ran or (self._on_start is None and not self._gives_values):
                 return self._failed
             self._ran = True
+            doing = "setup values"
             try:
                 if self._gives_values:
                     self._worker.give_values(values)
                 if self._on_start is not None:
-                    name = self._on_start["name"]
+                    doing = self._on_start["name"]
                     named = [p["name"] for p in self._on_start["parameters"]]
-                    self._worker.invoke(name, [values] if named else [], named)
+                    self._worker.invoke(doing, [values] if named else [], named)
             except _Failed as failed:
-                self._failed = str(failed)
+                self._failed = f"{doing}: {failed}"
             return self._failed
 
     def health(self) -> dict[str, Any]:

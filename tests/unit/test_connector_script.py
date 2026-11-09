@@ -446,6 +446,67 @@ async def test_a_script_needing_a_value_the_connector_does_not_offer_is_refused(
     assert "other_key" in str(refused.value)
 
 
+async def test_a_live_read_gets_the_read_context_and_a_stream_is_one_query(host, wired):
+    _joined(wired, host)
+    script = textwrap.dedent(
+        '''
+        from collections.abc import Iterator
+        from dataclasses import dataclass
+
+        from provisa_services import ReadContext
+        from provisa_spark import session
+
+
+        @dataclass
+        class Row:
+            limit: int
+            cluster: str
+
+
+        def latest(context: ReadContext) -> list[Row]:
+            """The latest rows, the read's limit applied by the script.
+
+            @table
+            """
+            return [Row(limit=context.limit, cluster=session().cluster)]
+
+
+        def live() -> Iterator[Row]:
+            """Rows as they arrive, one query for this subscription.
+
+            @stream
+            """
+            yield Row(limit=0, cluster=session().cluster)
+        '''
+    )
+    mapping = await _join(_mapping(host, script=script))
+    kept = manifest_from_json(mapping["remote"]["manifest"])
+    assert {e.name: e.kind for e in kept.exports} == {"latest": "table", "live": "stream"}
+    names = mapping["remote"]["names"]
+    assert names["latest"]["takes"] == ["context"]
+    worker = _worker(mapping, wired)
+    worker.start()
+    worker.ready()
+    context = {"filters": [], "order_by": [], "limit": 7, "columns": ["limit", "cluster"]}
+    try:
+        rows = [
+            row
+            for batch in worker.rows(
+                "latest",
+                "table",
+                [],
+                [],
+                schema=names["latest"]["schema"],
+                takes=names["latest"]["takes"],
+                context=context,
+            )
+            for row in batch
+        ]
+    finally:
+        worker.stop()
+    assert rows == [{"limit": 7, "cluster": "sc://spark.example:15002"}]
+
+
 # -- the project ------------------------------------------------------------------------------------
 
 
@@ -472,6 +533,18 @@ def test_the_standard_file_marks_the_script_and_replication_on():
     assert standard.icon.startswith("data:image/svg+xml;base64,")
     assert base64.b64decode(standard.icon.split(",", 1)[1]).startswith(b"<svg")
     assert standard.description
+
+
+def test_a_standard_file_with_two_scripts_is_refused(tmp_path):
+    from provisa.cli_connector import _read_standard_file, _Refused
+
+    (tmp_path / "connector.yaml").write_text(
+        "requires:\n"
+        "  a:\n    multiline: true\n    script: true\n"
+        "  b:\n    multiline: true\n    script: true\n"
+    )
+    with pytest.raises(_Refused, match="one value is the script"):
+        _read_standard_file(tmp_path)
 
 
 def test_a_script_value_is_multi_line_text_and_not_a_secret():

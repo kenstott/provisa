@@ -132,6 +132,7 @@ nav:
   - Data Sources:
       - Sources: sources.md
       - Code Resolvers: code-sources.md
+      - Spark Connector: spark-connector.md
       - Federation Engines: engines.md
       - Replicas: replicas.md
       - Remote Schemas: remote-schemas.md
