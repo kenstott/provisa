@@ -12,10 +12,15 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
+import { FormLayout } from "../../../components/form/FormLayout";
 import { ReadWaitField, READ_WAIT_NO_ROWS } from "../ReadWaitField";
 
 function renderField(value: number | null, onChange = vi.fn()) {
-  render(<ReadWaitField value={value} onChange={onChange} />);
+  render(
+    <FormLayout>
+      <ReadWaitField value={value} onChange={onChange} />
+    </FormLayout>,
+  );
   return onChange;
 }
 

@@ -758,18 +758,15 @@ async def test_a_stale_replica_is_still_bounded_by_the_request_not_the_read_wait
 
 
 def _no_rows_table(name="orders"):
+    from provisa.core.models import Column
+
     cols = [
-        SimpleNamespace(
-            name=c,
-            data_type=t,
-            is_primary_key=c == "id",
-            native_filter_type=None,
-            epoch_unit=None,
-            subtype=None,
-        )
+        Column(name=c, data_type=t, visible_to=[], is_primary_key=c == "id")
         for c, t in (("id", "integer"), ("note", "varchar"))
     ]
-    return _tbl(name, read_wait=0, columns=cols)
+    return _tbl(
+        name, read_wait=0, columns=cols, live=None, watermark_column=None, landing_filter=None
+    )
 
 
 @pytest.mark.asyncio
