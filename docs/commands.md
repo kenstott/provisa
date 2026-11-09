@@ -37,6 +37,16 @@ Each argument declares an `arg_kind`:
 | `result_set` | Eager; Provisa materializes the referenced relation and sends its rows |
 
 `http` and `grpc` commands **must** declare at least one `table_ref` or `result_set` argument.
+
+A code source's `@command` or `@query` reads a `table_ref` itself. The reference it is given holds
+the table's name, its declared columns, `connection` (a PostgreSQL connection: `host`, `port`,
+`user`, `password`, `database`, `sslmode`) and `sql`, the statement that reads those columns. The
+password is a token minted for this one call and bound to the calling role, so the table is read
+through the governed pipeline as that role and a column the role cannot see is not available. The
+connection goes to the minted-token listener, `server.minted_pgwire_port`, which accepts nothing
+else; it is the one port of Provisa's a code source's sandbox may reach, and a remote host, such
+as a Spark cluster, is given the address `server.hostname`. A Go source declares these fields on
+its own `TableRef` struct.
 An external command receiving only scalar arguments would be invoked once per row, which defeats
 batching. The dispatcher rejects this configuration at call time (422).
 
