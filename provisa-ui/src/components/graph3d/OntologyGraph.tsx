@@ -26,8 +26,10 @@ import { useViewDomains } from "../../lib/viewDomains";
 import { GraphExplorer } from "./GraphExplorer";
 import type { LayerId } from "./graphModel";
 import {
+  PRODUCT_GRAPH_LAYERS,
   PRODUCT_MAP,
   WHOLE,
+  productGraph,
   scopeOf,
   snippetLayers,
   type OntologyPreset,
@@ -42,6 +44,8 @@ import "./graph3d.css";
 /** The Product map's layers: the ontology's, with every product (the Data layer). */
 const PRODUCT_MAP_LAYERS: LayerId[] = ["ontology", "domains", "columns", "data"];
 const PRODUCT_MAP_SETTINGS: GraphKey = { kind: "product-map", subject: null };
+/** Every product's expanded graph: one set of remembered settings, apart from the Product map's. */
+const PRODUCT_GRAPH_SETTINGS: GraphKey = { kind: "product-graph", subject: null };
 
 /** A read not yet answered, failed, or the role's to make: said in place of the graph. */
 function ReadState({ read, testId }: { read: Read; testId: string }) {
@@ -63,7 +67,8 @@ function ReadState({ read, testId }: { read: Read; testId: string }) {
 /** The whole ontology at 95% of the viewport, read when it opens, with ``selected`` -- the
  * snippet's focus it was expanded from -- selected. ``search`` and ``within`` are the page's, as
  * GraphExplorer takes them. ``preset`` is the whole graph whose rules it draws by: the Ontology
- * page's, or the Product map's. */
+ * page's, or the Product map's. With ``home`` (a product's graph) it opens on that product alone,
+ * read for it, and shows the rest of ``preset`` on asking. */
 export function OntologyModal({
   opened,
   onClose,
@@ -72,6 +77,7 @@ export function OntologyModal({
   search,
   within,
   preset = WHOLE,
+  home,
   layers,
   settingsKey = ONTOLOGY_SETTINGS,
 }: {
@@ -82,6 +88,7 @@ export function OntologyModal({
   search?: string;
   within?: ReadonlySet<string> | null;
   preset?: OntologyPreset;
+  home?: SnippetPreset;
   /** The layers it opens with, where they are not its preset's (the Product map's products). */
   layers?: LayerId[];
   /** Its remembered settings: the whole ontology's, unless it is a view of its own. */
@@ -92,6 +99,7 @@ export function OntologyModal({
       {opened && (
         <WholeOntology
           preset={preset}
+          home={home}
           selected={selected}
           search={search}
           within={within}
@@ -105,6 +113,7 @@ export function OntologyModal({
 
 function WholeOntology({
   preset,
+  home,
   selected,
   search,
   within,
@@ -112,13 +121,16 @@ function WholeOntology({
   settingsKey,
 }: {
   preset: OntologyPreset;
+  home?: SnippetPreset;
   selected: string | null;
   search?: string;
   within?: ReadonlySet<string> | null;
   layers?: LayerId[];
   settingsKey: GraphKey;
 }) {
-  const { read, drawn, query } = useOntology(preset, true);
+  // A product's graph reads that product until the reader asks for the rest of the model.
+  const [rest, setRest] = useState(false);
+  const { read, drawn, query } = useOntology(home && !rest ? home : preset, true);
   if (read.error || read.all === null) return <ReadState read={read} testId="graph3d" />;
   return (
     <GraphExplorer
@@ -126,8 +138,11 @@ function WholeOntology({
       query={query(read.all)}
       scope={scopeOf(preset)}
       preset="ontology"
+      focus={home?.focus ?? null}
+      home={home?.focus}
+      onRest={setRest}
       selected={selected}
-      depth={preset.depth}
+      depth={home?.depth ?? preset.depth}
       layers={layers}
       search={search}
       settingsKey={settingsKey}
@@ -254,7 +269,8 @@ export function OntologySnippet({
           </div>
         </div>
       )}
-      {/* Expanded, the whole graph its rules are a snippet of: a product's, the Product map. */}
+      {/* Expanded, the whole graph its rules are a snippet of: a term's, the ontology with the term
+          selected; a product's, that product at full hops, with the Product map on asking. */}
       <OntologyModal
         opened={open}
         onClose={() => setOpen(false)}
@@ -263,8 +279,9 @@ export function OntologySnippet({
         {...(preset.products
           ? {
               preset: PRODUCT_MAP,
-              layers: PRODUCT_MAP_LAYERS,
-              settingsKey: PRODUCT_MAP_SETTINGS,
+              home: productGraph(preset),
+              layers: PRODUCT_GRAPH_LAYERS,
+              settingsKey: PRODUCT_GRAPH_SETTINGS,
             }
           : {})}
       />

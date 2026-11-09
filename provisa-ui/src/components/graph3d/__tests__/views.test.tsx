@@ -83,14 +83,19 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 // The ontology's read: each scope asked for, answered with the fixture (what a scope reads is
 // ontologyData's query, held by ontologyQuery.test.ts and the GraphQL corpus).
-const reads = vi.hoisted(() => ({ scopes: [] as QueryScope[], data: null as unknown }));
+const reads = vi.hoisted(() => ({
+  scopes: [] as QueryScope[],
+  data: null as unknown,
+  // Where a test has a read answer by its scope, as the server does.
+  dataOf: null as ((s: { focus: string | null }) => unknown) | null,
+}));
 vi.mock("../ontologyData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyData")>()),
   // The query stands for its scope; the server below answers it with the graph read.
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: () => reads.data,
+  ontologyGraph: (_rows: unknown, s: { focus: string | null }) => reads.dataOf?.(s) ?? reads.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -116,6 +121,7 @@ beforeEach(() => {
   observed.fire.length = 0;
   reads.scopes.length = 0;
   reads.data = FACTS;
+  reads.dataOf = null;
   nav.to.length = 0;
   window.localStorage.clear();
 });
@@ -222,11 +228,139 @@ describe("a product's panel", () => {
   });
 });
 
+describe("a product's graph, expanded from its panel", () => {
+  // The product, its member tables, the columns the terms are on, those terms; orders' column tied
+  // to no term stays folded into one node.
+  const OWN = [
+    "c:customers.email",
+    "fold:t:orders",
+    "p:c360",
+    "t:customers",
+    "t:orders",
+    "term:customer",
+  ];
+  const open = async () => {
+    snippet(productPreset("c360"), "customer_360");
+    fireEvent.click(await screen.findByTestId("snip-expand"));
+    await screen.findByTestId("graph3d");
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+  };
+
+  it("draws the product alone by default, read for that product", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 });
+    expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
+    // The focus is the Focus filter's, its hops the usual control, the product still selected.
+    expect(screen.getByTestId("graph3d-depth-label")).toHaveTextContent("Hops from customer_360");
+    expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360");
+  });
+
+  it("draws no table reached only through a term grounded on a member table", async () => {
+    reads.data = {
+      nodes: [
+        ...FACTS.nodes,
+        { id: "term:account", type: "term", label: "Account", domains: ["sales"] },
+        {
+          id: "t:elsewhere",
+          type: "table",
+          label: "finance.elsewhere",
+          domains: ["finance"],
+          layers: ["ontology"],
+        },
+      ],
+      edges: [
+        ...FACTS.edges,
+        {
+          id: "a",
+          a: "term:account",
+          b: "t:customers",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
+        {
+          id: "b",
+          a: "term:account",
+          b: "t:elsewhere",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
+      ],
+    };
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:account"));
+    expect(nodeIds(drawn())).not.toContain("t:elsewhere");
+  });
+
+  it("shows the rest of the model on asking, and folds it away again", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: null });
+    expect(screen.getByTestId("graph3d-rest")).toBeChecked();
+    expect(screen.queryByTestId("graph3d-depth")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 });
+  });
+
+  it("refits the camera to the graph the control brings in", async () => {
+    // The product's read holds no other product; the whole model's does.
+    reads.dataOf = (s) =>
+      s.focus === null
+        ? FACTS
+        : {
+            nodes: FACTS.nodes.filter((n) => n.id !== "p:billing"),
+            edges: FACTS.edges.filter((e) => e.a !== "p:billing" && e.b !== "p:billing"),
+          };
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() =>
+      expect(
+        last().setData.mock.calls.some(
+          (c) => c[2] === true && (c[0] as GraphData).nodes.some((n) => n.id === "p:billing"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("goes back to the product on Set Defaults", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    fireEvent.click(screen.getByTestId("graph3d-reset-settings"));
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
+  });
+
+  it("is the Focus filter's focus, cleared when the rest is shown", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(screen.getByTestId("graph3d-filter-focus")).toHaveTextContent("customer_360");
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    expect(screen.getByTestId("graph3d-filter-focus")).not.toHaveTextContent("customer_360");
+  });
+
+  it("counts no folded columns as columns in what it says it shows", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    const shown = screen.getByText("Shown").closest("section") as HTMLElement;
+    const row = within(shown).getByText("column").closest(".p3d-row") as HTMLElement;
+    expect(row.querySelector(".p3d-num")).toHaveTextContent(/^1$/);
+  });
+});
+
 describe("expanding a snippet", () => {
-  it("opens the whole ontology with the snippet's focus selected", async () => {
+  it("opens the whole ontology with the snippet's focus selected, once the rest is shown", async () => {
     snippet(productPreset("c360"), "customer_360");
     fireEvent.click(await screen.findByTestId("snip-expand"));
     const full = await screen.findByTestId("graph3d");
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
     // The whole ontology is read: no focus.
     await waitFor(() => expect(focuses().map(String)).toContain(",2"));
     // Its own controls, and the product selected in its detail panel.
@@ -260,8 +394,9 @@ describe("the Ontology page", () => {
     render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
-    // No focus, no depth to choose.
+    // No focus, no depth to choose, and no product whose rest it could show.
     expect(screen.queryByTestId("ontology-depth")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("ontology-rest")).not.toBeInTheDocument();
   });
 
   it("chooses the depth of a search's neighbourhood", async () => {
@@ -340,6 +475,8 @@ describe("the Product map entry point", () => {
     await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
+    // It belongs to no one product: it has no rest to show.
+    expect(screen.queryByTestId("graph3d-rest")).not.toBeInTheDocument();
     // Its Data layer is on: every product is drawn.
     expect(reads.scopes.at(-1)?.layers).toContain("data");
     await waitFor(() =>

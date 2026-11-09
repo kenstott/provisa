@@ -2649,6 +2649,7 @@
   "ja/graph3d.json::graph3d.quality_none": "Not run yet",
   "ja/graph3d.json::graph3d.quality_pass": "Passing",
   "ja/graph3d.json::graph3d.relatedTables": "Related tables",
+  "ja/graph3d.json::graph3d.restOfModel": "Show the rest of the model",
   "ja/graph3d.json::graph3d.search": "Search…",
   "ja/graph3d.json::graph3d.show": "Show",
   "ja/graph3d.json::graph3d.showColumns": "Show columns",
