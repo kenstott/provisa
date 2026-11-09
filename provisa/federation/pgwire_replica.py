@@ -230,12 +230,28 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
     surfacing it as a hard error."""
 
     def __init__(
-        self, source_id: str, *, preparing_catalog: bool = False, answering_read: bool = False
+        self,
+        source_id: str,
+        *,
+        preparing_catalog: bool = False,
+        answering_read: bool = False,
+        catalog_not_requested: bool = False,
     ) -> None:
-        # Three waits, told apart for whoever is waiting: the server has not opened its port
-        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), or
-        # it is listening and answering another discovery read (``ConnectorReplica.discovery_read``).
-        if preparing_catalog:
+        # Four states, told apart for whoever is waiting: the server has not opened its port
+        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), it
+        # is listening and answering another discovery read (``ConnectorReplica.discovery_read``),
+        # or it is listening and nothing has asked for its catalog, so none is being prepared
+        # (``ConnectorReplica.use_catalog``). Waiting alone does not end that last one, so it is
+        # not told to try again.
+        retry = " — try again shortly."
+        if catalog_not_requested:
+            doing = (
+                "is listening, and its tables can be registered now; its catalog has not been "
+                "requested, so none is being prepared. Registering its first table or running "
+                "a statement on it requests the catalog."
+            )
+            retry = ""
+        elif preparing_catalog:
             doing = (
                 "is listening, and its tables can be registered now; a query on them waits until "
                 "the engine can attach it, while the connector answers the engine's first catalog "
@@ -245,10 +261,11 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
             doing = "is listening, and is answering another read of the tables it serves"
         else:
             doing = "is still starting up"
-        super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
+        super().__init__(f"STARTING: {source_id!r}'s connector {doing}{retry}")
         self.source_id = source_id
         self.preparing_catalog = preparing_catalog
         self.answering_read = answering_read
+        self.catalog_not_requested = catalog_not_requested
 
 
 class ServerRetired(ServerNotServing):  # REQ-1824
@@ -1122,9 +1139,13 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
             # preparation of its catalog (the engine's first catalog query): while that runs
             # the source is still starting (``ConnectorReplica.await_catalog``), and the read
             # is asked again once it has started. A cancel after the catalog is prepared, or
-            # after it failed, is the server's answer.
+            # after it failed, is the server's answer. One no use has requested is not being
+            # prepared, and is not reported so.
             if replica.catalog_pending():
-                raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
+                requested = replica.catalog_requested()
+                raise SourceStillStartingError(
+                    source.id, preparing_catalog=requested, catalog_not_requested=not requested
+                ) from exc
             raise
         finally:
             await conn.close()
@@ -1585,7 +1606,7 @@ class ConnectorReplica:  # REQ-954/955/956
                 if self._catalog_ready:
                     return
                 if not self._catalog_wanted:
-                    raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+                    raise SourceStillStartingError(self._source.id, catalog_not_requested=True)
                 self._start_catalog_locked(ports)
                 thread = self._catalog_thread
             left = deadline - time.monotonic()
@@ -1617,6 +1638,12 @@ class ConnectorReplica:  # REQ-954/955/956
                 return
             self._catalog_error = error
             self._catalog_ready = error is None
+
+    def catalog_requested(self) -> bool:
+        """Whether the source's use has asked for its catalog (:meth:`use_catalog`; any type not
+        started when saved has from the start). Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return self._catalog_wanted
 
     def catalog_pending(self) -> bool:
         """Whether the server's catalog is still being prepared: neither prepared nor failed.
