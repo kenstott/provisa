@@ -1618,4 +1618,4 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
         tree = _sets(tree)
     except _NotConstant as unread:
         raise NoForm("ts_parse") from unread
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

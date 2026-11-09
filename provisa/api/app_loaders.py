@@ -29,12 +29,13 @@ from provisa.compiler.naming import apply_convention, prefixed_field_name, sourc
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
-from provisa.security.mutation_authz import command_assigned
+from provisa.security.mutation_authz import command_reachable
 from provisa.security.rights import (
     SYSTEM_DOMAINS,
     Capability,
     lists_data_domain,
     reaches_all_domains,
+    reads_data,
 )
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context, org_scoped_signals
@@ -1788,8 +1789,9 @@ class _RoleParts:
 
             state, runtime, inputs, role = self._state, self._runtime, self._inputs, self._role
             with serving(runtime):
-                # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
-                reads = bool(role.get("capabilities"))
+                # REQ-870: a role holding only command_execution reads nothing: its schema is
+                # its commands.
+                reads = reads_data(role.get("capabilities"))
                 si = schema_input_for(
                     state,
                     role,
@@ -2010,13 +2012,11 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             _drop_data_surface(state, role["id"])
             continue
-        # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
-        # and its surface holds that and no table (_RoleParts).
-        if not role.get("capabilities"):
+        # REQ-870: a role with no capabilities can do nothing. One holding only command_execution
+        # runs what it reaches, and its surface holds that and no table (_RoleParts).
+        if not reads_data(role.get("capabilities")):
             inputs = state.role_build_inputs
-            if any(
-                command_assigned(c, role["id"]) for c in [*inputs["functions"], *inputs["webhooks"]]
-            ):
+            if any(command_reachable(c, role) for c in [*inputs["functions"], *inputs["webhooks"]]):
                 register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
             else:
                 _drop_data_surface(state, role["id"])

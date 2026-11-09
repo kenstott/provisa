@@ -77,7 +77,13 @@ def state(monkeypatch):
     monkeypatch.setattr("provisa.api.data.action_exec.dispatch_function", _dispatch)
     monkeypatch.setattr("provisa.api.data.action_exec.govern_action_rows", _governed)
     return SimpleNamespace(
-        roles={"reader": {"id": "reader", "capabilities": [], "domain_access": ["shelter"]}},
+        roles={
+            "reader": {
+                "id": "reader",
+                "capabilities": ["command_execution"],
+                "domain_access": ["shelter"],
+            }
+        },
         tracked_functions={"tck_do_nothing": _DO_NOTHING, "tck_my_proc": _MY_PROC},
         tracked_webhooks={},
         undefined_commands={},
