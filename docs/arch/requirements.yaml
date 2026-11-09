@@ -93995,7 +93995,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     @on-start, @on-stop or @health, once each. @on-start runs once when the host has its setup values: at
     join, and again on each later restart of a joined host. @on-stop runs when the host shuts down. @health
     returns a status; Provisa calls it periodically and shows the result on the source in Sources. There
-    are no per-statement or error tags: a function''s own code covers those.'
+    are no per-statement or error tags: a function''s own code covers those. (Amended 2026-11-09, WHEN ON-START
+    FAILS:) Maintainer 2026-11-09: when @on-start fails at a first join, the join is refused by name. When
+    it fails on a later restart of a joined host, the source stays and shows as unhealthy.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
