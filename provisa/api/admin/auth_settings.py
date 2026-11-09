@@ -33,6 +33,15 @@ COMMON_KEYS = (
 # auth block and shown under each provider that declares it.
 _SESSION_SECRET_KEY = "jwt_secret"
 
+# REQ-2219: the claim carrying this provider's nested entitlement lists. No placeholder: there is
+# no default name, and with none set the provider sends no nested lists.
+_ENTITLEMENTS_CLAIM_FIELD = {
+    "config_key": "entitlements_claim",
+    "label": "Entitlements claim (empty: no nested lists)",
+    "type": "string",
+    "required": False,
+}
+
 AUTH_PROVIDERS = [
     {
         "key": "none",
@@ -67,6 +76,7 @@ AUTH_PROVIDERS = [
                 "required": False,
                 "secret": True,
             },
+            _ENTITLEMENTS_CLAIM_FIELD,
         ],
     },
     {
@@ -90,6 +100,7 @@ AUTH_PROVIDERS = [
                 "required": False,
                 "secret": True,
             },
+            _ENTITLEMENTS_CLAIM_FIELD,
         ],
     },
     {
@@ -113,6 +124,7 @@ AUTH_PROVIDERS = [
                 "required": False,
                 "placeholder": "roles",
             },
+            _ENTITLEMENTS_CLAIM_FIELD,
         ],
     },
     {

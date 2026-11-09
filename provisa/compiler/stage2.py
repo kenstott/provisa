@@ -113,6 +113,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # REQ-1620: a meta-role's members, per table (compiler.rls.MemberReads). A table with a column
     # its members read differently is read through its member projection (_project_members).
     member_reads: dict[int, Any] = field(default_factory=dict)
+    # REQ-2219: the person's mask over this role's schema, when it narrows anything
+    # (compiler/entitlement_rule.py); None when nothing is narrowed.
+    entitlement_mask: Any = None
     # Per table, its registered primary key's columns (CompilationContext.pk_columns): the key a
     # write that reads beyond its target matches its rows by (REQ-039).
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
@@ -918,6 +921,21 @@ def _parameters_named(
     return [name for name, _ in parameters if name.lower() in named and _served(gov_ctx, tid, name)]
 
 
+def _pass_up_chain(source: exp.Expr, name: str) -> None:  # pyright: ignore[reportPrivateImportUsage]  # REQ-039
+    """Give each SELECT of the chain under a governed relation (the faked, kept and member
+    projections, REQ-1494/1942/1620) the column ``name`` of what it reads, IN PLACE, so the
+    relation can read it: those projections give the table's registered columns alone."""
+    while isinstance(source, exp.Subquery) and isinstance(source.this, exp.Select):
+        level = source.this
+        source = level.args["from_"].this
+        level.select(
+            exp.alias_(
+                exp.column(name, table=source.alias_or_name or None, quoted=True), name, quoted=True
+            ),
+            copy=False,
+        )
+
+
 def _governed_relation(
     tbl: exp.Table,
     tid: int,
@@ -1007,6 +1025,7 @@ def _governed_relation(
             exp.alias_(exp.column(name, table=alias, quoted=True), name, quoted=True)
         )
         columns.append((name, name))
+        _pass_up_chain(source, name)
     carried_keys: dict[str, str] = {}
     for physical in sorted(keys):
         sql_name = apply_sql_name(physical)

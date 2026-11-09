@@ -389,19 +389,54 @@ def read_context(sql: str, dialect: str, table: str, columns: list[str]) -> dict
     return {"filters": filters, "order_by": order_by, "limit": limit, "columns": read_columns}
 
 
+def _argument_levels(read: exp.Table) -> Iterator[tuple[exp.Select, set[str], list[exp.Select]]]:
+    """Each SELECT whose WHERE can hold an argument of ``read``: the one reading the table, then
+    each that reads it through a derived table, as a governed relation is (REQ-039). With the
+    names that qualify ``read``'s columns there, and the SELECTs a column passes through to it."""
+    select = read.parent_select
+    if select is None:
+        return
+    names = {read.alias_or_name.lower(), read.name.lower()}
+    below: list[exp.Select] = []
+    while True:
+        yield select, names, below
+        relation = select.parent
+        holder = relation.parent if isinstance(relation, exp.Subquery) else None
+        outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
+        if relation is None or not isinstance(outer, exp.Select):
+            return
+        names = {relation.alias_or_name.lower()}
+        below = [*below, select]
+        select = outer
+
+
+def _passes(select: exp.Select, name: str) -> bool:
+    """Whether ``select`` gives the level above a column ``name``."""
+    return any(p.is_star or p.alias_or_name.lower() == name.lower() for p in select.expressions)
+
+
 def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:
-    """The values a statement's top-level ``_nf_{name} = literal`` conjuncts on ``table`` give
-    its parameters, by name: what an engine that attached the host hands it."""
+    """The values a statement's ``_nf_{name} = literal`` conjuncts give the parameters of ``table``,
+    by name: what an engine that attached the host hands it. A conjunct is the top-level one of the
+    SELECT reading the table, or of one reading it through a derived table that passes the column
+    up (a governed relation, whose statement's WHERE stands outside it, REQ-039); a column qualified
+    by another relation's name is that relation's."""
     tree = sqlglot.parse_one(sql, read=dialect)
     given: dict[str, Any] = {}
     for read in _reading(tree, table):
-        select = read.parent_select
-        where = select.args.get("where") if select is not None else None
-        for conjunct in conjuncts(where.this if where is not None else None):
-            if not isinstance(conjunct, exp.EQ):
-                continue
-            for column, value in ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left)):
-                if isinstance(column, exp.Column) and column.name.startswith("_nf_"):
+        for select, names, below in _argument_levels(read):
+            where = select.args.get("where")
+            for conjunct in conjuncts(where.this if where is not None else None):
+                if not isinstance(conjunct, exp.EQ):
+                    continue
+                sides = ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left))
+                for column, value in sides:
+                    if not isinstance(column, exp.Column) or not column.name.startswith("_nf_"):
+                        continue
+                    if column.table and column.table.lower() not in names:
+                        continue
+                    if not all(_passes(level, column.name) for level in below):
+                        continue
                     try:
                         given.setdefault(column.name[len("_nf_") :], _value(value))
                     except _NotLiteral:

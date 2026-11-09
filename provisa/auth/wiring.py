@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from provisa.auth.models import AuthProvider
 from provisa.auth.superuser import resolve_superuser_config
 from provisa.core.secrets import resolve_secrets
+from provisa.entitlements.lists import nested_claim_name
 
 # Requirements: REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125
 
@@ -92,7 +93,8 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
     if provider_name == "firebase":
         from provisa.auth.providers.firebase import FirebaseAuthProvider
 
-        return FirebaseAuthProvider(auth_config.get("firebase", {}))
+        fb = auth_config.get("firebase", {})
+        return FirebaseAuthProvider(fb, entitlements_claim=nested_claim_name(fb))
     if provider_name == "keycloak":
         from provisa.auth.providers.keycloak import KeycloakAuthProvider
 
@@ -102,6 +104,7 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
             realm=kc["realm"],
             client_id=kc["client_id"],
             client_secret=kc.get("client_secret"),
+            entitlements_claim=nested_claim_name(kc),
         )
     if provider_name in ("oauth", "oidc"):  # REQ-890: "oidc" is the generic OIDC selector
         from provisa.auth.providers.oauth import OAuthProvider
@@ -112,6 +115,7 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
             client_id=oa["client_id"],
             audience=oa.get("audience"),
             role_claim=oa.get("role_claim", "roles"),
+            entitlements_claim=nested_claim_name(oa),
         )
     if provider_name == "ldap":  # REQ-1265
         from provisa.auth.providers.ldap import LdapAuthProvider, LdapSettings

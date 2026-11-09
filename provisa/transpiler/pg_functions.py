@@ -929,6 +929,11 @@ def after(sql: str) -> str:
     placeholders = (_REGEXP_MATCHES, _ENCODE_ESCAPE, _REGEXP_GROUP, _DATE_PART, _TO_JSON)
     if not any(name in lowered for name in placeholders):
         return sql
+    return after_in(sqlglot.parse_one(sql, read="duckdb")).sql(dialect="duckdb")
+
+
+def after_in(tree: exp.Expr) -> exp.Expr:
+    """``tree``, a DuckDB statement, with each placeholder ``before`` left written out."""
 
     def _written(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Anonymous):
@@ -957,4 +962,4 @@ def after(sql: str) -> str:
                 return sqlglot.parse_one(form(written), read="duckdb")
         return node
 
-    return sqlglot.parse_one(sql, read="duckdb").transform(_written).sql(dialect="duckdb")
+    return tree.transform(_written, copy=False)

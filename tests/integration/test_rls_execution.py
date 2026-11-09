@@ -16,6 +16,8 @@ import os
 
 import pytest
 import pytest_asyncio
+import sqlglot
+import sqlglot.expressions as exp
 
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import (
@@ -201,8 +203,8 @@ class TestRLSExecution:
         rls = RLSContext.empty()
         compiled_no_rls = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
 
-        # Ensure SQL is unchanged
-        assert compiled_no_rls == compiled.sql
+        # No rule on the table: the governed relation reads every row (REQ-039).
+        assert sqlglot.parse_one(compiled_no_rls, dialect="postgres").find(exp.Where) is None
 
         result_all = await execute_direct(source_pool, "test-pg", compiled.sql, [])
         result_rls = await execute_direct(source_pool, "test-pg", compiled_no_rls, [])
