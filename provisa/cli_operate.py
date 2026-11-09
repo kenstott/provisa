@@ -63,7 +63,7 @@ EXIT_CODES: dict[str, dict[str, str]] = {
         "3": "with --exit-code: the instance has moved from the config",
     },
     "apply": {
-        "0": "applied, or a dry run that a real apply would pass",
+        "0": "applied",
         "1": "refused, including a plan the instance has moved past (plan.stale)",
         "2": "the command line is wrong",
     },

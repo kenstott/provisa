@@ -218,6 +218,26 @@ def _stand_in_references(data: dict[str, Any], exc: Any) -> dict[tuple[Any, ...]
 # --- what would change ----------------------------------------------------------------------- #
 
 
+def _identity(section: str, item: dict[str, Any]) -> str:
+    """What names an item of a section, the same on both sides of a diff."""
+    if section == "tables":
+        if item.get("profile_of") is not None:
+            return f"{item['profile_of']}/profile/{item['kind']}"
+        return f"{item['source_id']}/{item['schema']}/{item['table']}"
+    if section == "calendars":
+        return f"{item['name']}@{item['version']}"
+    if section == _NAMING_RULES:
+        return str(item["pattern"])
+    if section == "rls_rules":
+        target = (item.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
+        named = "/".join(str(t) for t in target if t is not None)
+        return f"{item['role_id']}/{named}/{','.join(sorted(item.get('rights') or []))}"
+    for name in ("id", "name"):
+        if name in item:
+            return str(item[name])
+    return json.dumps(item, sort_keys=True, default=str)
+
+
 def _canonical(value: Any) -> Any:
     """``value`` in an order that says nothing: both sides of a diff are written by different
     hands, and the export sorts what a file need not."""
@@ -240,7 +260,7 @@ def _comparable(raw: dict[str, Any], code: str) -> dict[str, dict[str, dict[str,
     """Each model section of ``raw``, keyed by what names each item: read through the model, so a
     default stated in one side and left out of the other is no difference, and with each reference
     in a typed field back in place of its stand-in, marked for ``_differing``."""
-    from provisa.core.store_config import MODEL_SECTIONS, item_identity
+    from provisa.core.store_config import MODEL_SECTIONS
 
     config, stood_in = _validated(raw, code)
     dumped = config.model_dump(mode="json", by_alias=True, exclude_defaults=True)
@@ -249,7 +269,7 @@ def _comparable(raw: dict[str, Any], code: str) -> dict[str, dict[str, dict[str,
     sections: dict[str, list[dict[str, Any]]] = {s: dumped.get(s, []) for s in MODEL_SECTIONS}
     sections[_NAMING_RULES] = (dumped.get("naming") or {}).get("rules", [])
     return {
-        section: {item_identity(section, i): _canonical(i) for i in items}
+        section: {_identity(section, i): _canonical(i) for i in items}
         for section, items in sections.items()
     }
 
@@ -434,21 +454,6 @@ def _planned(args: argparse.Namespace) -> str:
     return plan["config_yaml"]
 
 
-def _print_dry_run(args: argparse.Namespace, report: dict[str, Any]) -> None:
-    print(f"Dry run of {args.file or args.plan} on {args.org}: nothing was saved")
-    for section, entry in report["sections"].items():
-        for item in entry["add"]:
-            print(f"  A {section}/{item}")
-        for change in entry["change"]:
-            print(f"  C {section}/{change['item']}  ({', '.join(change['fields'])})")
-        for item in entry["remove"]:
-            print(f"  R {section}/{item}")
-    print(f"  unchanged {report['unchanged']}")
-    for source in report["unreachable_change_feeds"]:
-        print(f"  change feed of {source} could not be reached")
-    print(f"  not run: {', '.join(report['not_run'])}")
-
-
 def _cmd_apply(args: argparse.Namespace) -> int:
     """`provisa apply` -- apply this file to the org, as the UI's import does. Whether it may is
     the server's: it validates the file and asks each section's own right."""
@@ -460,16 +465,10 @@ def _cmd_apply(args: argparse.Namespace) -> int:
     else:
         # The includes are spliced in first: the instance cannot read the paths they name here.
         config_yaml = yaml.safe_dump(_read(args.file), sort_keys=False)
-    request: dict[str, Any] = {"config_yaml": config_yaml}
-    if args.dry_run:
-        request["dry_run"] = True
-    body = json.dumps(request)
+    body = json.dumps({"config_yaml": config_yaml})
     result = json.loads(_send(args, "POST", "/admin/import/hasura/apply", body.encode()))
     if args.json:
         print(json.dumps(result))
-        return 0
-    if args.dry_run:
-        _print_dry_run(args, result["dry_run"])
         return 0
     print(f"Applied {args.file or args.plan} to {args.org}")
     for name, value in result["summary"].items():
@@ -526,11 +525,6 @@ def register(sub: Any) -> None:
     apply = _command(sub, "apply", _reporting(_cmd_apply), "Apply a configuration file to an org")
     apply.add_argument("file", nargs="?", default=None, help="Configuration file")
     apply.add_argument("--plan", default=None, help="Apply exactly what diff --out saved")
-    apply.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Run the whole model build on the server, report what would change, and save nothing",
-    )
 
     export = _command(
         sub, "export", _reporting(_cmd_export), "Write an org's model as a configuration file"
