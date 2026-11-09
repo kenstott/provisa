@@ -234,7 +234,7 @@ def test_a_statement_past_the_memory_it_can_spill_from_is_refused_naming_both_se
     assert isinstance(named, residual.MemoryCapped)
     bounds = duckdb_bounds()
     assert str(named) == (
-        "the statement needs more memory than DuckDB can sort it in, even spilling to disk: "
+        "the statement needs more memory than DuckDB can answer it in, even spilling to disk: "
         f"codesource.duckdb_memory_mb is {bounds['memory_mb']} MiB and "
         f"codesource.duckdb_threads is {bounds['threads']}. "
         "Raise codesource.duckdb_memory_mb, lower codesource.duckdb_threads, "
