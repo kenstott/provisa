@@ -33,6 +33,7 @@ vi.mock("../api/glossary", () => ({ generateGlossaryRelationships: vi.fn() }));
 const library = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchCitedBy: vi.fn(),
   fetchRetrieval: vi.fn(),
   saveRetrieval: vi.fn(),
   addLibraryDocument: vi.fn(),
@@ -45,12 +46,16 @@ const library = vi.hoisted(() => ({
   removeLibraryDocument: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => library);
+vi.mock("../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useCapability")>()),
+  useCapability: () => false,
+}));
 vi.mock("../hooks/useAdminQueries", () => ({
   useDomains: () => ({ domains: [{ id: "bank" }] }),
 }));
 
 import { FindTermsDialog } from "../components/admin/FindTermsDialog";
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
+import { LibraryPage } from "../pages/library/LibraryPage";
 import { runUiActions, type UiAction } from "../mcp/uiActions";
 import { demoTourSteps } from "../tour/demoTour";
 
@@ -126,7 +131,7 @@ const STEPS = demoTourSteps(
   [
     { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/admin/reference-library", capability: "glossary_rw", library: RULE },
+    { key: "lib", route: "/library", capability: "glossary_read", library: RULE },
   ],
   [],
 );
@@ -267,6 +272,12 @@ describe("a library step", () => {
         source: RULE,
         media_type: "application/xml",
         status: "proposed",
+        index_status: "ready",
+        index_error: null,
+        index_step: null,
+        index_done: null,
+        index_total: null,
+        terms_note: null,
         domains: ["bank"],
         embedding_model: "sentence-transformers/all-MiniLM-L6-v2",
         needs_reembedding: false,
@@ -277,9 +288,9 @@ describe("a library step", () => {
         replaced_at: null,
       },
     ]);
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const row = await screen.findByTestId("reflib-row-4");
-    expect(lib.route).toBe("/admin/reference-library");
+    expect(lib.route).toBe("/library");
     expect(document.querySelector(lib.element)).toBe(row);
   });
 });

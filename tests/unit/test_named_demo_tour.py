@@ -116,7 +116,7 @@ _PROFILE_GRAPHS = set(
 )
 # REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
 _GLOSSARY_PAGE = "/admin/ontology"
-_LIBRARY_PAGE = "/admin/reference-library"
+_LIBRARY_PAGE = "/library"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -1011,7 +1011,7 @@ _RULE = (
     "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
 )
 _GLOSSARY = {"route": _GLOSSARY_PAGE, "capability": "glossary_read"}
-_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "glossary_rw"}
+_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "glossary_read"}
 
 
 @pytest.fixture

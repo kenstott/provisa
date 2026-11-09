@@ -31,6 +31,10 @@ vi.mock("../components/TagControl", () => ({
   ),
 }));
 vi.mock("../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
+vi.mock("../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useCapability")>()),
+  useCapability: () => true,
+}));
 vi.mock("../components/graph3d/OntologyGraph", () => ({ OntologySnippet: () => null }));
 vi.mock("../components/admin/GlossaryGroundedTables", () => ({
   GlossaryGroundedTables: () => null,
@@ -44,6 +48,12 @@ const DOC: LibraryDocument = {
   source: "https://example.com/privacy",
   media_type: "text/markdown",
   status: "kept",
+  index_status: "ready",
+  index_error: null,
+  index_step: null,
+  index_done: null,
+  index_total: null,
+  terms_note: null,
   domains: ["sales"],
   embedding_model: "m",
   needs_reembedding: false,
@@ -66,6 +76,7 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/referenceLibrary")>()),
   fetchLibrary: vi.fn(async () => [DOC]),
   fetchLibraryDocument: vi.fn(async () => DETAIL),
+  fetchCitedBy: vi.fn(async () => ({ terms: [], drifted: 0 })),
   fetchRetrieval: vi.fn(async () => ({ retrieval: "passage" })),
 }));
 
@@ -166,13 +177,14 @@ describe("a glossary term's tags", () => {
 
 describe("a library document's tags", () => {
   it("are on the document and on each section, at its first passage", async () => {
-    const { ReferenceLibraryTab } = await import("../components/admin/ReferenceLibraryTab");
-    render(<ReferenceLibraryTab />);
+    const { LibraryPage } = await import("../pages/library/LibraryPage");
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-row-7"));
     expect(target(await screen.findByTestId("chip-document"))).toMatchObject({
       objectType: "document",
       documentId: 7,
     });
+    fireEvent.click(screen.getByTestId("reflib-tab-sections"));
     await screen.findByTestId("reflib-passages");
     // the untitled opening is the document's; "Personal data" once, for its two passages; page 3
     expect(screen.getAllByTestId("chip-section").map(target)).toEqual([
