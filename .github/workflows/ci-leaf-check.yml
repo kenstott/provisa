@@ -31,6 +31,16 @@ on:
       - ".github/**"
       - "scripts/ci/**"
   workflow_dispatch:
+    # The orchestrator's two inputs, because the release's control flow below reads them.
+    inputs:
+      version:
+        description: The release's version; empty reads as the ref's name.
+        type: string
+        default: ""
+      publish:
+        description: Read as the orchestrator reads it; only ever true on the tag it names.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
