@@ -29,6 +29,7 @@ import pytest
 import pytest_asyncio
 import sqlalchemy as sa
 
+from provisa.core import model_change
 from provisa.core.db import add_missing_columns, init_schema
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -100,6 +101,65 @@ async def test_metadata_reconciliation_restores_a_column_schema_sql_never_alters
         assert rows[0]["data_type"] == "text"
         assert rows[0]["column_default"] == "''::text"
         assert {"body_encoding", "query_template"} <= await _columns(conn, "api_endpoints")
+
+
+# --- reference_documents: schema.sql upgrades it on its own ------------------------------------
+#
+# REQ-2185's index-job columns. init_schema's reconciliation would add them too, but without
+# index_status's NOT NULL, so this applies the script alone: schema.sql is what has to carry them.
+
+_REFERENCE_DOCUMENT_INDEX_COLUMNS = {
+    "index_status": ("text", "NO", "'ready'::text"),
+    "index_error": ("text", "YES", None),
+    "index_step": ("text", "YES", None),
+    "index_done": ("integer", "YES", None),
+    "index_total": ("integer", "YES", None),
+    "index_launch": ("text", "YES", None),
+    "index_progress_at": ("timestamp with time zone", "YES", None),
+    "pending_content": ("bytea", "YES", None),
+    "terms_note": ("text", "YES", None),
+}
+
+
+@pytest_asyncio.fixture
+async def old_reference_documents(tenant_db):
+    """An org schema whose reference_documents predates the index job, holding one document."""
+    await init_schema(tenant_db, _SCHEMA_SQL, org_id=_ORG)
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_SCHEMA}")
+        for column in _REFERENCE_DOCUMENT_INDEX_COLUMNS:
+            await conn.execute(f"ALTER TABLE reference_documents DROP COLUMN {column}")
+        await conn.execute(
+            "INSERT INTO reference_documents "
+            "(title, source_kind, source, media_type, content_sha256, status, embedding_model) "
+            "VALUES ('Old', 'file', 'old.pdf', 'application/pdf', 'abc', 'kept', 'model')"
+        )
+    yield tenant_db
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
+
+
+async def test_schema_sql_adds_the_index_columns_to_an_older_reference_documents(
+    old_reference_documents,
+):
+    async with old_reference_documents.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_SCHEMA}")
+        async with model_change.layout():
+            await conn.execute(_SCHEMA_SQL)
+        rows = await conn.fetch(
+            "SELECT column_name, data_type, is_nullable, column_default "
+            "FROM information_schema.columns "
+            f"WHERE table_schema = '{_SCHEMA}' AND table_name = 'reference_documents'"
+        )
+        live = {
+            r["column_name"]: (r["data_type"], r["is_nullable"], r["column_default"]) for r in rows
+        }
+        added = {name: live.get(name) for name in _REFERENCE_DOCUMENT_INDEX_COLUMNS}
+        assert added == _REFERENCE_DOCUMENT_INDEX_COLUMNS
+        # the document that was already there is ready: its passages exist
+        existing = await conn.fetch("SELECT index_status FROM reference_documents")
+        assert [r["index_status"] for r in existing] == ["ready"]
 
 
 # --- a metadata table schema.sql does not create ---------------------------------------------
