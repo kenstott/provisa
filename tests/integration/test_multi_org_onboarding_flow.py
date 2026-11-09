@@ -53,6 +53,7 @@ from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.regions import PlatformConfig
 from provisa.core.schema_admin import (
     REGISTRY_TABLES,
     local_users,
@@ -63,6 +64,7 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources, user_role_assignments
+from tests.helpers import create_pgvector
 
 pytestmark = [pytest.mark.integration]
 
@@ -123,6 +125,7 @@ def _prepare_sync():
             )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
+        create_pgvector(conn)  # a fresh database: the org metadata has vector columns
         # The whole org metadata, not just the two role tables: provisioning ends by rebuilding the
         # root org-registry view (REQ-1301), which registers itself in registered_tables/
         # table_columns of the root tenant schema.
@@ -180,7 +183,13 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        types.SimpleNamespace(
+            auth={"provider": "basic"},
+            derived_roles=[],
+            # Provisioning gives a new org the platform's default grant (REQ-1922), read from the
+            # config as written; this deployment declares no regions, so the grant is empty.
+            written=types.SimpleNamespace(platform=PlatformConfig()),
+        ),
         raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same
