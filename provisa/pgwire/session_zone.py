@@ -69,9 +69,11 @@ _INTERVAL_OFFSET = re.compile(
 )
 _POSIX_NAME = r"(?:<[A-Za-z0-9+-]+>|[A-Za-z]{3,})"
 _POSIX_OFFSET = r"[+-]?\d{1,3}(?::\d{1,2}(?::\d{1,2})?)?"
-_POSIX_FIXED = re.compile(rf"^{_POSIX_NAME}(?P<offset>{_POSIX_OFFSET})$")
+#: The standard abbreviation may be empty: PostgreSQL's tzparse allows it, unlike IANA's.
+_POSIX_STANDARD = rf"(?:{_POSIX_NAME})?"
+_POSIX_FIXED = re.compile(rf"^{_POSIX_STANDARD}(?P<offset>{_POSIX_OFFSET})$")
 _POSIX_RULED = re.compile(
-    rf"^{_POSIX_NAME}{_POSIX_OFFSET}{_POSIX_NAME}(?:{_POSIX_OFFSET})?(?:,.*)?$"
+    rf"^{_POSIX_STANDARD}{_POSIX_OFFSET}{_POSIX_NAME}(?:{_POSIX_OFFSET})?(?:,.*)?$"
 )
 _DAY_SECONDS = 86400
 _TRUE_WORDS = frozenset({"t", "tr", "tru", "true", "y", "ye", "yes", "on", "1"})
