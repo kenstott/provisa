@@ -27549,7 +27549,10 @@
     reaches the command''s domain. A role with no capabilities reaches no command: there is no exception
     for one. A role holding only command_execution runs its assigned commands in the domains it lists and
     reads no data. Built-in roles that run commands hold it. The read-only catalog commands of the meta
-    domain (the APOC set, REQ-2168) stay under catalog_read.'
+    domain (the APOC set, REQ-2168) stay under catalog_read. (Amended 2026-11-09, THE ASSIGNMENT IS THE
+    GRANT:) Maintainer 2026-11-09: a role holding command_execution that is assigned a command and reaches
+    its domain runs it, whether the command writes or not; it needs no write capability for it. analyst,
+    and every built-in role that inherits from it, holds command_execution.'
   use_case: Ensures authorization policy remains under control of governance (admin), not individual callers.
     Prevents callers from overriding mutation classification, supports safe discovery/re-registration
     of mutations without accidentally granting them.
