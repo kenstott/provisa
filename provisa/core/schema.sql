@@ -156,8 +156,12 @@ CREATE TABLE IF NOT EXISTS data_products (
     support_contact TEXT,
     custom_properties JSONB NOT NULL DEFAULT '{}',
     -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- REQ-2219: who created it, set on insert only; it grants nothing.
+    created_by    TEXT
 );
+
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 -- REQ-1634: added to a table that predates them.
 DO $$ BEGIN
@@ -512,13 +516,54 @@ CREATE TABLE IF NOT EXISTS roles (
     max_rows        INTEGER,  -- REQ-005: the role's result-size ceiling; NULL = none of its own
     -- A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     inactivity_days INTEGER,
-    relationship_guard BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1919: held so the store owns it
+    relationship_guard BOOLEAN NOT NULL DEFAULT TRUE,  -- REQ-1919: held so the store owns it
+    -- REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}, written from
+    -- domain_access when that is set; narrowed afterwards. Absent kinds are the whole role.
+    default_entitlements JSONB
 );
 
 -- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
 -- so a roles table made before the column existed needs it here first.
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS inactivity_days INTEGER;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS default_entitlements JSONB;
+
+-- REQ-2219: the entitlement store. Append-only: a change appends a row whose valid_from ends the
+-- row before it for the same principal, role, kind and capability; ``removed`` ends it with none.
+-- principal is NULL on a role's own rows (source role).
+CREATE TABLE IF NOT EXISTS entitlements (
+    id           BIGSERIAL PRIMARY KEY,
+    source       TEXT NOT NULL CHECK (source IN ('idp', 'provisa', 'role')),
+    principal    TEXT,
+    role_id      TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    capability   TEXT,
+    identifiers  JSONB NOT NULL DEFAULT '[]',
+    removed      BOOLEAN NOT NULL DEFAULT FALSE,
+    reason       TEXT,
+    set_by       TEXT,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS entitlements_principal_idx ON entitlements (principal, role_id, kind);
+
+-- REQ-2219: one row per expiry rule on a person's grant; ends is {capability: [identifier, ...]},
+-- empty for the whole grant. Append-only: ``removed`` withdraws the rule named by rule_key.
+CREATE TABLE IF NOT EXISTS entitlement_expiries (
+    id           BIGSERIAL PRIMARY KEY,
+    rule_key     TEXT NOT NULL,
+    principal    TEXT NOT NULL,
+    role_id      TEXT NOT NULL,
+    ends_at      TIMESTAMPTZ NOT NULL,
+    ends         JSONB NOT NULL DEFAULT '{}',
+    removed      BOOLEAN NOT NULL DEFAULT FALSE,
+    reason       TEXT,
+    set_by       TEXT,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
+    ON entitlement_expiries (principal, role_id);
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,

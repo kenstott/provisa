@@ -113,6 +113,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # REQ-1620: a meta-role's members, per table (compiler.rls.MemberReads). A table with a column
     # its members read differently is read through its member projection (_project_members).
     member_reads: dict[int, Any] = field(default_factory=dict)
+    # REQ-2219: the person's mask over this role's schema, when it narrows anything
+    # (compiler/entitlement_rule.py); None when nothing is narrowed.
+    entitlement_mask: Any = None
     # Per table, its registered primary key's columns (CompilationContext.pk_columns): the key a
     # write that reads beyond its target matches its rows by (REQ-039).
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
