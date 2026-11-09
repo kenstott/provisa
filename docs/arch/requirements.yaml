@@ -94346,7 +94346,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     snapshots and seeds, also build, source freshness, and each macro through run-operation. (Amended 2026-11-09,
     A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: a model the manifest marks public
     with an enforced contract is offered as a candidate data product, its schema promise, tests, owner and
-    version carried from the manifest. A steward decides whether it becomes one.'
+    version carried from the manifest. A steward decides whether it becomes one. (Amended 2026-11-09, TARGETS,
+    DESCRIPTIONS AND MACROS:) Maintainer 2026-11-09: on an operator-run connector a dbt command is a code
+    source @command taking the dbt invocation as a fixed argument. A new manifest updates a description
+    only if no steward has changed it. Each macro means the project''s and its installed packages'' macros,
+    not dbt''s own internal dbt and dbt_* macros.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
