@@ -93,6 +93,92 @@ async def _stored_dsn(admin_db: Database, org_id: str = "acme") -> bytes | None:
         return result.fetchone()[0]
 
 
+_ORG_PATH = "/admin/org-storage"
+_PLATFORM_PATH = "/admin/platform/orgs/{org_id}/storage"
+
+
+def _endpoint(path: str, method: str):
+    for route in router_mod.router.routes:
+        if getattr(route, "path", None) == path and method in getattr(route, "methods", ()):
+            return route.endpoint
+    raise AssertionError(f"no {method} {path} on the org storage router")
+
+
+class _PastTheGate(Exception):
+    """Raised by the first step after the guard: the caller's right was accepted."""
+
+
+@pytest.fixture
+def caller(monkeypatch):
+    import provisa.api.admin.capabilities as capmod
+
+    caps: set[str] = set()
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda identity, state: caps)
+
+    async def _past_the_gate(org_id):
+        raise _PastTheGate(org_id)
+
+    monkeypatch.setattr(router_mod, "_storage_url_set", _past_the_gate)
+    monkeypatch.setattr(router_mod, "require_active_org_id", lambda request: "acme")
+
+    def _as(*rights: str):
+        caps.clear()
+        caps.update(rights)
+        return SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="alice")))
+
+    return _as
+
+
+async def _call_platform(method: str, request):
+    endpoint = _endpoint(_PLATFORM_PATH, method)
+    if method == "PUT":
+        return await endpoint(
+            org_id="acme", body=OrgStorageBody(storage_url=_ORG_STORE), request=request
+        )
+    return await endpoint(org_id="acme", request=request)
+
+
+class TestGates:
+    """REQ-1327: an org's stores are the platform's to assign; the org reads its footprint."""
+
+    def test_the_org_surface_cannot_register_a_store(self):
+        with pytest.raises(AssertionError, match="no PUT"):
+            _endpoint(_ORG_PATH, "PUT")
+
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    async def test_a_single_tenant_org_administrator_is_refused(self, caller, method):
+        with pytest.raises(ApiError) as err:
+            await _call_platform(method, caller("platform_settings", "org_settings"))
+        assert err.value.status_code == 403
+        assert err.value.code == "platform.control_plane_role_required"
+
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    async def test_a_platform_administrator_passes(self, caller, method):
+        with pytest.raises(_PastTheGate):
+            await _call_platform(method, caller("platform_settings", "cross_org"))
+
+    async def test_the_org_reads_its_footprint_on_org_settings(self, caller):
+        with pytest.raises(_PastTheGate):
+            await _endpoint(_ORG_PATH, "GET")(request=caller("org_settings"))
+
+    async def test_the_footprint_is_refused_without_org_settings(self, caller):
+        with pytest.raises(ApiError) as err:
+            await _endpoint(_ORG_PATH, "GET")(request=caller("usage"))
+        assert err.value.status_code == 403
+
+
+class TestPlatformUnknownOrg:
+    async def test_a_store_for_an_unknown_org_is_a_404_and_nothing_is_rebuilt(self, app_state):
+        endpoint = _endpoint(_PLATFORM_PATH, "PUT")
+        with pytest.raises(ApiError) as exc:
+            await endpoint(
+                org_id="nobody", body=OrgStorageBody(storage_url=_ORG_STORE), request=_REQUEST
+            )
+        assert exc.value.status_code == 404
+        assert exc.value.code == "org_storage.org_not_found"
+        assert app_state.rebuilt == []
+
+
 class TestGet:
     async def test_an_unknown_org_is_a_404_before_the_store_is_probed(self, app_state):
         with pytest.raises(ApiError) as exc:
