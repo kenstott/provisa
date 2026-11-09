@@ -201,10 +201,30 @@ class ImportApplyRequest(BaseModel):
     # An import is always a merge into what the org already has (REQ-1919): what the imported
     # model does not mention is not the import's to remove.
     config_yaml: str
+    # REQ-2222: run the whole model build, report what it would change, and save nothing.
+    dry_run: bool = False
+
+
+class ImportSectionChanges(BaseModel):  # REQ-2222
+    add: list[str]
+    change: list[dict[str, Any]]  # {item, fields}: field names only, a value may be a credential
+    remove: list[str]
+
+
+class ImportDryRunReport(BaseModel):  # REQ-2222
+    """What an apply of this config would do, read from the store before the rollback."""
+
+    changes: bool
+    unchanged: int
+    sections: dict[str, ImportSectionChanges]
+    unreachable_change_feeds: list[str]
+    # What an apply does beyond the model build that a dry run does not exercise.
+    not_run: list[str]
 
 
 class ImportApplyResponse(BaseModel):
     summary: ImportSummary
+    dry_run: ImportDryRunReport | None = None  # REQ-2222: set by a dry run, which saved nothing
 
 
 def _decode(content_b64: str) -> bytes:
@@ -375,11 +395,38 @@ async def _require_residency_of_import(request: Request, conn, config: ProvisaCo
         ) from refused
 
 
+async def _dry_run_report(config: ProvisaConfig) -> ImportDryRunReport:  # REQ-2222
+    """The dry run's report, or the model's refusal by name: a build's refusals are ValueErrors
+    (a contract's is its own type), and a constraint the store holds names itself."""
+    from sqlalchemy.exc import IntegrityError
+
+    from provisa.api.apply_dry_run import NOT_RUN, dry_run_configuration
+    from provisa.dq.contract import ContractError
+
+    try:
+        outcome = await dry_run_configuration(config)
+    except (ValueError, ContractError) as refused:
+        raise ApiError(
+            400, "import.refused", str(refused), refusal=type(refused).__name__
+        ) from refused
+    except IntegrityError as refused:
+        # The driver's own message: the statement's parameters, which may be credentials, are not.
+        raise ApiError(
+            400, "import.refused", str(refused.orig), refusal=type(refused).__name__
+        ) from refused
+    return ImportDryRunReport(
+        **outcome.changes,
+        unreachable_change_feeds=outcome.unreachable_change_feeds,
+        not_run=list(NOT_RUN),
+    )
+
+
 @router.post("/apply", response_model=ImportApplyResponse)
 async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApplyResponse:
     """Apply the approved config to the acting org as an explicit one-time seed: it adds and
     updates what the config declares and removes nothing (REQ-1919). The settled config→org
-    sequence (``app_loaders.apply_configuration``), not a second loader."""
+    sequence (``app_loaders.apply_configuration``), not a second loader. With ``dry_run`` the
+    same rights are asked and the same build runs, in a transaction rolled back (REQ-2222)."""
     _require_an_import_right(request)  # REQ-1327
     from provisa.api.app import state
     from provisa.api.app_loaders import apply_configuration
@@ -416,6 +463,10 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
 
     async with state.model_db.acquire() as conn:
         await _require_residency_of_import(request, conn, config)  # REQ-1921
+    if req.dry_run:  # REQ-2222
+        return ImportApplyResponse(
+            summary=_summarize(config), dry_run=await _dry_run_report(config)
+        )
     await apply_configuration(config)
 
     log.info(

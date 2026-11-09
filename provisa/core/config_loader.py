@@ -14,6 +14,8 @@
 # complexity-gate: allow-ble=6 reason="per-source config registration is best-effort: source-driver register, OpenAPI spec load, SQLite migration post-step, OpenAPI cache, a MongoDB change-stream check (an unreachable server), and CBO analyze each log their own failure and continue, so one bad source never fails the whole config load"
 
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -2361,6 +2363,57 @@ async def apply_config(  # REQ-1919, REQ-164
     return await _apply(
         config, conn, engine, label="configuration applied", defer_unregistered=False
     )
+
+
+@dataclass(frozen=True)
+class DryRun:  # REQ-2222
+    """What an apply would have done: :func:`~provisa.core.store_config.model_changes`' report,
+    and the sources whose change feed could not be reached."""
+
+    changes: dict[str, Any]
+    unreachable_change_feeds: list[str]
+
+
+class _RollBack(Exception):
+    """Leaves the dry run's transaction, which is what rolls it back, carrying its report."""
+
+    def __init__(self, report: DryRun) -> None:
+        super().__init__("dry run rolled back")
+        self.report = report
+
+
+async def dry_run_config(  # REQ-2222
+    config: ProvisaConfig,
+    conn: "Connection",
+    engine: Any,
+    check_build: Callable[["Connection"], Awaitable[None]],
+) -> DryRun:
+    """:func:`apply_config`, in a transaction that is rolled back. Every statement runs as an
+    apply's would, against the store as it is, under the apply's lock; ``check_build`` then judges
+    the result on the same connection, the only one that can see it. What it would change is read
+    from the store before the rollback, so it is what happened, not a prediction.
+
+    It leaves no trace outside the transaction: the domain policy an apply sets for the org is the
+    dry run's alone (:func:`domain_policy.trial`), and the writes open no model commit
+    (``committed_by_caller``), so nothing is projected and no save is in flight. A refusal raises
+    as it does from an apply, and rolls back the same way."""
+    from provisa.core import model_change
+    from provisa.core.model_row_rules import unnarrowed
+    from provisa.core.store_config import model_changes, store_model
+
+    async with model_change.committed_by_caller():
+        with domain_policy.trial(), unnarrowed():
+            try:
+                async with conn.transaction():
+                    await conn.advisory_xact_lock(7261748190)
+                    before = await store_model(conn)
+                    domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
+                    failed = await _apply_in_txn(config, conn, engine, defer_unregistered=False)
+                    await check_build(conn)
+                    raise _RollBack(DryRun(model_changes(before, await store_model(conn)), failed))
+            except _RollBack as rolled_back:
+                return rolled_back.report
+    raise AssertionError("the transaction is left only by the rollback or a refusal")
 
 
 async def seed_config(  # REQ-1919
