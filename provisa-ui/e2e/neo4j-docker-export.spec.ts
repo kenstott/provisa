@@ -18,7 +18,7 @@ const DISCOVERY_CONCURRENCY = 8;
 // Rows read of each label and each relationship type. The spec proves every label and type reaches
 // Neo4j; it does not need every row. Unbounded, it read the model's own catalog: ModelNames alone
 // was 15,246 nodes and NamesReport 8,373 of the 28,000 a run had exported when it hit the limit,
-// at about a second per batch of 200, with four of the five minutes already spent on discovery.
+// at about a second per batch of 200, after discovery had taken three to four of the five minutes.
 const DISCOVERY_ROWS = 25;
 
 /** ``fn`` over ``items``, ``limit`` at a time; results in the order of ``items``. */
