@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 3ed4ce91-2b38-485a-a274-26bfb40ecc81
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -21,7 +22,22 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
-from provisa.transpiler import function_macros, pg_forms_json, pg_functions, transpile_correlated
+from provisa.transpiler import (
+    function_macros,
+    pg_forms_json,
+    pg_functions,
+    pg_held_types,
+    transpile_correlated,
+)
+from provisa.transpiler.transpile import transpile
+
+#: Statements each step of the chain writes forms for, on the dialects those forms are for.
+_FORMS = [
+    ("trino", "SELECT json_agg(a) FROM t"),
+    ("trino", "SELECT width_bucket(a, 0, 10, 2), json_agg(json_build_object('k', a)) FROM t"),
+    ("duckdb", "SELECT to_hex(1), jsonb_extract_path(j, 'a') FROM t"),
+    ("clickhouse", "SELECT num_nulls(a, b) FROM t"),
+]
 
 _STATEMENTS = [
     "SELECT a, b FROM s.t AS t WHERE a = 1 AND b LIKE 'x%' ORDER BY a NULLS FIRST LIMIT 3",
@@ -88,8 +104,9 @@ def test_a_memoized_macro_form_is_not_what_the_statement_edits() -> None:
     """``_written`` copies ``_parsed``'s tree before it binds the arguments."""
     macro = function_macros.MACROS[("text", 1)]
     kept = function_macros._parsed("text", 1, "trino").sql(dialect="trino")
-    call = sqlglot.parse_one("SELECT text(x)", read="postgres").selects[0]
-    written = function_macros._written(macro, [exp.column("x")], "trino", call)
+    statement = sqlglot.parse_one("SELECT text(x)", read="postgres")
+    assert isinstance(statement, exp.Select)
+    written = function_macros._written(macro, [exp.column("x")], "trino", statement.selects[0])
     written.replace(exp.Null())
     assert function_macros._parsed("text", 1, "trino").sql(dialect="trino") == kept
 
@@ -111,3 +128,30 @@ def test_the_join_rewrite_edits_the_tree_it_is_given_for_its_one_caller() -> Non
         and node.func.id == "_rewrite_from_join_subqueries"
     ]
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(("dialect", "sql"), _FORMS)
+def test_a_step_of_the_chain_edits_the_tree_it_is_handed(dialect: str, sql: str) -> None:
+    """``inline`` and what it calls no longer copy: ``transpile`` hands each its tree and keeps
+    only the answer. A caller that kept using its tree would see it edited."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert function_macros.inline(tree, dialect) is tree
+
+
+def test_the_held_types_step_edits_the_tree_it_is_handed() -> None:
+    tree = sqlglot.parse_one("SELECT CAST(a AS tid) FROM t", read="postgres")
+    assert pg_held_types.held(tree) is tree
+
+
+@pytest.mark.parametrize(("dialect", "sql"), _FORMS)
+def test_what_a_form_writes_holds_no_node_twice(dialect: str, sql: str) -> None:
+    """The next step edits in place what this one wrote. A form that placed one node in two
+    positions would have the edit of one reach the other, which a copy between them used to part."""
+    out = function_macros.inline(sqlglot.parse_one(sql, read="postgres"), dialect)
+    assert [w for w in _shared_or_misparented(out) if w.startswith("held twice")] == []
+
+
+@pytest.mark.parametrize(("dialect", "sql"), _FORMS)
+def test_a_statement_written_twice_is_written_the_same(dialect: str, sql: str) -> None:
+    """The forms are memoized by name and text: an edit reaching one would show on the second."""
+    assert transpile(sql, dialect) == transpile(sql, dialect)
