@@ -194,7 +194,8 @@ def code_source(server):
         server,
         'createRelationship(input: {id: "orders-regions", sourceTableId: "orders", '
         'targetTableId: "regions", sourceColumn: "region", targetColumn: "region", '
-        'cardinality: "many-to-one"})',
+        # REQ-194: the field would take the name of orders' own column ``region``, a clash refused.
+        'cardinality: "many-to-one", graphqlAlias: "regionDetail"})',
     )
 
 

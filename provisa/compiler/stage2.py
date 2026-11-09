@@ -21,7 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.governed_relation import keep_read
+from provisa.compiler.governed_relation import expose_read, keep_read
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import extracts_paths, stored_path
@@ -56,6 +56,8 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     table_map: dict[str, int] = field(default_factory=dict)
     # table_id → [(col_name, data_type)]
     all_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
+    # REQ-1986: table_id → its parameter columns (``_nf_<name>``): no column of ``all_columns``.
+    parameter_columns: dict[int, list[str]] = field(default_factory=dict)
     # Role-level row ceiling (REQ-005) — applies to the whole query regardless of tables.
     limit_ceiling: int | None = None
     # Per-table row ceiling (REQ-005) — applied only when that table is referenced.
@@ -368,6 +370,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             and not c.get("native_filter_type")
             # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
             and c["column_name"] != SCOPE_COLUMN
+        ]
+        gov.parameter_columns[table_id] = [
+            c["column_name"] for c in cols if c.get("native_filter_type")
         ]
         # A table the compilation does not hold is read by no statement it compiles.
         paths = {c["column_name"]: c["path"] for c in cols if c.get("path")}
@@ -2659,6 +2664,16 @@ def govern(
     elif gov_ctx.sample_size is not None and not writes:
         tree = _limit_ceiling(tree, gov_ctx.sample_size)
     if not writes:
+        # REQ-1986: a parameter a statement names is read through its relation, which holds none
+        # otherwise; once stars are expanded, so no ``*`` reads one.
+        for relation in [s for s in tree.find_all(exp.Subquery) if _relation(s) is not None]:
+            meta = _relation(relation)
+            served = [
+                name
+                for name in gov_ctx.parameter_columns.get(meta.tid, [])  # pyright: ignore[reportOptionalMemberAccess]
+                if _served(gov_ctx, meta.tid, name)  # pyright: ignore[reportOptionalMemberAccess]
+            ]
+            expose_read(tree, relation, meta.alias, served)  # pyright: ignore[reportOptionalMemberAccess]
         # Last, once every pass that reads a relation's columns has: a read's governed relations
         # serve only the outputs it reads, so an engine, and a live source asked through it,
         # reads no other column (a path column it does not read is not extracted at all).

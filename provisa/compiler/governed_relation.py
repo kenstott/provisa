@@ -282,6 +282,33 @@ def keep_read(tree: exp.Expr, relation: exp.Subquery, alias: str) -> None:
     _keep(body, read)
 
 
+def expose_read(tree: exp.Expr, relation: exp.Subquery, alias: str, names: Iterable[str]) -> None:
+    """Expose, IN PLACE, each of the parameter columns ``names`` of the governed relation
+    ``relation`` that ``tree`` reads outside it, through every plain level of its chain. A
+    parameter is an argument, not data (REQ-1986), so a relation holds none by default and no
+    ``*`` reads one; a statement's condition on one reads it by name. It leaves the relation with
+    its condition when the condition is extracted (``nf_extractor``), or becomes the landed column
+    it filters (REQ-2031); a condition that stays is read on rows holding it (REQ-2100)."""
+    body = relation.this
+    if not isinstance(body, exp.Select):
+        return
+    read = _read_names(tree, relation, alias, names)
+    if not read:
+        return
+    held = {p.alias_or_name.lower() for p in body.expressions}
+    for name in sorted(read):
+        if name.lower() in held:
+            continue
+        level: exp.Expr | None = body
+        while isinstance(level, exp.Select):
+            level.select(
+                exp.alias_(exp.column(name, table=alias, quoted=True), name, quoted=True),
+                copy=False,
+            )
+            source = level.args["from_"].this
+            level = source.this if isinstance(source, exp.Subquery) else None
+
+
 #: What a SELECT whose outputs may be dropped does not carry: each reads its outputs as a whole
 #: (a DISTINCT's rows, a grouping's or an aggregate's, an output named by an ordering).
 _READS_ITS_OUTPUTS = ("distinct", "group", "having", "qualify", "order", "windows", "with_")
