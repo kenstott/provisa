@@ -124,23 +124,34 @@ def _read(path: str) -> dict[str, Any]:
         raise _Refused("config.invalid", str(exc)) from exc
 
 
-def _holder(data: Any, loc: tuple[Any, ...]) -> Any | None:
-    """The container of the value at ``loc``, or None when ``loc`` does not lead to one."""
+def _parent(data: Any, loc: tuple[Any, ...]) -> Any | None:
+    """The container ``loc`` names its last step in, or None when ``loc`` does not lead to one."""
     for step in loc[:-1]:
         try:
             data = data[step]
         except (KeyError, IndexError, TypeError):
             return None
-    try:
-        data[loc[-1]]
-    except (KeyError, IndexError, TypeError):
-        return None
     return data
 
 
-def _validated(raw: dict[str, Any], code: str) -> tuple[Any, list[tuple[Any, ...]]]:
-    """``raw`` as the configuration model, with no reference resolved, and where each reference
-    stood in a typed field.
+def _holder(data: Any, loc: tuple[Any, ...]) -> Any | None:
+    """The container of the value at ``loc``, or None when ``loc`` does not lead to one."""
+    parent = _parent(data, loc)
+    try:
+        parent[loc[-1]]  # type: ignore[index]
+    except (KeyError, IndexError, TypeError):
+        return None
+    return parent
+
+
+class _Unresolved(str):
+    """A reference standing in a typed field, as written. What it resolves to is known only where
+    it is used, so it can be compared with another reference and with nothing else."""
+
+
+def _validated(raw: dict[str, Any], code: str) -> tuple[Any, dict[tuple[Any, ...], str]]:
+    """``raw`` as the configuration model, with no reference resolved, and each reference that
+    stood in a typed field, by where it stood.
 
     The same transforms and model as ``config_loader.parse_config_dict``, without the step that
     fetches secrets: a pipeline validating a branch holds none of them."""
@@ -154,7 +165,7 @@ def _validated(raw: dict[str, Any], code: str) -> tuple[Any, list[tuple[Any, ...
     )
     from provisa.core.models import ProvisaConfig
 
-    stood_in: list[tuple[Any, ...]] = []
+    stood_in: dict[tuple[Any, ...], str] = {}
     try:
         data = kafka_topics_as_tables(commit_time_columns(views_as_tables(copy.deepcopy(raw))))
         while True:
@@ -164,7 +175,7 @@ def _validated(raw: dict[str, Any], code: str) -> tuple[Any, list[tuple[Any, ...
                 found = _stand_in_references(data, exc)
                 if not found:
                     raise
-                stood_in.extend(found)
+                stood_in.update(found)
     except ValidationError as exc:
         # include_input=False: a rejected value is never echoed, for it may be a credential.
         errors = [
@@ -176,9 +187,10 @@ def _validated(raw: dict[str, Any], code: str) -> tuple[Any, list[tuple[Any, ...
         raise _Refused(code, str(exc.args[0]) if exc.args else type(exc).__name__) from exc
 
 
-def _stand_in_references(data: dict[str, Any], exc: Any) -> list[tuple[Any, ...]]:
-    """Give each reference pydantic could not type a value of its field's type; return where."""
-    found: list[tuple[Any, ...]] = []
+def _stand_in_references(data: dict[str, Any], exc: Any) -> dict[tuple[Any, ...], str]:
+    """Give each reference pydantic could not type a value of its field's type; return each one
+    by where it stood."""
+    found: dict[tuple[Any, ...], str] = {}
     for error in exc.errors(include_url=False):
         value = error["input"]
         if error["type"] not in _STAND_INS or not isinstance(value, str) or _REFERENCE not in value:
@@ -187,7 +199,7 @@ def _stand_in_references(data: dict[str, Any], exc: Any) -> list[tuple[Any, ...]
         if holder is None:
             continue
         holder[error["loc"][-1]] = _STAND_INS[error["type"]]
-        found.append(tuple(error["loc"]))
+        found[tuple(error["loc"])] = value
     return found
 
 
@@ -234,14 +246,14 @@ def _canonical(value: Any) -> Any:
 
 def _comparable(raw: dict[str, Any], code: str) -> dict[str, dict[str, dict[str, Any]]]:
     """Each model section of ``raw``, keyed by what names each item: read through the model, so a
-    default stated in one side and left out of the other is no difference, and with any field
-    that held a reference in a typed field left out, since only the instance knows its value."""
+    default stated in one side and left out of the other is no difference, and with each reference
+    in a typed field back in place of its stand-in, marked for ``_differing``."""
     from provisa.core.store_config import MODEL_SECTIONS
 
     config, stood_in = _validated(raw, code)
     dumped = config.model_dump(mode="json", by_alias=True, exclude_defaults=True)
-    for loc in stood_in:
-        _drop(dumped, loc)
+    for loc, reference in stood_in.items():
+        _restore_reference(dumped, loc, reference)
     sections: dict[str, list[dict[str, Any]]] = {s: dumped.get(s, []) for s in MODEL_SECTIONS}
     sections[_NAMING_RULES] = (dumped.get("naming") or {}).get("rules", [])
     return {
@@ -250,14 +262,21 @@ def _comparable(raw: dict[str, Any], code: str) -> dict[str, dict[str, dict[str,
     }
 
 
-def _drop(node: Any, loc: tuple[Any, ...]) -> None:
-    holder = _holder(node, loc)
-    if holder is not None:
-        del holder[loc[-1]]
+def _restore_reference(node: Any, loc: tuple[Any, ...], reference: str) -> None:
+    """Put ``reference`` where its stand-in was. The stand-in may equal the field's default and be
+    missing from the dump, so the field need not be there. A reference in a list of scalars stands
+    for the whole list: the list has no element to compare it with."""
+    while isinstance(loc[-1], int):
+        loc = loc[:-1]
+    parent = _parent(node, loc)
+    if parent is not None:
+        parent[loc[-1]] = _Unresolved(reference)
 
 
 def _differing(ours: Any, theirs: Any, path: str = "") -> list[str]:
     """The dotted paths at which two items differ. Names only: a value may be a credential."""
+    if isinstance(ours, _Unresolved) != isinstance(theirs, _Unresolved):
+        return []
     if not isinstance(ours, dict) or not isinstance(theirs, dict):
         return [] if ours == theirs else [path]
     out: list[str] = []

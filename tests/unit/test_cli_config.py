@@ -266,6 +266,28 @@ def test_diff_a_reference_in_a_typed_field_is_no_change(monkeypatch, capsys, tmp
     assert report["changes"] is False
 
 
+def test_diff_a_reference_where_its_stand_in_is_the_default_is_no_change(
+    monkeypatch, capsys, tmp_path
+):
+    """The stand-in for pool_min equals its default, so the dump leaves the field out."""
+    ours = _config()
+    ours["sources"][0]["pool_min"] = "${env:J1050_UNSET_POOL}"
+    held = _config()
+    held["sources"][0]["pool_min"] = 5
+    report = _diff(monkeypatch, capsys, tmp_path, ours, held)
+    assert report["changes"] is False
+
+
+def test_diff_two_different_references_in_a_typed_field_are_a_change(monkeypatch, capsys, tmp_path):
+    ours = _config()
+    ours["sources"][0]["port"] = "${env:J1050_UNSET_PORT}"
+    held = _config()
+    held["sources"][0]["port"] = f"${{env:{_LEAK}}}"
+    report = _diff(monkeypatch, capsys, tmp_path, ours, held)
+    assert report["sections"]["sources"]["change"] == [{"item": "pg", "fields": ["port"]}]
+    assert _LEAK not in json.dumps(report)
+
+
 def test_diff_ignores_order(monkeypatch, capsys, tmp_path):
     ours = _config(domains=[{"id": "a"}, {"id": "b"}])
     ours["roles"][0]["domain_access"] = ["a", "b", "sales"]
