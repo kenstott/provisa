@@ -100,7 +100,7 @@ Only catalogs with a native data-product concept publish it as an entity of its 
 | `limitations` | No | Known constraints, caveats, or exclusions |
 | `usage` | No | How to consume this product |
 | `version` | No | e.g. `1.2.0` |
-| `status` | No | e.g. `proposed`, `active`, `deprecated`, `retired` |
+| `status` | No | `draft`, `live`, `deprecated` or `retired`; defaults to `draft` |
 | `support` | No | Free-text support guidance |
 | `support_contact` | No | Email or URL; required by Snowflake Horizon Catalog organization listing manifests |
 | `publish` | No | `true` to publish Horizon Catalog listings immediately; new listings default to DRAFT |

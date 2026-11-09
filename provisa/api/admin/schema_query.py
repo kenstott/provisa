@@ -400,6 +400,18 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     return _reads
 
 
+def _mvs_read(state: Any, scope: CatalogScope) -> list[Any]:
+    """The materialized views over tables the caller reads (REQ-2152 Q3, REQ-1327): the rows of
+    the Materialized tab and the count on its store tile."""
+    reads = _names_read(state, scope)
+
+    def _readable(mv: Any) -> bool:
+        over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
+        return all(reads(name) for name in over)
+
+    return [mv for mv in state.mv_registry._mvs.values() if _readable(mv)]
+
+
 async def _table_region_maps(
     state: Any,
 ) -> tuple[dict[int, str | None], dict[tuple[str, str, str], str | None]]:
@@ -1713,12 +1725,6 @@ class Query:  # REQ-021, REQ-042
         from provisa.mv.bitemporal_capture import logged_table_id
 
         names = {row["id"]: row["table_name"] for row in state.tables}
-        # REQ-2152 (Q3): only the materialized views over tables the caller reads.
-        reads = _names_read(state, catalog_scope(info))
-
-        def _readable(mv: Any) -> bool:
-            over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
-            return all(reads(name) for name in over)
 
         return [
             MVType(
@@ -1734,8 +1740,7 @@ class Query:  # REQ-021, REQ-042
                 allowed_lateness=mv.allowed_lateness,
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
-            for mv in state.mv_registry._mvs.values()
-            if _readable(mv)
+            for mv in _mvs_read(state, catalog_scope(info))
         ]
 
     @strawberry.field
@@ -2235,7 +2240,7 @@ class Query:  # REQ-021, REQ-042
         return MaterializeStoreInfoType(
             engine_name=engine.name,
             store_ref=store_ref,
-            mv_count=len(state.mv_registry._mvs),
+            mv_count=len(_mvs_read(state, catalog_scope(info))),
             instance_local_store=_is_instance_local_store(store_ref),
         )
 
