@@ -809,7 +809,12 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     if name in _POPULATE or name == "jsonb_populate_record_valid":
         return _populated(name, args)
     if name in ("to_json", "to_jsonb") and len(args) == 1:
-        return json_encoded(args[0].transform(inner))
+        written_value = args[0].transform(inner)
+        if _is_json_call(
+            args[0].unnest()
+        ):  # already JSON, so never an instant: json_encoded's ELSE
+            return exp.Anonymous(this="to_json", expressions=[written_value])
+        return json_encoded(written_value)
     if name in ("row_to_json", "array_to_json") and len(args) == 2:
         if _is_null(args[0]):
             return exp.cast(exp.Null(), "JSON")
