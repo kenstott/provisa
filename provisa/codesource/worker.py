@@ -206,6 +206,10 @@ class WorkerFailed(Exception):
         self.export = export
 
 
+class OnStartFailed(WorkerFailed):
+    """REQ-2221: the host's @on-start function failed, or could not be given its setup values."""
+
+
 class CodeFailed(Exception):
     """The source's own code raised: its message and stack, named by the source and export."""
 
@@ -368,7 +372,7 @@ class _Lane:
             except queue.Full:
                 continue  # the call's thread has not taken its rows yet
 
-    def force(self, item: object) -> None:
+    def force(self, item: _Cancelled | _Ended) -> None:
         """``item`` put on the queue whatever it holds: what a cancel or an end puts, which the
         call's thread takes next; the rows it displaces are not wanted any more."""
         while True:
@@ -951,29 +955,35 @@ class Worker:
 
     def ping(self, timeout: float = 5.0) -> bool:
         """Whether the host answers on a connection, within ``timeout``."""
+        answer = self._exchange({"op": "ping"}, timeout)
+        return answer is not None and answer.get("op") == "pong"
+
+    def _exchange(self, message: dict, timeout: float) -> dict | None:
+        """``message`` sent on a connection held for it, and the one answer the host sends under
+        its id; None when none comes within ``timeout`` or the worker has ended."""
         until = time.monotonic() + timeout
         try:
             lane = self._lease(timeout)
         except WorkerFailed:
-            return False
+            return None
         if lane is None:
-            return False  # every connection busy the whole time: no answer in time
+            return None  # every connection busy the whole time: no answer in time
         call_id = next(self._ids)
         lane.lease(call_id)
         try:
-            self._send(lane, {"op": "ping", "id": call_id})
+            self._send(lane, {**message, "id": call_id})
             while (left := until - time.monotonic()) > 0:
                 try:
-                    message = lane.waiting.get(timeout=left)
+                    answer = lane.waiting.get(timeout=left)
                 except queue.Empty:
-                    return False
-                if isinstance(message, _Ended):
-                    return False
-                if isinstance(message, dict) and message.get("id") == call_id:
-                    return message.get("op") == "pong"
-            return False
+                    return None
+                if isinstance(answer, _Ended):
+                    return None
+                if isinstance(answer, dict) and answer.get("id") == call_id:
+                    return answer
+            return None
         except (OSError, WorkerFailed):
-            return False
+            return None
         finally:
             self._close(lane, call_id)
 

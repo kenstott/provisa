@@ -83,6 +83,40 @@ def _code(tmp_path: Path, source: str) -> Path:
 # -- reading ------------------------------------------------------------------------------------
 
 
+def test_the_lifecycle_tags_are_read_from_a_doc_comment(reader, go, tmp_path):
+    """REQ-2221: Go reads @on-start, @on-stop and @health like every other language."""
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import "context"
+
+        // Connect.
+        //
+        // @on-start
+        func Connect(ctx context.Context, values map[string]string) error { return nil }
+
+        // Close.
+        //
+        // @on-stop
+        func Close() error { return nil }
+
+        // Check.
+        //
+        // @health
+        func Check() (string, error) { return "ok", nil }
+        """,
+    )
+    manifest = _read(reader, go, code, tmp_path)
+    assert {e.name: e.kind for e in manifest.exports} == {
+        "Connect": "on-start",
+        "Close": "on-stop",
+        "Check": "health",
+    }
+    assert [p.name for p in manifest.lifecycle("on-start").parameters] == ["values"]
+
+
 def test_the_codes_tables_commands_and_streams_are_read_from_doc_comments_and_types(
     reader, go, tmp_path
 ):

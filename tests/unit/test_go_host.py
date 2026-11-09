@@ -88,6 +88,45 @@ def _start(binary: Path) -> w.Worker:
     return started
 
 
+def test_a_go_host_runs_lifecycle_functions_as_ordinary_calls(toolchain, tmp_path):
+    """REQ-2221: the front calls @on-start with the setup values as one mapping argument, and
+    @health with none; Go decodes the mapping into the function's map parameter."""
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "go.mod").write_text("module example.com/life\n\ngo 1.23\n")
+    (code / "life.go").write_text(
+        textwrap.dedent(
+            """
+            package life
+
+            import "context"
+
+            var region string
+
+            // Connect.
+            //
+            // @on-start
+            func Connect(ctx context.Context, values map[string]string) error {
+                region = values["region"]
+                return nil
+            }
+
+            // Check.
+            //
+            // @health
+            func Check() (string, error) { return "ok in " + region, nil }
+            """
+        )
+    )
+    manifest = _manifest(toolchain, code, tmp_path)
+    worker = _start(_build(toolchain, code, manifest, tmp_path / "bin" / "host"))
+    try:
+        worker.command("Connect", [{"region": "eu"}], ["values"])
+        assert worker.command("Check", [], []) == "ok in eu"
+    finally:
+        worker.stop()
+
+
 @pytest.fixture(scope="module")
 def fixture_manifest(toolchain, tmp_path_factory) -> Manifest:
     return _manifest(toolchain, FIXTURE, tmp_path_factory.mktemp("read"))

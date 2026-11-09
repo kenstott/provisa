@@ -38,11 +38,16 @@ CONNECTIONS. The front starts the worker with :data:`CONNECTIONS` connections, a
 leases one for its whole run, on a thread of its own (REQ-2100): a call's frames wait for its
 Provisa connection to take them, so one slow reader holds back no other call.
 
+LIFECYCLE (REQ-2221). Provisa gives a connection's ``setup`` -- the host's setup values -- and the
+front runs the code's @on-start with them once in its life (:class:`Lifecycle`), telling every hello
+whether that is still needed; ``health`` calls @health, and a SIGTERM runs @on-stop. A front that
+starts again has no values: Provisa gives them when it next dials.
+
 Its imports beside the standard library are cryptography's, DuckDB's, sqlglot's and Arrow's, in the
 image beside this program; the code's own environment is the code's.
 """
 
-# Requirements: REQ-2098, REQ-2100
+# Requirements: REQ-2098, REQ-2100, REQ-2221
 from __future__ import annotations
 
 import base64
@@ -53,6 +58,7 @@ import json
 import os
 import queue
 import secrets
+import signal
 import socket
 import socketserver
 import ssl
@@ -487,6 +493,32 @@ class Worker:
                 self._running.pop((id(connection), call_id), None)
             self._release(lane)
 
+    def invoke(self, export: str, args: list, names: list[str]) -> Any:
+        """REQ-2221: the code's function ``export`` called from the front itself (a lifecycle
+        function) and its value; :class:`_Failed` when it raises."""
+        lane, own = self._lease()
+        try:
+            lane.send(
+                {
+                    "op": "call",
+                    "id": own,
+                    "export": export,
+                    "kind": "command",
+                    "args": args,
+                    "names": names,
+                    "schema": None,
+                    "traceparent": None,
+                    "window": _QUEUED,
+                }
+            )
+            value = None
+            for each in self._frames(lane, own):
+                if each["op"] == "value":
+                    value = each["value"]
+            return value
+        finally:
+            self._release(lane)
+
     def _answer(
         self,
         connection: Connection,
@@ -637,6 +669,86 @@ class Worker:
             self._cancel(running)
 
 
+#: REQ-2221: the kinds of a connector's lifecycle functions in its manifest (provisa/codesource/
+#: manifest.py).
+ON_START, ON_STOP, HEALTH = "on-start", "on-stop", "health"
+#: How long @on-stop has before the front exits: inside `docker stop`'s default ten seconds.
+_STOP_WAIT_S = 8.0
+
+
+class Lifecycle:
+    """REQ-2221: the code's lifecycle functions, run by the front. @on-start runs at most once in
+    this process's life, when Provisa gives the setup values, and its outcome answers every later
+    ask, so several Provisa processes dialling at once run it once."""
+
+    def __init__(self, worker: Worker, manifest: dict | None) -> None:
+        self._worker = worker
+        # Provisa is the judge of a manifest it cannot read (remote_sources._manifest_of): the
+        # front only looks for what it has to run.
+        found = {e.get("kind"): e for e in (manifest or {}).get("exports", [])}
+        self._on_start = found.get(ON_START)
+        self._on_stop = found.get(ON_STOP)
+        self._health = found.get(HEALTH)
+        self._lock = threading.Lock()
+        self._ran = False
+        self._failed: str | None = None
+        self._checking = threading.Lock()
+
+    @property
+    def setup_needed(self) -> bool:
+        """Whether Provisa should give the setup values: @on-start has not run, or failed (a dial
+        is then told the failure, and the function is not run again)."""
+        return self._on_start is not None and (not self._ran or self._failed is not None)
+
+    def setup(self, values: dict[str, Any]) -> str | None:
+        """Run @on-start with ``values`` if it has not run; why it failed, or None."""
+        with self._lock:
+            if self._ran or self._on_start is None:
+                return self._failed
+            self._ran = True
+            name = self._on_start["name"]
+            named = [p["name"] for p in self._on_start["parameters"]]
+            try:
+                self._worker.invoke(name, [values] if named else [], named)
+            except _Failed as failed:
+                self._failed = f"{name}: {failed}"
+            return self._failed
+
+    def health(self) -> dict[str, Any]:
+        """The status @health returns, ``{"failed": why}`` when it raises or @on-start failed, and
+        a None status when the code has no @health. One runs at a time: a hung function holds one
+        of the worker's connections, not all of them."""
+        if self._failed is not None:
+            return {"failed": self._failed}
+        if self._health is None:
+            return {"status": None}
+        if not self._checking.acquire(blocking=False):
+            return {"failed": f"{self._health['name']}: the last @health call has not returned"}
+        try:
+            value = self._worker.invoke(self._health["name"], [], [])
+        except _Failed as failed:
+            return {"failed": f"{self._health['name']}: {failed}"}
+        finally:
+            self._checking.release()
+        return {"status": None if value is None else str(value)}
+
+    def stop(self) -> None:
+        """Run @on-stop, waiting at most :data:`_STOP_WAIT_S`."""
+        if self._on_stop is None:
+            return
+        name = self._on_stop["name"]
+
+        def run() -> None:
+            try:
+                self._worker.invoke(name, [], [])
+            except _Failed as failed:
+                sys.stderr.write(f"@on-stop {name} failed: {failed}\n")
+
+        thread = threading.Thread(target=run, name="lifecycle-stop", daemon=True)
+        thread.start()
+        thread.join(_STOP_WAIT_S)
+
+
 def _ipc(batch: Any) -> bytes:  # a pyarrow RecordBatch
     import pyarrow as pa
 
@@ -677,6 +789,7 @@ class Front(socketserver.ThreadingTCPServer):
         self.worker = worker
         self.names = names
         self.manifest = manifest
+        self.lifecycle = Lifecycle(worker, manifest)
         super().__init__(("", port), _Handler)
 
 
@@ -709,7 +822,12 @@ class _Handler(socketserver.BaseRequestHandler):
     def _serve(self, conn: ssl.SSLSocket) -> None:
         worker = self.front.worker
         connection = Connection(conn)
-        connection.send(frame({**worker.hello, "names": self.front.names}))
+        lifecycle = self.front.lifecycle
+        connection.send(
+            frame(
+                {**worker.hello, "names": self.front.names, "setup_needed": lifecycle.setup_needed}
+            )
+        )
         try:
             while (body := read_body(conn)) is not None:
                 message = json.loads(body[1:])
@@ -718,12 +836,25 @@ class _Handler(socketserver.BaseRequestHandler):
                     worker.call(connection, message)
                 elif op in ("cancel", "credit", "ping"):
                     worker.forward(connection, message)
+                elif op in ("setup", "health"):  # REQ-2221: each may take long: off this reader
+                    threading.Thread(
+                        target=self._lifecycle, args=(connection, message), daemon=True
+                    ).start()
                 elif op == "refused":
                     sys.stderr.write(f"provisa refused this host: {message.get('message')}\n")
                     return
         finally:
             connection.open = False
             worker.closed(connection)
+
+    def _lifecycle(self, connection: Connection, message: dict) -> None:
+        """REQ-2221: answer Provisa's ``setup`` or ``health`` under its id."""
+        lifecycle = self.front.lifecycle
+        if message["op"] == "setup":
+            failed = lifecycle.setup(message["values"])
+            connection.send(frame({"op": "setup_done", "id": message["id"], "failed": failed}))
+            return
+        connection.send(frame({"op": "health", "id": message["id"], **lifecycle.health()}))
 
     def _pgwire(self, conn: ssl.SSLSocket) -> None:
         if not self.front.identity.paired or not conn.getpeercert():
@@ -755,6 +886,16 @@ def main(argv: list[str]) -> int:
     if pairing is not None:
         sys.stderr.write(f"pairing code: {pairing}\n")
     server = Front(int(port), identity, worker, names, manifest)
+
+    def shut_down() -> None:
+        server.lifecycle.stop()  # REQ-2221: @on-stop, the host shutting down
+        os._exit(0)
+
+    def stop(_signum: int, _frame: Any) -> None:
+        threading.Thread(target=shut_down, name="front-shutdown", daemon=True).start()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     sys.stderr.write(f"remote host listening on {server.server_address[1]}\n")
     server.serve_forever()
     return 0
