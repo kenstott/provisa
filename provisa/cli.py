@@ -774,6 +774,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_api(sub)
 
+    # REQ-2221: an organization's own code connectors, built wherever the operator runs this.
+    from provisa.cli_connector import register as register_connector
+
+    register_connector(sub)
+
     # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
     from provisa.cli_config import register as register_config
 

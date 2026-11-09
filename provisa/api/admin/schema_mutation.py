@@ -2720,8 +2720,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
         if _profiler_refusal is not None:
             return _profiler_refusal
-        from provisa.api.admin._code_source_registration import record_code
+        from provisa.api.admin._code_source_registration import join_connector, record_code
 
+        _join_refusal = await join_connector(input.id, input.type, _mapping)  # REQ-2221
+        if _join_refusal is not None:
+            return _join_refusal
         _code_refusal = await record_code(input.id, input.type, _mapping)  # REQ-1984, REQ-1993
         if _code_refusal is not None:
             return _code_refusal

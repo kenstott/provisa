@@ -1192,6 +1192,24 @@ CREATE TABLE IF NOT EXISTS relationship_candidates (
 );
 ALTER TABLE relationship_candidates ADD COLUMN IF NOT EXISTS suggested_name TEXT;
 
+-- REQ-2221: the connectors this organization offers: the model's `connectors:` block, promoted
+-- with the model. path and build_command are the CLI's build settings; the server keeps them so the
+-- block reads back whole, and acts on neither.
+CREATE TABLE IF NOT EXISTS connectors (
+    name            TEXT PRIMARY KEY,
+    git             TEXT NOT NULL,
+    ref             TEXT NOT NULL,
+    "commit"        TEXT NOT NULL,
+    path            TEXT NOT NULL DEFAULT '',
+    build_command   TEXT NOT NULL DEFAULT '',
+    language        TEXT NOT NULL CHECK (language IN ('node', 'python', 'go')),
+    image           TEXT NOT NULL,
+    digest          TEXT NOT NULL,
+    code_hash       TEXT NOT NULL,
+    arch            TEXT NOT NULL CHECK (arch IN ('amd64', 'arm64')),
+    requires        JSONB NOT NULL DEFAULT '[]'
+);
+
 -- Kafka Sources (Phase V)
 CREATE TABLE IF NOT EXISTS kafka_sources (
     id                  TEXT PRIMARY KEY,

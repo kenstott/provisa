@@ -11,6 +11,7 @@
     "reachLiveOn": "Live on {{engines}} only",
     "reachNone": "Not reachable from this engine",
     "categories": {
+      "Connectors": "Your organization's connectors",
       "Subscriptions": "Subscriptions",
       "RDBMS": "RDBMS",
       "Cloud DW": "Cloud DW",

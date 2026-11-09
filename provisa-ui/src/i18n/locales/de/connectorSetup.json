@@ -1,0 +1,14 @@
+{
+  "connectorSetup": {
+    "identity": "Connector {{name}}, folgt {{ref}}.",
+    "missing": "Geben Sie Host, Port und Pairing-Code des Connectors sowie alle erforderlichen Werte an.",
+    "image": "Image",
+    "imageHint": "Das Image, das Ihr Deployment ausführt. Provisa prüft den Host beim Verbinden anhand dieses Images.",
+    "host": "Host",
+    "hostHint": "Der Host, auf dem das Image läuft, so wie Provisa ihn erreicht.",
+    "port": "Port",
+    "pairing": "Pairing-Code",
+    "pairingHint": "Die Zeile, die der Container bei seinem ersten Start nach \"pairing code:\" ausgegeben hat. Sie wird einmal verwendet und nicht gespeichert.",
+    "secretHint": "Das zu verwendende Secret der Organisation. Sein Wert wird hier nie eingegeben."
+  }
+}

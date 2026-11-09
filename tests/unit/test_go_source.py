@@ -116,7 +116,7 @@ def test_the_codes_tables_commands_and_streams_are_read_from_doc_comments_and_ty
         Field("lines", ListOf(Named("Line")), False),
         Field("note", Scalar("text"), True, "Note is what the customer wrote."),
     )
-    assert manifest.export("Many").preview  # map rows: typed by a preview
+    assert manifest.export("Many").returns == Named("Counted")
     # The call's context.Context is no input of the function's.
     assert [p.name for p in manifest.export("Placed").parameters] == ["region"]
     assert manifest.export("Forever").parameters == ()
@@ -156,6 +156,62 @@ def test_a_fields_name_is_the_one_encoding_json_gives_it(reader, go, tmp_path):
     )
     manifest = _read(reader, go, code, tmp_path)
     assert [f.name for f in manifest.types["Row"].fields] == ["region", "id", "Plain", "-"]
+
+
+def test_a_loose_row_type_is_refused_by_name(reader, go, tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import "iter"
+
+        type Row struct {
+            ID      int64          `json:"id"`
+            Payload map[string]any `json:"payload"`
+        }
+
+        // @table
+        func Mapped() []map[string]any { return nil }
+
+        // @table
+        func Anything() []any { return nil }
+
+        // @stream
+        func Feed() iter.Seq2[map[string]any, error] { return nil }
+
+        // @table
+        func Typed() []Row { return nil }
+        """,
+    )
+    with pytest.raises(ManifestRefused) as refused:
+        _read(reader, go, code, tmp_path)
+    assert sorted(refused.value.problems) == [
+        f"{name}: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+        for name in ("Anything", "Feed", "Mapped")
+    ]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose(reader, go, tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        type Row struct {
+            ID      int64          `json:"id"`
+            Payload map[string]any `json:"payload"`
+        }
+
+        // @table
+        func Typed() []Row { return nil }
+        """,
+    )
+    assert _read(reader, go, code, tmp_path).types["Row"].fields == (
+        Field("id", Scalar("bigint"), False),
+        Field("payload", Scalar("json"), False),
+    )
 
 
 def test_code_that_breaks_the_rules_is_refused_with_every_problem(reader, go, tmp_path):

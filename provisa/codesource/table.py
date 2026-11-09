@@ -146,9 +146,9 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
 def landed_context(manifest: Any, export: Any) -> dict:
     """REQ-2100: the read context of a landed read -- the engine reads the table where it lands --
     empty but for its columns, every one: such a read asks for the whole table under its inputs."""
-    from provisa.codesource.arrow_rows import WHOLE_ROW, row_schema
+    from provisa.codesource.arrow_rows import row_schema
 
-    columns = [n for n in row_schema(manifest, export).names if n != WHOLE_ROW]
+    columns = list(row_schema(manifest, export).names)
     return {"filters": [], "order_by": [], "limit": None, "columns": columns, "keys": None}
 
 

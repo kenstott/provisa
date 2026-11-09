@@ -11,6 +11,7 @@
     "reachLiveOn": "Alleen live op {{engines}}",
     "reachNone": "Niet bereikbaar vanaf deze engine",
     "categories": {
+      "Connectors": "Connectors van uw organisatie",
       "Subscriptions": "Abonnementen",
       "RDBMS": "RDBMS",
       "Cloud DW": "Cloud-datawarehouse",

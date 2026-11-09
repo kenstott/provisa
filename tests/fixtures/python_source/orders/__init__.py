@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import TypedDict
 
 print("importing orders")  # what code prints never reaches the protocol
 
@@ -82,8 +83,12 @@ class ManyInputs:
     count: int
 
 
-def many(inputs: ManyInputs) -> list[dict]:
-    """Rows of no declared shape: typed by a preview.
+class Counted(TypedDict):
+    i: int
+
+
+def many(inputs: ManyInputs) -> list[Counted]:
+    """Many rows, in batches.
 
     @table
     """
@@ -110,7 +115,11 @@ async def placed(inputs: PlacedInputs) -> AsyncIterator[Order]:
         await asyncio.sleep(0.01)
 
 
-def ticks() -> Iterator[dict]:
+class Tick(TypedDict):
+    tick: int
+
+
+def ticks() -> Iterator[Tick]:
     """@stream"""
     n = 0
     while True:
@@ -119,10 +128,10 @@ def ticks() -> Iterator[dict]:
         time.sleep(0.01)
 
 
-async def forever() -> AsyncIterator[dict]:
+async def forever() -> AsyncIterator[Tick]:
     """@stream"""
     await asyncio.Event().wait()
-    yield {}
+    yield {"tick": 0}
 
 
 def cancel_order(order_id: int) -> dict:
@@ -130,12 +139,16 @@ def cancel_order(order_id: int) -> dict:
     return {"cancelled": order_id}
 
 
-def boom() -> list[dict]:
+def boom() -> list[Counted]:
     """@table"""
     raise LookupError("no such customer")
 
 
-def outside() -> list[dict]:
+class Length(TypedDict):
+    length: int
+
+
+def outside() -> list[Length]:
     """@table"""
     with open("/etc/hosts") as hosts:
         return [{"length": len(hosts.read())}]
@@ -146,7 +159,12 @@ class FetchedInputs:
     url: str
 
 
-def fetched(inputs: FetchedInputs) -> list[dict]:
+class Fetch(TypedDict):
+    status: int
+    body: str
+
+
+def fetched(inputs: FetchedInputs) -> list[Fetch]:
     """@table"""
     try:
         with urllib.request.urlopen(inputs.url, timeout=10) as response:
@@ -161,7 +179,11 @@ class DirectInputs:
     port: int
 
 
-def direct(inputs: DirectInputs) -> list[dict]:
+class Connected(TypedDict):
+    connected: bool
+
+
+def direct(inputs: DirectInputs) -> list[Connected]:
     """@table"""
     with socket.create_connection((inputs.host, inputs.port), timeout=5):
         return [{"connected": True}]
@@ -174,7 +196,11 @@ class GreetInputs:
     punctuation: str = "!"
 
 
-def greet(inputs: GreetInputs) -> list[dict]:
+class Greeting(TypedDict):
+    text: str
+
+
+def greet(inputs: GreetInputs) -> list[Greeting]:
     """@table"""
     return [{"text": f"{inputs.greeting} {inputs.name}{inputs.punctuation}"}]
 
