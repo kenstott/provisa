@@ -1,0 +1,14 @@
+{
+  "connectorSetup": {
+    "identity": "Conector {{name}}, seguindo {{ref}}.",
+    "missing": "Preencha o host, a porta, o código de pareamento do conector e todos os valores exigidos.",
+    "image": "Imagem",
+    "imageHint": "A imagem que sua implantação executa. O Provisa verifica o host com base nela ao se conectar.",
+    "host": "Host",
+    "hostHint": "O host que executa a imagem, da forma como o Provisa o alcança.",
+    "port": "Porta",
+    "pairing": "Código de pareamento",
+    "pairingHint": "A linha que o contêiner imprimiu na primeira inicialização, depois de \"pairing code:\". É usada uma vez e não é guardada.",
+    "secretHint": "O segredo da organização a usar. Seu valor nunca é inserido aqui."
+  }
+}

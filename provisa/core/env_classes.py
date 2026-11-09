@@ -84,6 +84,8 @@ CARRIED: frozenset[str] = frozenset(
         # holding the model it was copied from, so it is seeded too; like ``roles``, only when
         # an environment is created.
         "model_seed",
+        # REQ-2221: the connectors an org offers: a version runs where the model's branches say.
+        "connectors",
         # REQ-1921/1922: the regions an org selects travel with its model; the stores they name
         # are bindings (IDENTITY_ONLY).
         "org_regions",

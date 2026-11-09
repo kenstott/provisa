@@ -1088,6 +1088,27 @@ relationship_candidates = Table(
     ),
 )
 
+# REQ-2221: the connectors this organization offers: the model's ``connectors:`` block, promoted
+# with the model. path and build_command are the CLI's; the server keeps them and acts on neither.
+connectors = Table(
+    "connectors",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("git", Text, nullable=False),
+    Column("ref", Text, nullable=False),
+    Column("commit", Text, nullable=False, quote=True),
+    Column("path", Text, nullable=False, server_default=""),
+    Column("build_command", Text, nullable=False, server_default=""),
+    Column("language", Text, nullable=False),
+    Column("image", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    Column("arch", Text, nullable=False),
+    Column("requires", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
+    CheckConstraint("language IN ('node', 'python', 'go')", name="connectors_language_check"),
+    CheckConstraint("arch IN ('amd64', 'arm64')", name="connectors_arch_check"),
+)
+
 kafka_sources = Table(
     "kafka_sources",
     metadata,

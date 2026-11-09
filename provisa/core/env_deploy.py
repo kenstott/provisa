@@ -783,6 +783,9 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             name, version = _name_of(path)
             rows["calendars"].append({**body, "name": name, "version": version})
 
+        elif table == "connectors":  # REQ-2221
+            rows["connectors"].append({**body, "name": _name_of(path)[0]})
+
         elif table == COMMANDS_DIR:
             own, nested = _split(body, "tags", "row_policies")
             name = _name_of(path)[0]

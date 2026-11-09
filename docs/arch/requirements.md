@@ -26792,7 +26792,7 @@ Maintainer 2026-11-09. Provisa offers a Spark connector: one image with Spark in
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-09. A @command of a code source, in any language ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993), [REQ-2200](#REQ-2200)), can take a table as an argument, as a registered function does ([REQ-885](#REQ-885) table_ref, [REQ-1159](#REQ-1159)): a reference to a governed Provisa table, which the code reads over a scoped pgwire session as the calling role, so what the role cannot see the code cannot read. It composes inline in SQL like any command ([REQ-1159](#REQ-1159)), so a materialized view can have table inputs, a command that runs code such as Spark, and a table output. As for any command, one that writes is never composed in a view or a materialized view ([REQ-1924](#REQ-1924), [REQ-1928](#REQ-1928)). The command declares its input and output columns, so it is a lineage node like any command ([REQ-1160](#REQ-1160)). (Amended 2026-11-09, A QUERY IS A COMMAND THE MODEL CALLS A QUERY:) Maintainer 2026-11-09: a code source's function tagged @query is identical to one tagged @command, in its signature, its arguments and how it is called, except that within Provisa its kind is query and not mutation, with what that kind already means ([REQ-1156](#REQ-1156), [REQ-1928](#REQ-1928)): it composes in a view or a materialized view and is called once per distinct argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer 2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens, each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
+Maintainer 2026-11-09. A @command of a code source, in any language ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993), [REQ-2200](#REQ-2200)), can take a table as an argument, as a registered function does ([REQ-885](#REQ-885) table_ref, [REQ-1159](#REQ-1159)): a reference to a governed Provisa table, which the code reads over a scoped pgwire session as the calling role, so what the role cannot see the code cannot read. It composes inline in SQL like any command ([REQ-1159](#REQ-1159)), so a materialized view can have table inputs, a command that runs code such as Spark, and a table output. As for any command, one that writes is never composed in a view or a materialized view ([REQ-1924](#REQ-1924), [REQ-1928](#REQ-1928)). The command declares its input and output columns, so it is a lineage node like any command ([REQ-1160](#REQ-1160)). (Amended 2026-11-09, A QUERY IS A COMMAND THE MODEL CALLS A QUERY:) Maintainer 2026-11-09: a code source's function tagged @query is identical to one tagged @command, in its signature, its arguments and how it is called, except that within Provisa its kind is query and not mutation, with what that kind already means ([REQ-1156](#REQ-1156), [REQ-1928](#REQ-1928)): it composes in a view or a materialized view and is called once per distinct argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer 2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens, each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox. (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on [REQ-1921](#REQ-1921) and [REQ-1922](#REQ-1922): a materialized view's build runs as the org's admin role, so that is the calling role when a build reads a table through a command.
 
 **Code:** —
 
@@ -26839,6 +26839,18 @@ Maintainer 2026-11-09. Provisa accepts OpenLineage run events on an authenticate
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-09. A Snowflake source offers its Dynamic Tables as tables with their definitions contributing to lineage, and surfaces what can be run as commands: refreshing, suspending and resuming a Dynamic Table, and executing, suspending and resuming a Task. Each is a mutation command, run with the source's credential and recorded as any command is. Nothing is registered until a steward registers it.
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2231 · Commercial Website {#REQ-2231}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one job, and moves them to trying the product. It has five parts: a hero whose primary action opens a live demo with no login; six job cards, each linking to its quick start; one statement of the single model with the pains it removes and a same-query, two-roles proof; a short row of sources; and download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a why page answers opens that page.
 
 **Code:** —
 

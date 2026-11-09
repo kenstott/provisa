@@ -11,15 +11,12 @@
 """What Register Table offers for a code source (REQ-1984, REQ-1993): its ``@table`` functions as
 tables, and for each, the columns its row type declares and one ``query_arg`` parameter per
 function parameter -- required by the source exactly when the function gives it no default
-(REQ-1986). A row type declared loosely (``any``, ``unknown``, a record, a ``dict``) is typed by a
-preview: the function is called once with no arguments, when it requires none, and its first rows
-suggest the columns. Nothing is registered until a steward registers it.
+(REQ-1986). Nothing is registered until a steward registers it.
 """
 
 # Requirements: REQ-1984, REQ-1993, REQ-1986
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from provisa.codesource.manifest import (
@@ -34,9 +31,6 @@ from provisa.codesource.manifest import (
     Shape,
 )
 from provisa.codesource.table import QUERY_ARG
-
-#: The rows a preview reads to suggest a loosely typed table's columns.
-PREVIEW_ROWS = 5
 
 
 def data_type(shape: Shape) -> str:
@@ -132,7 +126,6 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
     """The suggested columns of the table ``function`` reads: ``{name, data_type, path,
     native_filter_type, native_filter_required, comment}``, its parameters last."""
     from provisa.codesource.source import context_for, prepare
-    from provisa.mongodb.pipeline_rows import infer_columns
 
     source = await _source(state, source_id)
     if source is None:
@@ -143,37 +136,4 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
     )
     if export is None:
         return None
-    if not export.preview:
-        return declared_columns(prepared.manifest, export)
-    if any(p.required for p in export.parameters):
-        # A preview needs the function's arguments: its columns are the steward's to type.
-        return _parameter_columns(export)
-    from provisa.codesource.worker import ABSENT
-
-    from provisa.codesource.arrow_rows import row_schema, schema_text
-
-    worker = prepared.worker()
-    names = [p.name for p in export.parameters]
-    schema = schema_text(row_schema(prepared.manifest, export))
-
-    def _sample() -> list[dict]:
-        rows: list[dict] = []
-        for batch in worker.rows(function, "table", [ABSENT] * len(names), names, schema=schema):
-            rows.extend(batch)
-            if len(rows) >= PREVIEW_ROWS:
-                break
-        return rows[:PREVIEW_ROWS]
-
-    sample = await asyncio.to_thread(_sample)
-    suggested = [
-        {
-            "name": c.name,
-            "data_type": c.data_type,
-            "path": c.path,
-            "native_filter_type": None,
-            "native_filter_required": None,
-            "comment": None,
-        }
-        for c in infer_columns(sample)
-    ]
-    return suggested + _parameter_columns(export)
+    return declared_columns(prepared.manifest, export)

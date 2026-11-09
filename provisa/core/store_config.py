@@ -36,6 +36,7 @@ from sqlalchemy import select
 from provisa.core import domain_policy
 from provisa.core.models import (
     CalendarConfig,
+    ConnectorConfig,
     DataProduct,
     Domain,
     Function,
@@ -85,6 +86,7 @@ MODEL_SECTIONS: tuple[str, ...] = (
     "webhooks",
     "scheduled_triggers",
     "kafka_sources",
+    "connectors",  # REQ-2221
 )
 
 
@@ -324,6 +326,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.db import BUILT_IN_SOURCE_IDS, SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
     from provisa.core.repositories import calendar as calendar_repo
+    from provisa.core.repositories import connector as connector_repo
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import function as function_repo
     from provisa.core.repositories import kafka_source as kafka_repo
@@ -465,6 +468,10 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             for row in await trigger_repo.list_all(conn)
         ],
         "kafka_sources": await kafka_repo.list_specs(conn),  # REQ-147
+        "connectors": [  # REQ-2221
+            _written(ConnectorConfig.model_validate(row))
+            for row in await connector_repo.list_all(conn)
+        ],
         "naming_rules": await _naming_rules(conn),
     }
     return _in_a_stable_order(model)
