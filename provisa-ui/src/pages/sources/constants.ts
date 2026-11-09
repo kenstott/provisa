@@ -152,6 +152,7 @@ export const SOURCE_TYPES = [
   { value: "airport", label: "Airport (Arrow Flight)", category: "Other", defaultPort: 50051 },
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
+  { value: "dbt", label: "dbt", category: "API", defaultPort: 0 }, // REQ-2228
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
@@ -300,6 +301,7 @@ export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "
 // pure push receiver.
 export const NO_CONNECTION_TYPES = new Set([
   "ingest",
+  "dbt", // REQ-2228: its spec is its manifest (DbtFormSection)
   "data_profiler", // REQ-1934
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same

@@ -49,6 +49,8 @@ export interface HostStatus {
   /** The code hash the host reports. */
   code_hash?: string;
   error?: string;
+  /** What the last health poll of a connector's host found; absent until one has run. */
+  health?: { state: "healthy" | "unhealthy"; detail: string | null; checked_at: string } | null;
 }
 
 async function ok<T>(res: Response, op: string): Promise<T> {

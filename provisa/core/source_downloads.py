@@ -255,6 +255,28 @@ async def download(
     return await source_uploads.receive(source_id, name, _https_chunks(address), None, org_id)
 
 
+async def read_bytes(address: str, *, hints: dict[str, Any] | None = None) -> bytes:
+    """What is at ``address``, read as :func:`download` reads it and held to the upload limit: for
+    a document that is read and kept nowhere as a file (a dbt manifest, REQ-2228)."""
+    import asyncio
+
+    kind = _kind(address)
+    if kind == "mount":
+        chunks = _mount_chunks(checked_mount(address))
+    elif kind == "s3":
+        body, _length = await asyncio.to_thread(_s3_body, address, hints or {})
+        chunks = _s3_chunks(body)
+    else:
+        chunks = _https_chunks(address)
+    limit = source_uploads.max_bytes()
+    held = bytearray()
+    async for chunk in chunks:
+        held.extend(chunk)
+        if len(held) > limit:
+            raise source_uploads.UploadTooLarge(limit)
+    return bytes(held)
+
+
 async def refetched(source: Any, table: Any) -> bool:
     """Fetch ``source``'s file again when its copy has outlived its TTL (``table``'s declared
     cache TTL), before ``table``'s replica is built from it; whether it did. TTL -1, or none,

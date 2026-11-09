@@ -32,6 +32,8 @@
     "statusUnknown": "De externe host wordt gecontroleerd...",
     "answering": "De externe host antwoordt.",
     "notAnswering": "De externe host antwoordt niet: {{error}}",
+    "health_healthy": "Gezond",
+    "health_unhealthy": "Ongezond",
     "otherCode": "De externe host draait andere code ({{reported}}) dan waaraan deze bron is vastgezet ({{pinned}}). Zijn leesacties worden geweigerd totdat u de code bekijkt en opnieuw vastzet.",
     "repin": "Opnieuw vastzetten op de code van de host",
     "refresh": "Opnieuw controleren",

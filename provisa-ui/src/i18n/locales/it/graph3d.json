@@ -151,6 +151,7 @@
     "hopsFrom": "Passi da {{focus}}",
     "hopsFromMatches": "Passi dalle corrispondenze",
     "relatedTables": "Tabelle correlate",
+    "restOfModel": "Mostra il resto del modello",
     "lateral": "Archi laterali",
     "grounding_grounded": "Ancorato",
     "grounding_grounded_pending": "Ancorato, tramite una bozza"

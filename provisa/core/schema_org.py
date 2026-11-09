@@ -1133,6 +1133,15 @@ kafka_sources = Table(
     CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="kafka_sources_binding_check"),
 )
 
+# REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+dbt_manifests = Table(
+    "dbt_manifests",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("definitions", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 kafka_topics = Table(
     "kafka_topics",
     metadata,

@@ -221,6 +221,7 @@ export const OPERATION_SCHEMA: Record<string, string> = {
   openapi: "openapi",
   graphql_remote: "graphql",
   grpc_remote: "grpc_remote",
+  dbt: "dbt", // REQ-2228
 };
 
 // REQ-2131: the schema a code source's @columns functions are offered and registered under.

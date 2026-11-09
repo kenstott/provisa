@@ -79,6 +79,7 @@ import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
 import { quickbooksMappingJson } from "./sources/quickbooks";
+import { useDbtSourceForm, warehousesToCreate } from "./sources/dbt";
 import { cloudopsMappingJson } from "./sources/cloudops";
 import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
@@ -162,6 +163,7 @@ export function SourcesPage() {
     );
   const { domains } = useDomains();
   const { createSource } = useCreateSource();
+  const dbt = useDbtSourceForm(); // REQ-2228
   const { updateSource } = useUpdateSource();
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
@@ -550,6 +552,9 @@ export function SourcesPage() {
       setGqlNamespace(r.namespace);
       setGqlCacheTtl(r.cacheTtl);
       setBrandSetup(r.setup);
+    } else if (r.kind === "dbt") {
+      dbt.seed(r);
+      return; // its credential is never sent back, and it has no other auth
     } else if (r.kind === "openapi") {
       setOpenapiSpecMode(r.specMode);
       setOpenapiSpecPath(r.specPath);
@@ -1037,7 +1042,9 @@ export function SourcesPage() {
     setRefreshError(null);
     try {
       const url =
-        sourceType === "openapi"
+        sourceType === "dbt"
+          ? `/admin/dbt/refresh/${sourceId}`
+          : sourceType === "openapi"
           ? `/admin/openapi/refresh/${sourceId}`
           : sourceType === "grpc"
             ? `/admin/grpc-remote/refresh/${sourceId}`
@@ -1083,6 +1090,39 @@ export function SourcesPage() {
       setOpenapiPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setOpenapiPreviewing(false);
+    }
+  };
+
+  // REQ-2228: a warehouse the manifest names and no source reads is created first, as any source
+  // is, so the dbt source finds it; adding the dbt source registers nothing.
+  const handleDbtRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      for (const warehouse of warehousesToCreate(dbt.preview, dbt.fills)) {
+        const created = await createSource(warehouse);
+        if (!created.success) throw refusalError(created);
+      }
+      const resp = await fetch("/admin/dbt/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...dbt.specBody(),
+          source_id: form.id,
+          description: form.description,
+          command_line: dbt.commandLine,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(serverMessage(body, requestFailed("dbt register", resp.status)));
+      }
+      const created = editingSourceId ? null : form.id.trim();
+      handleCancelForm();
+      load();
+      if (created) await openCreated(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -1300,6 +1340,7 @@ export function SourcesPage() {
     openapiPreviewing,
     openapiPreviewError,
     onOpenapiPreview: handleOpenapiPreview,
+    dbt,
     gqlNamespace,
     setGqlNamespace,
     brandSetup,
@@ -1380,7 +1421,10 @@ export function SourcesPage() {
             {t("sourcesPage.mapTable")}
           </Button>
         )}
-        {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
+        {(s.type === "graphql" ||
+          s.type === "openapi" ||
+          s.type === "grpc" ||
+          s.type === "dbt") && (
           // Held open while the refresh runs: pressing the icon closes its hint, and a busy icon
           // is disabled, so pointing at it shows nothing -- the hint is what says it is running.
           <TipSurface
@@ -1416,7 +1460,9 @@ export function SourcesPage() {
       id="sources-edit-form"
       className="form-card"
       onSubmit={
-        carrierOf(form.type) === "openapi"
+        form.type === "dbt"
+          ? handleDbtRegister
+          : carrierOf(form.type) === "openapi"
           ? handleOpenapiRegister
           : form.type === "grpc"
             ? handleGrpcRegister
@@ -1510,7 +1556,9 @@ export function SourcesPage() {
         data-tour="sources-form"
         className="form-card"
         onSubmit={
-          carrierOf(form.type) === "openapi"
+          form.type === "dbt"
+            ? handleDbtRegister
+            : carrierOf(form.type) === "openapi"
             ? handleOpenapiRegister
             : form.type === "grpc"
               ? handleGrpcRegister

@@ -820,6 +820,10 @@
       "duckdb_threads": {
         "label": "Hilos de DuckDB de la fuente de código",
         "help": "Los hilos en los que la DuckDB de una fuente de código responde sus sentencias."
+      },
+      "health_poll_interval": {
+        "label": "Intervalo de sondeo del estado del conector",
+        "help": "Con qué frecuencia cada proceso de Provisa pregunta al host de un conector por su estado y muestra el resultado en la fuente. Un host reiniciado se detecta en el siguiente sondeo, que vuelve a ejecutar su función on-start."
       }
     },
     "config": {

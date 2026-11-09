@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -204,6 +205,8 @@ class Prepared:
     identity: Any = None
     #: REQ-2131: how many workers it runs in this process (``CodeConfig.workers``).
     workers: int = 1
+    #: REQ-2221: what gives its remote host its setup values; None when its code has no @on-start.
+    setup: Callable[[], dict[str, Any]] | None = None
 
     def worker(self, slot: int = 0) -> Worker:
         """Its worker number ``slot`` of :attr:`workers` (REQ-2131); one call that needs one
@@ -219,7 +222,12 @@ class Prepared:
                 self.content_hash,
                 self.org_id,
                 lambda: remote_sources.worker_for(
-                    self.org_id, self.source_id, self.content_hash, remote, self.identity
+                    self.org_id,
+                    self.source_id,
+                    self.content_hash,
+                    remote,
+                    self.identity,
+                    setup=self.setup,
                 ),
                 slot=slot,
             )
@@ -301,19 +309,22 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
             return held
     if config.remote is not None:
         # REQ-2098: built -- nothing installed or read here; the manifest is the one kept.
+        from provisa.codesource.lifecycle import setup_values
         from provisa.codesource.manifest import manifest_from_json
 
         if config.content_hash is None:
             raise BundleRefused("remote_unpinned", "a built source is pinned to its code's hash")
+        kept = manifest_from_json(config.remote["manifest"])
         ready = Prepared(
             source_id,
             config.content_hash,
-            manifest_from_json(config.remote["manifest"]),
+            kept,
             None,  # pyright: ignore[reportArgumentType] -- no local host command
             ctx.org_id,
             remote=config.remote,
             identity=await remote_sources.identity(ctx.org_id),
             workers=config.workers,
+            setup=setup_values(ctx.org_id, source_id, kept, mapping, ctx.admin_db),
         )
         with _lock:
             _prepared[(ctx.org_id, source_id, config.content_hash)] = ready
@@ -323,6 +334,9 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
     build = LANGUAGES[config.language].prepare()
     # Fetching, installing and reading block: off the event loop.
     ready = await asyncio.to_thread(build, source_id, config, code, lock, ctx)
+    from provisa.codesource.lifecycle import refuse_in_dev
+
+    refuse_in_dev(source_id, ready.manifest)  # REQ-2221: only a connector's host runs them
     with _lock:
         _prepared[(ctx.org_id, source_id, ready.content_hash)] = ready
     return ready

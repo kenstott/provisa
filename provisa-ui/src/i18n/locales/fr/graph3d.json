@@ -151,6 +151,7 @@
     "hopsFrom": "Sauts depuis {{focus}}",
     "hopsFromMatches": "Sauts depuis les correspondances",
     "relatedTables": "Tables associées",
+    "restOfModel": "Afficher le reste du modèle",
     "lateral": "Arêtes latérales",
     "grounding_grounded": "Ancré",
     "grounding_grounded_pending": "Ancré, via un brouillon"

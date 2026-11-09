@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "清单来源",
+    "specLocation": "URL 或构件位置",
+    "specUpload": "上传",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "清单 URL 或构件位置",
+    "locationPlaceholder": "https://example.com/manifest.json 或 s3://bucket/target/manifest.json",
+    "uploadLabel": "manifest.json 文件",
+    "cloudHostLabel": "dbt Cloud URL",
+    "accountLabel": "账户 ID",
+    "jobLabel": "作业 ID",
+    "tokenLabel": "API 令牌",
+    "tokenHint": "随此数据源保存，用于读取清单和运行作业。",
+    "commandLineLabel": "运行 dbt 的命令",
+    "commandLineHint": "命令在安装 dbt 的位置通过此命令运行，例如 dbt --project-dir /srv/project。",
+    "previewButton": "预览清单",
+    "summary": "{{project}} ({{adapter}})：提供 {{models}} 个模型和 {{commands}} 条命令。",
+    "warehouseFound": "{{database}} 通过数据源 {{source}} 读取。",
+    "warehouseMissing": "没有已注册的数据源读取 {{adapter}} 数据库 {{database}}。请创建一个：",
+    "warehouseId": "新数据源 ID",
+    "warehouseHost": "账户或主机",
+    "warehouseUser": "用户名",
+    "warehouseCredential": "凭据",
+    "adapterUnknown": "{{adapter}} 适配器没有匹配的数据源类型。请先注册其数据仓库，然后添加此数据源。"
+  }
+}
