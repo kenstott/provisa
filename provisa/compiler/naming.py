@@ -13,12 +13,14 @@
 Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 """
 
-# Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
+# Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416, REQ-1327
 
 import functools
 import re
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, cast
+
+from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from types import SimpleNamespace
@@ -173,6 +175,9 @@ def ontology_name(term_name: str) -> str | None:  # REQ-2163
     return name if re.fullmatch(r"[a-z][a-z0-9_]*", name) else None
 
 
+# Pure string -> string, and asked for every column of every table each role's schema and context
+# name (a schema rebuild and a role's compile): a repeated name is answered from the memo.
+@functools.lru_cache(maxsize=65536)
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase.
 
@@ -202,6 +207,7 @@ def to_pascal_case(name: str) -> str:  # REQ-194
     return _to_pascal_case(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
@@ -497,30 +503,54 @@ def mutation_style(convention: str) -> str:  # REQ-411, REQ-412
     return "camel"  # apollo_graphql
 
 
+# REQ-1327: the deployment's conventions: what an org with no convention of its own inherits. An
+# org's own convention is never written here; it is read below from the settings rows of the org
+# the compile is bound to.
 _gql_convention: str = "apollo_graphql"
 _sql_convention: str = "snake"
 
 
 def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:  # REQ-471
+    """Set the deployment's conventions, the base every org without its own inherits."""
     global _gql_convention, _sql_convention
     _gql_convention = normalize_convention(gql)
     _sql_convention = normalize_convention(sql)
 
 
-def active_gql_convention() -> str:  # REQ-471
-    return _gql_convention
+def _org_naming() -> dict:
+    return acting_org_overrides().get("naming") or {}
+
+
+def active_gql_convention() -> str:  # REQ-471, REQ-1327
+    """The GraphQL convention of the org this compile is bound to, else the deployment's."""
+    own = _org_naming().get("convention")
+    return normalize_convention(own) if own else _gql_convention
+
+
+def active_sql_convention() -> str:  # REQ-1327
+    """The SQL convention of the org this compile is bound to, else the deployment's."""
+    own = _org_naming().get("sql_convention")
+    return normalize_convention(own) if own else _sql_convention
 
 
 def active_sql_form() -> str:  # REQ-2190
     """The output form of the SQL convention in force, as :func:`_canonical_convention` names it."""
-    return _canonical_convention(_sql_convention)
+    return _canonical_convention(active_sql_convention())
 
 
 _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
 
 
 def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, REQ-411, REQ-412
-    converted = apply_convention(name, override or _gql_convention)
+    return _gql_name(name, override or active_gql_convention())
+
+
+@functools.lru_cache(maxsize=65536)
+def _gql_name(name: str, convention: str) -> str:
+    """:func:`apply_gql_name` under ``convention``: pure, so a repeated name is answered from the
+    memo (see :func:`_to_pascal_case`). The org's convention is resolved by the caller and is part
+    of the key, so one org's answer is never served to another (REQ-1327)."""
+    converted = apply_convention(name, convention)
     if _GQL_NAME_RE.match(converted):
         return converted
     # apply_convention only re-cases an already-valid identifier — a raw external name (a CSV/API
@@ -538,7 +568,7 @@ def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, R
 
 
 def apply_sql_name(name: str, override: str | None = None) -> str:  # REQ-194
-    return apply_convention(name, override or _sql_convention)
+    return apply_convention(name, override or active_sql_convention())
 
 
 def apply_cql_label(name: str) -> str:  # REQ-471
@@ -551,6 +581,7 @@ def apply_cql_property(name: str) -> str:  # REQ-471
     return apply_gql_name(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def apply_convention(name: str, convention: str) -> str:  # REQ-471
     """Apply a naming convention preset to a name. Returns name unchanged when already correct."""
     canon = _canonical_convention(convention)

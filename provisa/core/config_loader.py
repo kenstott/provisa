@@ -1082,14 +1082,24 @@ async def _resolve_tag_assignment_table(
     return ta.model_copy(update={"table_id": resolved})
 
 
-async def _set_product_members(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1634
+async def set_product_members(  # REQ-1634
+    conn: "Connection", config: ProvisaConfig, *, defer_unregistered: bool = False
+) -> None:
     """Each declared data product's members become exactly the tables and commands it lists: the
     product owns its membership, so its declaration is the whole of it. A table is named as a
     relationship names one (its alias, else its table name), or as ``source.schema.table`` where
     that name is not unique; a name no registered table answers fails the load, naming the
-    product."""
+    product.
+
+    ``defer_unregistered``: a product naming a table the file does not declare -- a seeded table,
+    which a remote source's registration brings later in the same boot -- is left whole for the
+    caller's retry once that registration is done, as a relationship is (see
+    :func:`_upsert_relationships`); a name the file itself declares that did not register still
+    fails the load."""
+    declared = declared_table_names(config)
     for dp in config.data_products:
         table_ids = []
+        waiting = None
         for name in dp.tables:
             parts = name.split(".")
             row = (
@@ -1098,10 +1108,15 @@ async def _set_product_members(conn: "Connection", config: ProvisaConfig) -> Non
                 else await table_repo.find_by_table_name(conn, name)
             )
             if row is None:
+                if defer_unregistered and name not in declared:
+                    waiting = name
+                    break
                 raise ValueError(
                     f"data product {dp.id!r} lists table {name!r}, which no registration holds"
                 )
             table_ids.append(int(row["id"]))
+        if waiting is not None:
+            continue
         try:
             await data_product_repo.set_members(
                 conn, dp.id, table_ids=table_ids, commands=dp.commands
@@ -1151,7 +1166,7 @@ async def _load_after_tables(  # REQ-1919
         await function_repo.upsert_function(conn, func, return_schema=func.return_schema)
 
     # 8.5 Data-product members (REQ-1634), once their tables and commands exist.
-    await _set_product_members(conn, config)
+    await set_product_members(conn, config, defer_unregistered=defer_unregistered)
 
     # 9. Tracked webhooks. Config is the trusted source of truth, so a config-declared webhook is
     # pre-approved (REQ-209): without an 'executed' creation_request the schema gate in
@@ -1736,9 +1751,11 @@ def _validate_triggers(config) -> None:  # REQ-2054
 def _validate_paging(config) -> None:  # REQ-318
     """A table's paging must suit what reads the table, and a connection table's max_rows may only
     lower the operator's graphql_remote.max_rows -- refused at load as it is at save."""
+    from provisa.core.org_settings import graphql_remote_max_rows
     from provisa.core.paging import CONNECTION, ENDPOINT, check_paging, paging_kind
 
     kinds = {s.id: s.type.value for s in config.sources}
+    ceiling_rows = graphql_remote_max_rows(config.graphql_remote.max_rows)  # REQ-1327
     for table in config.tables:
         if table.pagination is None:
             continue
@@ -1750,14 +1767,14 @@ def _validate_paging(config) -> None:  # REQ-318
                 table.pagination,
                 table=table.table_name,
                 kind=CONNECTION if table.pagination.max_rows is not None else ENDPOINT,
-                ceiling_rows=config.graphql_remote.max_rows,
+                ceiling_rows=ceiling_rows,
             )
             continue
         check_paging(
             table.pagination,
             table=table.table_name,
             kind=paging_kind(kinds[table.source_id]),
-            ceiling_rows=config.graphql_remote.max_rows,
+            ceiling_rows=ceiling_rows,
         )
 
 

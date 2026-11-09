@@ -424,15 +424,19 @@ async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006
     the configuration does not declare is cleared, as the rest of the template's model is rebuilt
     from its configuration (REQ-1919); a setting the configuration cannot declare is cleared too."""
     from provisa.core.env_classes import carries_setting
-    from provisa.core.org_settings import NAMING_ORG_KEYS, ORG_OVERRIDABLE_KEYS, write_org_overrides
+    from provisa.core.org_settings import (
+        ORG_BLOCK_FIELDS,
+        ORG_OVERRIDABLE_KEYS,
+        write_org_overrides,
+    )
 
     updates: dict[str, Any] = {}
     for key in sorted(k for k in ORG_OVERRIDABLE_KEYS if carries_setting(k)):
         declared = key in seed.model_fields_set
         value = getattr(seed, key) if declared else None
-        if key == "naming" and value is not None:
-            # Only the naming keys an org owns; the rest configure the process (org_settings).
-            value = {k: getattr(value, k) for k in value.model_fields_set & NAMING_ORG_KEYS}
+        if key in ORG_BLOCK_FIELDS and value is not None:
+            # Only the fields an org owns; the rest of the block is the platform's (org_settings).
+            value = {k: getattr(value, k) for k in value.model_fields_set & ORG_BLOCK_FIELDS[key]}
         elif isinstance(value, list):
             value = [v.model_dump() for v in value]
         elif value is not None:

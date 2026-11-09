@@ -46,6 +46,7 @@ from provisa.federation.engine import build_duckdb_engine
 from provisa.core import engine_memory
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.session_time_zone import StatementZone, carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.federation.replica_address import is_replicas_schema
 from provisa.federation.runtime_support import (
@@ -56,6 +57,17 @@ from provisa.federation.runtime_support import (
 from provisa.transpiler.transpile import transpile
 
 log = logging.getLogger(__name__)
+
+
+def _tz_name(zone: StatementZone) -> str | None:
+    """What DuckDB's ICU reads: a name of the tz database. It reads no offset, and reads ``UTC+5``
+    as five hours EAST, where PostgreSQL's is west: the word the session said is never sent."""
+    return zone.name
+
+
+def _set_zone(zone: str) -> str:
+    return "SET SESSION TimeZone = '" + zone.replace("'", "''") + "'"
+
 
 _T = TypeVar("_T")
 
@@ -692,22 +704,29 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         rewritten = rewrite(duck_sql, params, relations, deadline_s=deadline_s, describe=describe)
         return (duck_sql, False) if rewritten is None else (rewritten, True)
 
-    def _open_cursor(self, *, live_http: bool) -> Any:
+    def _open_cursor(self, *, live_http: bool, sql: str = "") -> Any:
         """A private cursor; for a statement reading ClickHouse over HTTP it downloads each result
         whole (``force_download``): ClickHouse answers per request with no range support, and
         DuckDB's default HEAD + ranged GETs made ClickHouse execute the query twice. It also turns
         httpfs retries off: a retry re-runs the whole ClickHouse query with a fresh
         max_execution_time, so three retries carried a 2s-budget read to 13s (integration test); a
         failed read raises instead. Both settings are session-scoped, so they stay on this cursor
-        (verified: a sibling cursor still reads the defaults)."""
+        (verified: a sibling cursor still reads the defaults).
+
+        The session's TimeZone is told to this cursor too (REQ-2171): session-scoped like the others,
+        so it ends with the cursor, and a sibling cursor stays on the connection's UTC.
+        ``sql`` is the statement the cursor is for: none for the runtime's own reads."""
+        zone = told_as(sql, _tz_name, "DuckDB")
         cur = open_cursor(self._con)
-        if live_http:
-            try:
+        try:
+            if live_http:
                 cur.execute("SET force_download = true")
                 cur.execute("SET http_retries = 0")
-            except BaseException:
-                close_cursor(cur)
-                raise
+            if zone is not None:
+                cur.execute(_set_zone(zone))
+        except BaseException:
+            close_cursor(cur)
+            raise
         return cur
 
     def _ensure_postgres_loaded(self) -> None:
@@ -1540,7 +1559,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # queries intermittently come back with no rows under the parallel e2e suite while
                 # the control plane plainly held the data (run_sync and run_arrow_stream already
                 # took a cursor for this reason).
-                cur = self._open_cursor(live_http=live_http)
+                cur = self._open_cursor(live_http=live_http, sql=sql)
                 try:
                     cur.execute(LOSSLESS_ARROW)
                     with request_deadline.cancel_on_deadline(cur.interrupt):
@@ -1558,7 +1577,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 finally:
                     close_cursor(cur)
 
-        return await loop.run_in_executor(None, _run)
+        return await loop.run_in_executor(None, carrying_zone(_run))
 
     def write_result(self, copy_sql: str, params: list | None, *, secret_sql: str | None) -> int:
         """Run ``copy_sql`` (``result_sink.duckdb_copy``: the statement's query wrapped in
@@ -1580,7 +1599,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     self._install_and_load("httpfs", from_community=False)
                     self._httpfs_loaded = True
                 self._on_instance(secret_sql)
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=copy_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     cur.execute(copy_sql, params) if params else cur.execute(copy_sql)
@@ -1608,7 +1627,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             duck_sql, live_http = self._rewrite_clickhouse_relations(
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 cur.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(cur.interrupt):
@@ -1685,7 +1704,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # PRIVATE cursor for the same reason as run_sync/run_arrow_stream: a concurrent query on
             # the shared connection replaces this one's pending result, and the fetch then yields
             # nothing instead of raising.
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
@@ -1712,7 +1731,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             duck_sql, live_http = self._rewrite_clickhouse_relations(
                 duck_sql, params, deadline_s=request_deadline.remaining()
             )
-            cur = self._open_cursor(live_http=live_http)
+            cur = self._open_cursor(live_http=live_http, sql=duck_sql)
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():

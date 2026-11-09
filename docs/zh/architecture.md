@@ -417,7 +417,7 @@ Attach 会在挂载时自动预配所有前置条件：
 | 环境变量 | 默认值 | 用途 |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 启用服务端阈值重定向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 默认行数阈值 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 默认行数阈值 |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | 默认重定向格式 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶名称 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的端点 URL |

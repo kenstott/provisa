@@ -15,27 +15,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../../test-utils/render";
 import * as api from "../../../api/admin";
-import type { CacheStorageState } from "../../../api/admin";
+import type { PlatformSettings } from "../../../api/admin";
 import { HotTablesSettingsPanel } from "../CacheStorageTab";
 
 vi.mock("../../../api/admin", async (orig) => ({
   ...(await orig<typeof import("../../../api/admin")>()),
-  fetchCacheStorage: vi.fn(),
-  setCacheStorage: vi.fn(),
+  fetchSettings: vi.fn(),
+  updateSettings: vi.fn(),
 }));
 
-const STATE: CacheStorageState = {
-  cache: { enabled: true, redis_url: "", default_ttl: 300 },
+const SETTINGS = {
   hot_tables: { auto_threshold: 1000, max_rows: 1000, max_bytes: 1048576, refresh_interval: null },
   replication: { hot_threshold: 100, hot_interval: 60, hot_max_rows: 10000000 },
-  materialized_views: { default_ttl: 300 },
-  materialize: { store_url: "", default_store_url: "" },
-  restart_required_note: "",
-};
+} as unknown as PlatformSettings;
 
 beforeEach(() => {
-  vi.mocked(api.fetchCacheStorage).mockReset().mockResolvedValue(STATE);
-  vi.mocked(api.setCacheStorage)
+  vi.mocked(api.fetchSettings).mockReset().mockResolvedValue(SETTINGS);
+  vi.mocked(api.updateSettings)
     .mockReset()
     .mockResolvedValue({ success: true, updated: [], restart_required: false });
   window.localStorage.clear();
@@ -64,9 +60,9 @@ describe("Hot replication settings", () => {
     const threshold = await openPanel();
     fireEvent.change(threshold, { target: { value: "250" } });
     fireEvent.change(screen.getByTestId("replication-hot-interval"), { target: { value: "120" } });
-    fireEvent.click(screen.getByTestId("cache-storage-save"));
-    await waitFor(() => expect(api.setCacheStorage).toHaveBeenCalledTimes(1));
-    const sent = vi.mocked(api.setCacheStorage).mock.calls[0][0];
+    fireEvent.click(await screen.findByRole("button", { name: /save/i }));
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(1));
+    const sent = vi.mocked(api.updateSettings).mock.calls[0][0];
     expect(sent.replication).toEqual({
       hot_threshold: 250,
       hot_interval: 120,

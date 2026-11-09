@@ -1754,7 +1754,7 @@ sources:
 | `FLIGHT_PORT` | `8815` | פורט שרת Provisa Arrow Flight |
 | `GRPC_PORT` | `50051` | פורט שרת Provisa Protobuf gRPC |
 | `PROVISA_REDIRECT_ENABLED` | `false` | הפעלת הפניית סף בצד השרת |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | סף ספירת שורות ברירת מחדל |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | סף ספירת שורות ברירת מחדל |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | פורמט הפניה ברירת מחדל |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket לתוצאות מופנות |
 | `PROVISA_REDIRECT_ENDPOINT` | — | כתובת URL של נקודת קצה תואמת-S3 |

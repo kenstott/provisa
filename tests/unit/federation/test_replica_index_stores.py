@@ -214,6 +214,28 @@ async def test_the_duckdb_store_carries_the_key_and_the_join_index(duck_store):
     assert _duck_state(duck_store) == ([["id"]], [join.name])
 
 
+async def test_a_key_built_after_a_join_index_leaves_both(duck_store):
+    """A join index built first (an earlier attempt failed at the key) does not cost the key:
+    run 42527446894 logged "Cannot alter entry" for mv_dim_pet on every refresh."""
+    pk, join = _specs()
+    indexer = DuckDBStoreIndexer(duck_store, schema=SCHEMA, table=TABLE)
+    await indexer.build(join)
+    await indexer.build(pk)
+    assert _duck_state(duck_store) == ([["id"]], [join.name])
+
+
+async def test_rows_that_repeat_the_key_leave_the_join_index_standing(duck_store):
+    pk, join = _specs()
+    indexer = DuckDBStoreIndexer(duck_store, schema=SCHEMA, table=TABLE)
+    await indexer.build(join)
+    duck_store._run(
+        lambda con: con.execute(f'INSERT INTO mat_store."{SCHEMA}"."{TABLE}" VALUES (7, 1, \'x\')')
+    )
+    with pytest.raises(ri.DuplicateKey):
+        await indexer.build(pk)
+    assert _duck_state(duck_store) == ([], [join.name])
+
+
 async def test_the_duckdb_store_names_rows_that_repeat_the_key(duck_store):
     duck_store._run(
         lambda con: con.execute(f'INSERT INTO mat_store."{SCHEMA}"."{TABLE}" VALUES (7, 1, \'x\')')

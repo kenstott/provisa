@@ -27,6 +27,7 @@ import json
 from sqlalchemy import select
 
 from provisa.codesource.languages import CODE_SOURCE_TYPES
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import kafka_topics, sources
 
 if TYPE_CHECKING:
@@ -697,7 +698,11 @@ async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
             comment=t["description"],
             # REQ-318: a connection table may set its own row bound when it is registered.
             paging_kind="connection" if t["connection"] else None,
-            paging_ceiling_rows=state.config.graphql_remote.max_rows if t["connection"] else None,
+            paging_ceiling_rows=(
+                graphql_remote_max_rows(state.config.graphql_remote.max_rows)
+                if t["connection"]
+                else None
+            ),
             required_parameters=t["required_parameters"],  # REQ-1986
         )
         for t in offered_tables(*offered)

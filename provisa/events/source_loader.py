@@ -1995,6 +1995,7 @@ def make_graphql_remote_loader(
         more to read fails by name (``replication.row_limit_reached``)."""
         from provisa.graphql_remote.executor import whole_connection
 
+        from provisa.core.org_settings import graphql_remote_max_rows
         from provisa.core.paging import connection_max_rows
 
         request = _request(source, table)
@@ -2007,7 +2008,7 @@ def make_graphql_remote_loader(
             table=f"{source.id}.{table.table_name}",
             page_size=page_size,
             # REQ-318: the table's own bound where it set one (registry row), else the operator's.
-            max_rows=connection_max_rows(table.pagination, max_rows),
+            max_rows=connection_max_rows(table.pagination, graphql_remote_max_rows(max_rows)),
             error_policy=request["error_policy"],
             variables=request["variables"],
             required_args=request["required_args"],

@@ -30,6 +30,7 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.governed_relation import ReadThrough, read_through
 from provisa.compiler.native_nested import mark_native_nested_reads
+from provisa.compiler.json_instants import state_json_instants
 from provisa.compiler.native_subtype import mark_subtype_operations, mark_subtype_reads
 from provisa.compiler.ontology_classes import is_class_table_id
 from provisa.compiler.sql_types import CompilationContext, TableMeta
@@ -455,13 +456,22 @@ def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
 def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
     """Per physical ``(schema, table)`` (lowercased), each published column name to its physical
     name (``published_columns``). Lowering never renames a physical name, so it is idempotent and
-    safe on SQL that is already physical."""
-    by_id: dict[int, tuple[str, str]] = {
-        m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
-    }
+    safe on SQL that is already physical. An API-backed table has no physical spelling to lower
+    to: it is read from what it was materialized as (a hot VALUES CTE, an engine-cache table),
+    whose columns are the SQL names (REQ-301)."""
+    from provisa.compiler.complexity import api_source_types
+
+    api_backed = api_source_types()
+    by_id: dict[int, tuple[str, str]] = {}
+    materialized: set[int] = set()
+    for m in _all_table_metas(ctx):
+        by_id[m.table_id] = (m.schema_name.lower(), m.table_name.lower())
+        if m.source_type in api_backed:
+            materialized.add(m.table_id)
     out: dict[tuple[str, str], dict[str, str]] = {}
     for table_id, names in published_columns(ctx).items():
-        out.setdefault(by_id[table_id], {}).update(names)
+        if table_id not in materialized:
+            out.setdefault(by_id[table_id], {}).update(names)
     return out
 
 
@@ -700,6 +710,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
     sql = translate_epoch_temporal_columns(strip_catalog(sql), ctx.epoch_columns)  # REQ-1908
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
     sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
+    sql = state_json_instants(sql, ctx.instant_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -761,6 +772,7 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
     )
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
     sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
+    sql = state_json_instants(sql, ctx.instant_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -861,6 +873,12 @@ def fold_catalog_into_schema(sql: str) -> str:  # REQ-1730
 # specific physical file/database, so a schema qualifier is purely Provisa's own catalog
 # convention and has nothing to resolve against on the wire (REQ-1361).
 FLAT_NAMESPACE_SOURCES: frozenset[str] = frozenset({"sqlite"})
+
+# REQ-1671: source types with no SQLGlot dialect of their own (their statements are written as
+# PostgreSQL) whose database folds an unquoted name to UPPER CASE. A statement's own unquoted
+# column reference reads the governed relation's quoted lowercase output, so every identifier is
+# sent quoted: unquoted, SAP HANA reads ``id`` as ``ID`` ("invalid column name: ID").
+UPPER_FOLDING_SOURCES: frozenset[str] = frozenset({"saphana"})
 
 
 def strip_schema(sql: str) -> str:  # REQ-1361

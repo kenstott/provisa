@@ -75,6 +75,7 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
     """Load naming config from raw_config or disk. Returns (domain_prefix, resolved_raw_config)."""
     from provisa.api.app import state
     from provisa.compiler import naming as _naming
+    from provisa.core.request_context import acting_org_overrides
 
     domain_prefix = False
     if raw_config:
@@ -103,8 +104,14 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
                     )
                 if raw_config.get("naming", {}).get("sql_convention"):
                     state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
+    # REQ-1327: the org's own domain prefix, where it set one, over the deployment's.
+    own = acting_org_overrides().get("naming") or {}
+    if own.get("domain_prefix") is not None:
+        domain_prefix = bool(own["domain_prefix"])
     # Single-domain mode: domain prefixing is meaningless with one domain — force it off.
     if raw_config and raw_config.get("naming", {}).get("use_domains") is False:
+        domain_prefix = False
+    if own.get("use_domains") is False:
         domain_prefix = False
     _naming.configure(
         gql=state.global_gql_naming_convention,

@@ -25,6 +25,12 @@ import {
 // (SourceStillStartingError, preparing_catalog): "... is listening, and its tables can be registered now ...".
 const LISTENING = "is listening";
 
+// How long one poll waits for its listing. A fresh server's first read of a schema can hold its
+// request for over a minute (ConnectorReplica.discovery_read), and the budget would run out on that
+// one answer. The read stays in flight; the next poll is refused at once, "... is listening, and is
+// answering another read ...", which is what this spec is after.
+const LISTING_ANSWER_MS = 10_000;
+
 test.describe("govdata: a saved source's server listens", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
@@ -57,24 +63,31 @@ test.describe("govdata: a saved source's server listens", () => {
 
     // The listing answers once the server serves, and STARTING until then: "still starting up"
     // while its port is closed, LISTENING once it is open. Any other error is the server's failure.
+    const listing = async (): Promise<string> => {
+      const res = await page.request.post("/admin/graphql", {
+        data: {
+          query:
+            "query($sourceId: String!, $schema: String!) { availableTables(sourceId: $sourceId, schemaName: $schema) { name } }",
+          variables: { sourceId, schema: "weather" },
+        },
+      });
+      expect(res.ok(), await res.text()).toBeTruthy();
+      const body = await res.json();
+      if (!body.errors?.length) return "serving";
+      const message = body.errors.map((e: { message: string }) => e.message).join("; ");
+      expect(message, message).toContain("STARTING:");
+      return message.includes(LISTENING) ? "listening" : "starting";
+    };
     await expect
       .poll(
-        async () => {
-          const res = await page.request.post("/admin/graphql", {
-            data: {
-              query:
-                "query($sourceId: String!, $schema: String!) { availableTables(sourceId: $sourceId, schemaName: $schema) { name } }",
-              variables: { sourceId, schema: "weather" },
-            },
-          });
-          expect(res.ok(), await res.text()).toBeTruthy();
-          const body = await res.json();
-          if (!body.errors?.length) return "serving";
-          const message = body.errors.map((e: { message: string }) => e.message).join("; ");
-          expect(message, message).toContain("STARTING:");
-          return message.includes(LISTENING) ? "listening" : "starting";
-        },
-        { timeout: ASKAMERICA_SERVING_BUDGET_MS, intervals: [5000] },
+        () =>
+          Promise.race([
+            listing(),
+            new Promise<string>((resolve) =>
+              setTimeout(() => resolve("unanswered"), LISTING_ANSWER_MS),
+            ),
+          ]),
+        { timeout: ASKAMERICA_SERVING_BUDGET_MS, intervals: [1000] },
       )
       .toMatch(/^(listening|serving)$/);
   });

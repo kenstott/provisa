@@ -16,6 +16,7 @@ JSON, BigInt, and one per subtype a native GraphQL type does not fit (REQ-2171).
 
 # Requirements: REQ-010, REQ-306
 
+import functools
 from collections.abc import Mapping
 from typing import cast
 
@@ -328,6 +329,9 @@ def array_graphql_type(data_type: str) -> GraphQLScalarType | GraphQLList:  # RE
     return column_type_to_graphql(data_type)
 
 
+# Pure: a spelling always maps to the same shared type, and every column of every role's schema
+# asks (a role's compile, a rebuild's warm-up): a repeated spelling is answered from the memo.
+@functools.lru_cache(maxsize=4096)
 def column_type_to_graphql(column_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-010, REQ-306
     """Map the engine column type to a GraphQL scalar.
 

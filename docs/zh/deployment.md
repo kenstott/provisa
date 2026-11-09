@@ -806,7 +806,7 @@ Databricks 连接器从 `requests` 继承这一设置，所以无需 Databricks 
 | `PG_PASSWORD` | | PostgreSQL 密码 |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径 |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 启用大结果集向 S3 重定向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 触发重定向的行数阈值 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 触发重定向的行数阈值 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的终结点 URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | 预签名 URL TTL（秒） |

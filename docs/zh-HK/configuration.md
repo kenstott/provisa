@@ -1754,7 +1754,7 @@ sources:
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight 伺服器連接埠 |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC 伺服器連接埠 |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 啟用伺服器端門檻重新導向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 預設資料列數門檻 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 預設資料列數門檻 |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | 預設重新導向格式 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | 存放重新導向結果的 S3 貯體 |
 | `PROVISA_REDIRECT_ENDPOINT` | — | S3 相容端點 URL |
