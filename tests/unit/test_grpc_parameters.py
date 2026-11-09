@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.api.app_schema_build import _inject_gql_required_args
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.grpc.field_numbering import FieldNumberAllocator
@@ -246,3 +247,64 @@ def test_a_proxy_array_parameter_is_a_list_of_its_items():
         compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": 0.1})
     with pytest.raises(ParameterError, match="each item is a number"):
         compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": [0.1, "x"]})
+
+
+def _remote_argument_si() -> SchemaInput:
+    """A remote GraphQL table as the default demo declares it: its parameter is the column
+    ``_nf_breed_name``, and the remote field's own argument is spelled ``breedName``."""
+    table = {
+        "id": 1,
+        "source_id": "graphql-demo",
+        "domain_id": "shelter",
+        "schema_name": "graphql",
+        "table_name": "assignments_by_breed",
+        "columns": [
+            {"column_name": "id", "visible_to": ["admin"]},
+            {
+                "column_name": "_nf_breed_name",
+                "visible_to": [],
+                "native_filter_type": "graphql_arg",
+                "native_filter_required": True,
+            },
+        ],
+        "write_ops": [],
+        "write_returns_rows": False,
+        "write_refused_forms": [],
+    }
+    remote = {
+        "graphql-demo": {
+            "source_id": "graphql-demo",
+            "tables": [
+                {
+                    "name": "assignmentsByBreed",
+                    "required_args": [
+                        {"name": "breedName", "gql_type": "String!", "provisa_type": "text"}
+                    ],
+                }
+            ],
+        }
+    }
+    _inject_gql_required_args([table], remote)
+    return SchemaInput(
+        tables=[table],
+        relationships=[],
+        column_types={
+            1: [
+                ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+                ColumnMetadata(column_name="_nf_breed_name", data_type="varchar", is_nullable=True),
+            ],
+        },
+        naming_rules=[],
+        role={"id": "admin", "domain_access": ["*"], "capabilities": []},
+        domains=[{"id": "shelter", "description": "Shelter"}],
+    )
+
+
+def test_a_remote_argument_declared_as_a_parameter_is_one_field_and_the_proto_compiles():
+    """REQ-1986: one parameter is one field; two spellings of it are a JSON name conflict that
+    protoc refuses, which took every RPC of the role's service down."""
+    proto = generate_proto(_remote_argument_si())
+    params = _message_block(proto, "AssignmentsByBreedParams")
+    assert "breed_name" in params
+    assert "breedName" not in params
+    assert compile_descriptor_set(proto)
