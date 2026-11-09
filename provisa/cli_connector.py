@@ -183,8 +183,8 @@ def _runtime(language: str, root: Path) -> str:
 class _RequireValues:
     """What the standard file says of one ``@requires`` value."""
 
-    def __init__(self, multiline: bool, default: Any, fixed: Any) -> None:
-        self.multiline, self.default, self.fixed = multiline, default, fixed
+    def __init__(self, multiline: bool, default: Any, fixed: Any, script: bool = False) -> None:
+        self.multiline, self.default, self.fixed, self.script = multiline, default, fixed, script
 
 
 class _StandardFile:
@@ -246,6 +246,7 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         multiline: bool = False
         default: Any = None
         fixed: Any = None
+        script: bool = False  # REQ-2225: its tags are the source's tables and commands
 
     class _Setting(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -283,10 +284,16 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         for kind, value in (("default", given.default), ("fixed", given.fixed)):
             if value is not None and not isinstance(value, str):
                 raise _Refused(f"{_STANDARD_FILE}: requires.{name}.{kind} is text; quote it")
+    scripts = [name for name, given in read.requires.items() if given.script]
+    if len(scripts) > 1:
+        raise _Refused(f"{_STANDARD_FILE}: one value is the script, not {', '.join(scripts)}")
     return _StandardFile(
         read.description.strip(),
         _icon_uri(root, read.icon) if read.icon else "",
-        {n: _RequireValues(g.multiline, g.default, g.fixed) for n, g in read.requires.items()},
+        {
+            n: _RequireValues(g.multiline, g.default, g.fixed, g.script)
+            for n, g in read.requires.items()
+        },
         settings,
     )
 
@@ -320,6 +327,7 @@ def _with_file_values(
                     multiline=given.multiline,
                     default_value=given.default,
                     fixed_value=given.fixed,
+                    script=given.script,
                 )
             )
         except ValidationError as exc:
@@ -364,6 +372,9 @@ def _build_and_push(
     ]
     if standard is not None:
         requires = _with_file_values(requires, standard)
+    script = next((r.name for r in requires if r.script), None)
+    if script is not None and language != "python":
+        raise _Refused(f"{_STANDARD_FILE}: a script connector is a Python project, not {language}")
     plan = image_build.Plan(
         source_id=entry.name,
         language=language,
@@ -376,6 +387,7 @@ def _build_and_push(
         registries=list(package_registries),
         cache_root=ctx.cache_root,
         version=running_provisa(),
+        script=script,
     )
     workdir.mkdir(parents=True)
     built = image_build.assemble(plan, code, None, entry.arch, workdir)
