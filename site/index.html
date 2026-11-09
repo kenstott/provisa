@@ -52,9 +52,9 @@
         <h1 class="hero-hook" aria-live="polite">
           <span class="hook-rotate">
             <span class="hook-pair is-active" aria-hidden="false"><a class="hook-link" href="/start/ai-access"><strong>Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/app-backends"><strong>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/bi-across-sources"><strong>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/data-science"><strong>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true"><a class="hook-link" href="/start/app-backends"><strong>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true"><a class="hook-link" href="/start/bi-across-sources"><strong>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true"><a class="hook-link" href="/start/data-science"><strong>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</strong></a></span>
           </span>
         </h1>
         <p class="lead">
@@ -66,9 +66,9 @@
           <li>No hand-coded APIs</li>
           <li>No data pipeline scripts</li>
           <li>Access rules in one place</li>
-          <li>Agents grounded in your policies</li>
+          <li>Agents connect your data with your policies and requirements</li>
           <li>Works with your build systems</li>
-          <li>Tag issues and work them together</li>
+          <li>Structured tagging documents key issues for collaboration, audit and review</li>
         </ul>
         <div class="hero-actions">
           <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/starthere" target="_blank" rel="noopener">Try a live demo</a>
@@ -336,7 +336,7 @@
           <div class="dist-terminal" role="img" aria-label="Install Provisa from PyPI and run it">
             <div class="term-bar"><span></span><span></span><span></span></div>
             <pre><code><span class="c-comment"># The whole system in one wheel (Python 3.12)</span>
-<span class="c-cmd">python3</span> -m venv .venv <span class="c-comment">&& source .venv/bin/activate</span>
+<span class="c-cmd">python3.12</span> -m venv .venv <span class="c-comment">&& source .venv/bin/activate</span>
 <span class="c-cmd">pip</span> install <span class="c-str">"provisa[embedded]"</span>
 
 <span class="c-cmd">provisa</span> run          <span class="c-comment"># your data</span>
@@ -471,11 +471,9 @@
       function next() {
         pairs[current].classList.remove('is-active');
         pairs[current].setAttribute('aria-hidden', 'true');
-        pairs[current].hidden = true;
         current = (current + 1) % pairs.length;
         pairs[current].classList.add('is-active');
         pairs[current].setAttribute('aria-hidden', 'false');
-        pairs[current].hidden = false;
       }
       setInterval(next, 4000);
     })();
