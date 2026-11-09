@@ -259,13 +259,6 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       // REQ-2122: the catalogs this org connects to once, for export and import.
       { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
-      // REQ-2185: the documents the org's assistants draw on and cite, curated with the glossary
-      // (term finding adds them), so the glossary's curation right (REQ-1327).
-      {
-        to: "/admin/reference-library",
-        labelKey: "navBar.itemReferenceLibrary",
-        capability: "glossary_rw",
-      },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",

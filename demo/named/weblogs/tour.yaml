@@ -51,7 +51,7 @@
 #                 /admin/ontology: the tour opens the glossary's Find terms, types it, chooses the
 #                 domains, starts a scan and cancels it
 #   scan          the same: the scan of it done when the bundle was built, opened from Find terms
-#   library       the same: its row on the Reference library page (/admin/reference-library)
+#   library       the same: its row on the Library page (/library)
 #   report        a seeded report, by its table name, on /admin/reports: opened, its rows shown
 #   polly         a question for Polly (REQ-2012): answered once when the demo's bundle is
 #                 built, and shown with that stored answer in the Polly panel; nothing is asked

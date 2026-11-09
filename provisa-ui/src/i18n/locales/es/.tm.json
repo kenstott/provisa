@@ -3856,7 +3856,7 @@
   "es/navBar.json::navBar.itemPlatformObservability": "Platform Observability",
   "es/navBar.json::navBar.itemPlatformSecrets": "Platform Secrets",
   "es/navBar.json::navBar.itemPython": "Python",
-  "es/navBar.json::navBar.itemReferenceLibrary": "Reference library",
+  "es/navBar.json::navBar.itemLibrary": "Library",
   "es/navBar.json::navBar.itemRegions": "Regions",
   "es/navBar.json::navBar.itemReports": "Reports",
   "es/navBar.json::navBar.itemRequests": "Requests",

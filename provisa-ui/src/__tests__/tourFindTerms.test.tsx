@@ -50,7 +50,7 @@ vi.mock("../hooks/useAdminQueries", () => ({
 }));
 
 import { FindTermsDialog } from "../components/admin/FindTermsDialog";
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
+import { LibraryPage } from "../pages/library/LibraryPage";
 import { runUiActions, type UiAction } from "../mcp/uiActions";
 import { demoTourSteps } from "../tour/demoTour";
 
@@ -126,7 +126,7 @@ const STEPS = demoTourSteps(
   [
     { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/admin/reference-library", capability: "glossary_rw", library: RULE },
+    { key: "lib", route: "/library", capability: "glossary_read", library: RULE },
   ],
   [],
 );
@@ -277,9 +277,9 @@ describe("a library step", () => {
         replaced_at: null,
       },
     ]);
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const row = await screen.findByTestId("reflib-row-4");
-    expect(lib.route).toBe("/admin/reference-library");
+    expect(lib.route).toBe("/library");
     expect(document.querySelector(lib.element)).toBe(row);
   });
 });

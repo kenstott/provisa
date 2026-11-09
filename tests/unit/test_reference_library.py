@@ -29,6 +29,7 @@ import sqlalchemy as sa
 from sqlalchemy import insert, select
 
 from provisa.api.admin import reference_library_router as router
+from provisa.api.admin import term_finding_router
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, reference_passages
 from provisa.reference_library import extract, library, retrieve, store
@@ -554,12 +555,32 @@ def _request() -> Request:
 def api(db, monkeypatch):
     monkeypatch.setattr(router, "_pool", lambda: db)
     monkeypatch.setattr(router, "_guard", lambda request: "default")
+    monkeypatch.setattr(router, "_read_scope", lambda request: None)
+    monkeypatch.setattr(router, "_acting_role", lambda request: "steward")
+    _jobs.clear()
+    monkeypatch.setattr(router, "_launch", _jobs.append)
 
     async def embedder():
         return EMBEDDER
 
+    async def no_terms(pool, document, role, started_by):
+        return None
+
     monkeypatch.setattr(router, "_embedder", embedder)
+    monkeypatch.setattr(term_finding_router, "find_terms_in", no_terms)
     return db
+
+
+#: The background jobs the API has started, run by :func:`_added`.
+_jobs: list[Any] = []
+
+
+async def _added(body: dict) -> dict:
+    """A document added through the API, once its background job has made it ready."""
+    added = await router.add_document(body, _request())
+    while _jobs:
+        await _jobs.pop(0)
+    return await router.get_document(added["id"], _request())
 
 
 def _upload(name: str, data: bytes, **extra: Any) -> dict:
@@ -567,7 +588,7 @@ def _upload(name: str, data: bytes, **extra: Any) -> dict:
 
 
 async def test_the_admin_api_adds_lists_rescopes_and_removes_a_document(api):
-    added = await router.add_document(_upload("policy.html", POLICY, domains=["sales"]), _request())
+    added = await _added(_upload("policy.html", POLICY, domains=["sales"]))
     assert (added["title"], added["source_kind"], added["status"], added["domains"]) == (
         "Client policy",
         "file",
@@ -622,7 +643,7 @@ async def test_the_admin_api_refuses_by_name(api):
     assert "not both" in str(both.detail)
     unreadable = await refused(_upload("deck.pptx", b"x", domains=["*"]))
     assert "'deck.pptx' is not a document" in str(unreadable.detail)
-    added = await router.add_document(_upload("policy.html", POLICY, domains=["*"]), _request())
+    added = await _added(_upload("policy.html", POLICY, domains=["*"]))
     again = await refused(_upload("policy.html", POLICY, domains=["*"]))
     assert again.status_code == 409 and again.params == {"document_id": added["id"]}
     with pytest.raises(ApiError, match="discarding it removes it"):
@@ -630,7 +651,7 @@ async def test_the_admin_api_refuses_by_name(api):
 
 
 async def test_the_admin_api_uploads_a_new_version(api):
-    added = await router.add_document(_upload("spec.md", SPEC, domains=["finance"]), _request())
+    added = await _added(_upload("spec.md", SPEC, domains=["finance"]))
     replaced = await router.upload_version(
         added["id"], _upload("spec-v2.txt", b"Payments settle daily."), _request()
     )
@@ -1025,7 +1046,7 @@ def _use_embedder(monkeypatch, embedder: library.Embedder) -> None:
 async def test_the_admin_api_names_documents_needing_re_embedding_and_re_embeds_one(
     api, monkeypatch
 ):
-    added = await router.add_document(_upload("policy.html", POLICY, domains=["*"]), _request())
+    added = await _added(_upload("policy.html", POLICY, domains=["*"]))
     assert added["needs_reembedding"] is False
     _use_embedder(monkeypatch, OTHER)
 
@@ -1039,8 +1060,8 @@ async def test_the_admin_api_names_documents_needing_re_embedding_and_re_embeds_
 
 
 async def test_the_admin_api_re_embeds_all_and_reports_each_failed_document(api, monkeypatch):
-    first = await router.add_document(_upload("spec.md", SPEC, domains=["*"]), _request())
-    second = await router.add_document(_upload("policy.html", POLICY, domains=["*"]), _request())
+    first = await _added(_upload("spec.md", SPEC, domains=["*"]))
+    second = await _added(_upload("policy.html", POLICY, domains=["*"]))
     _no_rereading(monkeypatch)
 
     async def embed(texts: list[str]) -> list[list[float]]:

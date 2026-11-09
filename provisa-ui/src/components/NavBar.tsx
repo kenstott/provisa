@@ -202,6 +202,13 @@ export function NavBar() {
               {t("navBar.itemGlossary")}
             </NavLink>
           </CapabilityGate>
+          {/* REQ-2185: beside the Ontology (meaning, then the documents that give the reasons) and
+              before Security; everyone browses what they may read. */}
+          <CapabilityGate capability="glossary_read">
+            <NavLink to="/library" data-tour="nav-library">
+              {t("navBar.itemLibrary")}
+            </NavLink>
+          </CapabilityGate>
           {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
               rendering it left a tab that swallowed the click and never navigated. */}
           {NAV_GROUPS.filter(

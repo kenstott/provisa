@@ -166,8 +166,8 @@ describe("a glossary term's tags", () => {
 
 describe("a library document's tags", () => {
   it("are on the document and on each section, at its first passage", async () => {
-    const { ReferenceLibraryTab } = await import("../components/admin/ReferenceLibraryTab");
-    render(<ReferenceLibraryTab />);
+    const { LibraryPage } = await import("../pages/library/LibraryPage");
+    render(<LibraryPage />);
     fireEvent.click(await screen.findByTestId("reflib-row-7"));
     expect(target(await screen.findByTestId("chip-document"))).toMatchObject({
       objectType: "document",
