@@ -135,6 +135,32 @@
           an agent gets the same layers a person does.
         </p>
 
+        <h2 id="estate">See your whole estate</h2>
+        <p>
+          Today there are tens of copies of your key datasets. Who has them, are they fresh, does
+          anyone need them? No one knows.
+        </p>
+        <ul>
+          <li><strong>Who has it:</strong> regions and domains.</li>
+          <li><strong>Who can see it:</strong> roles, capabilities and entitlements.</li>
+          <li><strong>Is it fresh:</strong> declared on the dataset and recorded on every query.</li>
+          <li><strong>Does anyone need it:</strong> usage per table, including the ones nobody queries.</li>
+        </ul>
+        <p>
+          Duplication surfaces as you go. Every governed table has to belong somewhere, and every
+          enforced join has to be an approved relationship, so a second copy of the same data
+          becomes a question someone has to answer. Once one governed table serves everyone, the
+          next team doesn't need its own copy.
+        </p>
+        <p>
+          When a team does need one, it usually comes down to three things: managing load on the
+          source, keeping history, or decoupling runtimes. All of it is declared on the table. A
+          replica carries the load. You can say queries never read the source live, which protects
+          the source and separates the two runtimes. You can keep the copy in a region closer to
+          you for performance. A bitemporal view keeps both when something happened and when it was
+          recorded. Either way it stays governed, and everyone can see it.
+        </p>
+
         <h2>Alongside context layers</h2>
         <p>
           Data catalogs that provide a context layer tell an agent what it should do.
