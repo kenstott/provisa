@@ -88,7 +88,7 @@ def _emitted() -> set[str]:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
         domains=DOMAINS,
         domain_prefix=True,
         functions=[COMMAND],
