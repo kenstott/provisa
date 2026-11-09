@@ -51,7 +51,10 @@ from typing import Any
 from provisa.codesource.bundle import BundleRefused
 
 TABLE, COMMAND, STREAM, COLUMNS = "table", "command", "stream", "columns"
-PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM, COLUMNS})
+#: REQ-2221: a connector's lifecycle tags, each on at most one function of its code.
+ON_START, ON_STOP, HEALTH = "on-start", "on-stop", "health"
+LIFECYCLE_TAGS = frozenset({ON_START, ON_STOP, HEALTH})
+PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM, COLUMNS}) | LIFECYCLE_TAGS
 
 #: The standard JSDoc and TSDoc tags an export may carry beside Provisa's. Any other is unknown.
 STANDARD_TAGS = frozenset(
@@ -220,6 +223,11 @@ class Manifest:
 
     def export(self, name: str) -> Export:
         return next(e for e in self.exports if e.name == name)
+
+    def lifecycle(self, tag: str) -> Export | None:
+        """REQ-2221: the function tagged ``tag`` (:data:`ON_START`, :data:`ON_STOP` or
+        :data:`HEALTH`), or None when the code tags none."""
+        return next((e for e in self.exports if e.kind == tag), None)
 
 
 # -- kept with a built source (REQ-2098) -----------------------------------------------------------
@@ -608,6 +616,37 @@ def _read_requires(
             problems.append(f"{name}: @requires {found.name} is a secret in one place only")
 
 
+def _lifecycle_export(
+    mapper: _Mapper, name: str, kind: str, entry: dict, signature: dict
+) -> Export | None:
+    """REQ-2221: a lifecycle function, its signature held to its tag's rules: ``@on-start`` takes
+    nothing or the setup values, a mapping of name to value; ``@on-stop`` and ``@health`` take
+    nothing; ``@health`` returns a text status."""
+    given = signature["parameters"]
+    if any(p["rest"] for p in given):
+        mapper.problems.append(f"{name}: @{kind} takes no rest parameter")
+        return None
+    if kind == ON_START:
+        if len(given) > 1 or (given and given[0]["type"]["kind"] not in LOOSE_KINDS):
+            mapper.problems.append(
+                f"{name}: @on-start takes nothing, or the setup values as one mapping of name "
+                "to value"
+            )
+            return None
+    elif given:
+        mapper.problems.append(f"{name}: @{kind} takes no parameters")
+        return None
+    parameters = tuple(Parameter(p["name"], LOOSE, False, True) for p in given)
+    returns: Shape | None = None
+    if kind == HEALTH:
+        status, _ = mapper.shape(_unwrap_promise(signature["returns"]), f"{name} (status)")
+        if status != Scalar("text") and not isinstance(status, EnumOf):
+            mapper.problems.append(f"{name}: @health returns its status as text")
+            return None
+        returns = status
+    return Export(name, kind, entry["description"], parameters, returns)
+
+
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     """The bundle's tables, commands and streams, from the reader's output, under its language's
     ``rules``; refused with every problem when any rule is broken."""
@@ -617,6 +656,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
         problems.append(f"the declarations do not type-check: {diagnostic}")
     exports: list[Export] = []
     requires: dict[str, Requirement] = {}
+    lifecycle: dict[str, str] = {}  # REQ-2221: each lifecycle tag's function, seen so far
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
         binds = tuple(
@@ -658,6 +698,17 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
             # it ignored, so it is refused by name.
             problems.append(f"{name}: @loader batches a table's keys, and a @{kind} takes none")
+        if kind in LIFECYCLE_TAGS:
+            first = lifecycle.setdefault(kind, name)
+            if first != name or tags.count(kind) > 1:
+                problems.append(
+                    f"{name}: @{kind} is on {first} already; a lifecycle tag is used once"
+                )
+                continue
+            found = _lifecycle_export(mapper, name, kind, entry, signature)
+            if found is not None:
+                exports.append(found)
+            continue
         if kind in (TABLE, STREAM):
             read = _read_signature(mapper, name, kind, signature)
             if read is None:
