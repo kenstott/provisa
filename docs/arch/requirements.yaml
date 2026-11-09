@@ -27005,9 +27005,12 @@
   feature: replicas-and-freshness-freshness-gate
   priority: SHOULD
   type: behavioral
-  description: Freshness gating is now available at the Source level (provisa/core/models.py), not just
+  description: 'Freshness gating is now available at the Source level (provisa/core/models.py), not just
     on MV. A source can declare a freshness predicate; queries reading from that source are gated by freshness
-    before execution.
+    before execution. (Amended 2026-11-09, WITHOUT THE GUARANTEE A READER GETS THE CURRENT COPY:) Maintainer
+    2026-11-09: without the freshness guarantee a reader gets the current copy, and if it is past its freshness
+    the read triggers a background refresh; the reader does not wait for it. With the guarantee a reader
+    never gets a copy past its freshness and waits for the refresh.'
   use_case: Prevents serving stale data from pull-through sources. Stewards can enforce freshness without
     materializing into an MV, reducing latency and compute overhead.
   related_reqs:
@@ -27512,37 +27515,41 @@
   feature: writes-classification
   priority: MUST
   type: behavioral
-  description: 'Admin-only reclassification: legitimate reclassification of a mutation to read-safe is
-    gated by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only
-    opt-out for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 --
-    a command has no writable_by; its one role list is visible_to (REQ-1156), and discovery registers
-    no command (REQ-887). Kept here for history; do not implement against it.] Re-introspection of discovered
-    mutations registers with empty writable_by; existing grants preserved by name. [END SUPERSEDED BLOCK]
-    DONE (2026-07): two enforceable behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py)
-    is the single reclassification gate. Only a role holding ACCESS_CONFIG [SUPERSEDED by REQ-1327, 2026-10-03
-    -- no role or role string stands in for ACCESS_CONFIG; an admin demotes only by holding it. Kept here
-    for history; do not implement against it.] (ADMIN bypasses, per has_capability) [END SUPERSEDED BLOCK]
-    may demote a mutation to read-safe; the reverse (promoting a read to a write) is rejected for everyone,
-    and there is no caller-supplied read_only flag anywhere in the request path, so classification stays
-    under governance control. A no-op transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 --
-    the writable_by upsert rule is gone with the column, and discovery no longer re-registers. Kept here
-    for history; do not implement against it.] (2) upsert_function (provisa/core/repositories/ function.py)
-    now preserves an existing writable_by on re-introspection: a discovered mutation upserts with an empty
-    writable_by that keeps the current admin grant (grants preserved by name), while an explicit non-empty
-    grant still applies. Proven with unit tests for the gate and a live-Postgres test for grant preservation
-    across re-introspection. [END SUPERSEDED BLOCK] (Amended 2026-10-03, ONE ROLE LIST:) A command carries
-    one role list, its assigned roles (visible_to); a role reaches a command only when assigned to it
-    AND reaching the command''s domain. [SUPERSEDED by REQ-870 amendment DISCOVERY OFFERS, 2026-10-03
-    -- discovery registers nothing, so there is no re-registration for an assignment to survive. Kept
-    here for history; do not implement against it.] Re-registering a source keeps every assignment an
-    admin made; discovery never drops an assignment. [END SUPERSEDED BLOCK] (Amended 2026-10-03, DISCOVERY
-    OFFERS, A STEWARD ASSIGNS:) Discovery registers no command: a discovered mutation is on offer (REQ-887)
-    until a steward registers it, and the steward assigns its roles then, in the command''s one assigned-roles
-    list, visible_to (REQ-1156). Nothing discovery does later writes or rewrites a registered command,
-    so no grant can be widened or wiped by re-introspection. A role reaches a command only when it is
-    assigned the command and reaches the command''s domain (mutation_authz.command_reachable). Reclassification
-    is unchanged: reclassify_kind is the one gate, demotion needs ACCESS_CONFIG, and no one promotes a
-    read to a write.'
+  description: 'Admin-only reclassification: legitimate reclassification of a mutation to read-safe is gated
+    by ACCESS_CONFIG capability and recorded as a governance decision. No per-operation read_only opt-out
+    for callers; only admin acts can demote a mutation. [SUPERSEDED by REQ-870, 2026-10-03 -- a command
+    has no writable_by; its one role list is visible_to (REQ-1156), and discovery registers no command (REQ-887).
+    Kept here for history; do not implement against it.] Re-introspection of discovered mutations registers
+    with empty writable_by; existing grants preserved by name. [END SUPERSEDED BLOCK] DONE (2026-07): two
+    enforceable behaviors. (1) reclassify_kind (provisa/security/ mutation_authz.py) is the single reclassification
+    gate. Only a role holding ACCESS_CONFIG [SUPERSEDED by REQ-1327, 2026-10-03 -- no role or role string
+    stands in for ACCESS_CONFIG; an admin demotes only by holding it. Kept here for history; do not implement
+    against it.] (ADMIN bypasses, per has_capability) [END SUPERSEDED BLOCK] may demote a mutation to read-safe;
+    the reverse (promoting a read to a write) is rejected for everyone, and there is no caller-supplied
+    read_only flag anywhere in the request path, so classification stays under governance control. A no-op
+    transition is idempotent. [SUPERSEDED by REQ-870, 2026-10-03 -- the writable_by upsert rule is gone
+    with the column, and discovery no longer re-registers. Kept here for history; do not implement against
+    it.] (2) upsert_function (provisa/core/repositories/ function.py) now preserves an existing writable_by
+    on re-introspection: a discovered mutation upserts with an empty writable_by that keeps the current
+    admin grant (grants preserved by name), while an explicit non-empty grant still applies. Proven with
+    unit tests for the gate and a live-Postgres test for grant preservation across re-introspection. [END
+    SUPERSEDED BLOCK] (Amended 2026-10-03, ONE ROLE LIST:) A command carries one role list, its assigned
+    roles (visible_to); a role reaches a command only when assigned to it AND reaching the command''s domain.
+    [SUPERSEDED by REQ-870 amendment DISCOVERY OFFERS, 2026-10-03 -- discovery registers nothing, so there
+    is no re-registration for an assignment to survive. Kept here for history; do not implement against
+    it.] Re-registering a source keeps every assignment an admin made; discovery never drops an assignment.
+    [END SUPERSEDED BLOCK] (Amended 2026-10-03, DISCOVERY OFFERS, A STEWARD ASSIGNS:) Discovery registers
+    no command: a discovered mutation is on offer (REQ-887) until a steward registers it, and the steward
+    assigns its roles then, in the command''s one assigned-roles list, visible_to (REQ-1156). Nothing discovery
+    does later writes or rewrites a registered command, so no grant can be widened or wiped by re-introspection.
+    A role reaches a command only when it is assigned the command and reaches the command''s domain (mutation_authz.command_reachable).
+    Reclassification is unchanged: reclassify_kind is the one gate, demotion needs ACCESS_CONFIG, and no
+    one promotes a read to a write. (Amended 2026-11-09, COMMAND EXECUTION IS A CAPABILITY:) Maintainer
+    2026-11-09: a role runs a command only when it holds command_execution, is assigned the command, and
+    reaches the command''s domain. A role with no capabilities reaches no command: there is no exception
+    for one. A role holding only command_execution runs its assigned commands in the domains it lists and
+    reads no data. Built-in roles that run commands hold it. The read-only catalog commands of the meta
+    domain (the APOC set, REQ-2168) stay under catalog_read.'
   use_case: Ensures authorization policy remains under control of governance (admin), not individual callers.
     Prevents callers from overriding mutation classification, supports safe discovery/re-registration
     of mutations without accidentally granting them.
@@ -74170,7 +74177,13 @@
     `default` reloaded nothing. The multi-worker sync tests cover a named boot org. (Amended 2026-11-08,
     THE WATCHER WAITS FOR THE SAVE:) When a model change comes from a save in this process, the config watcher
     does not start its rebuild until that save''s model commit has finished, so a save never competes with
-    the rebuild it caused; a change from outside the process is picked up as before (maintainer 2026-11-08).'
+    the rebuild it caused; a change from outside the process is picked up as before (maintainer 2026-11-08).
+    (Amended 2026-11-09, A STATUS CHANGE NEEDS NO REBUILD:) Maintainer 2026-11-09: a change that the model
+    build does not read, such as a data product''s status, does not rebuild the schema. A second stored
+    counter advances for what the build reads; a status-only change advances the model stamp and not that
+    counter, and the watcher moves the runtime''s stamp forward without a rebuild. The response cache key,
+    the hot-table key and the audit record of the model commit keep following the model stamp. v0.1.0-alpha.508
+    keeps the rebuild and this ships after it.'
   use_case: An operator who revokes access or adds a filter must be able to rely on it being enforced
     everywhere, on a deployment with several workers or several instances, without restarting anything.
   related_reqs:
@@ -81426,7 +81439,9 @@
     failed before it. (Maintainer 2026-11-08.) (Amended 2026-11-08, ALPHA IS THE LATEST FOR NOW:) For now
     no release moves to beta or production. A release converges, is packaged, and is published as an alpha
     marked latest, and latest needs a successful set of release assets, so a release whose packaging fails
-    is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.)'
+    is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.) (Amended 2026-11-09, ONE
+    ALPHA AT A TIME:) Maintainer 2026-11-09: the nightly cuts no new alpha while an earlier alpha is open.
+    An alpha is open until it ships or is abandoned, and the night is skipped.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -93892,7 +93907,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     where the CLI runs is the operator''s choice. (Amended 2026-11-08, THE OPERATOR RUNS THE CONTAINER:)
     The operator runs an organization''s connector container, as in built mode (REQ-2098): the connectors
     block names the image and its digest, the operator''s own deployment runs it, and Provisa pairs with
-    it. Provisa does not start connector containers. (Maintainer 2026-11-08.)'
+    it. Provisa does not start connector containers. (Maintainer 2026-11-08.) (Amended 2026-11-09, HOW AN
+    OPERATOR-RUN CONNECTOR JOINS:) Maintainer 2026-11-09: a connector known only by its image becomes a
+    source through a connect path in which the paired host sends its manifest in the handshake, and Provisa
+    checks it against the digest and code hash; the server never builds a connector or reads its build settings.
+    The connectors block lives in a control-plane table that promotes with the model, so the model''s branches
+    decide where a version runs. provisa connector build takes --package-registries FILE to name the indexes
+    for private dependencies; credentials stay with the operator.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -93957,3 +93978,45 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1519
   - REQ-2219
   - REQ-2221
+- id: REQ-2223
+  value: A start refuses a virtual environment out of step with the lock file, and names the command that
+    fixes it.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Command Line
+  feature: installation-python-package
+  priority: SHOULD
+  type: behavioral
+  description: Maintainer 2026-11-09. The start scripts compare the checkout's virtual environment with
+    uv.lock before starting anything. If it is out of step they stop, change nothing, and print the sync
+    command to run. They never change the environment without being asked.
+  scenario: 'Given a checkout whose virtual environment differs from uv.lock
+
+
+    When it is started
+
+
+    Then the start stops, the environment is unchanged, and the sync command is printed'
+  stakeholders:
+  - app-developer
+- id: REQ-2224
+  value: A table can say how long a read waits for its first landing.
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Table Registration
+  feature: replicas-and-freshness-freshness-gate
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included.
+    Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout.
+    Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh.
+    Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS
+    GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table
+    does without the freshness guarantee (REQ-860). This requirement is the read wait alone: a read with
+    nothing landed waits up to that long, in place of the request timeout.'
+  scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
+    read waits for the rows
+  stakeholders:
+  - data-engineer

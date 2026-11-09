@@ -9,21 +9,18 @@
 #             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ── publish-provisa-pypi ── publish
 #   packages ─────────────┘
 #
-# On a tag (v*) the release is built and published as it always was. Run by hand (Actions ->
-# Build Provisa Packages -> Run workflow) it is a DRY RUN: every artifact is built and uploaded
-# to the run under the names the given `version` produces, and nothing leaves the run -- no
-# draft release, no attachment, no PyPI upload, no image push, no signed attestation. A manual
-# run publishes only when it is started ON the tag whose version it names (re-publishing that
-# tag) with `publish` checked.
+# A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
+# release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:
+# cut" requires: every artifact is built and uploaded to the run under the names the given
+# `version` produces, and nothing leaves the run -- no draft release, no attachment, no PyPI
+# upload, no image push, no signed attestation. A run publishes only when it is started ON the tag
+# whose version it names with `publish` checked, which is how "Release: cut" starts it.
 #
 # A failed job is re-run alone with "Re-run failed jobs": the legs that passed are not built
 # again, and the artifacts they uploaded to the run are still there for the leg that reads them.
 name: Build Provisa Packages
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -37,9 +34,9 @@ on:
         type: boolean
         default: false
 
-# One release at a time; a dry run never cancels one (nor another dry run of another ref).
+# Per ref: a dry run never cancels a release on its tag, nor a dry run of another ref.
 concurrency:
-  group: ${{ github.event_name == 'push' && 'release' || format('release-dry-run-{0}', github.ref) }}
+  group: release-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -48,7 +45,7 @@ jobs:
     uses: ./.github/workflows/release-prebuilt.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   packages:
     name: Packages
@@ -61,7 +58,7 @@ jobs:
     uses: ./.github/workflows/release-packages.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   macos:
     name: macOS installers
@@ -69,7 +66,7 @@ jobs:
     uses: ./.github/workflows/release-macos.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     secrets:
       APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
       APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
@@ -84,7 +81,7 @@ jobs:
     uses: ./.github/workflows/release-windows.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     secrets:
       WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
       WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
@@ -96,7 +93,7 @@ jobs:
     uses: ./.github/workflows/release-linux.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   # PyPI, server and client: the orchestrator's own jobs, never a reusable workflow's -- PyPI
   # trusted publishing does not accept a token issued to a reusable workflow
@@ -105,7 +102,7 @@ jobs:
   publish-pypi:
     name: Publish Python client to PyPI
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     needs: [prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
@@ -130,7 +127,7 @@ jobs:
   publish-notebook-pypi:
     name: Publish provisa-notebook to PyPI
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     needs: [prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
@@ -152,7 +149,7 @@ jobs:
   publish-provisa-pypi:
     name: Publish provisa server to PyPI
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
     runs-on: ubuntu-latest
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
@@ -193,4 +190,4 @@ jobs:
     uses: ./.github/workflows/release-publish.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}

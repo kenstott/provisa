@@ -1,12 +1,9 @@
 name: Release Exports
 
-# On every release tag: generate and attach feature_matrix.csv,
+# Started by Release: cut on the release's tag: generate and attach feature_matrix.csv,
 # traceability_matrix.csv, and roadmap.md to the GitHub Release.
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:

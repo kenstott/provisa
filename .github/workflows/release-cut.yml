@@ -1,29 +1,45 @@
 # Release: cut (REQ-1989)
 #
-# How a release is made. Run by hand on main (Actions -> Release: cut -> Run workflow) with the
-# version to cut (v0.1.0-alpha.480). In order, and stopping at the first failure:
+# How a release is made. A release branch, release/<version>, is cut from a main commit (or from
+# the last release with a subset cherry-picked) and then takes only fixes. Run by hand on that
+# branch (Actions -> Release: cut -> Run workflow, branch release/v0.1.0-alpha.480) with the
+# version to cut (v0.1.0-alpha.480). The suites run on the branch; the whole release build runs
+# there as a dry run, publishing nothing (build-dmg.yml dispatched on the branch with publish
+# false). The nightly alpha (alpha-nightly.yml) starts all of them itself. A failure is fixed on
+# the branch and cascades by merging it forward, and no version is lost, because the tag is made
+# last, after packaging. In order:
 #
-#   0. Every UI e2e lane (core, Trino, swap) passed on the commit being cut: its push run on main
-#      completed green. A lane that did not is named and the cut stops.
-#   1. scripts/release_cut_check.py: the version is a release tag, its tag does not exist, no
+#   0. The run is on release/<version> for the version it names: any other ref is refused.
+#   1. scripts/release_gate.py reads the suites and the dry-run build on this commit of this
+#      branch. For a beta or production release one not green stops the cut, by name, and is not
+#      waivable. An alpha ships at the end of its time box: each suite not green is reported and
+#      listed in step 4, but an alpha that did not package is not tagged. requirements-ci is not
+#      in an alpha's gate.
+#   2. scripts/release_cut_check.py: the version is a release tag, its tag does not exist, no
 #      hand-written docs/releases/<version>.md would be overwritten, and the previous release's
-#      tag is found.
-#   2. scripts/gen_release_notes.py from the previous tag to HEAD. Its exit 2 stops the cut here:
+#      tag, by semantic version, is found and is in this branch's history. A branch started while
+#      the release before it was publishing merges that tag first: the check says so.
+#   3. scripts/gen_release_notes.py from the previous tag to HEAD. Its exit 2 stops the cut here:
 #      nothing is committed and no tag is made. A release before the first one shown writes no
 #      page, and the cut stops too: a release's body is its page. A hand-written page under
 #      docs/releases that the generator changed or removed stops it as well (--written).
-#   3. The notes -- the UI's releaseNotes.json, docs/releases/<version>.md, mkdocs.yml and
-#      CHANGELOG.md -- are committed to main, the annotated tag is made on that commit, and both
-#      are pushed. Nothing else may have changed.
-#   4. A tag pushed with this workflow's token starts no workflow, so each workflow a v* tag
-#      starts is started here on the tag: build-dmg.yml (the release orchestrator) with
-#      publish=true, which it honours on a run started on the tag it names, and the others with
-#      no inputs. ensure-release takes the draft release's body from the tag's
+#   4. The notes -- the UI's releaseNotes.json, docs/releases/<version>.md (with an alpha's list
+#      of what failed), mkdocs.yml and CHANGELOG.md -- are committed to the release branch, the
+#      annotated tag is made on that commit, and both are pushed in one atomic push. Nothing else
+#      may have changed.
+#   5. A tag starts nothing and publishes nothing: it tracks the stage. Publishing is its own
+#      step: each release workflow is started here on the tag, build-dmg.yml (the release
+#      orchestrator) with publish=true, which it honours on a run started on the tag it names, and
+#      the others with no inputs. ensure-release takes the draft release's body from the tag's
 #      docs/releases/<version>.md.
 #
-# A cut that failed after pushing main and before pushing the tag is run again: the page it wrote
-# is its own (its commit's subject), the generator writes the same notes, and nothing new is
-# committed before the tag is made.
+# After the release is published, the lead runs scripts/release_merge.py --version <version>: it
+# merges the release to main and deletes the branch. A conflict stops it and is reported; nothing
+# is forced.
+#
+# A cut that failed before its atomic push is run again from the start: nothing of it reached the
+# branch. The next release can be started while this one publishes: its branch and this one share
+# nothing that either run writes.
 name: "Release: cut"
 
 on:
@@ -33,16 +49,6 @@ on:
         description: The release tag to cut (v0.1.0-alpha.480).
         type: string
         required: true
-      ui_gate:
-        description: "skip (default during alpha): no UI e2e gate. enforce: every UI e2e lane must be green on this commit (dispatch the lanes first). waived: the maintainer waives an enforced gate; waiver_reason is required and goes into the release notes."
-        type: choice
-        options: [skip, enforce, waived]
-        default: skip
-      waiver_reason:
-        description: Required when ui_gate is waived; written into the release notes.
-        type: string
-        required: false
-        default: ""
 
 # One cut at a time, and a cut is never cancelled half-way.
 concurrency:
@@ -50,20 +56,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # the notes commit on main and the tag
+  contents: write # the notes commit on the release branch and the tag
   actions: write # starting the release's workflows on the tag
 
 jobs:
   cut:
     name: Generate the notes, commit them and tag the release
     runs-on: ubuntu-latest
-    # A release is cut from main only.
-    if: github.ref == 'refs/heads/main'
     env:
       VERSION: ${{ inputs.version }}
     steps:
-      # The run's own commit: main as it was when the cut was started. Should main move before
-      # the notes are pushed, the push is refused rather than the tag made on another commit.
+      # The run's own commit: the release branch as it was when the cut was started. Should the
+      # branch move before the notes are pushed, the push is refused rather than the tag made on
+      # another commit.
       - uses: actions/checkout@v4
         with:
           # The generator reads the log of the range and requirements.yaml at both ends of it.
@@ -72,40 +77,21 @@ jobs:
       - name: Set up Python
         uses: ./.github/actions/setup-python
 
-      # During alpha the maintainer runs the full suites only on request (2026-10-15), so the gate is
-      # skipped unless asked for. Enforced, a release is cut only from a commit of main that every UI
-      # e2e lane passed. A lane not green on it -- failed, cancelled, still running or never run --
-      # refuses the cut, by name.
-      - name: Refuse unless every UI e2e lane is green on this commit
+      # A failing step, not a job-level `if`: a skipped job would refuse nothing and report nothing.
+      - name: Refuse unless this is the release's own branch
+        run: uv run python scripts/release_cut_check.py --ref "$GITHUB_REF" --version "$VERSION"
+
+      # The suites and the dry run of the whole release build (scripts/release_gate.py). A run
+      # counts only on this commit of this branch: failed, cancelled, running or never run is not
+      # green. A beta or production release refuses the cut, by name, so a failure costs no
+      # version. An alpha is stopped only by its dry-run build: what else is left goes into its
+      # notes below.
+      - name: Gate on the suites and the dry-run build
         env:
           GH_TOKEN: ${{ github.token }}
-          UI_GATE: ${{ inputs.ui_gate }}
-          WAIVER_REASON: ${{ inputs.waiver_reason }}
         run: |
           set -euo pipefail
-          if [ "$UI_GATE" = "skip" ]; then
-            echo "::notice::no UI e2e gate for $VERSION (alpha: full suites run only on request)"
-            exit 0
-          fi
-          if [ "$UI_GATE" = "waived" ]; then
-            if [ -z "${WAIVER_REASON// /}" ]; then
-              echo "::error::ui_gate is waived but no waiver_reason was given"
-              exit 1
-            fi
-            echo "::warning::the UI e2e gate is waived for $VERSION: $WAIVER_REASON"
-            exit 0
-          fi
-          refused=0
-          for workflow in ui-e2e-core.yml ui-e2e-trino.yml ui-e2e-swap-amd64.yml; do
-            run="$(gh run list --workflow "$workflow" \
-              --commit "$GITHUB_SHA" --limit 1 --json status,conclusion,url \
-              --jq '.[0] // {} | "\(.status // "never run") \(.conclusion // "") \(.url // "")"')"
-            if [ "${run#completed success }" = "$run" ]; then
-              echo "::error::$workflow is not green on $GITHUB_SHA: $run"
-              refused=1
-            fi
-          done
-          exit "$refused"
+          python3 scripts/release_gate.py --version "$VERSION" --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --out "$RUNNER_TEMP/gate-failures.md"
 
       - name: Check the release can be cut
         id: check
@@ -123,14 +109,11 @@ jobs:
           fi
           uv run python scripts/release_cut_check.py --version "$VERSION" --written
 
-      # A waived UI gate is stated in the release's own notes, with the maintainer's reason.
-      - name: Record a waived UI gate in the notes
-        if: inputs.ui_gate == 'waived'
-        env:
-          WAIVER_REASON: ${{ inputs.waiver_reason }}
+      # An alpha ships at the end of its time box with what is left listed.
+      - name: List an alpha's failures in its notes
         run: |
           set -euo pipefail
-          printf '\n## Release gate\n\nThe UI end-to-end gate was waived for this release: %s\n' "$WAIVER_REASON" >> "docs/releases/$VERSION.md"
+          if [ -f "$RUNNER_TEMP/gate-failures.md" ]; then cat "$RUNNER_TEMP/gate-failures.md" >> "docs/releases/$VERSION.md"; fi
 
       - name: Commit the notes, tag the release and push both
         run: |
@@ -147,10 +130,12 @@ jobs:
             git commit -m "chore(release): $VERSION notes"
           fi
           git tag -a "$VERSION" -m "$VERSION"
-          git push origin HEAD:main
-          git push origin "refs/tags/$VERSION"
+          # One atomic push: the branch never holds the notes without the tag, so a failed cut
+          # leaves nothing behind and is run again on the commit the gates passed.
+          git push --atomic origin "HEAD:refs/heads/release/$VERSION" "refs/tags/$VERSION"
 
-      - name: Start the release on its tag
+      # A tag starts nothing, so publishing is started here, on the tag, once it exists.
+      - name: Publish the release from its tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -159,10 +144,3 @@ jobs:
           for workflow in build-duckdb-extensions.yml build-pg-extensions.yml release-exports.yml; do
             gh workflow run "$workflow" --ref "$VERSION"
           done
-          # The UI e2e lanes run on the tag only when the gate is enforced: during alpha the full
-          # suites run only on request (maintainer 2026-10-15).
-          if [ "${{ inputs.ui_gate }}" = "enforce" ]; then
-            for workflow in ui-e2e-core.yml ui-e2e-swap-amd64.yml ui-e2e-trino.yml; do
-              gh workflow run "$workflow" --ref "$VERSION"
-            done
-          fi

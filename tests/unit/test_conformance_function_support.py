@@ -1160,10 +1160,12 @@ def _workflow() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW.read_text())
 
 
-def test_the_workflow_is_dispatched_by_hand_and_is_no_gate():
+def test_the_workflow_runs_by_hand_or_on_a_release_push_and_is_no_gate_on_main():
     doc = _workflow()
     assert doc["name"] == "Conformance (functions)"
-    assert set(doc[True]) == {"workflow_dispatch"}  # YAML reads the key `on` as true
+    triggers = doc[True]  # YAML reads the key `on` as true
+    assert set(triggers) == {"workflow_dispatch", "push"}
+    assert triggers["push"] == {"branches": ["release/**"]}
     assert doc["permissions"] == {"contents": "read"}
     for path in (REPO / ".github" / "workflows").glob("*.yml"):
         if path != WORKFLOW:

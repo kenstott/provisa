@@ -24,6 +24,9 @@ name: Conformance (functions)
 # leg that leaves no result leaves no guaranteed list.
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:

@@ -8,9 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A release is cut by the "Release: cut" workflow: its notes are generated and committed before
-its tag is made, a generation failure leaves no commit and no tag, no hand-written release page
-is overwritten, and every workflow a v* tag starts is started on the new tag.
+"""A release is cut by the "Release: cut" workflow, from its own branch release/<version>: the
+suites and the dry-run build pass on that branch first, its notes are generated and committed
+before its tag is made, a generation failure leaves no commit and no tag, no hand-written release
+page is overwritten, and the cut starts the release workflows on the new tag, which itself starts nothing. Once published,
+the branch merges to main and to dev and is deleted.
 
 The preflight runs against a real temporary Git repository; the workflow is read as YAML."""
 
@@ -38,6 +40,26 @@ def _script():
 
 
 cut = _script()
+
+
+def cut_gate():
+    spec = importlib.util.spec_from_file_location(
+        "release_gate", _ROOT / "scripts" / "release_gate.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _merge_script():
+    spec = importlib.util.spec_from_file_location(
+        "release_merge", _ROOT / "scripts" / "release_merge.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -148,15 +170,13 @@ def _steps() -> list[dict]:
     return _load("release-cut.yml")["jobs"]["cut"]["steps"]
 
 
-def test_a_cut_is_run_by_hand_on_main_with_a_version_and_never_cancelled():
+def test_a_cut_is_run_by_hand_with_a_version_and_never_cancelled():
     workflow = _load("release-cut.yml")
     dispatch = _on(workflow)["workflow_dispatch"]
     assert dispatch["inputs"]["version"]["required"] is True
     assert set(_on(workflow)) == {"workflow_dispatch"}
     assert workflow["concurrency"] == {"group": "release-cut", "cancel-in-progress": False}
     assert workflow["permissions"] == {"contents": "write", "actions": "write"}
-    job = workflow["jobs"]["cut"]
-    assert job["if"] == "github.ref == 'refs/heads/main'"
     checkout = _steps()[0]
     assert checkout["uses"].startswith("actions/checkout@")
     assert checkout["with"] == {"fetch-depth": 0}  # the run's own commit, all of its history
@@ -172,7 +192,7 @@ def test_the_notes_are_generated_and_checked_before_anything_is_committed_or_tag
             "--written",
             "git commit",
             'git tag -a "$VERSION"',
-            'git push origin "refs/tags/$VERSION"',
+            'git push --atomic origin "HEAD:refs/heads/release/$VERSION" "refs/tags/$VERSION"',
             "gh workflow run build-dmg.yml",
         )
     ]
@@ -190,19 +210,22 @@ def test_the_notes_are_generated_and_checked_before_anything_is_committed_or_tag
     assert cut.cut_subject("$VERSION") == "chore(release): $VERSION notes"
 
 
-def test_every_workflow_a_release_tag_starts_is_started_on_the_new_tag():
-    tagged = set()
+_RELEASE_WORKFLOWS = (
+    "build-dmg.yml",
+    "build-duckdb-extensions.yml",
+    "build-pg-extensions.yml",
+    "release-exports.yml",
+)
+
+
+def test_a_pushed_tag_starts_nothing_and_the_cut_publishes_from_it():
     for path in _WORKFLOWS.glob("*.yml"):
         push = _on(yaml.safe_load(path.read_text())).get("push") or {}
-        if any(t == "v*" for t in push.get("tags", []) or []):
-            tagged.add(path.name)
+        assert not push.get("tags"), f"{path.name} starts on a tag"
     dispatch = next(r for r in (s.get("run", "") for s in _steps()) if "gh workflow run" in r)
-    started = {"build-dmg.yml"} | {
-        name for name in tagged if f" {name}" in dispatch or f"{name} " in dispatch
-    }
-    assert tagged and started == tagged, sorted(tagged - started)
-    for name in tagged:
+    for name in _RELEASE_WORKFLOWS:
         assert "workflow_dispatch" in _on(_load(name)), f"{name} cannot be started on the tag"
+        assert name in dispatch, f"{name} is not started by the cut"
     assert (
         'gh workflow run build-dmg.yml --ref "$VERSION" -f version="$VERSION" -f publish=true'
         in dispatch
@@ -221,44 +244,260 @@ def test_the_release_body_is_the_tags_notes_page():
 _UI_LANES = ("ui-e2e-core.yml", "ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml")
 
 
-def test_every_ui_e2e_lane_runs_only_on_request():
-    # During alpha the full suites run only when asked for (maintainer 2026-10-15): no push of a
-    # branch or a tag starts a UI e2e lane; each is dispatched.
+def test_every_ui_e2e_lane_runs_on_a_release_branch_and_on_request():
+    # A release branch's pushes run them; no tag and no push to main starts one (REQ-1989).
     for name in _UI_LANES:
         on = _on(_load(name))
-        assert "push" not in on, name
+        assert on["push"] == {"branches": ["release/**"]}, name
         assert "workflow_dispatch" in on, name
 
 
-def test_the_ui_gate_is_skipped_by_default_during_alpha():
-    ui_gate = _on(_load("release-cut.yml"))["workflow_dispatch"]["inputs"]["ui_gate"]
-    assert ui_gate["default"] == "skip"
-    assert ui_gate["options"] == ["skip", "enforce", "waived"]
-    runs = [step.get("run", "") for step in _steps()]
-    gate = runs[next(i for i, r in enumerate(runs) if "gh run list" in r)]
-    assert gate.index('if [ "$UI_GATE" = "skip" ]; then') < gate.index("for workflow in ")
+def test_a_ui_lane_not_green_refuses_a_beta_or_production_cut_through_the_gate():
+    gated = cut_gate().gates("v0.2.0")
+    assert set(_UI_LANES) <= set(gated)
 
 
-def test_a_cut_is_refused_by_name_unless_every_ui_e2e_lane_is_green_on_its_commit():
+# -- the release branch ---------------------------------------------------------------------------
+
+_VERSION = "v0.1.0-alpha.480"
+#: Every workflow a push to a release branch starts unconditionally, and the release build.
+_TRIGGERS = {
+    "cve-audit.yml": ["main", "release/**"],
+    "docker-image.yml": ["main", "release/**"],
+    "lint.yml": ["main", "release/**"],
+    "requirements-ci.yml": ["main", "release/**"],
+    "ui-unit-tests.yml": ["main", "release/**"],
+    "unit-tests.yml": ["main", "release/**"],
+    "devcontainer-smoke.yml": ["main", "release/**", "ci/**"],
+    # Publishes a demo and gates no release.
+    "demo-bundles.yml": ["main"],
+}
+
+
+@pytest.mark.parametrize("name", sorted(_TRIGGERS))
+def test_a_push_runs_the_workflow_on_the_branches_the_release_lines_give_it(name):
+    assert _on(_load(name))["push"]["branches"] == _TRIGGERS[name]
+
+
+@pytest.mark.parametrize("name", sorted(_TRIGGERS))
+def test_a_landing_on_main_cancels_nothing_on_a_release_branch(name):
+    workflow = _load(name)
+    concurrency = [workflow.get("concurrency")] + [
+        job.get("concurrency") for job in workflow["jobs"].values()
+    ]
+    for entry in filter(None, concurrency):
+        assert "github.ref" in entry["group"], f"{name}: {entry}"
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "refs/heads/main",
+        "refs/heads/fix/a-branch",
+        "refs/heads/release/v0.1.0-alpha.479",
+        "refs/heads/feature/release/v0.1.0-alpha.480",
+        "refs/tags/v0.1.0-alpha.480",
+    ],
+)
+def test_a_cut_refuses_any_ref_but_its_own_release_branch(ref):
+    with pytest.raises(cut.CutRefused, match="its own branch"):
+        cut.check_ref(ref, _VERSION)
+    assert cut.main(["--version", _VERSION, "--ref", ref]) == 2
+
+
+def test_a_cut_is_accepted_on_its_own_release_branch(capsys):
+    cut.check_ref(f"refs/heads/release/{_VERSION}", _VERSION)
+    assert cut.main(["--version", _VERSION, "--ref", f"refs/heads/release/{_VERSION}"]) == 0
+    assert capsys.readouterr().out == ""  # nothing added to the step's outputs
+
+
+def _index(needle: str) -> int:
     runs = [step.get("run", "") for step in _steps()]
-    gate = next(i for i, r in enumerate(runs) if "gh run list" in r)
-    assert gate < next(i for i, r in enumerate(runs) if "release_cut_check.py --version" in r)
-    script = runs[gate]
+    return next(i for i, r in enumerate(runs) if needle in r)
+
+
+def test_the_ref_is_refused_before_anything_else_runs():
+    assert "if" not in _load("release-cut.yml")["jobs"]["cut"]  # a skipped job refuses nothing
+    refusal = _index('release_cut_check.py --ref "$GITHUB_REF" --version "$VERSION"')
+    assert refusal < _index("scripts/release_gate.py")
+    assert not any("run" in step for step in _steps()[:refusal])
+
+
+def test_the_tag_comes_after_the_suites_and_the_dry_run_build_passed_on_the_branch():
+    gate = _index("scripts/release_gate.py")
+    assert _index('gen_release_notes.py --from "$PREVIOUS"') > gate
+    assert _index('git tag -a "$VERSION"') > gate
+    script = _steps()[gate]["run"]
     assert script.startswith("set -euo pipefail")
-    assert "for workflow in " + " ".join(_UI_LANES) + "; do" in script
-    # Enforced, a dispatched run of the lane on the commit counts: no push starts one in alpha.
-    assert "--event push" not in script and '--commit "$GITHUB_SHA"' in script
-    assert '"${run#completed success }" = "$run"' in script
-    assert 'echo "::error::$workflow is not green on $GITHUB_SHA: $run"' in script
-    assert 'exit "$refused"' in script
+    assert '--branch "$GITHUB_REF_NAME"' in script and '--sha "$GITHUB_SHA"' in script
+    assert "if" not in _steps()[gate]  # a beta or production release cannot waive it
 
 
-def test_a_waived_ui_gate_needs_a_reason_and_is_written_into_the_notes():
-    runs = [step.get("run", "") for step in _steps()]
-    gate = runs[next(i for i, r in enumerate(runs) if "gh run list" in r)]
-    assert 'if [ "$UI_GATE" = "waived" ]; then' in gate
-    assert "ui_gate is waived but no waiver_reason was given" in gate
-    notes = next(r for r in runs if "## Release gate" in r)
-    assert '"docs/releases/$VERSION.md"' in notes and "$WAIVER_REASON" in notes
-    record = next(s for s in _steps() if "## Release gate" in s.get("run", ""))
-    assert record["if"] == "inputs.ui_gate == 'waived'"
+def test_the_notes_commit_and_the_tag_reach_the_branch_together_and_nothing_is_forced():
+    push = _steps()[_index('git tag -a "$VERSION"')]["run"]
+    assert push.count("git push") == 1
+    assert "HEAD:main" not in push
+    for path in (
+        _WORKFLOWS / "release-cut.yml",
+        _WORKFLOWS / "release-publish.yml",
+    ):
+        text = path.read_text()
+        assert "--force" not in text and "push -f" not in text, path.name
+    # The script's one --force removes its own temporary worktree; its push has none.
+    script = (_ROOT / "scripts" / "release_merge.py").read_text()
+    push = script[script.index('"push"') : script.index("finally:")]
+    assert "--force" not in push and '"-f"' not in push
+
+
+def _branch(repo: Path, name: str, start: str = "HEAD") -> None:
+    _git(repo, "checkout", "-q", "-b", name, start)
+
+
+def test_notes_start_at_the_previous_release_merged_back_through_main(repo):
+    # Release 480 was tagged on its branch and merged to main; 481 is cut from main.
+    _branch(repo, "release/v0.1.0-alpha.480")
+    _commit(repo, cut.cut_subject("v0.1.0-alpha.480"), **{"n.md": "notes"})
+    _git(repo, "tag", "-a", "v0.1.0-alpha.480", "-m", "v0.1.0-alpha.480")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-edit", "v0.1.0-alpha.480")
+    _branch(repo, "release/v0.1.0-alpha.481")
+    _commit(repo, "fix: on the branch", **{"b.py": "1"})
+    assert cut.check(repo, "v0.1.0-alpha.481") == "v0.1.0-alpha.480"
+
+
+def test_the_previous_tag_is_chosen_by_semantic_version_and_not_as_text(repo):
+    _git(repo, "tag", "-a", "v0.1.0-alpha.9", "-m", "nine")
+    _git(repo, "tag", "-a", "v0.1.0-alpha.10", "-m", "ten")
+    assert cut.check(repo, "v0.1.0-alpha.11") == "v0.1.0-alpha.10"
+
+
+@pytest.mark.parametrize(
+    ("lower", "higher"),
+    [
+        ("v0.1.0-alpha.9", "v0.1.0-alpha.10"),
+        ("v0.1.0-alpha.10", "v0.1.0-beta.1"),
+        ("v0.1.0-beta.2", "v0.1.0-rc.1"),
+        ("v0.1.0-rc.9", "v0.1.0-rc.10"),
+        ("v0.1.0-rc.1", "v0.1.0"),
+        ("v0.1.0", "v0.1.1-alpha.1"),
+    ],
+)
+def test_tags_are_ordered_by_semantic_version(lower, higher):
+    assert cut._order(lower) < cut._order(higher)
+
+
+def test_a_prerelease_sorts_below_its_release_when_the_previous_tag_is_chosen(repo):
+    _git(repo, "tag", "-a", "v0.2.0-rc.1", "-m", "rc")
+    _git(repo, "tag", "-a", "v0.2.0", "-m", "final")
+    _git(repo, "tag", "-a", "v0.1.0-alpha.9", "-m", "older number, lower order")
+    assert cut.check(repo, "v0.2.1") == "v0.2.0"
+    assert cut.check(repo, "v0.2.0-rc.2") == "v0.2.0-rc.1"
+
+
+def test_a_release_started_while_the_one_before_published_must_take_that_tag_in_first(repo):
+    # 481's branch was cut before 480 was tagged: its notes would repeat all of 480, and its
+    # merge to main would conflict after it is published. It is refused while it can be fixed.
+    _branch(repo, "release/v0.1.0-alpha.481")
+    _git(repo, "checkout", "-q", "main")
+    _branch(repo, "release/v0.1.0-alpha.480")
+    _commit(repo, cut.cut_subject("v0.1.0-alpha.480"), **{"n.md": "notes"})
+    _git(repo, "tag", "-a", "v0.1.0-alpha.480", "-m", "v0.1.0-alpha.480")
+    _git(repo, "checkout", "-q", "release/v0.1.0-alpha.481")
+    with pytest.raises(cut.CutRefused, match="git merge v0.1.0-alpha.480"):
+        cut.check(repo, "v0.1.0-alpha.481")
+    _git(repo, "merge", "-q", "--no-edit", "v0.1.0-alpha.480")
+    assert cut.check(repo, "v0.1.0-alpha.481") == "v0.1.0-alpha.480"
+
+
+# -- after the release is published ---------------------------------------------------------------
+
+merging = _merge_script()
+_BRANCH = f"release/{_VERSION}"
+
+
+@pytest.fixture
+def released(tmp_path) -> tuple[Path, Path]:
+    """(clone on the tag, its bare origin): main moved on past a tagged release branch."""
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", str(origin), str(work))
+    _git(work, "config", "user.email", "t@example.test")
+    _git(work, "config", "user.name", "t")
+    _git(work, "checkout", "-q", "-b", "main")
+    _commit(work, "first", **{"README.md": "x"})
+    _commit(work, "feat: released", **{"a.py": "1"})
+    _branch(work, _BRANCH)
+    _commit(work, cut.cut_subject(_VERSION), **{"CHANGELOG.md": "notes"})
+    _git(work, "tag", "-a", _VERSION, "-m", _VERSION)
+    _git(work, "checkout", "-q", "main")
+    _commit(work, "feat: newer than the release", **{"b.py": "2"})
+    _git(work, "push", "-q", "origin", "main", _BRANCH, f"refs/tags/{_VERSION}")
+    _git(work, "checkout", "-q", "--detach", _VERSION)
+    return work, origin
+
+
+def _remote(origin: Path, ref: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(origin), "rev-parse", "-q", "--verify", ref],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_a_published_release_merges_to_main_and_its_branch_is_deleted(released):
+    work, origin = released
+    assert merging.main(["--version", _VERSION, "--repo", str(work)]) == 0
+    assert _remote(origin, f"refs/heads/{_BRANCH}") == ""
+    # main has the release and kept what landed since the cut.
+    assert _git(origin, "show", "main:CHANGELOG.md") == "notes"
+    assert _git(origin, "show", "main:b.py") == "2"
+
+
+def _state(origin: Path) -> list[str | None]:
+    return [_remote(origin, f"refs/heads/{ref}") for ref in ("main", _BRANCH)]
+
+
+def test_a_merge_conflict_stops_names_the_files_and_pushes_nothing(released, capsys):
+    work, origin = released
+    _git(work, "checkout", "-q", "main")
+    _commit(work, "docs: edited on main", **{"CHANGELOG.md": "main's version"})
+    _git(work, "push", "-q", "origin", "main")
+    _git(work, "checkout", "-q", "--detach", _VERSION)
+    before = _state(origin)
+    assert merging.main(["--version", _VERSION, "--repo", str(work)]) == 2
+    err = capsys.readouterr().err
+    assert "merging into main" in err and "CHANGELOG.md" in err
+    assert _state(origin) == before
+
+
+def test_commits_on_the_branch_after_the_tag_stop_the_merge(released, capsys):
+    work, origin = released
+    _git(work, "checkout", "-q", _BRANCH)
+    _commit(work, "fix: after the tag", **{"c.py": "3"})
+    _git(work, "push", "-q", "origin", _BRANCH)
+    _git(work, "checkout", "-q", "--detach", _VERSION)
+    before = _state(origin)
+    assert merging.main(["--version", _VERSION, "--repo", str(work)]) == 2
+    assert "after the tag" in capsys.readouterr().err
+    assert _state(origin) == before
+
+
+def test_a_landing_on_main_during_the_merge_refuses_the_whole_push(released, tmp_path, monkeypatch):
+    work, origin = released
+    other = tmp_path / "other"
+    _git(tmp_path, "clone", "-q", "-b", "main", str(origin), str(other))
+    _git(other, "config", "user.email", "t@example.test")
+    _git(other, "config", "user.name", "t")
+    real = merging._merged_into
+
+    def land_then_merge(repo, target, version):
+        result = real(repo, target, version)
+        _commit(other, "feat: landed meanwhile", **{"e.py": "5"})
+        _git(other, "push", "-q", "origin", "main")
+        return result
+
+    monkeypatch.setattr(merging, "_merged_into", land_then_merge)
+    branch_before = _remote(origin, f"refs/heads/{_BRANCH}")
+    assert merging.main(["--version", _VERSION, "--repo", str(work)]) == 2
+    assert _remote(origin, f"refs/heads/{_BRANCH}") == branch_before
