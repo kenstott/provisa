@@ -94130,7 +94130,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer 2026-11-09: the script declares each table''s
     row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.
     (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:) Maintainer 2026-11-09: the Spark connector
-    states replication on by default in the standard file of REQ-2221.'
+    states replication on by default in the standard file of REQ-2221. (Amended 2026-11-09, A COMMAND CAN
+    TAKE A TABLE:) Maintainer 2026-11-09: a code source''s @command, in any language and so in the Spark
+    script, can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference
+    to a governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view
+    can then have table inputs, a command that runs Spark, and a table output.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
