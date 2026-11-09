@@ -35,6 +35,7 @@ import yaml
 
 from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import (
+    build_provisa_wheel,
     _admin,
     _archive,
     _column,
@@ -124,7 +125,18 @@ def _config(path) -> None:
 
 
 @pytest.fixture(scope="module")
-def server(tmp_path_factory):
+def runtime_cache(tmp_path_factory):
+    return tmp_path_factory.mktemp("codehost_trino_runtime_deps")
+
+
+@pytest.fixture(scope="module")
+def provisa_wheel(runtime_cache):
+    """The wheel the source's image build reads its encoders from (REQ-2194)."""
+    return build_provisa_wheel(runtime_cache, _ARCH)
+
+
+@pytest.fixture(scope="module")
+def server(tmp_path_factory, runtime_cache):
     import asyncio
 
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -136,7 +148,7 @@ def server(tmp_path_factory):
         _ORG,
         engine="trino",
         config=str(path),
-        env={"PROVISA_RUNTIME_DEPS_CACHE": str(work / "runtime-deps")},
+        env={"PROVISA_RUNTIME_DEPS_CACHE": str(runtime_cache)},
     )
     srv.start(timeout=300)
     try:
@@ -223,7 +235,7 @@ def _trino_network() -> str:
 
 
 @pytest.fixture(scope="module")
-def built(server, code_source):
+def built(server, code_source, provisa_wheel):
     """The source's image built, run on Trino's network and connected: its address."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})
     assert started.status_code == 200, started.text

@@ -260,11 +260,25 @@ async def _registered_integers(result) -> list[bool]:  # REQ-1961
     ]
 
 
-async def _typed_rows(result) -> list[list]:  # REQ-1961
-    """The result's rows, each a registered integer column's value as the number it is."""
+async def _written_integers(result) -> list[bool]:  # REQ-1867, REQ-1961
+    """For each result column, whether it is written as a JSON number: a registered integer, or
+    a column the engine types an integer, whatever its reader represented the value as (a DuckDB
+    HUGEINT read through Arrow is a Decimal; ``serialize.result_records`` reads it the same)."""
+    from provisa.compiler.sql_types import is_integer_type
+
+    registered = await _registered_integers(result)
+    types = result.column_types or [None] * len(result.column_names)
+    return [
+        integer or is_integer_type(None if t is None else str(t))
+        for integer, t in zip(registered, types, strict=True)
+    ]
+
+
+async def _typed_rows(result) -> list[list]:  # REQ-1867, REQ-1961
+    """The result's rows, each integer column's value as the number it is."""
     from provisa.executor.serialize import integer_value
 
-    integers = await _registered_integers(result)
+    integers = await _written_integers(result)
     names = result.column_names
     if not any(integers):
         return [list(row) for row in result.rows]
@@ -459,7 +473,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         # A column the engine types json or jsonb is written as its JSON (REQ-1867); a registered
         # integer column as its number (REQ-1961).
         types = result.column_types or [None] * len(result.column_names)
-        integers = await _registered_integers(result)
+        integers = await _written_integers(result)
         columns = [
             ColumnRef(
                 alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t), integer=i

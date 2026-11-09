@@ -23,14 +23,21 @@ from __future__ import annotations
 import duckdb
 import sqlglot
 
+from provisa.compiler import stage2
 from provisa.compiler.context import build_context
-from provisa.compiler.governed_relation import expose_read
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.nf_extractor import extract_nf_args
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.compiler.stage2 import apply_governance, build_governance_context
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    apply_governance,
+    build_governance_context,
+)
+from provisa.fakes import digest as digest_mod
+from provisa.fakes.duckdb_functions import register
 from provisa.pgwire._pipeline import context_parameters
+from provisa.security.masking import MaskingRule, MaskType
 
 ROLE = {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]}
 
@@ -179,11 +186,42 @@ def test_a_landed_parameter_filters_the_landed_column_the_statement_does_not_sel
     _binds(sql, movies_matching=["name", "fifa_code"])
 
 
-def test_a_parameter_is_exposed_through_every_level_of_a_chain():
-    tree = sqlglot.parse_one(
-        'SELECT a FROM (SELECT "t"."a" AS "a" FROM (SELECT "t"."a" AS "a" FROM t AS "t") AS "t") '
-        "AS t WHERE _nf_x = '1'"
-    )
-    relation = tree.args["from_"].this
-    expose_read(tree, relation, "t", ["_nf_x"])
-    _binds(tree.sql(), t=["a", "_nf_x"])
+def _faked_table_governed(sql: str) -> str:
+    """``sql`` governed over ``t``, whose faked column reads it through a chain (REQ-1494)."""
+    gov = GovernanceContext(role_id="analyst")
+    gov.table_map = {"t": 1}
+    gov.all_columns = {1: [("a", "varchar"), ("email", "varchar")]}
+    gov.parameter_columns = {1: [("_nf_x", "varchar")]}
+    gov.visible_columns = {1: None}
+    gov.masking_rules = {(1, "email"): (MaskingRule(MaskType.fake, fake="email()"), "varchar")}
+    stage2._bind_fakes(gov)
+    return apply_governance(sql, gov)
+
+
+def _binds_faked(sql: str, *columns: str) -> None:
+    connection = duckdb.connect()
+    try:
+        register(connection)
+        connection.execute(f"CREATE TABLE t ({', '.join(f'{c} text' for c in columns)})")
+        connection.execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    finally:
+        connection.close()
+
+
+def test_an_extracted_argument_leaves_every_level_of_a_chain(monkeypatch):
+    """The landed table holds no parameter column, so none is read at any level once the
+    condition is extracted."""
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    governed = _faked_table_governed("SELECT a FROM t WHERE _nf_x = '1'")
+    sql, _params, args = extract_nf_args(governed, [], {"_nf_x"})
+    assert args == {"x": "1"}
+    assert "_nf_x" not in sql
+    _binds_faked(sql, "a", "email")
+
+
+def test_a_parameter_is_exposed_through_every_level_of_a_chain(monkeypatch):
+    """A faked column's table is read through a chain of projections under the relation
+    (REQ-1494): one the statement names passes through each, or the engine cannot bind it."""
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    governed = _faked_table_governed("SELECT a FROM t WHERE _nf_x = '1'")
+    _binds_faked(governed, "a", "email", "_nf_x")
