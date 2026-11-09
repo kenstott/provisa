@@ -237,6 +237,12 @@ async def _as_source_operation(body: FunctionInput) -> None:
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
     if operation.binary:
         body.outputColumns = [dict(c) for c in BINARY_ANSWER]
+    if source_type == "dbt":  # REQ-2228: it runs wherever dbt already runs
+        from provisa.dbt.store import command_target
+
+        body.implKind, body.binding = await command_target(
+            state.model_db, body.sourceId, body.functionName
+        )
 
 
 async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131

@@ -34,6 +34,7 @@ import {
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { DbtFormSection } from "./DbtFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
@@ -129,6 +130,7 @@ export function SourceFormFieldsExtended({
   setOpenapiBaseUrl,
   openapiCacheTtl,
   setOpenapiCacheTtl,
+  dbt,
   openapiPreview,
   openapiPreviewing,
   openapiPreviewError,
@@ -713,6 +715,7 @@ export function SourceFormFieldsExtended({
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
       {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
       {form.type === "quickbooks" && <QuickBooksFields {...typed} /> /* REQ-2197 */}
+      {form.type === "dbt" && <DbtFormSection dbt={dbt} sourceId={form.id} /> /* REQ-2228 */}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}

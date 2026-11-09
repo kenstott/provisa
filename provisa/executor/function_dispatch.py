@@ -68,24 +68,30 @@ async def _run_subprocess(argv: list[str], payload: bytes) -> bytes:
     )
     out, err = await proc.communicate(payload)
     if proc.returncode != 0:
+        # A tool that reports on stdout (dbt, REQ-2228) has nothing on stderr to say why.
+        said = (err or out).decode(errors="replace")
         raise ApiError(
             502,
             "functions.script_failed",
-            f"script exited {proc.returncode}: {err.decode(errors='replace')}",
+            f"script exited {proc.returncode}: {said}",
             returncode=proc.returncode,
-            stderr=err.decode(errors="replace"),
+            stderr=said,
         )
     return out
 
 
 async def _http_call(
-    method: str, url: str, payload: dict, timeout: float
+    method: str,
+    url: str,
+    payload: dict,
+    timeout: float,
+    headers: dict[str, str] | None = None,
 ) -> object:  # object-ok: decoded external JSON is truly-any
     """Invoke an http-kind function endpoint, return the decoded JSON body."""
     import httpx
 
     async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.request(method, url, json=payload)
+        resp = await client.request(method, url, json=payload, headers=headers)
     resp.raise_for_status()
     return resp.json()
 
@@ -448,9 +454,18 @@ async def _exec_source_query(fn: dict, args: dict, state, _payload, _session) ->
 async def _exec_script(
     fn: dict, _args, _state, payload: dict, session: MintedSession
 ) -> list[dict]:
-    argv = list(_require(fn["binding"], "argv", "script"))  # type: ignore[arg-type]
+    binding = fn["binding"]
+    argv = list(_require(binding, "argv", "script"))  # type: ignore[arg-type]
+    # REQ-2228: a command line that takes one argument as JSON (dbt's ``run-operation --args``).
+    json_argument = binding.get("json_argument")
+    if json_argument is not None and payload.get(json_argument["argument"]) is not None:
+        value = payload[json_argument["argument"]]
+        argv += [json_argument["flag"], value if isinstance(value, str) else json.dumps(value)]
     body = json.dumps({"args": payload, "correlation_id": session.correlation_id}).encode()
     out = await _run_subprocess(argv, body)
+    # REQ-2228: a tool whose report is plain text (dbt) answers one row holding it.
+    if binding.get("stdout") == "text":
+        return [{"output": out.decode(errors="replace")}]
     return _rows_from_response(json.loads(out or b"[]"))
 
 
@@ -460,6 +475,14 @@ async def _exec_http(fn: dict, _args, state, payload: dict, session: MintedSessi
     _check_egress(state, url, "http")
     method = str(binding.get("method", "POST")).upper()
     timeout = float(binding.get("timeout_s", _HTTP_DEFAULT_TIMEOUT_S))
+    if "credential_source" in binding:
+        # REQ-2228: called with a body of its own and the named source's credential (dbt Cloud).
+        from provisa.dbt.cloud import authorization
+
+        headers = await authorization(state, binding["credential_source"], binding["auth_scheme"])
+        return _rows_from_response(
+            await _http_call(method, url, binding.get("body", {}), timeout, headers)
+        )
     body = {"args": payload, "correlation_id": session.correlation_id}
     return _rows_from_response(await _http_call(method, url, body, timeout))
 

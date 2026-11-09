@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "Procedencia del manifiesto",
+    "specLocation": "URL o ubicación del artefacto",
+    "specUpload": "Subir",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "URL del manifiesto o ubicación del artefacto",
+    "locationPlaceholder": "https://example.com/manifest.json o s3://bucket/target/manifest.json",
+    "uploadLabel": "Archivo manifest.json",
+    "cloudHostLabel": "URL de dbt Cloud",
+    "accountLabel": "ID de cuenta",
+    "jobLabel": "ID de trabajo",
+    "tokenLabel": "Token de API",
+    "tokenHint": "Se guarda con esta fuente y se usa para leer el manifiesto y ejecutar trabajos.",
+    "commandLineLabel": "Comando que ejecuta dbt",
+    "commandLineHint": "Los comandos se ejecutan así donde dbt está instalado, por ejemplo dbt --project-dir /srv/project.",
+    "previewButton": "Previsualizar manifiesto",
+    "summary": "{{project}} ({{adapter}}): {{models}} modelos y {{commands}} comandos disponibles.",
+    "warehouseFound": "{{database}} se lee a través de la fuente {{source}}.",
+    "warehouseMissing": "Ninguna fuente registrada lee la base de datos {{adapter}} {{database}}. Cree una:",
+    "warehouseId": "ID de la nueva fuente",
+    "warehouseHost": "Cuenta o host",
+    "warehouseUser": "Nombre de usuario",
+    "warehouseCredential": "Credencial",
+    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de fuente correspondiente. Registre primero su almacén y luego añada esta fuente."
+  }
+}

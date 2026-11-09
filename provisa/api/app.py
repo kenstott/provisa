@@ -5142,6 +5142,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.openapi_router import router as openapi_router
 
     app.include_router(openapi_router)
+    from provisa.api.admin.dbt_router import router as dbt_router  # REQ-2228
+
+    app.include_router(dbt_router)
     from provisa.api.admin.grpc_remote_router import router as grpc_remote_router
 
     app.include_router(grpc_remote_router)

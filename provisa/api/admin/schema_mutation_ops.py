@@ -244,6 +244,11 @@ async def register_table(
     from provisa.api.admin._table_ops import land_transform_view
 
     land_transform_view(input)  # REQ-2131
+    from provisa.api.admin._dbt_table_registration import read_through_warehouse
+
+    _dbt_refused = await read_through_warehouse(input)  # REQ-2228
+    if _dbt_refused is not None:
+        return _dbt_refused
     from provisa.api.admin.capabilities import require_capability
 
     if input.view_sql or input.view_metrics is not None:

@@ -323,6 +323,11 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "openapi":
         return ["openapi"]
 
+    if t == "dbt":  # REQ-2228: the schemas its models are built in
+        from provisa.api.admin._dbt_table_registration import offered_schemas
+
+        return await offered_schemas(source_id, config_conn)
+
     if t == "sqlite":
         return ["main"]
 
@@ -2063,6 +2068,11 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t == "openapi":
         return await _native_tables_openapi(source_id, schema_name, state)
+
+    if t == "dbt":  # REQ-2228: its models, none registered by being listed
+        from provisa.api.admin._dbt_table_registration import offered_tables
+
+        return await offered_tables(source_id, schema_name, config_conn)
 
     if t in ("graphql", "graphql_remote"):
         return await _native_tables_graphql(source_id, schema_name, config_conn, state)

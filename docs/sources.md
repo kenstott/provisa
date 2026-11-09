@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **77** source types, the ones the Sources form offers. The tables below cover all 77; the index is the count.
+Provisa registers **78** source types, the ones the Sources form offers. The tables below cover all 78; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registers **77** source types, the ones the Sources form offers. The tab
 | 49–53 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 65–71 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data profiler](#data-profiler) | `data_profiler` |
-| 76 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 65–72 | [API sources](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data profiler](#data-profiler) | `data_profiler` |
+| 77 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 

@@ -221,6 +221,7 @@ export const OPERATION_SCHEMA: Record<string, string> = {
   openapi: "openapi",
   graphql_remote: "graphql",
   grpc_remote: "grpc_remote",
+  dbt: "dbt", // REQ-2228
 };
 
 // REQ-2230: a Snowflake source also offers operations on its schema's Dynamic Tables and Tasks,
