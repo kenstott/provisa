@@ -567,6 +567,15 @@ class AppState:
         self._active_runtime().column_transforms = value
 
     @property
+    def dbt_model_tables(self) -> dict[tuple[str, str, str], tuple[str, str]]:
+        """REQ-2228: each dbt model of the active org, by where it is built."""
+        return self._active_runtime().dbt_model_tables
+
+    @dbt_model_tables.setter
+    def dbt_model_tables(self, value: dict[tuple[str, str, str], tuple[str, str]]) -> None:
+        self._active_runtime().dbt_model_tables = value
+
+    @property
     def tracked_webhooks(self) -> dict[str, dict]:
         """The active environment's webhooks, by the names every surface calls them by."""
         return self._active_runtime().tracked_webhooks

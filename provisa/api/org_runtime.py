@@ -313,6 +313,8 @@ class OrgRuntime:
     # REQ-2131: its registered column transforms (``code_columns`` commands), by name: applied in a
     # projection, never called on their own, so on no surface as commands.
     column_transforms: dict[str, dict] = field(default_factory=dict)
+    # REQ-2228: each dbt model, by the (warehouse source, schema, relation) it is built at.
+    dbt_model_tables: dict[tuple[str, str, str], tuple[str, str]] = field(default_factory=dict)
     tracked_webhooks: dict[str, dict] = field(default_factory=dict)
     # REQ-1942: command name -> why it is not defined here: a command of a source bound to a synthetic store
     # in a Test (synthetic) environment. A call to one is refused saying so.

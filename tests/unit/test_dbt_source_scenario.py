@@ -75,6 +75,7 @@ def _db() -> Database:
                 schema_org.registered_tables,
                 schema_org.table_columns,
                 schema_org.dbt_manifests,
+                schema_org.dbt_node_runs,
             ],
         )
     return db
@@ -350,6 +351,21 @@ async def test_the_token_is_held_as_entered_and_never_listed(state, db, document
     import provisa.api.admin.dbt_router as router
 
     monkeypatch.setattr(router, "latest_manifest", AsyncMock(return_value=json.dumps(document)))
+    monkeypatch.setattr(
+        router,
+        "latest_run_results",
+        AsyncMock(
+            return_value=json.dumps(
+                {
+                    "metadata": {
+                        "dbt_schema_version": "https://schemas.getdbt.com/dbt/run-results/v6.json",
+                        "generated_at": "2026-11-09T10:00:00Z",
+                    },
+                    "results": [],
+                }
+            )
+        ),
+    )
     monkeypatch.setattr(router, "resolved_credential", AsyncMock(return_value="resolved"))
     entered = "${secret:dbt_cloud}"
     await register_dbt_source(
