@@ -23,9 +23,10 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select, text
+from sqlalchemy import Insert, insert, select, text
 
 from provisa.api._meta_views import _META_TABLE_VIEWS, _OPS_REPORT_VIEWS
+from provisa.api.admin.lineage_router import store_lineage_edges
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
 from provisa.compiler import naming
 from provisa.compiler.names_table import (
@@ -40,6 +41,7 @@ from provisa.core.repositories.model_names import (
     write_names_table,
     write_refused_clashes,
 )
+from provisa.dq.registration import write_checker_targets
 from provisa.security.rights import DEFAULT_TIER_META_TABLES, META_ROW_SCOPED_VIEWS
 
 
@@ -195,6 +197,28 @@ def _many_clashes(count: int) -> list[NameClash]:
     return [NameClash("sql", f"c{i}", f"holder{i}", f"newcomer{i}") for i in range(count)]
 
 
+def _many_checker_targets(count: int) -> dict[int, int]:
+    return {i: i + 1000 for i in range(count)}
+
+
+def _many_lineage_edges(count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_relation": "sales.orders",
+            "source_column": f"c{i}",
+            "target_relation": "sales.top",
+            "target_column": f"c{i}",
+            "via": "sales.top",
+            "via_kind": "view",
+            "source_table_id": None,
+            "source_column_name": None,
+            "target_table_id": None,
+            "target_column_name": None,
+        }
+        for i in range(count)
+    ]
+
+
 class _RecordingConn:
     """Keeps the statements a writer sends the model store, and the rows sent beside each."""
 
@@ -264,8 +288,18 @@ class _OtherWorkerWritesBeforeTheInsert:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._conn, name)
 
+    async def _before_the_insert(self) -> None:
+        other_worker, self._other_worker = self._other_worker, None
+        if other_worker is not None:
+            await other_worker()
+
+    async def execute_core(self, stmt: Any) -> Any:
+        if isinstance(stmt, Insert):
+            await self._before_the_insert()
+        return await self._conn.execute_core(stmt)
+
     async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
-        await self._other_worker()
+        await self._before_the_insert()
         await self._conn.execute_core_many(stmt, rows)
 
 
@@ -275,14 +309,16 @@ class _OtherWorkerWritesBeforeTheInsert:
     [
         (write_names_table, _many_names, "model_names"),
         (write_refused_clashes, _many_clashes, "model_name_clashes"),
+        (write_checker_targets, _many_checker_targets, "checker_targets"),
+        (store_lineage_edges, _many_lineage_edges, "lineage_edges"),
     ],
-    ids=["names", "clashes"],
+    ids=["names", "clashes", "checker_targets", "lineage_edges"],
 )
 async def test_two_workers_replacing_the_table_at_once_do_not_collide(
     control_plane, write, many, table
 ):
-    """REQ-1914, REQ-194: every worker of an org rebuilds on a model change and each build replaces
-    the table, so two replace it at once. Each replacement is whole: the second begins from what
+    """REQ-1914, REQ-194, REQ-2125, REQ-2129: every worker of an org rebuilds on a model change and
+    each build replaces these tables, so two replace one at once. Each replacement is whole: the second begins from what
     the first committed, and neither finds the other's rows when it inserts."""
     first, second = control_plane.org(), control_plane.org()
     finished = threading.Event()
