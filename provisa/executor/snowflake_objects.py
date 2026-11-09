@@ -75,13 +75,12 @@ def _statement(schema_name: str, operation: str) -> str:
 
 async def _execute(pool, source_id: str, sql: str, operation: str) -> QueryResult:
     """Run ``sql``; a statement Snowflake refuses comes back as it stated it."""
-    from snowflake.connector.errors import Error
-
+    from provisa.executor.drivers.snowflake import connector_error
     from provisa.executor.source_operation import _refused
 
     try:
         return await pool.execute(source_id, sql)
-    except Error as exc:
+    except connector_error() as exc:
         raise _refused(source_id, operation, None, str(exc)) from exc
 
 
