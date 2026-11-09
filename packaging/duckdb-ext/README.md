@@ -13,18 +13,19 @@ tier breaks.
 This package embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so
 acquisition flows through PyPI instead. Each platform has its own wheel (macOS arm64, Linux x86_64
 and aarch64, Windows x64), holding only that platform's extensions; pip picks the one for the machine.
-There is no source distribution. Provisa's
-`provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the running platform's blobs
-into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
+There is no source distribution. The project is split across version parts (`<release>.<part>`), each
+under PyPI's 100 MB per-file limit. Provisa's stage command (`python -m provisa.runtime_deps.stage_assets`)
+fetches every part with `pip download` and lays the running platform's blobs out in the directory
+`PROVISA_DUCKDB_EXT_DIR` names; do not install this package.
 
-For DuckDB 2.0 this is temporary. The core extensions (`postgres_scanner`, `httpfs`, `sqlite_scanner`,
+The core extensions (`postgres_scanner`, `httpfs`, `sqlite_scanner`,
 `iceberg`, `azure`, `delta`, and `avro`, which `iceberg` loads) come from third-party PyPI wheels, one per extension and platform
 (`duckdb-extension-*`). Each holds the official signed binary, and Provisa stages it beside this
 package's.
 
-This package carries what those wheels lack: `crypto` and the community extensions. They are filled
-in this order while each wheel stays under PyPI's 100 MB limit: `crypto`, `mssql`, `snowflake`,
-`bigquery`, `mongo`, `gsheets`, `airport`, `firebird`. The build names any extension it leaves out.
+This package carries what those wheels lack: `crypto` and the community extensions, assigned to the
+parts by `PARTS` in `collect.py`. A part past the limit, or a mirrored extension no part names, stops
+the build by name.
 
 On DuckDB 2.0 the `crypto` extension is published by Query.Farm in its own extension repository
 (`query_farm`, prefix `https://duckdb-extensions.query.farm`), not in DuckDB's. It is mirrored here
@@ -39,5 +40,4 @@ does not load (0.2.0 shipped them so; 0.2.1 carries them), and staging refuses s
 Extensions are locked to the exact DuckDB build they were mirrored from, so an incompatible `duckdb`
 version can never silently load a mismatched extension.
 
-This package is a dependency of Provisa's embedded tier — install `provisa` directly rather than this
-package on its own.
+Install `provisa` rather than this package on its own; the stage command fetches its parts.
