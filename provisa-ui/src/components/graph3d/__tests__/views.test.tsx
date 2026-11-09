@@ -83,14 +83,19 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 // The ontology's read: each scope asked for, answered with the fixture (what a scope reads is
 // ontologyData's query, held by ontologyQuery.test.ts and the GraphQL corpus).
-const reads = vi.hoisted(() => ({ scopes: [] as QueryScope[], data: null as unknown }));
+const reads = vi.hoisted(() => ({
+  scopes: [] as QueryScope[],
+  data: null as unknown,
+  // Where a test has a read answer by its scope, as the server does.
+  dataOf: null as ((s: { focus: string | null }) => unknown) | null,
+}));
 vi.mock("../ontologyData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyData")>()),
   // The query stands for its scope; the server below answers it with the graph read.
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: () => reads.data,
+  ontologyGraph: (_rows: unknown, s: { focus: string | null }) => reads.dataOf?.(s) ?? reads.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -116,6 +121,7 @@ beforeEach(() => {
   observed.fire.length = 0;
   reads.scopes.length = 0;
   reads.data = FACTS;
+  reads.dataOf = null;
   nav.to.length = 0;
   window.localStorage.clear();
 });
@@ -287,12 +293,25 @@ describe("a product's graph, expanded from its panel", () => {
     expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 });
   });
 
-  it("refits the camera to the graph the control draws", async () => {
+  it("refits the camera to the graph the control brings in", async () => {
+    // The product's read holds no other product; the whole model's does.
+    reads.dataOf = (s) =>
+      s.focus === null
+        ? FACTS
+        : {
+            nodes: FACTS.nodes.filter((n) => n.id !== "p:billing"),
+            edges: FACTS.edges.filter((e) => e.a !== "p:billing" && e.b !== "p:billing"),
+          };
     await open();
     await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
     fireEvent.click(screen.getByTestId("graph3d-rest"));
-    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
-    await waitFor(() => expect(last().setData.mock.calls.at(-1)?.[2]).toBe(true));
+    await waitFor(() =>
+      expect(
+        last().setData.mock.calls.some(
+          (c) => c[2] === true && (c[0] as GraphData).nodes.some((n) => n.id === "p:billing"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("goes back to the product on Set Defaults", async () => {
@@ -363,8 +382,9 @@ describe("the Ontology page", () => {
     render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
-    // No focus, no depth to choose.
+    // No focus, no depth to choose, and no product whose rest it could show.
     expect(screen.queryByTestId("ontology-depth")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("ontology-rest")).not.toBeInTheDocument();
   });
 
   it("chooses the depth of a search's neighbourhood", async () => {
@@ -443,6 +463,8 @@ describe("the Product map entry point", () => {
     await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
+    // It belongs to no one product: it has no rest to show.
+    expect(screen.queryByTestId("graph3d-rest")).not.toBeInTheDocument();
     // Its Data layer is on: every product is drawn.
     expect(reads.scopes.at(-1)?.layers).toContain("data");
     await waitFor(() =>

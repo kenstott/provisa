@@ -17,7 +17,7 @@
 // from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
 // a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
@@ -314,16 +314,9 @@ export function GraphExplorer({
   // A product's graph shows the rest of the model whenever its focus is anything but the product.
   const showsRest = home !== null && !(focus.length === 1 && focus[0] === home);
   useEffect(() => onRest?.(showsRest), [onRest, showsRest]);
-  // What the rest brings in is read after the control flips: the camera fits it once it is here.
-  const refit = useRef(false);
-  useEffect(() => {
-    refit.current = home !== null;
-  }, [home, showsRest]);
-  useEffect(() => {
-    if (!refit.current) return;
-    refit.current = false;
-    setFrame((f) => f + 1);
-  }, [data]);
+  // What the control brings in is read after it flips: the camera fits a product's graph whenever
+  // what it read has changed (a column opened in place changes no read, and leaves the camera be).
+  const stageFrame = home === null ? frame : `${frame}:${data.nodes.map((n) => n.id).join()}`;
   const [picked, setSelected] = useState<string | null>(initialSelected);
   const [hover, setHover] = useState<GraphHover | null>(null);
   const [command, setCommand] = useState<CameraCommand | null>(null);
@@ -549,7 +542,7 @@ export function GraphExplorer({
   const s: StageState = {
     graph: folded,
     at,
-    frame,
+    frame: stageFrame,
     flat,
     layout,
     selected,
