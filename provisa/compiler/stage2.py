@@ -21,7 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.governed_relation import keep_read
+from provisa.compiler.governed_relation import keep_each_read
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import extracts_paths, stored_path
@@ -2662,8 +2662,10 @@ def govern(
         # Last, once every pass that reads a relation's columns has: a read's governed relations
         # serve only the outputs it reads, so an engine, and a live source asked through it,
         # reads no other column (a path column it does not read is not extracted at all).
-        for relation in [s for s in tree.find_all(exp.Subquery) if _relation(s) is not None]:
-            keep_read(tree, relation, _relation(relation).alias)  # pyright: ignore[reportOptionalMemberAccess]
+        keep_each_read(
+            tree,
+            [(s, r.alias) for s in tree.find_all(exp.Subquery) if (r := _relation(s)) is not None],
+        )
     return tree
 
 
