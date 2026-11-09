@@ -689,9 +689,10 @@ code:not(pre code) {
 
 /* Hero rotating hook pairs */
 .hero-hook { position: relative; }
-.hook-rotate { display: block; }
-.hook-pair { display: none; }
-.hook-pair.is-active { display: block; }
+/* All four share one grid cell, so the headline is always as tall as the tallest of them. */
+.hook-rotate { display: grid; }
+.hook-pair { grid-area: 1 / 1; visibility: hidden; }
+.hook-pair.is-active { visibility: visible; }
 
 /* Hero "how it works" quiet link */
 .hero-howto { margin: 10px 0 0; font-size: .88rem; color: var(--text-muted); }
