@@ -332,7 +332,8 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # carried with each call to a code host, and kept by the host
         # REQ-2100: the memory a code source's DuckDB answers its statements in, past which it
-        # spills to disk; 1024 holds a large answer's working set on a small host.
+        # spills to disk; 1024 holds a large answer's working set on a small host. At least 16 MiB
+        # for each of codesource.duckdb_threads (settings_registry.check_pairs).
         req="REQ-2100",
         env="PROVISA_CODESOURCE_DUCKDB_MEMORY_MB",
         default=1024,
@@ -358,7 +359,8 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # carried with each call to a code host, and kept by the host
         # REQ-2100: the threads a code source's DuckDB answers its statements on; 4 leaves the
-        # host's other cores to the code itself.
+        # host's other cores to the code itself. Each takes at least 16 MiB of
+        # codesource.duckdb_memory_mb (settings_registry.check_pairs).
         req="REQ-2100",
         env="PROVISA_CODESOURCE_DUCKDB_THREADS",
         default=4,

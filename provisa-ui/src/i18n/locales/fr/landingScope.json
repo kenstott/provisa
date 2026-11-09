@@ -8,6 +8,13 @@
     "argumentsNotJson": "JSON non valide",
     "argumentsNotObject": "Indiquez un objet JSON de noms et de valeurs d'arguments",
     "readFilter": "Filtre de chargement",
-    "readArguments": "Arguments fixes"
+    "readArguments": "Arguments fixes",
+    "readWaitLabel": "Lecture avant le premier chargement",
+    "readWaitHelp": "Ce que fait une lecture tant que rien de cette table n'a été chargé. Par défaut, elle attend autant que la requête le permet ; elle peut aussi attendre un délai propre, ou renvoyer zéro ligne avec les colonnes de la table et lancer le chargement.",
+    "readWaitRequest": "Attendre jusqu'au délai de la requête",
+    "readWaitTimed": "Attendre jusqu'à un délai défini",
+    "readWaitNoRows": "Renvoyer zéro ligne et lancer le chargement",
+    "readWaitSeconds": "Attente (secondes)",
+    "readWaitUpTo": "Attend jusqu'à {{seconds}} s"
   }
 }

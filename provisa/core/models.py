@@ -1713,6 +1713,10 @@ def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
     return data
 
 
+#: ``Table.read_wait``: a read with nothing landed does not wait for it (REQ-2224).
+READ_WAIT_NO_ROWS = 0
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
@@ -1789,6 +1793,10 @@ class Table(
     # REQ-2062: a SQL predicate over the table's own columns, applied when its replica lands; the
     # replica holds only the rows that pass it.
     landing_filter: str | None = None
+    # REQ-2224: what a read does while nothing has landed. None: waits as long as the request
+    # allows; N > 0: waits up to N seconds, in place of the request timeout; READ_WAIT_NO_ROWS:
+    # answers no rows, with the table's columns, and asks for the landing.
+    read_wait: int | None = Field(default=None, ge=READ_WAIT_NO_ROWS)
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
     # incremental refresh (WHERE wm > cursor) + poll-path subscription (insert/update grain, no

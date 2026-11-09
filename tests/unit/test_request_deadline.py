@@ -222,3 +222,74 @@ def test_an_expiry_on_request_gives_the_statement_in_flight_its_drivers_grace(mo
         assert watched and watched[-1] >= before + request_deadline._CANCEL_GRACE_S
     finally:
         dl.stop()
+
+
+# --- REQ-2224: a wait with a limit of its own is not charged to the request ----------------
+
+
+def test_a_stopped_clock_is_not_charged_and_what_was_left_is_left_afterwards():
+    with request_deadline.within(0.3) as dl:
+        left = dl.remaining()
+        with request_deadline.clock_stopped(5.0):
+            time.sleep(0.5)  # longer than the whole budget
+            assert not dl.fired
+        assert dl.remaining() == pytest.approx(left, abs=0.15)
+        assert not dl.fired
+
+
+def test_a_wait_with_no_limit_of_its_own_is_charged_to_the_request():
+    with request_deadline.within(5.0) as dl:
+        left = dl.remaining()
+        with request_deadline.clock_stopped(0.0):
+            time.sleep(0.2)
+        assert dl.remaining() <= left - 0.15
+
+
+def test_a_stopped_clock_stops_the_deadlines_around_it():
+    with request_deadline.within(0.3) as outer:
+        with request_deadline.within(0.1) as inner:
+            assert inner.outer is outer
+            with request_deadline.clock_stopped(5.0):
+                time.sleep(0.5)
+            assert not inner.fired and not outer.fired
+
+
+def test_a_deadline_fires_at_its_restored_time_after_the_clock_restarts():
+    cancelled = threading.Event()
+    with pytest.raises(TimeoutError):
+        with request_deadline.within(0.15) as dl:
+            with request_deadline.clock_stopped(5.0):
+                time.sleep(0.2)
+            with dl._registered(cancelled.set):
+                assert cancelled.wait(2.0)  # the watchdog acted on the restored expiry
+    assert cancelled.is_set()
+
+
+def test_an_expired_request_stays_expired_across_a_clock_restart():
+    with pytest.raises(TimeoutError, match="stopping"):
+        with request_deadline.within(30) as dl:
+            with request_deadline.clock_stopped(5.0):
+                dl.expire("stopping")
+                time.sleep(0.5)
+    assert dl.ended_early
+
+
+def test_timing_out_follows_a_stopped_clock():
+    async def run():
+        with request_deadline.within(0.2) as dl:
+            async with request_deadline.timing_out(dl):
+                with request_deadline.clock_stopped(5.0):
+                    await asyncio.sleep(0.4)
+                return "answered"
+
+    assert asyncio.run(run()) == "answered"
+
+
+def test_timing_out_still_ends_a_request_at_its_deadline():
+    async def run():
+        with request_deadline.within(0.1) as dl:
+            async with request_deadline.timing_out(dl):
+                await asyncio.sleep(5)
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(run())

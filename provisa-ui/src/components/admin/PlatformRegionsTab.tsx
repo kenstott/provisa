@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// REQ-1412: where the commercial plugin is installed, a further section sets each org's engine lane.
 // REQ-1922: the Platform page, a platform administrator's. Four sections: the platform's regions
 // (each an id, a description, the purposes it serves and its data addresses), the grant every new
 // org receives, each org's grant (the regions it is granted and its stores in each), and the
@@ -53,6 +54,7 @@ import {
   type PlatformRegions,
   type RegionPurpose,
 } from "../../api/regions";
+import { useAuth } from "../../context/AuthContext";
 import { DetailFields } from "../detail/DetailFields";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../list/ListTable";
@@ -63,6 +65,7 @@ import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
 import { HotCacheStoreSettingsPanel, MaterializedSettingsPanel } from "./CacheStorageTab";
 import { GrantEditor } from "./GrantEditor";
+import { PlatformOrgEngines } from "./PlatformOrgEngine";
 import { PurposeBadges, PurposesLegend } from "./RegionPurposes";
 
 interface Picked {
@@ -83,6 +86,9 @@ export function PlatformRegionsTab() {
   const [error, setError] = useState("");
   // Saved since the page was opened: the nodes run on what they read until they restart.
   const [changed, setChanged] = useState(false);
+  const [section, setSection] = useState<string | null>("regions");
+  // REQ-1412: the engine lane is the commercial plugin's route, so it is offered only with it.
+  const { billing } = useAuth();
 
   useEffect(() => {
     fetchPlatformRegions()
@@ -117,14 +123,17 @@ export function PlatformRegionsTab() {
 
   return (
     <Stack gap="sm" data-testid="platform-regions">
-      <Alert
-        color={changed ? "orange" : "blue"}
-        icon={<Info size={16} />}
-        data-testid="platform-regions-restart"
-      >
-        {changed ? t("platformRegions.restartPending") : t("platformRegions.restartNote")}
-      </Alert>
-      <Tabs defaultValue="regions" keepMounted={false}>
+      {/* An engine lane applies at once (the org's runtime is rebuilt), so the note is not for it. */}
+      {section !== "engines" && (
+        <Alert
+          color={changed ? "orange" : "blue"}
+          icon={<Info size={16} />}
+          data-testid="platform-regions-restart"
+        >
+          {changed ? t("platformRegions.restartPending") : t("platformRegions.restartNote")}
+        </Alert>
+      )}
+      <Tabs value={section} onChange={setSection} keepMounted={false}>
         <Tabs.List mb="md">
           <Tabs.Tab value="regions" data-testid="platform-section-regions">
             {t("platformRegions.sectionRegions")}
@@ -138,6 +147,11 @@ export function PlatformRegionsTab() {
           <Tabs.Tab value="stores" data-testid="platform-section-stores">
             {t("platformRegions.sectionStores")}
           </Tabs.Tab>
+          {billing && (
+            <Tabs.Tab value="engines" data-testid="platform-section-engines">
+              {t("platformRegions.sectionEngines")}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
         <Tabs.Panel value="regions">
           <RegionsSection data={data} onSaved={saved} />
@@ -171,6 +185,11 @@ export function PlatformRegionsTab() {
             <MaterializedSettingsPanel />
           </Stack>
         </Tabs.Panel>
+        {billing && (
+          <Tabs.Panel value="engines">
+            <PlatformOrgEngines />
+          </Tabs.Panel>
+        )}
       </Tabs>
     </Stack>
   );

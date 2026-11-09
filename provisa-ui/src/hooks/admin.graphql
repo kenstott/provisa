@@ -377,6 +377,7 @@ query TablesQuery {
     sourceFileColumn
     arguments
     landingFilter
+    readWait
     viewMetrics {
       metrics
       dimensions

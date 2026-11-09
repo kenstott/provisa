@@ -1164,14 +1164,27 @@ export async function fetchOrgEngine(): Promise<OrgEngineState> {
   return resp.json();
 }
 
-export async function setOrgEngine(body: {
-  mode: OrgEngineMode;
-  engine_kind?: string | null;
-  external_host?: string | null;
-  external_port?: number | null;
-  external_url?: string | null;
-}): Promise<{ success: boolean; mode: OrgEngineMode }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`, {
+// REQ-1412, REQ-1327: the platform administrator's, naming the org.
+const platformOrgEnginePath = (orgId: string) =>
+  `${API_BASE_RAW}/admin/platform/orgs/${encodeURIComponent(orgId)}/engine`;
+
+export async function fetchPlatformOrgEngine(orgId: string): Promise<OrgEngineState> {
+  const resp = await fetch(platformOrgEnginePath(orgId));
+  if (!resp.ok) throw httpError("Org engine fetch", resp.status);
+  return resp.json();
+}
+
+export async function setPlatformOrgEngine(
+  orgId: string,
+  body: {
+    mode: OrgEngineMode;
+    engine_kind?: string | null;
+    external_host?: string | null;
+    external_port?: number | null;
+    external_url?: string | null;
+  },
+): Promise<{ success: boolean; mode: OrgEngineMode }> {
+  const resp = await fetch(platformOrgEnginePath(orgId), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

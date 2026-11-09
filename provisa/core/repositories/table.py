@@ -653,6 +653,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "pagination": paging_row(table.pagination),  # REQ-318
         "arguments": dict(table.arguments) or None,  # REQ-2061
         "landing_filter": table.landing_filter,  # REQ-2062
+        "read_wait": table.read_wait,  # REQ-2224
         # REQ-1919: every setting a configuration can give a table is the store's to hold.
         "approval_hook": table.approval_hook,
         "hot": table.hot,
@@ -717,6 +718,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "pagination",  # REQ-318
         "arguments",  # REQ-2061
         "landing_filter",  # REQ-2062
+        "read_wait",  # REQ-2224
         "approval_hook",  # REQ-1919
         "hot",
         "promotions",
