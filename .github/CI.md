@@ -43,7 +43,7 @@ and passes each leg the same `version` and `publish`.
 | --- | --- |
 | push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke (when the container changed), Deploy Site (when `docs/**`, `site/**` or the like changed), Demo bundles (when a named demo changed) |
 | pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
-| tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds |
+| tag `v*` | nothing: a tag tracks the stage, and Release: cut starts the release workflows on it |
 | push to `release/**` | Everything that gates a release: Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke, Integration suite, UI E2E Core, UI E2E Trino, UI E2E Swap, every Conformance suite |
 | nightly | Integration suite, CVE Audit |
 | 17:00 America/New_York (schedule, from `main`) | Release: alpha nightly, which starts the alpha's suites and dry-run build on the new `release/<version>` (a workflow token's push starts nothing) |

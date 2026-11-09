@@ -9,8 +9,6 @@ name: Build DuckDB Extensions
 # (and thus its extensions) reach platforms the embedded-PG engine cannot.
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:

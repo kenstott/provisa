@@ -542,8 +542,7 @@ _RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi"
 #: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
 _RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 _RELEASE_PUBLISH = (
-    "${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' "
-    "&& github.ref_name == inputs.version) }}"
+    "${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}"
 )
 
 
@@ -568,10 +567,10 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert set(first) == {"version", "publish"}
     assert all(w == first for w in given.values()), "the legs are not built for one version"
     assert first["version"] == "${{ inputs.version || github.ref_name }}"
-    # A tag push publishes. A manual run publishes only when started on the tag it names.
+    # A run publishes only when started on the tag it names; a pushed tag starts nothing.
     assert first["publish"] == _RELEASE_PUBLISH
     trigger = yaml.safe_load(_RELEASE.read_text())[True]
-    assert trigger["push"] == {"tags": ["v*"]}
+    assert "push" not in trigger
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"

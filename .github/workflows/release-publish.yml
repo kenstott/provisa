@@ -274,7 +274,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.version }}
-          IS_PRERELEASE: ${{ needs.metadata.outputs.is_prerelease }}
+          CHANNEL: ${{ needs.metadata.outputs.channel }}
           DMG_NAME: ${{ needs.metadata.outputs.dmg_name }}
           DMG_OBS_NAME: ${{ needs.metadata.outputs.dmg_obs_name }}
           DMG_DEMO_NAME: ${{ needs.metadata.outputs.dmg_demo_name }}
@@ -305,12 +305,14 @@ jobs:
             exit 1
           fi
 
-          # Complete — publish. Alpha/beta/rc stay prereleases and never become 'latest'.
-          if [ "$IS_PRERELEASE" = "false" ]; then
-            gh release edit "$TAG" --draft=false --prerelease=false --latest
-          else
-            gh release edit "$TAG" --draft=false --prerelease --latest=false
-          fi
+          # Complete -- publish. While alpha is the current stage an alpha is the release users
+          # get, so it is marked latest. GitHub cannot mark a release flagged prerelease as latest,
+          # so an alpha carries no prerelease flag; its tag still says it is an alpha. A beta or rc
+          # is a pre-release of the next version and is never latest.
+          case "$CHANNEL" in
+            beta|rc) gh release edit "$TAG" --draft=false --prerelease --latest=false ;;
+            *) gh release edit "$TAG" --draft=false --prerelease=false --latest ;;
+          esac
           echo "Published $TAG with all ${#required[@]} required installers."
 
   # ── SaaS federation-engine image ─────────────────────────────────────────────

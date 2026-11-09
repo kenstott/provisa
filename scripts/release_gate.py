@@ -17,7 +17,9 @@ this branch: failed, cancelled, running or never run is not green.
 - A beta or production release (any version without ``-alpha.``) ships at zero bugs: one run not
   green refuses the cut, by name, exiting 2.
 - An alpha ships at the end of its time box with what is left listed: each run not green is
-  reported and written to ``--out``, which the cut appends to the release's notes.
+  reported and written to ``--out``, which the cut appends to the release's notes. Its dry-run
+  build is the exception: the tag is made only after packaging, so an alpha that did not package
+  is refused like any other release.
 
 With ``--list`` it prints the workflows of the version, one a line: the nightly starts those.
 """
@@ -53,6 +55,7 @@ _FULL_SUITES = (
     "conformance-graphql.yml",
     "conformance-pgwire.yml",
 )
+_PACKAGING = "build-dmg.yml"
 _GREEN = "completed success "
 _JQ = '.[0] // {} | "\\(.status // "never run") \\(.conclusion // "") \\(.url // "")"'
 
@@ -128,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     if not failures:
         return 0
     where = f"on {args.branch} at {args.sha}"
-    if is_alpha(args.version):
+    if is_alpha(args.version) and all(workflow != _PACKAGING for workflow, _ in failures):
         for workflow, state in failures:
             print(f"::warning::{workflow} is not green {where}: {state}")
         args.out.write_text(_listing(failures, args.sha))

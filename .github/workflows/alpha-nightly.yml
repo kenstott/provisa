@@ -1,15 +1,14 @@
 # Release: the nightly alpha (REQ-1989)
 #
-# In alpha, the path of a release compressed and scheduled: start from main, merge all of dev,
-# converge for a time box, package, tag alpha.N with what is left listed, merge to main.
+# In alpha, the path of a release compressed and scheduled: cut a release branch from main,
+# converge for a time box, package, tag alpha.N with what is left listed, publish, merge to main.
 #
 # This workflow is the start of it, at 17:00 America/New_York. scripts/release_nightly.py skips
-# the night when dev has not moved since the last alpha, picks the next alpha number, makes
-# release/<version> from main with dev merged, and pushes it. A push by this workflow's token
-# starts no workflow, so each of the alpha's suites and the dry-run build is started here, on the
-# new branch. The time box ends when the lead runs "Release: cut" on that branch, which reports
-# what is still failing and lists it in the notes; scripts/release_merge.py then takes the
-# published release to main and dev.
+# the night when main has not moved since the last alpha, picks the next alpha number, and pushes
+# release/<version> at main's newest commit. A push by this workflow's token starts no workflow,
+# so each of the alpha's suites and the dry-run build is started here, on the new branch. The time
+# box ends when the lead runs "Release: cut" on that branch, which reports what is still failing
+# and lists it in the notes; scripts/release_merge.py then takes the published release to main.
 #
 # A scheduled workflow runs from the default branch: this file is read from main. A cron is in
 # UTC and has no time zone, so there is one for each New York offset (21:00 UTC in daylight time,
@@ -39,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The last alpha, main and dev, and whether one holds the other.
+          # The last alpha and main, and whether one holds the other.
           fetch-depth: 0
 
       - name: Make the release branch

@@ -11,7 +11,7 @@
 """A release is cut by the "Release: cut" workflow, from its own branch release/<version>: the
 suites and the dry-run build pass on that branch first, its notes are generated and committed
 before its tag is made, a generation failure leaves no commit and no tag, no hand-written release
-page is overwritten, and every workflow a v* tag starts is started on the new tag. Once published,
+page is overwritten, and the cut starts the release workflows on the new tag, which itself starts nothing. Once published,
 the branch merges to main and to dev and is deleted.
 
 The preflight runs against a real temporary Git repository; the workflow is read as YAML."""
@@ -210,19 +210,22 @@ def test_the_notes_are_generated_and_checked_before_anything_is_committed_or_tag
     assert cut.cut_subject("$VERSION") == "chore(release): $VERSION notes"
 
 
-def test_every_workflow_a_release_tag_starts_is_started_on_the_new_tag():
-    tagged = set()
+_RELEASE_WORKFLOWS = (
+    "build-dmg.yml",
+    "build-duckdb-extensions.yml",
+    "build-pg-extensions.yml",
+    "release-exports.yml",
+)
+
+
+def test_a_pushed_tag_starts_nothing_and_the_cut_publishes_from_it():
     for path in _WORKFLOWS.glob("*.yml"):
         push = _on(yaml.safe_load(path.read_text())).get("push") or {}
-        if any(t == "v*" for t in push.get("tags", []) or []):
-            tagged.add(path.name)
+        assert not push.get("tags"), f"{path.name} starts on a tag"
     dispatch = next(r for r in (s.get("run", "") for s in _steps()) if "gh workflow run" in r)
-    started = {"build-dmg.yml"} | {
-        name for name in tagged if f" {name}" in dispatch or f"{name} " in dispatch
-    }
-    assert tagged and started == tagged, sorted(tagged - started)
-    for name in tagged:
+    for name in _RELEASE_WORKFLOWS:
         assert "workflow_dispatch" in _on(_load(name)), f"{name} cannot be started on the tag"
+        assert name in dispatch, f"{name} is not started by the cut"
     assert (
         'gh workflow run build-dmg.yml --ref "$VERSION" -f version="$VERSION" -f publish=true'
         in dispatch
@@ -360,6 +363,27 @@ def test_notes_start_at_the_previous_release_merged_back_through_main(repo):
     _branch(repo, "release/v0.1.0-alpha.481")
     _commit(repo, "fix: on the branch", **{"b.py": "1"})
     assert cut.check(repo, "v0.1.0-alpha.481") == "v0.1.0-alpha.480"
+
+
+def test_the_previous_tag_is_chosen_by_semantic_version_and_not_as_text(repo):
+    _git(repo, "tag", "-a", "v0.1.0-alpha.9", "-m", "nine")
+    _git(repo, "tag", "-a", "v0.1.0-alpha.10", "-m", "ten")
+    assert cut.check(repo, "v0.1.0-alpha.11") == "v0.1.0-alpha.10"
+
+
+@pytest.mark.parametrize(
+    ("lower", "higher"),
+    [
+        ("v0.1.0-alpha.9", "v0.1.0-alpha.10"),
+        ("v0.1.0-alpha.10", "v0.1.0-beta.1"),
+        ("v0.1.0-beta.2", "v0.1.0-rc.1"),
+        ("v0.1.0-rc.9", "v0.1.0-rc.10"),
+        ("v0.1.0-rc.1", "v0.1.0"),
+        ("v0.1.0", "v0.1.1-alpha.1"),
+    ],
+)
+def test_tags_are_ordered_by_semantic_version(lower, higher):
+    assert cut._order(lower) < cut._order(higher)
 
 
 def test_a_prerelease_sorts_below_its_release_when_the_previous_tag_is_chosen(repo):

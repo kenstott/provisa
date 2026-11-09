@@ -17,6 +17,7 @@ scripts run against real temporary Git repositories."""
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import subprocess
 from datetime import datetime
@@ -207,6 +208,88 @@ def test_the_cut_writes_an_alphas_failures_into_its_notes_before_the_commit():
     assert "gate-failures.md" in _cut_steps()[listed]["run"]
     assert _cut_index('gen_release_notes.py --from "$PREVIOUS"') < listed
     assert listed < _cut_index('git tag -a "$VERSION"')
+
+
+def test_an_alpha_that_did_not_package_is_not_tagged(tmp_path, monkeypatch, capsys):
+    gate = _module("release_gate")
+    bad = {
+        "build-dmg.yml": "completed failure http://u",
+        "ui-e2e-core.yml": "completed failure http://v",
+    }
+    _states(monkeypatch, gate, bad)
+    out = tmp_path / "failures.md"
+    assert gate.main(["--version", "v0.1.0-alpha.9", *_GATE_ARGS, "--out", str(out)]) == 2
+    assert "::error::build-dmg.yml" in capsys.readouterr().out
+    assert not out.exists()
+
+
+_INSTALLERS = {
+    "DMG_NAME": "core.dmg",
+    "DMG_OBS_NAME": "obs.dmg",
+    "DMG_DEMO_NAME": "demo.dmg",
+    "LINUX_NAME": "provisa.AppImage",
+    "WINDOWS_NAME": "provisa.exe",
+    "WINDOWS_CONTAINER_NAME": "container.exe",
+    "JDBC_NAME": "jdbc.jar",
+}
+
+
+def _publish(tmp_path: Path, channel: str, attached: list[str]) -> tuple[int, str]:
+    """Run the publish step's script against a stand-in `gh`; its exit code and the edits made."""
+    step = next(
+        s
+        for s in _load("release-publish.yml")["jobs"]["publish-release"]["steps"]
+        if s["name"].startswith("Publish release")
+    )
+    assert step["env"]["CHANNEL"] == "${{ needs.metadata.outputs.channel }}"
+    edits = tmp_path / "edits"
+    edits.write_text("")
+    names = " ".join(attached)
+    gh = tmp_path / "gh"
+    gh.write_text(
+        f'#!/bin/bash\nif [ "$2" = view ]; then printf "%s\\n" {names}; exit 0; fi\n'
+        f'echo "$*" >> {edits}\n'
+    )
+    gh.chmod(0o755)
+    done = subprocess.run(
+        ["bash", "-c", step["run"]],
+        env={
+            **os.environ,
+            **_INSTALLERS,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "TAG": "v0.1.0-alpha.9",
+            "CHANNEL": channel,
+        },
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode, edits.read_text().strip()
+
+
+def test_an_alpha_with_every_installer_is_published_as_latest(tmp_path):
+    # GitHub cannot mark a release flagged prerelease as latest, so an alpha has no such flag.
+    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS.values()))
+    assert code == 0
+    assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease=false --latest"
+
+
+def test_an_alpha_missing_an_installer_stays_a_draft_and_is_not_latest(tmp_path):
+    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS.values())[1:])
+    assert code == 1
+    assert edits == ""
+
+
+@pytest.mark.parametrize("channel", ["beta", "rc"])
+def test_a_beta_or_rc_stays_a_prerelease_and_is_never_latest(tmp_path, channel):
+    code, edits = _publish(tmp_path, channel, list(_INSTALLERS.values()))
+    assert code == 0
+    assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease --latest=false"
+
+
+def test_a_production_release_is_latest(tmp_path):
+    code, edits = _publish(tmp_path, "stable", list(_INSTALLERS.values()))
+    assert code == 0
+    assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease=false --latest"
 
 
 # ── 2. The nightly alpha ────────────────────────────────────────────────────────────────────

@@ -528,7 +528,7 @@ jobs:
     uses: ./.github/workflows/ci-leaf-stub-leg.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      # The manual half of the orchestrator's expression (a tag push is its other half): false here.
+      # The orchestrator's expression: false here.
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   # Its own condition, on the leg it reads: with none, GitHub's implicit success() skips it,
