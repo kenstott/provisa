@@ -5151,6 +5151,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.lineage_router import router as lineage_router  # REQ-1160
 
     app.include_router(lineage_router)
+    from provisa.api.admin.openlineage_router import router as openlineage_router  # REQ-2229
+
+    app.include_router(openlineage_router)
     from provisa.api.admin.crawl_router import router as crawl_router
 
     app.include_router(crawl_router)

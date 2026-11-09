@@ -29,6 +29,7 @@
     "org_glossary_rw": "Editar qualquer termo do glossário da organização.",
     "data_product_read": "Ver produtos de dados.",
     "data_product_rw": "Criar, editar e excluir produtos de dados.",
+    "lineage_report": "Enviar eventos de execução do OpenLineage a partir de ferramentas como Airflow, Spark, dbt e Flink.",
     "dq_read": "Ler as verificações de qualidade de dados e seus resultados.",
     "dq_rw": "Gerenciar verificações de qualidade de dados, expectativas e promessas.",
     "ignore_relationships": "Unir tabelas que nenhum relacionamento aprovado cobre.",

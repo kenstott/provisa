@@ -1,4 +1,8 @@
 {
+  "capabilityHelp.json::capabilityHelp.lineage_report": "Send OpenLineage run events from tools such as Airflow, Spark, dbt and Flink.",
+  "lineageDag.json::lineageDag.job": "OpenLineage job",
+  "lineageDag.json::lineageDag.outsideModel": "outside the model",
+  "lineageDag.json::lineageDag.reportedEdge": "reported by OpenLineage",
   "aiModelsTab.json::aiModelsTab.endpointApiKeyEnv": "API key env var",
   "contractPromises.json::contractPromises.aggregate.avg": "Average",
   "contractPromises.json::contractPromises.aggregate.avgLength": "Average length",

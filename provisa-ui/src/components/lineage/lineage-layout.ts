@@ -27,7 +27,15 @@ import { SOURCE_TYPES } from "../../pages/sources/constants";
 import { shownSourceType, sourceTypeLabel } from "../../pages/sources/sourceHelpers";
 import { sourceLogoImage } from "../sourceLogoMarks";
 
-export type Role = "source" | "intermediate" | "output" | "command" | "dataset" | "native";
+export type Role =
+  | "source"
+  | "intermediate"
+  | "output"
+  | "command"
+  | "dataset"
+  | "native"
+  | "job"
+  | "external";
 
 /** How a field of each role is typeset — one definition for the DAG and its legend. */
 export interface RoleStyle {
@@ -49,7 +57,21 @@ export const ROLE_STYLE: Record<Role, RoleStyle> = {
   dataset: { color: "#5c7cfa", fill: "#ffffff", fontStyle: "normal", fontWeight: "bold" },
   // REQ-2116: a raw field as its source reads it
   native: { color: "#e8590c", fill: "#ffffff", fontStyle: "normal", fontWeight: "normal" },
+  // REQ-2229: a job an OpenLineage event reported
+  job: { color: "#b35c00", fill: "#fff4e6", fontStyle: "normal", fontWeight: "bold" },
+  // REQ-2229: a dataset no registered table stands for
+  external: { color: "#495057", fill: "#f1f3f5", fontStyle: "italic", fontWeight: "normal" },
 };
+
+/** REQ-2229: how an edge an OpenLineage event reported is drawn, and keyed in the legend. */
+export const REPORTED_EDGE_COLOR = "#b35c00";
+
+/** REQ-2229: the words for what OpenLineage reported, already translated. */
+export interface ReportedWords {
+  job: string;
+  outside: string;
+  reported: string;
+}
 
 /** REQ-2116: a native box's source, drawn in a head above its fields: the source's logo and type
  *  label (brand before carrier, as the Sources page shows it) and the address it is read from. */
@@ -99,6 +121,8 @@ export interface LineageDrawnEdge {
   /** REQ-2174: the views this edge reads through (a view between an input and a member is folded
    *  into the edge, not drawn), in the order the column passes through them, named as a box is. */
   via: string[];
+  /** REQ-2229: an OpenLineage event reported this edge; the model's definitions did not. */
+  reported: boolean;
 }
 
 export interface LineageLayoutModel {
@@ -138,6 +162,8 @@ export interface LineageModelOptions {
   /** How a box names its registered relation — a page that knows the catalog names it as the
    *  catalog does. Unset, a box is named by the relation the server reports. */
   relationLabel?: (relation: string) => string;
+  /** REQ-2229: how a reported job's box and a box outside the model say what they are. */
+  reportedWords?: ReportedWords;
 }
 
 export function buildLineageModel(
@@ -160,6 +186,8 @@ export function buildLineageModel(
   const roleOf = (n: LineageNode): Role => {
     if (n.kind === "command") return "command";
     if (n.kind === "native") return "native";
+    if (n.kind === "job") return "job";
+    if (n.kind === "external") return "external";
     if (n.kind === "source") return "source";
     return hasIn.has(n.id) && hasOut.has(n.id) ? "intermediate" : "output";
   };
@@ -171,6 +199,12 @@ export function buildLineageModel(
   const servedOf = new Map(Object.values(natives).map((nt) => [nt.relation, servedText(nt)]));
   const named = options.relationLabel ?? ((relation: string) => relation);
   const boxOf = (n: LineageNode): { id: string; relation: string | null; label: string } => {
+    // REQ-2229: a reported job, or a dataset outside the model, goes by what the event called it.
+    if (n.relation && (n.kind === "job" || n.kind === "external")) {
+      const what = n.kind === "job" ? options.reportedWords?.job : options.reportedWords?.outside;
+      const name = n.label ?? n.relation;
+      return { id: boxId(n.relation), relation: n.relation, label: what ? `${name} · ${what}` : name };
+    }
     const native = n.relation ? natives[n.relation] : undefined;
     if (n.relation && native)
       return { id: boxId(n.relation), relation: n.relation, label: nativeLabel(native) };
@@ -236,6 +270,8 @@ export function buildLineageModel(
       output: 2,
       command: 3,
       dataset: 4,
+      job: 5,
+      external: 5,
     };
     box.rows.sort((a, b) => rank[a.role] - rank[b.role]);
     const header = box.collapsed
@@ -277,8 +313,10 @@ export function buildLineageModel(
       (e.ops ?? []).find((o) => o.kind === "command" || o.kind === "command_write")?.name ?? null;
     const key = `${from} ${target}`;
     const prior = rolled.get(key);
+    const reported = e.origin === "openlineage";
     if (prior) {
       prior.count += 1;
+      prior.reported = prior.reported || reported;
       prior.command = prior.command || command;
       prior.commandName = prior.commandName === commandName ? commandName : null;
       prior.via = [...new Set([...prior.via, ...(e.via ?? [])])];
@@ -293,6 +331,7 @@ export function buildLineageModel(
         commandName,
         count: 1,
         via: [...(e.via ?? [])],
+        reported,
       });
     }
   }
@@ -548,10 +587,14 @@ function foldViewsOntoEdges(
 }
 
 /** The text a drawn edge carries: its transform (or the count of columns behind it) and, when it
- * reads through views, their names. */
-export function edgeText(e: Pick<LineageDrawnEdge, "label" | "count" | "via">): string {
+ * reads through views, their names; REQ-2229: and, when an OpenLineage event reported it, that. */
+export function edgeText(
+  e: Pick<LineageDrawnEdge, "label" | "count" | "via" | "reported">,
+  reportedWord = "",
+): string {
   const what = e.count > 1 ? `${e.count} columns` : e.label;
-  return e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
+  const text = e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
+  return e.reported ? [text, reportedWord].filter(Boolean).join(" · ") : text;
 }
 
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */

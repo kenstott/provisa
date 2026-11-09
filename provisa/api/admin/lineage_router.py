@@ -28,6 +28,13 @@ from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
 from provisa.lineage.read_rights import readable_graph
+from provisa.lineage.reported import (
+    RegisteredTable,
+    ReportedJob,
+    add_reported_lineage,
+    reported_jobs,
+    reported_seeds,
+)
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import data_product as data_product_repo
 
@@ -304,6 +311,57 @@ async def _registry_columns(conn) -> list[dict]:
     return [dict(r._mapping) for r in res.fetchall()]
 
 
+async def _reported_lineage(
+    state, column_rows: list[dict]
+) -> tuple[list[ReportedJob], list[RegisteredTable]]:
+    """What OpenLineage events reported (REQ-2229), and every registered table a dataset can name,
+    with the source it is read from."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import openlineage_run_datasets, registered_tables, sources
+
+    if getattr(state, "model_db", None) is None:
+        return [], []
+    async with state.model_db.acquire() as conn:
+        reported = await conn.execute_core(select(openlineage_run_datasets))
+        rows = [dict(r._mapping) for r in reported.fetchall()]
+        if not rows:
+            return [], []
+        located = await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.domain_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                sources.c.type,
+                sources.c.host,
+                sources.c.port,
+                sources.c.database,
+            ).select_from(
+                registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
+            )
+        )
+        table_rows = [dict(r._mapping) for r in located.fetchall()]
+    columns: dict[int, dict[str, str]] = {}
+    for row in column_rows:
+        columns.setdefault(row["table_id"], {})[row["column_name"].lower()] = sql_column_name(row)
+    tables = [
+        RegisteredTable(
+            relation=_relation_of(t["domain_id"], t["table_name"]),
+            source_type=t["type"],
+            host=t["host"],
+            port=t["port"],
+            database=t["database"],
+            schema=t["schema_name"],
+            table=t["table_name"],
+            columns=columns[t["id"]],
+        )
+        for t in table_rows
+        if t["id"] in columns
+    ]
+    return reported_jobs(rows), tables
+
+
 async def store_lineage_edges(conn, rows: list[dict]) -> None:
     """Replace the stored lineage edges with ``rows``."""
     from sqlalchemy import delete, insert
@@ -513,6 +571,11 @@ async def federation_graph(
         or merged.graph.nodes.get(s) is None
         or merged.graph.nodes[s].relation not in registered
     }
+    # REQ-2229: what OpenLineage reported joins after the seeds too, so a lens narrows it as it
+    # narrows the model; a job's outside output, downstream of its seeds, is seeded by report.
+    jobs, reported_tables = await _reported_lineage(state, column_rows)
+    add_reported_lineage(merged.graph, jobs, reported_tables)
+    seeds |= reported_seeds(merged.graph, seeds, unscoped=not domain_filter and not role_filter)
     # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
     natives = await _native_tables(state)
     with_native_hop(merged.graph, natives)

@@ -1033,6 +1033,23 @@ CREATE TABLE IF NOT EXISTS lineage_edges (
     target_column_name TEXT
 );
 
+-- REQ-2229: what OpenLineage events reported: one row per dataset of a job's latest run. Kept apart
+-- from lineage_edges, which each model build replaces whole.
+CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
+    id                SERIAL PRIMARY KEY,
+    job_namespace     TEXT NOT NULL,
+    job_name          TEXT NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    direction         TEXT NOT NULL CONSTRAINT openlineage_run_datasets_direction_check
+                      CHECK (direction IN ('input', 'output')),
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    column_lineage    JSONB NOT NULL DEFAULT '{}',
+    CONSTRAINT openlineage_run_datasets_key UNIQUE
+        (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
+);
+
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
 -- it. Derived state: each build replaces every row.
 CREATE TABLE IF NOT EXISTS checker_targets (
