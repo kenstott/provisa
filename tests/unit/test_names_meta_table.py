@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -206,7 +206,7 @@ class _RecordingConn:
         self.statements.append(stmt)
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncIterator[None]:
+    async def transaction(self) -> AsyncGenerator[None]:
         yield
 
     async def advisory_xact_lock(self, key: int) -> None:
