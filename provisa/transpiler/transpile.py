@@ -702,8 +702,9 @@ def _duckdb_form(pg_sql: str) -> str:
     # statement's text, and each step that read it again paid for all of them.
     tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
     tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
-    tree = _postgres_semantics_for_duckdb(_lengths_for_duckdb(tree))
-    return pg_functions.after_in(tree).sql(dialect="duckdb")
+    tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
+    # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
+    return tree.sql(dialect="duckdb", copy=tree.parent is not None)
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -1932,7 +1933,11 @@ def transpile(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     elif lowered is not None:
-        result = lowered.sql(dialect=target_dialect, identify=identify)
+        # In place, the tree being this function's; a root a step lifted out of its parent keeps
+        # its copy, for the generator reads a root's parent.
+        result = lowered.sql(
+            dialect=target_dialect, identify=identify, copy=lowered.parent is not None
+        )
     else:
         results = sqlglot.transpile(
             pg_sql, read="postgres", write=target_dialect, identify=identify

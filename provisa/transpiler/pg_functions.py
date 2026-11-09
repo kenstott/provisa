@@ -793,7 +793,10 @@ def typed_calls(pg_sql: str) -> str:
         return out
 
     tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched, copy=False)
-    return tree.sql(dialect="postgres", copy=False) if rewritten else pg_sql
+    if not rewritten:
+        return pg_sql
+    # A root the rewrite lifted out of its parent keeps its copy: the generator reads a root's parent.
+    return tree.sql(dialect="postgres", copy=tree.parent is not None)
 
 
 def before(pg_sql: str) -> str:
@@ -810,7 +813,9 @@ def before(pg_sql: str) -> str:
         return out
 
     tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched, copy=False)
-    return tree.sql(dialect="postgres", copy=False) if rewritten else pg_sql
+    if not rewritten:
+        return pg_sql
+    return tree.sql(dialect="postgres", copy=tree.parent is not None)
 
 
 def _regexp_matches(args: list[exp.Expr]) -> str:
