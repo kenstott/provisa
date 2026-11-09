@@ -82,7 +82,7 @@ export function ConnectorSetupFields({ connector, fields, setFields }: Props) {
           />
         </FormField>
       </FieldGroup>
-      <FormField size="long" hint={t("connectorSetup.pairingHint")}>
+      <FormField size="long" help={t("connectorSetup.pairingHint")}>
         <PasswordInput
           required
           label={t("connectorSetup.pairing")}
