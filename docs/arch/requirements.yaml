@@ -93951,7 +93951,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-07). (Amended 2026-11-08, HOW THE LISTS ARE NAMED IN A TOKEN:) The claim that carries the nested
     form is named per identity provider, in that provider''s settings, which the admin UI edits; with no
     name set, that provider sends no nested lists. The flat form is provisa:<role>:<kind>:<id>, and an empty
-    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)'
+    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)
+    (Amended 2026-11-09, ONE API, THREE WAYS TO USE IT:) Maintainer 2026-11-09: one write API sets a principal''s
+    lists, with reason, expiry and audit, and the UI is a client of it. A large enterprise integrates through
+    the API or its identity provider''s claims and sees the UI read-only; a mid-size organization with an
+    identity provider manages lists in the UI; a small one manages everything for local accounts in the
+    UI. No mode is chosen: where the identity provider sends a list for a role and kind, that list wins
+    and the UI shows it read-only. The UI''s picker finds people through one search by name or email, over
+    local accounts and known members of the org, returning the principal the sign-in token carries, with
+    name and email for display only. A person not yet seen is granted by typed email, shown as pending,
+    and the grant attaches when a sign-in token''s email matches. Directory lookup in an identity provider
+    is added per provider, behind one interface, as customers need it.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
