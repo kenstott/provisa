@@ -1932,6 +1932,74 @@
       "banksecrecyRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Das Gesetz wurde von seiner öffentlichen Adresse gelesen, seine Begriffe gefunden und in den Tabellen der Bank verankert, und die Bank fragte nach Konzept. Der Currency Transaction Report erreicht die Daten über seine mehreren Transaktionen, und jede Rolle sah, was sie sehen darf."
+      },
+      "customer360Scenario": {
+        "title": "Customer 360 über vier Systeme",
+        "description": "Halyard Software verkauft an Unternehmen, und jeder Kunde lebt in vier Systemen: <strong>Salesforce</strong> hält seinen Account und seine Verlängerungen, <strong>ServiceNow</strong> seine Incidents, <strong>Jira</strong> die Bugs der Entwicklung und <strong>Stripe</strong> seine Rechnungen. Die Frage: <em>Welche Accounts, die in diesem Quartal verlängern, haben offene P1-Incidents, blockierte Fixes oder überfällige Rechnungen?</em> Unterwegs: SaaS-Quellen, ein live gelesener Kundenstamm, Beziehungen, Lineage, materialisierte Sichten, Datenqualitätsbefunde und ein Datenprodukt."
+      },
+      "customer360Systems": {
+        "title": "Jedes System hat eigene IDs",
+        "description": "<strong>stripe</strong> ist Halyards Stripe-Konto, gelesen über Stripes veröffentlichte API. Wie Salesforce, ServiceNow und Jira kennt es einen Kunden nur unter seiner eigenen ID: hier <code>cus_…</code>, in Salesforce <code>001…</code>, in ServiceNow die <code>sys_id</code> einer Firma, in Jiras Customer-Feld ein getippter Name. Keine ID wird geteilt."
+      },
+      "customer360Hub": {
+        "title": "Der Kundenstamm",
+        "description": "<strong>hub</strong> ist Halyards Kundenstamm (Master Data Hub), eine live gelesene Postgres-Datenbank. Er hält für jeden echten Kunden einen Masterkunden und eine Zuordnungstabelle (Crosswalk) von jedem Master zu seiner ID in jedem System. Er ist das führende System dafür, wer wer ist."
+      },
+      "customer360Crosswalk": {
+        "title": "Der Crosswalk des Hubs",
+        "description": "<strong>xref</strong> ist der Crosswalk: Jede Zeile ist die ID eines Systems für einen Kunden und der Master, zu dem sie gehört, mit wer sie wann verknüpft hat: die Erstladung, ein Steward, der Support-Desk oder ein Massenimport."
+      },
+      "customer360JiraCustomer": {
+        "title": "Jiras Customer-Feld",
+        "description": "Eine Jira-Tabelle ist ein Formular: ein Projekt und ein Vorgangstyp, hier die Bugs des Projekts ENG. Ihre Spalte <strong>customer</strong> liest das benutzerdefinierte Feld <code>customfield_10050</code>, den Kundennamen, wie der Support-Mitarbeiter ihn getippt hat. Ein Kunde kann also verschieden geschrieben sein."
+      },
+      "customer360Spoke": {
+        "title": "Hub and Spoke",
+        "description": "<strong>IS_BILLED_AS</strong> verbindet eine Crosswalk-Zeile mit dem Stripe-Kunden, den sie nennt. Jedes System ist so mit dem Hub verbunden, nicht mit den anderen Systemen: Ein fünftes System ist eine Beziehung mehr, nicht vier."
+      },
+      "customer360FixedBy": {
+        "title": "Der Fix eines Incidents",
+        "description": "<strong>FIXED_BY</strong> folgt der Correlation-ID eines ServiceNow-Incidents zum Jira-Bug, der ihn behebt: die Verknüpfung, die beide Teams ohnehin pflegen."
+      },
+      "customer360Lineage": {
+        "title": "Woher die Antwort kommt",
+        "description": "Die Lineage der Antwort: Jede Spalte zurückverfolgt durch <strong>renewal_risk_hub</strong> zu den Feldern, die sie liest, in Salesforces Opportunities und Accounts, dem Crosswalk des Hubs, ServiceNows Incidents, Jiras Bugs und Stripes Rechnungen."
+      },
+      "customer360Answer": {
+        "title": "Die Antwort über den Hub",
+        "description": "<strong>renewal_risk_hub</strong> beantwortet die Frage: jeder Account, dessen Verlängerung in diesem Quartal schließt, mit den offenen P1-Incidents, blockierten Fixes und überfälligen Rechnungen der Datensätze, die der Hub mit ihm verknüpft. Sieben Accounts. <em>Dieses Quartal</em> und <em>überfällig</em> werden ab der letzten Synchronisierung des Hubs gemessen."
+      },
+      "customer360Graphql": {
+        "title": "Dieselbe Antwort in GraphQL",
+        "description": "Dieselbe Sicht als GraphQL-Abfrage, mit dem Masterkunden, zu dem jeder Account gehört. Jede Tabelle und Sicht ist ein GraphQL-Feld, genauso governed."
+      },
+      "customer360Graph": {
+        "title": "Account, Incident, Fix",
+        "description": "Der Pfad hinter jedem offenen P1, als Graph: ein Salesforce-Account, seine Crosswalk-Zeile, sein Masterkunde, die ServiceNow-Firma des Masters, die P1-Incidents, die sie gemeldet hat, und der Jira-Bug, der jeden behebt. Jeder Schritt geht über den Hub."
+      },
+      "customer360Trust": {
+        "title": "Wie weit kann man dieser Antwort trauen?",
+        "description": "Die Antwort ist nur so gut wie die Verknüpfungen des Hubs. <strong>hub_match_rate</strong> leitet jede Verknüpfung aus den Belegen in den eigenen Datensätzen der Systeme neu ab und zeigt Monat für Monat den Anteil, den es bestätigt. Er fiel nach dem Massenimport."
+      },
+      "customer360Rules": {
+        "title": "Die Regeln des Crosswalks",
+        "description": "<strong>crosswalk</strong> ordnet jeden Systemdatensatz einem Salesforce-Account zu, nach einer Regel, die es nennt: die Website- oder E-Mail-Domain, sonst der normalisierte Name. Die beiden Larkspur-Stripe-Kunden passen über die E-Mail-Domain, einer zu Larkspur Analytics, einer zu Larkspur Labs. <strong>master</strong> bildet den Golden Record; seine ID ist ein Hash des Anker-Accounts, ein Neuaufbau nummeriert also nie neu."
+      },
+      "customer360Findings": {
+        "title": "Was die Prüfung findet",
+        "description": "<strong>hub_findings</strong> listet jede Abweichung: zwei falsche Zusammenführungen (der Massenimport hat die Larkspur-Stripe-Kunden vertauscht), doppelte Kunden, Abdeckungslücken (Datensätze in keinem Master) und veraltete Verknüpfungen (zu Datensätzen, die ein System nicht mehr hält). Crosswalk, Master und Befunde sind eine Kaskade materialisierter Sichten."
+      },
+      "customer360Corrected": {
+        "title": "Die korrigierte Antwort",
+        "description": "<strong>renewal_risk_checked</strong> fragt erneut über den Hub, mit angewandten Befunden. Larkspur Analytics erscheint: Seine letzte Rechnung ist überfällig, aber der Hub hat es mit dem Stripe-Kunden von Larkspur Labs verknüpft, also fehlte es in der ersten Antwort."
+      },
+      "customer360Product": {
+        "title": "Account Health als Produkt",
+        "description": "<strong>Account Health</strong> ist das Datenprodukt: die geprüfte Antwort, der Golden Record des Kunden, die Befunde und die Match-Rate, mit Zweck, Nutzung und Grenzen."
+      },
+      "customer360Recap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Vier SaaS-Systeme ohne gemeinsame ID, verbunden über einen Kundenstamm; die Frage beantwortet in SQL, GraphQL und Cypher; dann geprüft: Regeln haben jede Verknüpfung aus Belegen neu abgeleitet und die falsche Zusammenführung samt dem verborgenen Account gefunden. Sehen Sie sich auf der SQL-Seite selbst um."
       }
     },
     "status": {
@@ -2064,6 +2132,10 @@
       "banksecrecy": {
         "title": "Bargeldmeldungen aus dem Bank Secrecy Act",
         "summary": "Eine Bank liest die Bargeld-Meldevorschrift des Bank Secrecy Act von ihrer offiziellen öffentlichen Adresse, findet ihre Begriffe und verankert sie in den eigenen Tabellen. Dann fragt sie nach Konzept, welches Bargeld einen Currency Transaction Report braucht und wer knapp unter 10.000 $ stückelt. Die Bank und ihre Kunden sind erfunden, die Vorschrift ist echt."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "Salesforce, ServiceNow, Jira und Stripe, verbunden über einen Kundenstamm, um gefährdete Verlängerungen zu finden; dann wird der Kundenstamm gegen die Belege jedes Systems geprüft und der übersehene Account gefunden."
       }
     }
   }

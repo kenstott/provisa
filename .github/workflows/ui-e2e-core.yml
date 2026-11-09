@@ -24,7 +24,9 @@ name: UI e2e (core lane)
 # every push to main.
 
 on:
-  # During alpha the full suites run only on request (maintainer 2026-10-15): dispatch only.
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     # A retest of named specs: each a file or file:line under provisa-ui (e2e/x.spec.ts,
     # e2e/x.spec.ts:42), space-separated. The lane's provisioning runs as on a full run; Playwright
@@ -40,6 +42,11 @@ on:
         type: string
         required: false
         default: ""
+      pyspy:
+        description: "Record every backend of the Playwright core job with py-spy, uploaded with its report (diagnostics)"
+        type: boolean
+        required: false
+        default: false
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
   # jobs read, by name; the caller passes each one and nothing is inherited. No live cloud
   # warehouse's (Snowflake, Databricks, BigQuery, Fabric, Google Sheets): maintainer 2026-10-29,
@@ -117,6 +124,7 @@ jobs:
         PROVISA_E2E_WORKERS=2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
         PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
+        PROVISA_PYSPY=${{ inputs.pyspy && '1' || '' }}
       working-directory: provisa-ui
       # json beside the line and the HTML report (in a file of its own: the HTML reporter empties
       # its folder): the run's own record of what did not execute. The line reporter prints each
@@ -129,8 +137,11 @@ jobs:
       # failure and writes the HTML and JSON reports, which the steps after this one upload.
       # A named spec that is not there fails here: with --pass-with-no-tests a mistyped one would
       # otherwise run nothing and pass.
+      # `pyspy` (dispatch input, off by default): every backend recorded by py-spy into pyspy/,
+      # uploaded with the report; each recording is written when its backend exits at Playwright's end.
       run: >-
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
+        if [ -n "$PROVISA_PYSPY" ]; then uv pip install --python ../.venv/bin/python py-spy; { nohup bash ../scripts/ci/lanes/pyspy-watch.sh "$PWD/pyspy" "$PWD/../.venv/bin/py-spy" > pyspy-watch.log 2>&1 & }; fi;
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
         npx playwright test --project=core --global-timeout=5700000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
@@ -144,6 +155,7 @@ jobs:
       artifact-path: |
         provisa-ui/playwright-report/
         provisa-ui/playwright-results.json
+        provisa-ui/pyspy/
       artifact-retention: 7
     secrets:
       # chat-panel-streaming.spec.ts drives a live model (Haiku through OpenRouter, the e2e

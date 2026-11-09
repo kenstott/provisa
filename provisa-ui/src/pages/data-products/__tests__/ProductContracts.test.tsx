@@ -76,6 +76,7 @@ const saved = (
   savedBy: string | null = "ken@example.com",
 ): ContractVersion => ({
   contract: { version, status },
+  columns: [],
   changes,
   saved_at: "2026-10-20T10:00:00Z",
   saved_by: savedBy,
@@ -127,7 +128,7 @@ const promise = (checker: number, checked: number, at: string | null): ProductDq
   table_name: `check_${checker}`,
   alias: null,
   description: null,
-  owner_product_id: "pet_health",
+  owner_product_ids: ["pet_health"],
   checked_table_id: checked,
   checked_table: { id: checked, domain_id: "pet-store", table_name: "pets", alias: null },
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
@@ -150,7 +151,7 @@ const LINEAGE: ProductLineage = {
       domain_id: "pet-store",
       table_name: "pet_report",
       alias: null,
-      product_id: null,
+      product_ids: [],
       reads: ["pet_store.pets"],
     },
     {
@@ -160,7 +161,7 @@ const LINEAGE: ProductLineage = {
       domain_id: "pet-store",
       table_name: "care_mv",
       alias: null,
-      product_id: "care",
+      product_ids: ["care"],
       reads: ["pet_store.pets", "pet_store.vets"],
     },
   ],
@@ -209,6 +210,7 @@ function panel(
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       lineageError=""
       lineageGraph={LINEAGE}

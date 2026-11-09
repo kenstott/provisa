@@ -162,6 +162,12 @@ OPERATIONS = [
     "SELECT lower(a.v), upper(a.v), isempty(a.v), lower_inc(a.v), upper_inf(a.v) FROM s.t AS a",
     "SELECT range_merge(a.v, '[1,5)') FROM s.t AS a",
     "SELECT int4range(a.i, a.i + 1, '[]') FROM s.t AS a",
+    # An untyped NULL beside a column is of its type: NULL, written on every dialect.
+    "SELECT a.v + NULL FROM s.t AS a",
+    "SELECT NULL && a.v FROM s.t AS a",
+    "SELECT range_union(a.v, NULL) FROM s.t AS a",
+    "SELECT a.m + NULL FROM s.t AS a",
+    "SELECT multirange_cmp(a.m, NULL) FROM s.t AS a",
 ]
 
 
@@ -318,6 +324,35 @@ def test_a_multirange_built_from_columns_is_refused_by_name_without_a_fold(diale
         "operation": op,
         "dialect": dialect,
     }
+
+
+_LISTED = {
+    "SELECT multirange_cmp(a.m, a.m) FROM s.t AS a": (
+        "multirange_cmp",
+        ("duckdb", "trino", "clickhouse", "databricks"),
+    ),
+    "SELECT int4multirange(VARIADIC array_agg(a.v)) FROM s.t AS a": (
+        "int4multirange",
+        ("duckdb", "trino", "athena", "clickhouse", "databricks", "spark"),
+    ),
+}
+
+
+@pytest.mark.parametrize("dialect", ALL_DIALECTS)
+@pytest.mark.parametrize("sql", list(_LISTED))
+def test_a_multirange_compared_or_built_from_an_array_is_sql_or_refused_by_name(dialect, sql):
+    """multirange_cmp of columns and a multirange of an array the rows hold: written with the
+    dialect's own list forms where it has them, refused by name where it does not."""
+    operation, served = _LISTED[sql]
+    if dialect not in served:
+        with pytest.raises(SubtypeOperationRefused) as refused:
+            _written(sql, dialect)
+        assert refused.value.params["dialect"] == dialect
+        return
+    written = _written(sql, dialect)
+    assert "PROVISA_" not in written.upper()
+    assert operation.upper() not in written.upper()  # computed by the engine, not called there
+    sqlglot.parse_one(written, read=dialect)
 
 
 @pytest.mark.parametrize(

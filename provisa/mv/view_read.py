@@ -314,12 +314,26 @@ def semantic_statement(
         if not _answered_after_governance(view, view_sql_map, state, gov):
             require_inputs_reached(view_sql, gov)
             bodies[view] = _with_own_rules(view, view_sql, gov)
-    governed = expand_view_refs(sql, bodies)
-    # Validated with every view marked where it is expanded, here and below, so the guard reads
-    # each as the view it is (provisa.compiler.join_guard).
+    # Every view marked where it is expanded, in the statement governed and the one validated:
+    # governance reads a marked body as the administrator's (REQ-039: its select lists are judged
+    # against the reader, its other clauses may read what the reader is not served) and removes
+    # the marks; the guard reads each as the view it is (provisa.compiler.join_guard).
     marked = expand_view_refs(sql, bodies, mark=True)
     judged = {view: body for view, body in definitions.items() if view not in home_copies}
-    return governed, expand_view_refs(marked, judged, mark=True)
+    return marked, expand_view_refs(marked, judged, mark=True)
+
+
+def statement_as_read(sql: str, view_sql_map: dict[str, str], state: Any) -> str:
+    """``sql`` with every view it reads replaced by its definition, whoever reads it: all a
+    statement touches, read before anything judges a view for its reader (REQ-2219). A view
+    another region keeps stays: its inputs are not read here."""
+    from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
+
+    definitions = _definitions(view_sql_map, state)
+    home_copies = {view for view in views_read(sql, definitions) if _home_copy(view, state)}
+    return expand_view_refs(
+        sql, {view: body for view, body in definitions.items() if view not in home_copies}
+    )
 
 
 def _class_bodies(

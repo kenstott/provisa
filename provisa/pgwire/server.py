@@ -69,10 +69,12 @@ from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.pg_error import MARK, PostgresError, from_engine
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.core.session_time_zone import bind_zone, reset_zone
 from provisa.pgwire.session_zone import (
     UNKNOWN_ZONE,
     SessionZone,
     in_session_zone,
+    on_utc,
     raw_row_formats,
     refuse_other_zone,
 )
@@ -2067,9 +2069,17 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
         self.queries += 1
-        return self._with_org(
-            lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
-        )
+        # REQ-2171: what runs the statement runs it in the session's zone. A SET in the statement
+        # itself changes nothing an engine answers.
+        zone = bind_zone(self.zone.statement_zone())
+        try:
+            return self._with_org(
+                lambda: self._execute_sql_bound(
+                    sql, params, result_fmt, prepared=prepared, shape=shape
+                )
+            )
+        finally:
+            reset_zone(zone)
 
     def describe_sql(self, sql: str, params=None) -> BVQueryResult:
         """Describe(Statement) (REQ-589, amended 2026-10-01): the statement is governed through
@@ -2465,7 +2475,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         was_open = self.transaction_open
         self.transaction_open = _transaction_open(stripped, was_open)
-        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
+        self.zone.note(stripped, was_open, self.transaction_open, params)  # REQ-2171
         if was_open and not self.transaction_open:
             advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
@@ -2684,6 +2694,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                                     ),
                                 )
                                 if result_fmt
+                                and on_utc(self.zone.current)  # REQ-2171: its own zone's bytes
                                 and state.federation_engine.dialect in ("postgres", "postgresql")
                                 else None
                             ),
@@ -2701,6 +2712,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     and state.source_pools.has(governed.source_id)
                     and state.source_pools.supports_stream(governed.source_id)
                     and result_fmt
+                    and on_utc(self.zone.current)  # REQ-2171: a c::text is the source's zone's
                     and state.source_pools.dialect_for(governed.source_id)
                     in ("postgres", "postgresql")
                 ):

@@ -29,6 +29,7 @@ from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
 from provisa.lineage.read_rights import readable_graph
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.core.repositories import data_product as data_product_repo
 
 router = APIRouter()
 
@@ -303,6 +304,19 @@ async def _registry_columns(conn) -> list[dict]:
     return [dict(r._mapping) for r in res.fetchall()]
 
 
+async def store_lineage_edges(conn, rows: list[dict]) -> None:
+    """Replace the stored lineage edges with ``rows``."""
+    from sqlalchemy import delete, insert
+
+    from provisa.core.repositories.build_output import replacing_build_output
+    from provisa.core.schema_org import lineage_edges
+
+    async with replacing_build_output(conn, lineage_edges):
+        await conn.execute_core(delete(lineage_edges))
+        if rows:
+            await conn.execute_core(insert(lineage_edges).values(rows))
+
+
 async def write_lineage_edges(conn, state) -> None:
     """Replace the lineage edge table with the model's column lineage edges (REQ-2129).
 
@@ -310,9 +324,6 @@ async def write_lineage_edges(conn, state) -> None:
     every registered view definition, the served commands, the registry's relations. The edges are
     folded from the same per-view sub-DAGs that graph is the union of, so the two never differ. An
     end that is a registered column is stored with its table and its stored name."""
-    from sqlalchemy import delete, insert
-
-    from provisa.core.schema_org import lineage_edges
     from provisa.lineage.commands import command_write_graphs
     from provisa.lineage.edges import folded_edges
     from provisa.lineage.merge import federation_subdags
@@ -352,9 +363,7 @@ async def write_lineage_edges(conn, state) -> None:
                 "target_column_name": target[1],
             }
         )
-    await conn.execute_core(delete(lineage_edges))
-    if rows:
-        await conn.execute_core(insert(lineage_edges).values(rows))
+    await store_lineage_edges(conn, rows)
 
 
 def _relation_of(domain_id: str, table_name: str) -> str:
@@ -606,7 +615,7 @@ async def _product_lineage(
         **(getattr(state, "column_transforms", None) or {}),
     }
     column_rows = await _fetch_registry_columns(state)
-    members = [t for t in tables if t["product_id"] == product_id and t["dq_contract"] is None]
+    members = [t for t in tables if product_id in t["product_ids"] and t["dq_contract"] is None]
     member_ids = {t["id"] for t in members}
     member_relations = {_relation_of(t["domain_id"], t["table_name"]) for t in members}
     merged = _model_graph(
@@ -658,7 +667,8 @@ async def _product_lineage(
 
 def _consumer(table: dict) -> dict:
     """A registered relation reading the product directly: a table, a view or a materialized
-    view, and the product it belongs to, when it is another product's member."""
+    view, and the products it belongs to (REQ-1634: any number), when it is other products'
+    member."""
     if table["source_id"] != DERIVED_SOURCE_ID:
         kind = "table"
     else:
@@ -670,7 +680,7 @@ def _consumer(table: dict) -> dict:
         "domain_id": table["domain_id"],
         "table_name": table["table_name"],
         "alias": table["alias"],
-        "product_id": table["product_id"],
+        "product_ids": table["product_ids"],
     }
 
 
@@ -696,7 +706,6 @@ async def _fetch_checkers(state) -> list[dict]:
                 rt.c.table_name,
                 rt.c.alias,
                 rt.c.description,
-                rt.c.product_id,
                 rt.c.dq_rules,
                 targets.c.checked_table_id,
                 checked.c.domain_id.label("checked_domain_id"),
@@ -713,6 +722,7 @@ async def _fetch_checkers(state) -> list[dict]:
             .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
         )
         rows = res.fetchall()
+        products = await data_product_repo.table_memberships(conn)
     return [
         {
             "id": r.id,
@@ -720,7 +730,7 @@ async def _fetch_checkers(state) -> list[dict]:
             "table_name": r.table_name,
             "alias": r.alias,
             "description": r.description,
-            "product_id": r.product_id,
+            "product_ids": products.get(r.id, []),
             "checked_table_id": r.checked_table_id,
             "checked_table": {
                 "id": r.checked_table_id,
@@ -774,8 +784,8 @@ def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -
         "domain_id": table["domain_id"],
         "table_name": table["table_name"],
         "alias": table["alias"],
-        # The product the input belongs to, when it is another product's member: built from it.
-        "product_id": table["product_id"],
+        # The products the input belongs to, when it is other products' member: built from them.
+        "product_ids": table["product_ids"],
         "source_id": table["source_id"] if native else None,
         "source_type": types.get(relation) if native else None,
         "source_schema": node.source_schema if node else None,
@@ -784,7 +794,8 @@ def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -
 
 
 async def _fetch_tables(state) -> list[dict]:
-    """Every registered table that is not a draft: its id, names, source, product and contract."""
+    """Every registered table that is not a draft: its id, names, source, products (REQ-1634: any
+    number) and contract."""
     if getattr(state, "model_db", None) is None:
         return []
     from sqlalchemy import select
@@ -799,12 +810,12 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.table_name,
                 rt.c.alias,
                 rt.c.source_id,
-                rt.c.product_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
             ).where(rt.c.draft.is_(False))
         )
-        return [dict(r._mapping) for r in res.fetchall()]
+        products = await data_product_repo.table_memberships(conn)
+        return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]
 
 
 async def _product_exists(state, product_id: str) -> bool:

@@ -355,6 +355,52 @@ def test_a_posix_zone_with_a_daylight_rule_is_shown_and_refused_in_text(port):
         assert _refused(connection, "SELECT c FROM t")[0] == b"0A000"
 
 
+@pytest.mark.parametrize(
+    "word, shown, written",
+    [
+        ("+2:00", b"+2:00", b"2026-07-01 10:00:00.5-02"),
+        ("+02:00", b"+02:00", b"2026-07-01 10:00:00.5-02"),
+        ("-02:00", b"-02:00", b"2026-07-01 14:00:00.5+02"),
+        ("12:00", b"12:00", b"2026-07-01 00:00:00.5-12"),
+        ("-07:08", b"-07:08", b"2026-07-01 19:08:00.5+07:08"),
+    ],
+)
+def test_a_posix_zone_with_no_abbreviation_is_hours_west_of_utc(port, word, shown, written):
+    """PostgreSQL allows an empty abbreviation in a POSIX zone (tzparse), and POSIX's offset is
+    west, the opposite of a bare number of hours."""
+    with _connect(port) as connection:
+        _run(connection, f"SET TimeZone = '{word}'")
+        assert _simple(connection, "SHOW TimeZone") == [shown]
+        assert _status(connection) == shown.decode()
+        assert _simple(connection, "SELECT c FROM t")[0] == written
+
+
+def test_a_posix_zone_with_no_abbreviation_and_a_daylight_rule_is_shown_and_refused_in_text(port):
+    with _connect(port) as connection:
+        _run(connection, "SET TimeZone = '+2:00Foo'")
+        assert _simple(connection, "SHOW TimeZone") == [b"+2:00FOO"]
+        assert _refused(connection, "SELECT c FROM t")[0] == b"0A000"
+
+
+def test_a_bare_number_of_hours_is_still_east_of_utc(port):
+    with _connect(port) as connection:
+        _run(connection, "SET TimeZone = '+2'")
+        assert _simple(connection, "SHOW TimeZone") == [b"<+02>-02"]
+        assert _simple(connection, "SELECT c FROM t")[0] == b"2026-07-01 14:00:00.5+02"
+
+
+def test_a_session_leaves_a_posix_zone_for_utc_as_a_pool_reset_does(port):
+    """psycopg's pool tests set '+2:00', commit, and reset to utc in a block of their own."""
+    with _connect(port) as connection:
+        _run(connection, "BEGIN")
+        _run(connection, "SET TimeZone TO '+2:00'")
+        _run(connection, "COMMIT")
+        _run(connection, "BEGIN")
+        _run(connection, "SET TimeZone TO utc")
+        _run(connection, "COMMIT")
+        assert _simple(connection, "SHOW TimeZone") == [b"UTC"]
+
+
 def test_a_source_s_own_text_is_not_forwarded_to_a_session_on_another_zone(port, seen_formats):
     """A Postgres source wrote its rows' text in its own zone, and a cached copy of them is shared
     with every session: only a session on the server's zone may be handed those bytes."""

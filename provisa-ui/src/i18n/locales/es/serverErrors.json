@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains debe ser true, false o null",
       "claims_with_multitenancy": "Un despliegue multiinquilino no puede leer las asignaciones de roles de los claims de inicio de sesión: concede los roles por sí mismo, por organización, y los claims los anularían. Establezca el origen de las asignaciones en Provisa.",
       "federation_unknown_field": "No es un ajuste de federación: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Ajuste de federación no válido: {{error}}",
       "federation_role_unknown": "El rol de federación '{{role}}' no es un rol de esta organización"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Un producto de datos no puede sucederse a sí mismo.",
         "successor_retired": "El sucesor '{{successor}}' está retirado. Elige un producto de datos que esté en servicio.",
         "successor_other_domain": "El sucesor '{{successor}}' está en el dominio {{domain}}. Los miembros de un producto comparten su dominio, así que elige un sucesor del mismo dominio."
+      },
+      "members": {
+        "domain_has_members": "El producto de datos {{data_product}} no puede pasar al dominio {{domain}} mientras tenga miembros de otro dominio: {{members}}. Quítelos primero del producto."
       },
       "finding": {
         "no_members": "Ninguna tabla, vista ni comando pertenece a este producto de datos.",

@@ -47,6 +47,7 @@ from provisa.api.errors import ApiError
 from provisa.api.error_answer import error_answer
 from provisa.core import domain_policy
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+from provisa.compiler.sql_validator import GovernanceRefused
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
@@ -66,6 +67,14 @@ class SQLRequest(BaseModel):
             "statement runs and never written into its text. Sent with exactly one statement "
             "whose placeholders number them exactly; anything else is refused before the "
             "statement runs. Omit for a statement without placeholders."
+        ),
+    )
+    paged: bool = Field(
+        default=False,
+        description=(
+            "True when the statement is one page its caller bounds with its own LIMIT (a grid "
+            "reading pageSize+1 rows to learn whether another page exists). Such a result is "
+            "not measured against the large-result threshold. Omit for any other statement."
         ),
     )
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
@@ -260,11 +269,25 @@ async def _registered_integers(result) -> list[bool]:  # REQ-1961
     ]
 
 
-async def _typed_rows(result) -> list[list]:  # REQ-1961
-    """The result's rows, each a registered integer column's value as the number it is."""
+async def _written_integers(result) -> list[bool]:  # REQ-1867, REQ-1961
+    """For each result column, whether it is written as a JSON number: a registered integer, or
+    a column the engine types an integer, whatever its reader represented the value as (a DuckDB
+    HUGEINT read through Arrow is a Decimal; ``serialize.result_records`` reads it the same)."""
+    from provisa.compiler.sql_types import is_integer_type
+
+    registered = await _registered_integers(result)
+    types = result.column_types or [None] * len(result.column_names)
+    return [
+        integer or is_integer_type(None if t is None else str(t))
+        for integer, t in zip(registered, types, strict=True)
+    ]
+
+
+async def _typed_rows(result) -> list[list]:  # REQ-1867, REQ-1961
+    """The result's rows, each integer column's value as the number it is."""
     from provisa.executor.serialize import integer_value
 
-    integers = await _registered_integers(result)
+    integers = await _written_integers(result)
     names = result.column_names
     if not any(integers):
         return [list(row) for row in result.rows]
@@ -309,6 +332,7 @@ def _sql_error(exc: Exception) -> Exception:
         | CatalogViewRefused  # REQ-2190
         | MetadataFunctionRefused  # REQ-2190
         | FunctionRefused  # REQ-2167
+        | GovernanceRefused  # REQ-2222: the app answers it under its code
         | HTTPException,
     ):
         return exc
@@ -459,7 +483,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         # A column the engine types json or jsonb is written as its JSON (REQ-1867); a registered
         # integer column as its number (REQ-1961).
         types = result.column_types or [None] * len(result.column_names)
-        integers = await _registered_integers(result)
+        integers = await _written_integers(result)
         columns = [
             ColumnRef(
                 alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t), integer=i
@@ -485,7 +509,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 
     # REQ-1194: a redirect the request forces (X-Provisa-Redirect*); else REQ-1224's threshold
-    # decides, SQL over HTTP being a buffered transport.
+    # decides, SQL over HTTP being a buffered transport. REQ-029 (amended 2026-11-08): a page the
+    # caller bounds with its own LIMIT (``paged``) is not measured against it.
     delivery = delivery_from_headers(raw_request.headers, role_id)
     # Request-boundary error handling (mirrors the pgwire handle_query handler): a governance denial
     # (RLS/masking/visibility/relationship guard) raises PermissionError → 403; any OTHER error from an
@@ -500,7 +525,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 role_id,
                 state,
                 deliver=delivery,
-                buffered=True,
+                buffered=not request.paged,
                 params=request.params,
             )
         except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it
@@ -515,7 +540,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             role_id,
             state,
             deliver=delivery,
-            buffered=True,
+            buffered=not request.paged,
             params=request.params,
         )
     except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it

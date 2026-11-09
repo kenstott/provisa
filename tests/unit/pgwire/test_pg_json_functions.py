@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 import sqlglot
+from sqlglot import exp
 from psycopg import pq
 
 from provisa.pgwire.cast_types import result_casts
@@ -116,6 +117,47 @@ def test_a_read_stays_the_engines_own_operator_with_nothing_per_row(sql: str, di
     assert not any(
         word in written for word in ("REGEXP", "REPLACE(", "CASE", "COALESCE", "LATERAL")
     )
+
+
+@pytest.mark.parametrize("dialect", _ENGINES)
+@pytest.mark.parametrize("op", ["->", "->>"])
+def test_a_key_the_rows_hold_is_a_key_never_a_path(dialect: str, op: str):
+    """A text step is an object's key whatever it spells: '$.b' names a key, not a path. The
+    engine's own operator, and Trino's json_extract, read a text as a path."""
+    written = _write(f"SELECT a {op} k::text FROM t", dialect)
+    assert "REPLACE(" in written.upper() or dialect == "clickhouse"
+    if dialect != "clickhouse":
+        return
+    # ClickHouse reads a String argument of JSONExtractRaw as the object's key. The key is k read
+    # as text: its form is the branch's (an instant read in the session's zone, REQ-2171), so it
+    # is read off the tree, not the text: the text of k, in a cast to String, as the one key.
+    (call,) = sqlglot.parse_one(written, read="clickhouse").find_all(exp.JSONExtract)
+    step = call.expression
+    assert isinstance(step, exp.Cast) and step.to.is_type(exp.DataType.Type.TEXT)
+    assert any(column.name == "k" for column in step.find_all(exp.Column))
+    assert not any(
+        literal.name.startswith("$") for literal in step.find_all(exp.Literal)
+    )  # never a path
+
+
+@pytest.mark.parametrize("dialect", _ENGINES)
+def test_an_index_the_rows_hold_is_an_arrays_index(dialect: str):
+    written = _write("SELECT a -> i::int FROM t", dialect).upper()
+    assert "JSON_ARRAY_ELEMENT" in written  # the row's form, named for the function
+
+
+@pytest.mark.parametrize("dialect", ("trino", "clickhouse"))
+@pytest.mark.parametrize("op", ["->", "->>"])
+def test_a_step_of_no_stated_type_is_refused_where_the_engine_reads_it_as_a_path(
+    dialect: str, op: str
+):
+    with pytest.raises(FunctionRefused) as refused:
+        _write(f"SELECT a {op} k FROM t", dialect)
+    assert refused.value.params == {"function": op, "dialect": dialect}
+
+
+def test_a_step_of_no_stated_type_stays_duckdbs_own_operator():
+    assert _write("SELECT a -> i FROM t", "duckdb") == "SELECT a -> i FROM t"
 
 
 @pytest.mark.parametrize("dialect", _ENGINES)

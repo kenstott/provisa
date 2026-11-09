@@ -229,7 +229,7 @@ def _table(tid: int, columns: list[dict[str, Any]]) -> dict[str, Any]:
             "tableName": f"t{tid}",
             "arguments": None,
             "businessKey": [],
-            "productId": None,
+            "productIds": [],
             "live": None,
             "uniqueConstraints": [],
             "columns": columns,
@@ -402,7 +402,7 @@ def test_each_table_gets_its_row_rules_each_keeping_every_row(tmp_path: Path) ->
         {
             "tagId": f"bench_gov_rule{i}_t{oid}",
             "roleId": "org_admin",
-            "filterExpr": "order_id IS NOT NULL",
+            "filterExpr": f"order_id IS NOT NULL OR {i} < 0",
             "description": f"Benchmark governance: row rule {i}, every row",
         }
         for i in (1, 2)
@@ -599,7 +599,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
         }
     )
     read = _as_read_type(t)
-    read.stored_product_id = t["productId"]
+    read.stored_product_ids = t["productIds"]
     from provisa.api.admin.types import ColumnInput, TableInput
 
     def _defaults(input_type: type) -> dict[str, Any]:

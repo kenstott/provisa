@@ -29,7 +29,7 @@
     "query": "Consulta",
     "domain": "Domínio",
     "selectDomain": "Selecionar domínio...",
-    "dataProduct": "Produto de dados (opcional)",
+    "dataProduct": "Produtos de dados",
     "dataProductPlaceholder": "Selecionar produto de dados...",
     "description": "Descrição",
     "descriptionPlaceholder": "opcional",

@@ -67,6 +67,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 # A named demo's directory: this checkout's demo/named/<name>/, or -- for a published demo (REQ-2049)
 # -- its bundle, pulled from where the project publishes demos (PROVISA_DEMO_REGISTRY names another)
 # into $PROVISA_HOME/demos/<name>/<version>: `--demo weblogs` pulls its latest, `--demo
@@ -963,8 +965,10 @@ start_backend() {
     _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
     _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
   fi
+  # scripts/serve_backend.py: with --reload, a failed first start ends this process, which the
+  # wait below sees; plain uvicorn's reloader would keep running with no server under it.
   env "${_BACKEND_ENV[@]}" \
-    "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
+    "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app \
       "${_serve_args[@]}" \
       "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &

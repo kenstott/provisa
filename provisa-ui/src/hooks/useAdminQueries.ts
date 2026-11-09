@@ -36,6 +36,7 @@ import type {
 } from "../types/admin";
 import type { CompileResult, TableMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+import { isAbort } from "./useOrgHas";
 export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import {
@@ -364,6 +365,21 @@ export function useRefreshPolicyPreview() {
   };
 }
 
+/**
+ * A one-off read's answer, or null when it was cut short. Apollo aborts a lazy query when its hook
+ * unmounts, and rejects the promise it handed out when no result had arrived: leaving the panel
+ * mid-read (a tour step moving on, a table closed) is the panel's own teardown, not a failure, and
+ * these reads' callers already treat null as "nothing to apply". Any other rejection is still theirs.
+ */
+async function nullWhenCutShort<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (e) {
+    if (isAbort(e)) return null;
+    throw e;
+  }
+}
+
 // REQ-1443: the contract builder's three server calls. The soda / Great Expectations dialects are
 // parsed and serialized server-side, so the panel holds contract TEXT and check rows and never a
 // dialect of its own — a hand edit in the raw editor can therefore never disagree with the builder.
@@ -393,22 +409,23 @@ export function useDqContract() {
   return {
     checkCatalog: useCallback(
       async (vars: DqCheckCatalogVars): Promise<DqCheckCatalog | null> =>
-        (await catalog({ variables: vars })).data?.dqCheckCatalog ?? null,
+        (await nullWhenCutShort(() => catalog({ variables: vars })))?.data?.dqCheckCatalog ?? null,
       [catalog],
     ),
     buildCheck: useCallback(
       async (vars: DqCheckDefinitionVars): Promise<DqCheckDefinition | null> =>
-        (await buildOne({ variables: vars })).data?.dqCheckDefinition ?? null,
+        (await nullWhenCutShort(() => buildOne({ variables: vars })))?.data?.dqCheckDefinition ??
+        null,
       [buildOne],
     ),
     parseContract: useCallback(
       async (vars: DqContractParseVars): Promise<DqContract | null> =>
-        (await parse({ variables: vars })).data?.dqContractParse ?? null,
+        (await nullWhenCutShort(() => parse({ variables: vars })))?.data?.dqContractParse ?? null,
       [parse],
     ),
     buildContract: useCallback(
       async (vars: DqContractBuildVars): Promise<DqContractText | null> =>
-        (await build({ variables: vars })).data?.dqContractBuild ?? null,
+        (await nullWhenCutShort(() => build({ variables: vars })))?.data?.dqContractBuild ?? null,
       [build],
     ),
     dryRunContract: useCallback(
@@ -844,9 +861,10 @@ export function useKaggleDatasetsLazy() {
     kaggleDatasets: { ref: string; title: string; subtitle: string }[];
   }>(KaggleDatasets, { fetchPolicy: "no-cache" });
   return useCallback(
+    // Null, not an empty list, for a search a newer one replaced: it found nothing out.
     async (token: string, query: string) => {
-      const { data } = await run({ variables: { token, query } });
-      return data?.kaggleDatasets ?? [];
+      const answer = await nullWhenCutShort(() => run({ variables: { token, query } }));
+      return answer && (answer.data?.kaggleDatasets ?? []);
     },
     [run],
   );

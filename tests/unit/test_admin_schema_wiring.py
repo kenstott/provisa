@@ -111,12 +111,25 @@ async def test_suggest_table_alias_defaults_to_snake_case(monkeypatch):  # REQ-1
     assert result == "iris_species"
 
 
+class _TakenOnceConn:
+    """The plain name is another source's; every later candidate is free."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def execute_core(self, _stmt):
+        self.calls += 1
+        row = object() if self.calls == 1 else None
+        return SimpleNamespace(fetchone=lambda: row)
+
+
 @pytest.mark.asyncio
-async def test_suggest_table_alias_honors_global_sql_naming_convention(monkeypatch):  # REQ-1831
-    # It IS still configurable — just from the deployment's own SQL-plane setting
-    # (matching register_table's own auto-gen), never a per-source GraphQL convention.
-    fake_state = SimpleNamespace(global_sql_naming_convention="apollo_graphql")
-    fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_FakeConn()))
+async def test_suggest_table_alias_prefix_is_a_sql_identifier(monkeypatch):  # REQ-194, REQ-1831
+    # A taken name gets the source in front: its catalog name, since a hyphen in the id is no SQL
+    # identifier character. Run 42541883433 offered "kg_1_iris-flower-dataset_iris__iris", which
+    # the SQL page then could not parse.
+    fake_state = SimpleNamespace()
+    fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_TakenOnceConn()))
 
     from tests.unit.gate_identity import grant
 
@@ -126,7 +139,46 @@ async def test_suggest_table_alias_honors_global_sql_naming_convention(monkeypat
         patch("provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)),
     ):
         result = await Query().suggest_table_alias(
-            info, table_name="iris_species", domain_id="shelter", source_id="kaggle-iris-dataset"
+            info, table_name="iris", domain_id="shelter", source_id="kaggle-iris-dataset"
         )
+
+    assert result == "kaggle_iris_dataset_iris"
+
+
+@pytest.mark.asyncio
+async def test_suggest_table_alias_honors_the_orgs_sql_naming_convention(
+    monkeypatch,
+):  # REQ-1831, REQ-1327
+    # It IS still configurable -- from the acting org's own SQL-plane convention (matching
+    # register_table's own auto-gen), never a per-source GraphQL convention and never a
+    # process-wide value: REQ-1327 makes naming the org's, read from the org the call is bound to.
+    from provisa.core import request_context
+
+    fake_state = SimpleNamespace()
+    fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_FakeConn()))
+
+    from tests.unit.gate_identity import grant
+
+    info, _ = grant(monkeypatch, "table_registration", state=fake_state)
+    request_context.register_org_overrides_provider(
+        lambda: {"naming": {"sql_convention": "apollo_graphql"}}
+    )
+    token = request_context.current_org.set("alpha")
+    try:
+        with (
+            patch("provisa.api.app.state", fake_state),
+            patch(
+                "provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)
+            ),
+        ):
+            result = await Query().suggest_table_alias(
+                info,
+                table_name="iris_species",
+                domain_id="shelter",
+                source_id="kaggle-iris-dataset",
+            )
+    finally:
+        request_context.reset_current_org(token)
+        request_context.register_org_overrides_provider(None)
 
     assert result == "irisSpecies"

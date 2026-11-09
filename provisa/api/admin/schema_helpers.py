@@ -27,6 +27,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
     registered_tables,
     sources,
@@ -272,6 +273,7 @@ class TableListing:
     pii: dict[int, dict[str, str | None]]
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
+    products: dict[int, list[str]]  # table id -> the products it is a member of (REQ-1634)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
     # OpenAPI source -> why its document could not be read: its tables are listed all the same,
     # saying so, since one source out of reach fails no listing.
@@ -306,6 +308,7 @@ def _openapi_operations(source_id: str) -> tuple[str, dict[str, Any]] | None:
 
 async def table_listing(conn, rows: list[dict]) -> TableListing:
     """What ``rows`` (registered tables) need beside themselves, one query per kind."""
+    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import write_grant as write_grant_repo
 
     ids = [r["id"] for r in rows]
@@ -363,6 +366,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         pii=pii,
         sources=known,
         grants=await write_grant_repo.for_tables(conn, ids),
+        products=await data_product_repo.table_memberships(conn),
         endpoints=endpoints,
         endpoint_errors=endpoint_errors,
     )
@@ -519,7 +523,7 @@ async def _fetch_table_with_columns(
         ],  # REQ-1907
         paging_kind=_paging_kind,  # REQ-318
         pagination=paging_type(row["pagination"]),
-        paging_ceiling_rows=_state.config.graphql_remote.max_rows,
+        paging_ceiling_rows=graphql_remote_max_rows(_state.config.graphql_remote.max_rows),
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         profiler_source_id=row.get("profiler_source_id"),  # REQ-1934
@@ -561,7 +565,7 @@ async def _fetch_table_with_columns(
         mv_business_day_grain=bool(row.get("mv_business_day_grain", False)),  # REQ-962
         modeling_role=row.get("modeling_role"),  # REQ-1320
         modeling_history=row.get("modeling_history"),  # REQ-1320
-        stored_product_id=row.get("product_id"),  # REQ-1634
+        stored_product_ids=listing.products.get(row["id"], []),  # REQ-1634
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,

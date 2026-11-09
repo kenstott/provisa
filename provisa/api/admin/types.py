@@ -180,14 +180,6 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class ContractColumnType:  # REQ-2158
-    name: str
-    type: str
-    description: str | None = None
-    required: bool = False
-
-
-@strawberry.type
 class ContractSlaPropertyType:  # REQ-2158
     property: str
     value: JsonScalar | None = None
@@ -204,7 +196,8 @@ class ContractTermsType:  # REQ-2158
 
 @strawberry.type
 class DataContractType:  # REQ-2158
-    """A product member's contract, its output port: what it promises, at its own version."""
+    """A product member's contract, its output port, at its own version. Its schema is its
+    member's columns (the product's ODCS contracts), never a selection of its own."""
 
     table_id: int
     source_id: str
@@ -216,7 +209,6 @@ class DataContractType:  # REQ-2158
     description: str | None
     terms: ContractTermsType
     sla: list[ContractSlaPropertyType]
-    columns: list[ContractColumnType]
 
 
 @strawberry.type
@@ -246,6 +238,9 @@ class DataProductType:  # REQ-1634, REQ-1660
     successor_id: str | None = None
     successor_name: str | None = None
     findings: int = 0  # REQ-2146: how many To Review findings the product has
+    # REQ-1634: the product's members, many-to-many; set with setDataProductMembers.
+    table_ids: list[int] = strawberry.field(default_factory=list)
+    command_names: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -550,8 +545,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
     modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
-    # REQ-1634: the row's own product_id; read through the product_id resolver below.
-    stored_product_id: strawberry.Private[str | None] = None
+    # REQ-1634: the products the table is a member of; read through the product_ids resolver.
+    stored_product_ids: strawberry.Private[list[str] | None] = None
     enable_aggregates: bool = False
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
@@ -602,10 +597,11 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         )
 
     @strawberry.field
-    def product_id(self) -> str | None:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
-        """The data product this table is assigned to. A checker table's is its own, as any
-        member's is: the product whose owner controls the check."""
-        return self.stored_product_id
+    def product_ids(self) -> list[str]:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
+        """The data products this table is a member of, any number, in id order; read-only here --
+        a product's members are set on the product (setDataProductMembers). A checker table's are
+        its own, as any member's are: the products whose owners control the check."""
+        return list(self.stored_product_ids or [])
 
     @strawberry.field
     def dq_dataset(self) -> str | None:  # REQ-1443
@@ -1150,14 +1146,6 @@ class DataProductInput:  # REQ-1634
 
 
 @strawberry.input
-class ContractColumnInput:  # REQ-2158
-    name: str
-    type: str
-    description: str | None = None
-    required: bool = False
-
-
-@strawberry.input
 class ContractSlaPropertyInput:  # REQ-2158
     property: str
     value: JsonScalar | None = None
@@ -1179,7 +1167,6 @@ class DataContractInput:  # REQ-2158
     description: str | None = None
     terms: ContractTermsInput
     sla: list[ContractSlaPropertyInput]
-    columns: list[ContractColumnInput]
 
 
 @strawberry.input
@@ -1409,7 +1396,6 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
     modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
-    product_id: str | None = None  # REQ-1634
     enable_aggregates: bool = False
     enable_group_by: bool = False
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration

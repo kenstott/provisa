@@ -28,7 +28,7 @@ import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
@@ -151,7 +151,7 @@ const table = (id: number, tableName: string, extra: Record<string, unknown> = {
   domainId: "pet-store",
   schemaName: "pet_store",
   tableName,
-  productId: "pet_health",
+  productIds: ["pet_health"],
   dqContract: null,
   columns: [{ columnName: "id" }, { columnName: "name" }, { columnName: "price" }],
   ...extra,
@@ -159,13 +159,14 @@ const table = (id: number, tableName: string, extra: Record<string, unknown> = {
 const tables = [
   table(1, "pets"),
   table(2, "pets_quality", { dqContract: "name: x", columns: [{ columnName: "scan_id" }] }),
-  table(3, "breeds", { productId: null, columns: [{ columnName: "name" }] }),
+  table(3, "breeds", { productIds: [], columns: [{ columnName: "name" }] }),
 ];
 const none: never[] = [];
 vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
@@ -187,6 +188,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { DataProductsPage } from "../DataProductsPage";
 import { DataProductDetailPanel } from "../data-products/DataProductDetailPanel";
+import { upstreamLineage } from "../data-products/upstreamLineage";
 
 async function opened() {
   render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
@@ -197,10 +199,13 @@ async function opened() {
 }
 
 describe("product detail lineage scope (REQ-1666, REQ-2156)", () => {
-  it("draws what the product lineage endpoint answers for the expanded product", async () => {
+  it("draws what the product lineage endpoint answers upstream of the expanded product", async () => {
     const { graph } = await opened();
     expect(asked).toContain("pet_health");
-    expect(graph).toBe(LINEAGE);
+    // REQ-2174 (amended 2026-11-07): where the product comes from, never what reads it.
+    expect(graph).toEqual(upstreamLineage(LINEAGE));
+    expect(graph.nodes.map((n) => n.id)).not.toContain("pet_store.dim_pet.id");
+    expect(graph.nodes).toHaveLength(LINEAGE.nodes.length - 1);
   });
 
   it("builds its swimlanes around the members the endpoint names", async () => {
@@ -210,11 +215,11 @@ describe("product detail lineage scope (REQ-1666, REQ-2156)", () => {
 
   it("heads each lane in words and names each table as the catalog does", async () => {
     const { lanes, relationLabel } = await opened();
-    expect([-2, -1, 0, 1].map((l) => lanes!.title(l))).toEqual([
-      "Upstream, hop 2",
-      "Input Ports",
-      "Output Ports",
-      "Downstream, hop 1",
+    expect([-3, -2, -1, 0].map((l) => lanes!.title(l))).toEqual([
+      "Upstream, hop 2 beyond the inputs",
+      "Upstream, hop 1 beyond the inputs",
+      "Inputs",
+      "This product's tables",
     ]);
     expect(relationLabel!("pet_store.pets")).toBe("pet-store.pets");
   });
@@ -227,7 +232,7 @@ const input = (relation: string, over: Partial<ProductInput> = {}): ProductInput
   domain_id: "pet-store",
   table_name: relation.split(".")[1],
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,
@@ -245,6 +250,7 @@ const panel = (lineage: ProductLineage | null, owner = true) =>
       canEdit={false}
       canDelete={false}
       owner={owner}
+      seesConsumers={owner}
       lineageLoading={false}
       lineageError=""
       lineageGraph={lineage}

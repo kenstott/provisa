@@ -336,3 +336,86 @@ def test_force_download_is_scoped_to_the_statement_cursor():
         sibling.close()
     finally:
         rt.close()
+
+
+# -- REQ-039: the table stands in the statement as the role's governed relation ---------------
+
+_ORDERS = '(SELECT "o"."order_id" AS "order_id" FROM "pg"."public"."orders" AS "o") AS o'
+
+
+def _governed(*outputs: str, where: str = "") -> str:
+    projections = ", ".join(outputs)
+    return f'(SELECT {projections} FROM {_PHYS} AS "e"{where}) AS e'
+
+
+_SERVED = (
+    '"e"."order_id" AS "order_id"',
+    '"e"."event_type" AS "event_type"',
+    '"e"."region" AS "region"',
+    '"e"."payload" AS "payload"',
+)
+
+
+def test_a_governed_relation_reads_only_what_the_statement_reads_and_filters():
+    """The perf bench's federated_join as stage 2 governs it: the statement's conditions sit
+    around the governed relation, which serves every column the role may read. ClickHouse was
+    asked for the whole table, every served column (the bench's federated_join went 95 -> 459 ms
+    on DuckDB); it is asked for what a bare table is asked for."""
+    sql = (
+        f"SELECT o.order_id, e.event_type FROM {_ORDERS} JOIN {_governed(*_SERVED)} "
+        "ON e.order_id = o.order_id WHERE o.order_id BETWEEN 1 AND 1000 "
+        "AND e.order_id BETWEEN 1 AND 1000"
+    )
+    bare = (
+        f'SELECT o.order_id, e.event_type FROM "pg"."public"."orders" AS o JOIN {_PHYS} AS e '
+        "ON e.order_id = o.order_id WHERE o.order_id BETWEEN 1 AND 1000 "
+        "AND e.order_id BETWEEN 1 AND 1000"
+    )
+    ch = _ch_sql(rewrite(sql, None, _RELS, deadline_s=None) or "")
+    assert ' WHERE "order_id" BETWEEN 1 AND 1000 ' in ch
+    assert ch == _ch_sql(rewrite(bare, None, _RELS, deadline_s=None) or "")
+
+
+def test_a_governed_relations_row_rule_and_its_readers_conditions_are_both_pushed():
+    sql = (
+        f"SELECT e.event_type FROM {_governed(*_SERVED, where=' WHERE "e"."region" = $1')} "
+        "WHERE e.order_id = 7"
+    )
+    ch = _ch_sql(rewrite(sql, ["EU"], _RELS, deadline_s=None) or "")
+    where = ch.split(" WHERE ", 1)[1]
+    assert "\"region\" = 'EU'" in where and '"order_id" = 7' in where
+    assert '"payload"' not in ch
+
+
+def test_a_condition_on_a_masked_output_is_not_pushed():
+    masked = ('md5("e"."region") AS "region"', '"e"."event_type" AS "event_type"')
+    sql = f"SELECT e.event_type FROM {_governed(*masked)} WHERE e.region = 'EU'"
+    ch = _ch_sql(rewrite(sql, None, _RELS, deadline_s=None) or "")
+    assert " WHERE " not in ch
+    assert '"region"' in ch  # the mask reads the column; the outer condition reads the mask
+
+
+def test_a_star_over_a_governed_relation_reads_every_served_column():
+    sql = f"SELECT * FROM {_governed(*_SERVED)} WHERE e.order_id = 7"
+    ch = _ch_sql(rewrite(sql, None, _RELS, deadline_s=None) or "")
+    for name in ("order_id", "event_type", "region", "payload"):
+        assert f'"{name}"' in ch
+
+
+def test_a_pruned_governed_relation_answers_what_it_answered():
+    """The rewritten statement still runs on DuckDB with the outputs it reads (no read is made:
+    the scan is swapped for an in-memory table of the same columns)."""
+    sql = (
+        f"SELECT e.event_type, count(*) AS n FROM {_governed(*_SERVED)} "
+        "WHERE e.order_id = 7 GROUP BY e.event_type"
+    )
+    out = rewrite(sql, None, _RELS, deadline_s=None) or ""
+    scan = re.search(
+        r"\(SELECT [^()]*read_parquet\('[^']+'\)\)|read_parquet\('[^']+'\)", out, flags=re.I
+    )
+    assert scan is not None
+    local = out.replace(scan.group(0), "events")
+    con = duckdb.connect()
+    con.execute("CREATE TABLE events (order_id BIGINT, event_type VARCHAR)")
+    con.execute("INSERT INTO events VALUES (7, 'view'), (7, 'view'), (8, 'buy')")
+    assert con.execute(local).fetchall() == [("view", 2)]

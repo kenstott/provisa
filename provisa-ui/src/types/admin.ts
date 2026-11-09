@@ -92,7 +92,7 @@ export interface ListedNames {
   columnNames: string[];
 }
 
-// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+// REQ-1634: a first-class DataProduct entity; a table or command is a member of any number of them, set on the product (REQ-1634).
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
 // individuals via the existing role machinery; tags, terms, inputs and output ports are read
 // from the meta domain (REQ-2125, REQ-2126) rather than stored here.
@@ -122,14 +122,6 @@ export interface DataProduct {
   createdAt: string;
 }
 
-// REQ-2158: a column an output port promises, of the type it is stored as.
-export interface ContractColumn {
-  name: string;
-  type: string;
-  description?: string | null;
-  required: boolean;
-}
-
 // REQ-2158: a declared ODCS service-level property; freshness is the member's own.
 export interface ContractSlaProperty {
   property: string;
@@ -157,6 +149,8 @@ export interface ContractChange {
 /** A saved version of a contract, as the store keeps it (REQ-2158). */
 export interface ContractVersion {
   contract: { version: string; status: string };
+  /** The member's columns when this version was saved; a contract holds none of its own. */
+  columns: { name: string; type: string; required: boolean; description: string | null }[];
   changes: ContractChange[];
   saved_at: string;
   /** Who saved it; null when the system did (a configuration load). */
@@ -174,7 +168,6 @@ export interface DataContract {
   description?: string | null;
   terms: ContractTerms;
   sla: ContractSlaProperty[];
-  columns: ContractColumn[];
   // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
   versions?: ContractVersion[];
 }
@@ -545,7 +538,7 @@ export interface RegisteredTable {
   mvAllowedLateness: number; // REQ-961: seal-deadline slack in seconds
   mvExpectedEvents: string[] | null; // REQ-961: preflight freshness inputs (null = all lineage inputs)
   mvBusinessDayGrain: boolean; // REQ-962: gate snapshot windows to business days
-  productId: string | null; // REQ-1634
+  productIds: string[]; // REQ-1634: the products it is a member of, read-only: set on the product
   enableAggregates: boolean;
   enableGroupBy: boolean;
   canDeployToDb: boolean;
@@ -571,7 +564,7 @@ export const LISTED_TABLE_FIELDS = [
   "draft",
   "viewSql",
   "materialize",
-  "productId",
+  "productIds",
   "dqContract",
   "dqDataset",
   "timeTravel",

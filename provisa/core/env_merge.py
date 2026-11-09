@@ -50,7 +50,7 @@ from provisa.core.env_conflicts import Conflict
 from provisa.core.env_copy import TableDelta, _copy_settings
 from provisa.core.env_deploy import PROJECTED, DeployDelta, in_scope, land, table_of
 from provisa.core.env_files import domain_path, kind_path
-from provisa.core.env_project import KIND_DIRS, project
+from provisa.core.env_project import COMMANDS_DIR, KIND_DIRS, project
 from provisa.core.environments import PROD, org_schema
 
 if TYPE_CHECKING:
@@ -303,12 +303,15 @@ def requirements(path: str, body: dict[str, Any], source: Tree) -> set[str]:
     elif kind == "data_products":
         if body.get("domain_id") is not None:
             needs.add(domain_path(body["domain_id"]))
+        # REQ-1634: a product stands on its members, which its file names.
+        needs.update(member["table"] for member in body.get("tables") or [])
+        needs.update(
+            kind_path(COMMANDS_DIR, member["command_name"]) for member in body.get("commands") or []
+        )
     elif kind == "glossary_terms":
         needs.update(edge["to"] for edge in body.get("edges") or [])
     elif kind == "metrics":
         needs.update(_metric_tables(body.get("expression"), source))
-    if kind in ("registered_tables", "commands") and body.get("product_id") is not None:
-        needs.add(kind_path(KIND_DIRS["data_products"], body["product_id"]))
     return needs
 
 

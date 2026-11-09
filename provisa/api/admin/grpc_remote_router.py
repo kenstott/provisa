@@ -103,7 +103,7 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         proto_name=proto_pkg_name,
         import_paths=import_paths or None,
     )
-    pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+    pb2 = load_stubs(pb2_path)
 
     queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
@@ -354,6 +354,7 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
     (REQ-322). None writes a table for every query method, which is what a caller that states
     the whole set (a test of the stored shape) asks for.
     """
+    from provisa.compiler.naming import apply_sql_name
     from provisa.core.models import Table
     from provisa.core.repositories import table as table_repo
 
@@ -381,11 +382,17 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
             c.model_copy(update={"visible_to": grants[c.name]}) if c.name in grants else c
             for c in nf_cols
         ]
+        # REQ-325/REQ-194: SQL addresses a table by its alias, else its table_name. The proto's
+        # service and method names stay in table_name (the registered name); the alias is the
+        # name the SQL naming convention gives it, as register_table derives one -- left unset,
+        # this write would replace that alias with NULL.
+        sql_name = apply_sql_name(table_name)
         tbl = Table(
             source_id=source_id,
             domain_id=table_domain or "",
             schema_name="grpc_remote",
             table_name=table_name,
+            alias=None if sql_name == table_name else sql_name,
             columns=output_cols + nf_cols,
         )
         from provisa.api.admin.region_defaults import admin_registration_draft
@@ -561,7 +568,7 @@ async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
             proto_name=state.catalog_for(source_id),
             import_paths=reg.get("import_paths") or None,
         )
-        pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+        pb2 = load_stubs(pb2_path)
         proto_dict = parse_proto_text(proto_text)
         queries, mutations = map_proto(
             proto_dict,

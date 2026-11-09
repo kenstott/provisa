@@ -817,7 +817,7 @@ O conector do Databricks herda isso do `requests`, então não precisa de variá
 | `PG_PASSWORD` | | Senha PostgreSQL |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Caminho para o arquivo de config |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Habilitar redirecionamento de resultado grande para S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Limite de contagem de linha para redirecionamento |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Limite de contagem de linha para redirecionamento |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL de endpoint compatível com S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL de URL pré-assinada (segundos) |

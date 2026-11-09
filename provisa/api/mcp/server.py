@@ -501,8 +501,11 @@ def build_mcp_server(state: Any):
             )
         # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
         # is that role's (REQ-2152, catalog_scope).
+        # No headers: a tool call carries no Idempotency-Key, so a decision applies as it always
+        # did (REQ-2216).
         return SimpleNamespace(
-            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+            headers={},
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role),
         )
 
     @_tool
@@ -1043,6 +1046,17 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def set_data_product_members(
+        id: str, table_ids: list[int], command_names: list[str], role: str | None = None
+    ) -> dict:
+        """Make a data product's members exactly these tables (by id) and commands (by name);
+        each must be in the product's domain."""
+        resolved = _role(role)
+        return await tools.set_data_product_members(
+            state, resolved, _capability_request(resolved), id, table_ids, command_names
+        )
+
+    @_tool
     async def delete_data_product(id: str, role: str | None = None) -> dict:
         """Delete a data product by id. Irreversible."""
         resolved = _role(role)
@@ -1306,6 +1320,18 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
     return _middleware
 
 
+def _uvicorn_config(app: Any, fd: int, ssl_kwargs: dict[str, Any]) -> Any:
+    """The MCP server's uvicorn config, one that leaves the process's loggers alone.
+
+    ``Config.__init__`` configures logging for the whole process: a ``log_config`` rewrites the
+    ``uvicorn`` loggers' handlers and a ``log_level`` sets ``uvicorn.error`` and ``uvicorn.access``.
+    This server runs in a thread beside the main one, so either would change the main server's
+    startup and access lines. Both stay ``None``; the loggers keep the level the main server set."""
+    import uvicorn
+
+    return uvicorn.Config(app, fd=fd, log_config=None, log_level=None, **ssl_kwargs)
+
+
 def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | None:
     """Start the MCP Streamable HTTP transport in a background thread.
 
@@ -1401,7 +1427,7 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     _sock.bind((host, port))  # nosec B104 - same wildcard host this server always advertised
 
     def _serve() -> None:
-        uvicorn.run(app, fd=_sock.fileno(), log_level="warning", **ssl_kwargs)
+        uvicorn.Server(_uvicorn_config(app, _sock.fileno(), ssl_kwargs)).run()
 
     threading.Thread(target=_serve, daemon=True).start()
     _log.info("MCP Streamable %s server listening on %s:%d", scheme.upper(), host, port)

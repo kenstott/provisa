@@ -131,9 +131,15 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
     # The allow-list is the boundary: a key absent from it has no per-org representation at all.
     # metadata_export joined the set with REQ-1074: the catalog an org publishes to, and the
     # credentials it publishes with, are that org's, not the deployment's. REQ-1266 added `naming`
-    # (the org's domain mode only — NAMING_ORG_KEYS bounds it), plus `redirect` and `cache`, which
+    # (domain mode and, with REQ-1327, conventions — NAMING_ORG_KEYS bounds it); REQ-1327 added
+    # `sampling`, `hot_tables`, `replication` and `graphql_remote`, field by field in
+    # ORG_BLOCK_FIELDS; plus `redirect` and `cache`, which
     # govern the org's own query results; the object store they land in stays in the platform env.
     assert ORG_OVERRIDABLE_KEYS == {
+        "sampling",
+        "hot_tables",
+        "replication",
+        "graphql_remote",
         "ai_models",
         "vector_models",
         "ai_endpoints",
@@ -154,6 +160,10 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "federation",
         # REQ-2185: the reference library's retrieval setting, passage or graph.
         "reference_library",
+        # REQ-194: how the org's names table settles a name clash.
+        "names",
+        # REQ-2216: how the org is told of a request (email, events only, or both).
+        "requests",
     }
     for deployment_wide in (
         "federation_engine",

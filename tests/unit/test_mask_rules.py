@@ -474,7 +474,9 @@ def test_a_member_of_a_meta_role_no_entry_matches_reads_the_complete_mask():
             for r in ("vip", "x")
         },
     )
-    reads = meta_role._member_reads(state, [{"id": "vip"}, {"id": "x"}], [table], ())
+    members = [{"id": "vip"}, {"id": "x"}]
+    parts = meta_role._member_parts(state, members)
+    reads = meta_role._member_reads(state, members, [table], (), parts)
     vip, stranger = reads[1].columns["email"]
     assert vip[0] == PLAIN
     assert stranger[1] == MaskingRule(mask_type=MaskType.constant, value="****")

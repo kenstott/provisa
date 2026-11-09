@@ -30,6 +30,8 @@ export interface OntologyPreset {
   focus: string | null;
   depth: number;
   products: boolean;
+  /** Drawn in 2D until the reader chooses otherwise. */
+  flat?: boolean;
 }
 
 /** A snippet's preset: it has a focus. */
@@ -41,18 +43,26 @@ export const WHOLE: OntologyPreset = { focus: null, depth: NEIGHBOURHOOD.depth, 
 /** The whole ontology with every product among it, as the Product map shows it. */
 export const PRODUCT_MAP: OntologyPreset = { ...WHOLE, products: true };
 
+/** A term's graph opens at what the term touches, its hops raised from there. */
+export const TERM_GRAPH_DEPTH = 1;
+
 /** A term's page: the ontology focused on the term -- its ancestors and descendants, and the
- * columns, tables and products it reaches. */
+ * columns, tables and products it reaches -- in 2D, at one hop. */
 export const termPreset = (term: number): SnippetPreset => ({
   focus: termNode(term),
-  depth: NEIGHBOURHOOD.depth,
+  depth: TERM_GRAPH_DEPTH,
   products: false,
+  flat: true,
 });
+
+/** REQ-2174 (amended 2026-11-07): a product's panel opens at its tables, matching its Related
+ * Tables card: one hop, with Related tables on (snippetLayers). */
+export const PRODUCT_PANEL_DEPTH = 1;
 
 /** A product's panel: the ontology focused on the product, by the Product map's rules. */
 export const productPreset = (product: string): SnippetPreset => ({
   focus: productNode(product),
-  depth: NEIGHBOURHOOD.depth,
+  depth: PRODUCT_PANEL_DEPTH,
   products: true,
 });
 
@@ -61,6 +71,9 @@ export const scopeOf = (p: Pick<OntologyPreset, "products">): GraphScope =>
   p.products ? PRODUCT_MAP_SCOPE : ONTOLOGY_SCOPE;
 
 /** A snippet's layers: the terms, the columns they bind, those columns' tables and the products
- * holding them; under the Product map's rules the tables' relationships too (Tables). */
+ * holding them; under the Product map's rules the tables related to the tables drawn too
+ * (Related tables, on in a product's panel). */
 export const snippetLayers = (p: Pick<OntologyPreset, "products">): LayerId[] =>
-  p.products ? ["ontology", "columns", "ownerTables", "data"] : ["ontology", "columns", "data"];
+  p.products
+    ? ["ontology", "columns", "ownerTables", "data", "related"]
+    : ["ontology", "columns", "data"];

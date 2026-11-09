@@ -22,14 +22,16 @@ from provisa.api.errors import ApiError
 from provisa.api.metadata_export import build_snapshot
 from provisa.control_plane.entitlements import EntitlementError, Tier
 from provisa.core.contract_versions import recorded
-from provisa.core.models import ContractColumn, DataContract, DataProduct
-from tests.integration.metadata_export_fixture import ORG_ID, governed_config
+from provisa.core.models import DataContract, DataProduct, VersionColumn
+from tests.integration.metadata_export_fixture import ORG_ID, PROD, governed_config
 
 
 @pytest.fixture
 def org(monkeypatch):
     config = governed_config()
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     asked: list[str] = []
 
@@ -94,13 +96,11 @@ class _Plane:
 
 @pytest.fixture
 def versions_of(org, monkeypatch):
-    def contract(version: str, *columns: str) -> DataContract:
-        return DataContract(
-            version=version, columns=[ContractColumn(name=c, type="integer") for c in columns]
-        )
+    def members(*columns: str) -> list[VersionColumn]:
+        return [VersionColumn(name=c, type="integer") for c in columns]
 
-    one = recorded(None, contract("1.0.0", "id", "note"), [])
-    two = recorded(one, contract("2.0.0", "id"), [])
+    one = recorded(None, DataContract(version="1.0.0"), [], members("id", "note"))
+    two = recorded(one, DataContract(version="2.0.0"), [], members("id"))
     row = {
         "id": 1,
         "product_id": "prod",

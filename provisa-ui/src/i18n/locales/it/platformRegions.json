@@ -19,6 +19,7 @@
     "sectionRegions": "Regioni",
     "sectionDefaultGrant": "Concessione predefinita",
     "sectionOrgs": "Organizzazioni",
+    "sectionStores": "Archivi di cache",
     "defaultGrantIntro": "Le regioni concesse a ogni nuova organizzazione, con lo store in cui conserva ogni tipo di dati, così che una nuova organizzazione parta con una regione funzionante.",
     "orgsIntro": "Qui si decide quali regioni usa un'organizzazione: concedile regioni e assegna lo store in cui conserva ogni tipo di dati.",
     "colDescription": "Descrizione",

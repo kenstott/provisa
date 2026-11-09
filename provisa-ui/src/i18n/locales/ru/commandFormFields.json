@@ -29,7 +29,7 @@
     "query": "Запрос",
     "domain": "Домен",
     "selectDomain": "Выберите домен...",
-    "dataProduct": "Продукт данных (необязательно)",
+    "dataProduct": "Продукты данных",
     "dataProductPlaceholder": "Выберите продукт данных...",
     "description": "Описание",
     "descriptionPlaceholder": "необязательно",

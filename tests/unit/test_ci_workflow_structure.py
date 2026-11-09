@@ -248,7 +248,8 @@ def test_a_lane_script_fails_loud(script):
     used = {
         word.removeprefix("../")
         for _w, _j, b in _lane_callers()
-        for h in ("prepare", "on-failure", "after")
+        # ``run``: the core UI job's opt-in py-spy recorder (ui-e2e-core.yml ``pyspy``).
+        for h in ("prepare", "on-failure", "after", "run")
         for word in str(b["with"].get(h, "")).split()
         if word.endswith(".sh")
     }
@@ -435,11 +436,14 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
         "needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''"
     )
     assert "ui-core-after.sh" in job["with"]["after"]
-    # The lanes workflow is started by the nightly schedule and on request, never by a push.
+    # The lanes workflow is started by the nightly schedule, on request, and by a push to a
+    # release branch, which it gates; never by a push to main.
     suite = yaml.safe_load((workflows / "integration-suite.yml").read_text())
-    assert set(suite[True]) == {"schedule", "workflow_dispatch"}
+    assert set(suite[True]) == {"push", "schedule", "workflow_dispatch"}
+    assert suite[True]["push"] == {"branches": ["release/**"]}
     core_ui = yaml.safe_load((workflows / "ui-e2e-core.yml").read_text())
-    assert set(core_ui[True]) == {"workflow_dispatch", "workflow_call"}
+    assert set(core_ui[True]) == {"push", "workflow_dispatch", "workflow_call"}
+    assert core_ui[True]["push"] == {"branches": ["release/**"]}
     for name in ("playwright", "provisioning"):
         assert "--project=core" in core_ui["jobs"][name]["with"]["run"], name
         assert "--project=warehouse" not in core_ui["jobs"][name]["with"]["run"], name
@@ -523,119 +527,6 @@ def test_reusable_workflows_nest_no_deeper_than_github_allows():
     assert max(depth(w) for w in calls) <= 4
 
 
-# --- verification of one surface ------------------------------------------------------------------
-
-_VERIFY = "verify-surface.yml"
-_VERIFY_SUITES = {
-    "conformance-bolt", "conformance-cypher", "conformance-flight-sql", "conformance-graphql",
-    "conformance-pgwire", "ui-unit", "ui-e2e-core", "ui-swap",
-}  # fmt: skip
-
-
-def _verify() -> tuple[str, dict]:
-    path = REPO / ".github" / "workflows" / _VERIFY
-    return path.read_text(), yaml.safe_load(path.read_text())
-
-
-def test_verification_is_dispatched_for_a_surface_and_is_never_cancelled():
-    _text, workflow = _verify()
-    trigger = workflow[True]
-    assert set(trigger) == {"workflow_dispatch"}
-    inputs = trigger["workflow_dispatch"]["inputs"]
-    assert set(inputs) == {"surface", "full"}
-    assert inputs["surface"]["required"] is True
-    assert (inputs["full"]["type"], inputs["full"]["default"]) == ("boolean", False)
-    assert workflow["concurrency"] == {
-        "group": "verify-surface-${{ inputs.surface }}",
-        "cancel-in-progress": False,
-    }
-
-
-def test_verification_calls_every_suite_and_copies_none():
-    _text, workflow = _verify()
-    jobs = workflow["jobs"]
-    assert {job for job, body in jobs.items() if "steps" in body} == {"plan", "summary"}
-    called = {job: body["uses"] for job, body in jobs.items() if "uses" in body}
-    assert called == {
-        "lint": "./.github/workflows/lint.yml",
-        "unit": "./.github/workflows/unit-tests.yml",
-        "conformance-bolt": "./.github/workflows/conformance-bolt.yml",
-        "conformance-cypher": "./.github/workflows/conformance-cypher.yml",
-        "conformance-flight-sql": "./.github/workflows/conformance-flight-sql.yml",
-        "conformance-graphql": "./.github/workflows/conformance-graphql.yml",
-        "conformance-pgwire": "./.github/workflows/conformance-pgwire.yml",
-        "ui-unit": "./.github/workflows/ui-unit-tests.yml",
-        "ui-e2e-core": "./.github/workflows/ui-e2e-core.yml",
-        "ui-swap": "./.github/workflows/ui-e2e-swap-amd64.yml",
-        "integration": "./.github/workflows/integration-suite-lanes.yml",
-    }
-    # Lint and Unit always; a surface's own suite when the plan names it, by a whole name.
-    for job in ("lint", "unit"):
-        assert jobs[job]["needs"] == "plan" and "if" not in jobs[job], job
-    for job in _VERIFY_SUITES:
-        assert jobs[job]["if"] == f"contains(needs.plan.outputs.suites, ',{job},')", job
-
-
-def test_verification_never_reaches_a_live_lane():
-    """Maintainer 2026-10-29: the paid warehouse lane is only the nightly. Its jobs run only on a
-    schedule or for an include_ input, none is passed, and no live credential is handed over."""
-    text, workflow = _verify()
-    jobs = workflow["jobs"]
-    given = jobs["integration"]["with"]
-    assert set(given) == {"lanes", "tests"}
-    assert "include_" not in text
-    assert "schedule" not in workflow[True]
-    assert set(jobs["integration"]["secrets"]) == {
-        "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SPLUNKBASE_USERNAME", "SPLUNKBASE_PASSWORD",
-    }  # fmt: skip
-    read = set(re.findall(r"secrets\.([A-Z0-9_]+)", text))
-    assert not read & (
-        _WAREHOUSE_SECRETS | {"SF_PASSWORD", "ATHENA_S3_BUCKET", "SERVICENOW_PASSWORD"}
-    )
-    assert "--project=warehouse" not in text
-
-
-def test_verification_of_whole_lanes_queues_with_the_suites_full_runs():
-    """integration-suite.yml: full runs of different branches do not overlap."""
-    _text, workflow = _verify()
-    group = workflow["jobs"]["integration"]["concurrency"]
-    suite = yaml.safe_load((REPO / ".github/workflows/integration-suite.yml").read_text())
-    assert group["group"].startswith("${{ needs.plan.outputs.tests == '' && 'integration-suite' ||")
-    assert "'integration-suite-targeted-{0}'" in group["group"]
-    assert group["queue"] == suite["jobs"]["lanes"]["concurrency"]["queue"] == "max"
-
-
-def test_verification_summarises_whatever_every_job_did():
-    _text, workflow = _verify()
-    jobs = workflow["jobs"]
-    summary = jobs["summary"]
-    assert summary["if"] == "always()"
-    assert set(summary["needs"]) == set(jobs) - {"summary"}
-    assert "verify_summary.py" in summary["steps"][-1]["run"]
-    # The unit shards leave what it reads; a test's name is nowhere else.
-    shard = yaml.safe_load((REPO / ".github/workflows/unit-tests.yml").read_text())["jobs"]["shard"]
-    run = next(s for s in shard["steps"] if s.get("name") == "Run unit tests")
-    assert "--junitxml=unit-junit.xml" in run["run"]
-    uploads = [s["with"] for s in shard["steps"] if "upload-artifact" in s.get("uses", "")]
-    assert {"name": "unit-junit-${{ matrix.shard }}", "path": "unit-junit.xml"}.items() <= next(
-        u for u in uploads if u["path"] == "unit-junit.xml"
-    ).items()
-
-
-def test_verifications_wording_stays_with_the_product():
-    words = re.compile(r"\b(agent|agents|swarm|worker job|lead|train|trains)\b", re.I)
-    sources = [
-        REPO / ".github/workflows" / _VERIFY,
-        REPO / "scripts/ci/surfaces.toml",
-        REPO / "scripts/ci/surface_map.py",
-        REPO / "scripts/ci/verify_summary.py",
-    ]
-    for path in sources:
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            found = words.search(line)
-            assert found is None, f"{path.name}:{number}: {found.group(0)}"
-
-
 # --- the release: an orchestrator and its legs (stage 3) ------------------------------------------
 
 _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
@@ -652,8 +543,7 @@ _RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi"
 #: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
 _RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 _RELEASE_PUBLISH = (
-    "${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' "
-    "&& github.ref_name == inputs.version) }}"
+    "${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}"
 )
 
 
@@ -678,10 +568,10 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert set(first) == {"version", "publish"}
     assert all(w == first for w in given.values()), "the legs are not built for one version"
     assert first["version"] == "${{ inputs.version || github.ref_name }}"
-    # A tag push publishes. A manual run publishes only when started on the tag it names.
+    # A run publishes only when started on the tag it names; a pushed tag starts nothing.
     assert first["publish"] == _RELEASE_PUBLISH
     trigger = yaml.safe_load(_RELEASE.read_text())[True]
-    assert trigger["push"] == {"tags": ["v*"]}
+    assert "push" not in trigger
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
@@ -1159,9 +1049,8 @@ def test_a_job_checks_out_the_commit_its_workflow_came_from_or_the_one_it_was_as
 
 
 def test_no_workflow_is_started_by_a_push_to_a_branch_nobody_pushes_to():
-    # `integration` was where work was pushed before main; nothing moves it now, and the
-    # nightly tests main. A push starts a workflow on main, on a release branch, or on a ci/**
-    # proving branch, and nowhere else.
+    # `integration` was where work was pushed before main; nothing moves it now. A push starts a
+    # workflow on main, on a release branch, or on a ci/** proving branch.
     allowed = {"main", "release/**", "ci/**"}
     other = []
     for path in WORKFLOWS:

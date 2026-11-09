@@ -29,7 +29,6 @@ function Harness({ initial }: { initial: Partial<FormState> }) {
       domainHints={[]}
       availableFunctions={[]}
       loadingFunctions={false}
-      dataProducts={[]}
       roleOptions={[]}
     />
   );
@@ -201,7 +200,6 @@ function RemoteHarness({ initial }: { initial: Partial<FormState> }) {
       domainHints={[]}
       availableFunctions={[{ name: "createIssue", comment: "Creates a new issue." }]}
       loadingFunctions={false}
-      dataProducts={[]}
       roleOptions={[]}
     />
   );
@@ -264,7 +262,6 @@ describe("CommandFormFields — a code source's column transforms (REQ-2131)", (
             { name: "clean_address", comment: "raw_address -> street, city, country" },
           ]}
           loadingFunctions={false}
-          dataProducts={[]}
           roleOptions={[]}
         />
       </>
@@ -342,7 +339,6 @@ describe("CommandFormFields — a database source's routines on offer (REQ-887)"
             domainHints={[]}
             availableFunctions={[{ name: "get_customers_by_region", comment: "query" }]}
             loadingFunctions={false}
-            dataProducts={[]}
             roleOptions={[]}
           />
           <output data-testid="picked">{form.functionName}</output>

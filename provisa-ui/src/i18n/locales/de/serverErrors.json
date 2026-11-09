@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains muss true, false oder null sein",
       "claims_with_multitenancy": "Eine mandantenfähige Bereitstellung kann Rollenzuweisungen nicht aus Anmelde-Claims lesen: Sie vergibt Rollen selbst, je Organisation, und Claims würden sie überschreiben. Stellen Sie die Zuweisungsquelle auf Provisa.",
       "federation_unknown_field": "Keine Federation-Einstellung: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Ungültige Federation-Einstellung: {{error}}",
       "federation_role_unknown": "Die Federation-Rolle „{{role}}“ ist keine Rolle dieser Organisation"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Ein Datenprodukt kann nicht sein eigener Nachfolger sein.",
         "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie ein Datenprodukt, das in Gebrauch ist.",
         "successor_other_domain": "Der Nachfolger '{{successor}}' liegt in der Domäne {{domain}}. Die Mitglieder eines Produkts teilen seine Domäne; wählen Sie also einen Nachfolger in derselben Domäne."
+      },
+      "members": {
+        "domain_has_members": "Datenprodukt {{data_product}} kann nicht in die Domäne {{domain}} wechseln, solange es Mitglieder aus einer anderen Domäne enthält: {{members}}. Nehmen Sie diese zuerst aus dem Produkt heraus."
       },
       "finding": {
         "no_members": "Zu diesem Datenprodukt gehört keine Tabelle, keine Sicht und kein Befehl.",

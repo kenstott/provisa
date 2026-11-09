@@ -20,6 +20,12 @@ The stamp is used strictly for reloading. It is never what an update is checked 
 Kinds, and where their row lives:
 
 * ``model`` — the tenant plane (one per org and environment): the governed model and its rules.
+  What is keyed by the model a process loaded follows it: the response cache, the hot tables, the
+  audit record of the model commit.
+* ``build`` — the tenant plane: the part of the model the schema build reads. Every write that
+  advances ``model`` advances it too, except an update that changes only columns of
+  :data:`NOT_READ_BY_THE_BUILD`. A process whose ``build`` stamp is current takes the new ``model``
+  stamp without building anything (``provisa/api/model_reload.py``).
 * ``settings`` — the tenant plane (``org_settings``) and the platform plane
   (``deployment_settings``), each with its own row.
 * ``replica`` — the tenant plane: which tables are served from a replica because they are busy
@@ -40,6 +46,7 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
 
 MODEL = "model"
+BUILD = "build"
 SETTINGS = "settings"
 REPLICA = "replica"
 
@@ -62,6 +69,8 @@ TENANT_TABLES: dict[str, str] = {
     "sources": MODEL,
     "domains": MODEL,
     "data_products": MODEL,
+    "data_product_tables": MODEL,  # REQ-1634
+    "data_product_commands": MODEL,  # REQ-1634
     "naming_rules": MODEL,
     "registered_tables": MODEL,
     "table_columns": MODEL,
@@ -70,6 +79,9 @@ TENANT_TABLES: dict[str, str] = {
     "roles": MODEL,
     # REQ-1382: read into the runtime build (state.user_attributes), so every worker reloads.
     "user_attributes": MODEL,
+    # REQ-2219: read into the runtime build (state.held_entitlements), so every worker reloads.
+    "entitlements": MODEL,
+    "entitlement_expiries": MODEL,
     "rls_rules": MODEL,
     "table_write_grants": MODEL,  # REQ-2074
     "tags": MODEL,
@@ -93,6 +105,22 @@ TENANT_TABLES: dict[str, str] = {
 
 PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}
 
+# The columns of a ``model`` table that nothing a schema build makes depends on: an update of these
+# alone advances ``model`` and not ``build``. A column is named here only once every reader of it
+# reads the store when asked, so one not named always rebuilds. A data product's lifecycle: the
+# build reads a product's id and domain (the entitlement refs) and its owner role (REQ-2188); its
+# status is read from the store by the admin surfaces, the catalog exports and the meta view.
+NOT_READ_BY_THE_BUILD: dict[str, tuple[str, ...]] = {
+    "data_products": (
+        "status",
+        "status_reason",
+        "retire_on",
+        "status_by",
+        "status_at",
+        "successor_id",
+    ),
+}
+
 # Serializes trigger creation across the worker processes of a launch (PostgreSQL). "PROVISA4".
 _INSTALL_LOCK_KEY = 0x50524F5649534134
 
@@ -110,23 +138,48 @@ def _seed(conn: Any, qualified: str, kinds: set[str]) -> None:
         )
 
 
+def trigger_function_body() -> str:
+    """The trigger function's PL/pgSQL. Its rule lives here and not in the triggers' definitions:
+    an existing schema keeps its triggers, and laying it out again replaces this function, so the
+    rule reaches every org schema (``db.layout_digest`` carries this text).
+
+    The table's own schema names the stamp it advances, so the trigger is right whatever
+    search_path the writing connection carries."""
+    cases = " ".join(
+        f"WHEN '{table}' THEN ARRAY[{', '.join(repr(column) for column in columns)}]"
+        for table, columns in sorted(NOT_READ_BY_THE_BUILD.items())
+    )
+    return (
+        "DECLARE kinds text[] := ARRAY[TG_ARGV[0]]; ignored text[]; "
+        "BEGIN "
+        f"IF TG_ARGV[0] = '{MODEL}' THEN "
+        f"ignored := CASE TG_TABLE_NAME {cases} END; "
+        # OLD and NEW are read only for an UPDATE: a statement-level TRUNCATE has neither.
+        "IF TG_OP <> 'UPDATE' OR ignored IS NULL THEN "
+        f"kinds := array_append(kinds, '{BUILD}'); "
+        "ELSIF (to_jsonb(OLD) - ignored) IS DISTINCT FROM (to_jsonb(NEW) - ignored) THEN "
+        f"kinds := array_append(kinds, '{BUILD}'); "
+        "END IF; "
+        "END IF; "
+        "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = ANY($1)', "
+        "TG_TABLE_SCHEMA) USING kinds; "
+        "RETURN NULL; "
+        "END"
+    )
+
+
 def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -> None:
     conn.execute(text(f"SELECT pg_advisory_xact_lock({_INSTALL_LOCK_KEY})"))
     if schema is None:
         schema = conn.execute(text("SELECT current_schema()")).scalar_one()
     stamp = f'"{schema}".config_stamp'
-    _seed(conn, stamp, set(tables.values()))
+    kinds = set(tables.values())
+    _seed(conn, stamp, kinds | {BUILD} if MODEL in kinds else kinds)
     function = f'"{schema}".{_PG_FUNCTION}'
-    # The table's own schema names the stamp it advances, so the trigger is right whatever
-    # search_path the writing connection carries.
     conn.execute(
         text(
             f"CREATE OR REPLACE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS $fn$ "
-            "BEGIN "
-            "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = $1', "
-            "TG_TABLE_SCHEMA) USING TG_ARGV[0]; "
-            "RETURN NULL; "
-            "END $fn$"
+            f"{trigger_function_body()} $fn$"
         )
     )
     existing = {

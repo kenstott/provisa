@@ -21,9 +21,9 @@ machinery (``local_users`` + HTTP Basic) so no test-only login shim is introduce
   3. person 3 — redeems the invite and becomes an ``analyst`` of person 2's org, and is
      forbidden from issuing invites (the org_admin authz boundary).
 
-Org routing is driven by the request Host (REQ-1276): the control-plane host
-``cloud.provisa.org`` carries no org, the org subdomain ``acme.provisa.org`` selects org
-``acme``. The Part-1 data-plane build (``build_org_runtime``) and physical provisioning
+Org routing is driven by the request Host (REQ-1276) under the declared base domain
+``provisa.org``: the control-plane host ``cloud.provisa.org`` carries no org, the org subdomain
+``acme.provisa.org`` selects org ``acme``. The Part-1 data-plane build (``build_org_runtime``) and physical provisioning
 (``provision_org``) are stubbed — this test pins the CONTROL plane (membership, role grants,
 provisioning-state transitions, invite authz), which the data-plane tests
 (``test_two_org_trino_isolation``) cover separately.
@@ -53,6 +53,7 @@ from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.regions import PlatformConfig
 from provisa.core.schema_admin import (
     REGISTRY_TABLES,
     local_users,
@@ -63,6 +64,8 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources, user_role_assignments
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
+from tests.helpers import create_pgvector
 
 pytestmark = [pytest.mark.integration]
 
@@ -122,7 +125,17 @@ def _prepare_sync():
                 )
             )
 
+        # REQ-2190: a node start creates the admin terminal's client role once per database
+        # (startup_seed._seed_catalog_client); provisioning grants it the new org's registry view.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
+
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
+        create_pgvector(conn)  # a fresh database: the org metadata has vector columns
         # The whole org metadata, not just the two role tables: provisioning ends by rebuilding the
         # root org-registry view (REQ-1301), which registers itself in registered_tables/
         # table_columns of the root tenant schema.
@@ -154,6 +167,10 @@ def planes(monkeypatch):
 
     from provisa.api.app import state as app_state
 
+    # REQ-1276 (amended 2026-11-05): a Host names an org only under the base domain the deployment
+    # declares. This deployment is the one _CONTROL_HOST and _ORG_HOST address.
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")
+
     # tenant_db/roles are AppState property shims that resolve the ContextVar-selected OrgRuntime;
     # with current_org unset they resolve the DEFAULT org's runtime. Patch that runtime's plain
     # dataclass fields directly (roles has no property setter) — monkeypatch auto-restores them.
@@ -180,7 +197,13 @@ def planes(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        types.SimpleNamespace(
+            auth={"provider": "basic"},
+            derived_roles=[],
+            # Provisioning gives a new org the platform's default grant (REQ-1922), read from the
+            # config as written; this deployment declares no regions, so the grant is empty.
+            written=types.SimpleNamespace(platform=PlatformConfig()),
+        ),
         raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same

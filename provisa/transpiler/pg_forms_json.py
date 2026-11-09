@@ -22,6 +22,7 @@ SQL."""
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -42,11 +43,13 @@ _NAME = """replace(k, '"', '\\"')"""
 _KEY = {_D: f"""('$."' || {_NAME} || '"')""", _T: f"""('$["' || {_NAME} || '"]')""", _C: "k"}
 _AT = {
     _D: "{i}",
-    _T: "('$[' || CAST({i} AS VARCHAR) || ']')",
+    # an array's alone, as $[n] reads an object's key "n" there; a negative counts from the end
+    _T: "('$[' || CAST(CASE WHEN json_array_length(v) IS NULL THEN NULL WHEN {i} >= 0 THEN {i} "
+    "WHEN json_array_length(v) + {i} >= 0 THEN json_array_length(v) + {i} END AS VARCHAR) || ']')",
     _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), 0)",  # a key's place otherwise
 }
 _INDEX = {_D: "CAST(i AS BIGINT)", _T: "i", _C: "i"}
-_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "k", _C: "toInt64OrNull(k)"}
+_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "TRY_CAST(k AS BIGINT)", _C: "toInt64OrNull(k)"}
 _READ = {_D: "json_extract(v, @)", _T: "json_extract(v, @)", _C: "nullif(JSONExtractRaw(v, @), '')"}
 _READ_TEXT = {
     _D: "json_extract_string(v, @)",
@@ -218,9 +221,9 @@ class NoForm(ValueError):
         super().__init__(called)
 
 
-#: What may be json in a statement, for function_macros.mentioned. ``->`` is not: a statement that
-#: holds only it costs nothing here.
-OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json"
+#: What may be json in a statement, for function_macros.mentioned. ``->`` of a literal key or index
+#: is not: a statement that holds only it costs nothing here. ``->`` of a step the rows hold is.
+OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json|->>?\s*[^\s'\d>-]"
 
 
 def _said_jsonb(node: exp.Expr) -> bool:
@@ -247,6 +250,36 @@ def _path(value: exp.Expr, steps: list[str], scalar: bool) -> exp.Expr:
         row += "_text" if scalar and position == len(steps) - 1 else ""
         value = exp.Anonymous(this=row, expressions=[value, exp.Literal.string(step)])
     return value
+
+
+_INDEX_TYPES = (exp.DataType.Type.SMALLINT, exp.DataType.Type.INT, exp.DataType.Type.BIGINT)
+_KEY_TYPES = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
+
+
+def _stepped(
+    node: exp.JSONExtract | exp.JSONExtractScalar,
+    dialect: str,
+    inner: Callable[[exp.Expr], exp.Expr],
+) -> exp.Expr | None:
+    """``->`` and ``->>`` of a step the rows hold, as the row of the type the statement states
+    for it: an integer an array's index, a text an object's key whatever it spells. The engine's
+    own operator reads a text as a path. A step of no stated type stays DuckDB's own, which takes
+    an integer column as an index; None there, refused by name elsewhere."""
+    scalar = isinstance(node, exp.JSONExtractScalar)
+    step = node.expression.unnest()
+    negative = isinstance(step, exp.Neg) and step.this.is_int  # -1: the last element
+    if negative or (isinstance(step, exp.Cast) and step.to.this in _INDEX_TYPES):
+        row = "json_array_element"
+    elif isinstance(step, exp.Cast) and step.to.this in _KEY_TYPES:
+        row = "json_object_field"
+    elif dialect in _OF[_D]:
+        return None
+    else:
+        raise NoForm("->>" if scalar else "->")
+    called = row + ("_text" if scalar else "")
+    return exp.Anonymous(
+        this=called, expressions=[node.this.transform(inner), node.expression.transform(inner)]
+    )
 
 
 def _steps(called: str, path: exp.Expr) -> list[str]:
@@ -399,7 +432,14 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
             nodes[node.name].copy() if isinstance(node, exp.Column) and node.name in nodes else node
         )
 
-    return sqlglot.parse_one(sql, read=_D).transform(filled)
+    return _form(sql).transform(filled)
+
+
+@functools.lru_cache(maxsize=256)
+def _form(sql: str) -> exp.Expr:
+    """``sql`` as DuckDB reads it, once: a form is one of this module's own, and a statement
+    writes one for each member of each JSON it builds. ``transform`` copies it before filling."""
+    return sqlglot.parse_one(sql, read=_D)
 
 
 #: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
@@ -411,6 +451,8 @@ _TO_JSON = (
 )
 #: What already is JSON, or holds a value that was written on its way in.
 _JSON_NODES = (exp.JSONObject, exp.JSONArray, exp.JSONArrayAgg)
+#: What _TO_JSON's typeof test can never find to be a timestamp.
+_NEVER_AN_INSTANT = (exp.Map, exp.Array)
 _JSON_CALLS = frozenset(
     {
         "json_group_array",
@@ -432,7 +474,11 @@ def _is_json_call(node: exp.Expr) -> bool:
 
 def json_encoded(value: exp.Expr) -> exp.Expr:
     """``value`` as its JSON value on DuckDB, whatever its type: one form for every JSON a
-    statement builds, so a timestamp reads alike at any depth."""
+    statement builds, so a timestamp reads alike at any depth. A map or a list is never an
+    instant, so it takes the form's ELSE alone: the form names its value three times, and around
+    each level of a nested statement that multiplied the text."""
+    if isinstance(value.unnest(), _NEVER_AN_INSTANT):
+        return exp.Anonymous(this="to_json", expressions=[value])
     return _duckdb(_TO_JSON, _v=value)
 
 
@@ -771,7 +817,12 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     if name in _POPULATE or name == "jsonb_populate_record_valid":
         return _populated(name, args)
     if name in ("to_json", "to_jsonb") and len(args) == 1:
-        return _duckdb(_TO_JSON, _v=args[0].transform(inner))
+        written_value = args[0].transform(inner)
+        if _is_json_call(
+            args[0].unnest()
+        ):  # already JSON, so never an instant: json_encoded's ELSE
+            return exp.Anonymous(this="to_json", expressions=[written_value])
+        return json_encoded(written_value)
     if name in ("row_to_json", "array_to_json") and len(args) == 2:
         if _is_null(args[0]):
             return exp.cast(exp.Null(), "JSON")
@@ -909,6 +960,12 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _extracted(node, rewrite)
             steps = _steps("#>>" if scalar else "#>", path)
             return _path(node.this.transform(rewrite), steps, scalar)
+        if isinstance(node, exp.JSONExtract | exp.JSONExtractScalar) and not isinstance(
+            node.expression, exp.JSONPath
+        ):
+            stepped = _stepped(node, dialect, rewrite)
+            if stepped is not None:
+                return stepped
         if kind in _ON_KEYS:
             return operated(_ON_KEYS[kind], node, kind)
         if kind in _ON_JSONB and (_said_jsonb(node.this) or _said_jsonb(node.expression)):
@@ -940,4 +997,4 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _table(node, dialect)
         return _call(node, dialect, rewrite) if isinstance(node, exp.Func) else node
 
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

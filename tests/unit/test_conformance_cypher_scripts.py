@@ -869,13 +869,15 @@ def test_a_procedure_s_command_is_admitted_for_the_roles_that_call_it(procedure_
 
     entry = procedures.command(tck.procedure(procedure_scenarios[0]), _ROLES)
     for role in (
-        {"id": "org_admin", "capabilities": [], "domain_access": ["*"]},
-        {"id": "tck_empty", "capabilities": [], "domain_access": ["tck_empty"]},
+        {"id": "org_admin", "capabilities": ["command_execution"], "domain_access": ["*"]},
+        {"id": "tck_empty", "capabilities": ["command_execution"], "domain_access": ["tck_empty"]},
     ):
         admit_command(entry, role, entry["name"])
     with pytest.raises(CommandNotFound):
         admit_command(
-            entry, {"id": "other", "capabilities": [], "domain_access": ["*"]}, entry["name"]
+            entry,
+            {"id": "other", "capabilities": ["command_execution"], "domain_access": ["*"]},
+            entry["name"],
         )
 
 
@@ -994,7 +996,10 @@ def test_a_void_procedure_is_a_void_command(procedure_scenarios):
     function = Function(**entry)
     assert function.kind == "query" and is_void(function.model_dump())
     found = declared(entry["name"], entry["binding"], [])
-    assert duckdb.execute(sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0])
+    # Read to the end: from DuckDB 2.0 an unread result keeps the shared default connection busy
+    # and every later duckdb.sql() on it is refused.
+    sql = sqlglot.transpile(found.sql, read="postgres", write="duckdb")[0]
+    assert duckdb.execute(sql).fetchall() == [(1,)]
 
 
 def test_a_void_procedure_s_statement_uses_each_argument():

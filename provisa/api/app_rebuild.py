@@ -133,7 +133,6 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
-                        _registered_tables_t.c.product_id,  # REQ-2133
                         _registered_tables_t.c.mv_hold_on_failing_checks,  # REQ-2133
                         _registered_tables_t.c.business_key,  # REQ-2109
                         _registered_tables_t.c.valid_time,  # REQ-2109
@@ -155,6 +154,10 @@ async def _register_user_views_in_state(
                 )
             ).fetchall()
         ]
+        # REQ-2133, REQ-1634: the products each view table is a member of, any number.
+        from provisa.core.repositories import data_product as _data_product_repo
+
+        _view_products = await _data_product_repo.table_memberships(conn)
         # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
         from provisa.core import settings_registry  # REQ-1913: an operator setting
 
@@ -216,6 +219,13 @@ async def _register_user_views_in_state(
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
                 state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+                if _bt_spec.inherited is not None:
+                    # REQ-2064, REQ-2109: it declared none of the times its reads answer.
+                    from provisa.mv.bitemporal_inherit import with_inherited_read_columns
+
+                    with_inherited_read_columns(
+                        next(t for t in tables if t["id"] == _vr["id"]), _bt_spec
+                    )
             elif called(_semantic_sql, _transforms):
                 # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
                 from provisa.mv.models import stored_table_ref
@@ -281,7 +291,7 @@ async def _register_user_views_in_state(
                             freshness_mode=_fresh,
                             preprocess=_vr.get("mv_preprocess"),  # REQ-957
                             table_id=_vr["id"],  # REQ-2133
-                            product_id=_vr["product_id"],  # REQ-2133
+                            product_ids=_view_products.get(_vr["id"], []),  # REQ-2133
                             hold_on_failing_checks=bool(_vr["mv_hold_on_failing_checks"]),
                             bitemporal=_bt_spec,  # REQ-1162: survive restart
                             persist=_vr.get("mv_persist") or "replace",  # REQ-965
@@ -314,7 +324,7 @@ async def _register_user_views_in_state(
                     _existing.read_tables = read_table_names(_semantic_sql)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.table_id = _vr["id"]  # REQ-2133
-                    _existing.product_id = _vr["product_id"]  # REQ-2133
+                    _existing.product_ids = _view_products.get(_vr["id"], [])  # REQ-2133
                     _existing.hold_on_failing_checks = bool(_vr["mv_hold_on_failing_checks"])
                     _existing.bitemporal = _bt_spec  # REQ-1162
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965

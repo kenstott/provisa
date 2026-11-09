@@ -66,6 +66,9 @@ export interface LineageEdge {
   target: string;
   transform: string;
   ops: LineageTransformOp[];
+  /** Set by the client when a view between an input and a member is folded into this edge: the
+   *  relations the column passes through (lineage-layout foldViewsOntoEdges). Never sent. */
+  via?: string[];
 }
 
 export interface LineageCycle {
@@ -91,8 +94,8 @@ export interface ProductInput {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the input belongs to, when it is another product's member: built from it.
-  product_id: string | null;
+  // Every product the input is a member of: a product is built from each of them.
+  product_ids: string[];
   source_id: string | null;
   source_type: string | null;
   source_schema: string | null;
@@ -114,7 +117,7 @@ export interface ProductDqEntry {
   table_name: string;
   alias: string | null;
   description: string | null;
-  owner_product_id: string | null; // the product owning the check; null for none
+  owner_product_ids: string[]; // the products owning the check, any number; none for none
   checked_table_id: number;
   checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
   rules: ProductDqRule[]; // its checks, in the order authored
@@ -140,8 +143,8 @@ export interface ProductConsumer {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the consumer belongs to, when it is another product's member.
-  product_id: string | null;
+  // The products the consumer belongs to, any number, when it is other products' member.
+  product_ids: string[];
   // REQ-2158: the member relations it reads, so each contract names its own port's consumers.
   reads: string[];
 }

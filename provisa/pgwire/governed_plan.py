@@ -64,9 +64,9 @@ from typing import Any
 
 
 def _rebuild_in_progress() -> bool:
-    from provisa.api.app import _rebuild_schemas_lock
+    from provisa.api.app import rebuild_in_progress
 
-    return _rebuild_schemas_lock.locked()
+    return rebuild_in_progress()
 
 
 def governance_anchors(state: Any, role_id: str) -> tuple[Any, ...]:
@@ -126,6 +126,18 @@ class _Kept:
     settings: tuple[int, bool]
 
 
+def mask_scoped_body(state: Any, stage: str, role_id: str, body: list[Any]) -> list[Any]:
+    """``body`` with the reader's entitlement mask in it (REQ-2219), so a plan governed for one
+    mask is never read for another. A mask that narrows nothing leaves the body as it was. The
+    governance context is built once per role and narrowed per read, so it holds no mask."""
+    if stage == "governance":
+        return body
+    from provisa.entitlements import runtime  # noqa: PLC0415
+
+    mask_hash = runtime.current_mask_hash(state, role_id)
+    return [*body, ("provisa.entitlement_mask", mask_hash)] if mask_hash else body
+
+
 class PlanSlot:
     """One request's place in the plan store: look the plan up, or keep the one it builds."""
 
@@ -138,7 +150,9 @@ class PlanSlot:
         extra_anchors: tuple[Any, ...] = (),
     ) -> None:
         self._state = state
-        self._key = plan_key(state, stage, role_id, *body)
+        self._key = plan_key(
+            state, stage, role_id, *mask_scoped_body(state, stage, role_id, list(body))
+        )
         self._anchors = (*governance_anchors(state, role_id), *extra_anchors)
         self._settings = governance_settings(state)
         self._generation = (state.schema_boot_id, state.schema_version)
@@ -233,7 +247,9 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                 )
             )
             slot.keep(governance)
-        return dataclasses.replace(governance)
+        from provisa.entitlements.runtime import govern_for_request  # noqa: PLC0415
+
+        return govern_for_request(dataclasses.replace(governance), state, role_id)
 
     def read() -> Any:
         return bound.run(build)

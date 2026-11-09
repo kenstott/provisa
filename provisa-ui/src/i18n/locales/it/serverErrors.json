@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains deve essere true, false o null",
       "claims_with_multitenancy": "Una distribuzione multi-tenant non può leggere le assegnazioni dei ruoli dai claim di accesso: assegna i ruoli da sé, per organizzazione, e i claim li sovrascriverebbero. Imposta l'origine delle assegnazioni su Provisa.",
       "federation_unknown_field": "Non è un'impostazione di federazione: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Impostazione di federazione non valida: {{error}}",
       "federation_role_unknown": "Il ruolo di federazione '{{role}}' non è un ruolo di questa organizzazione"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Un prodotto dati non può succedere a sé stesso.",
         "successor_retired": "Il successore '{{successor}}' è ritirato. Scegli un prodotto dati in servizio.",
         "successor_other_domain": "Il successore '{{successor}}' è nel dominio {{domain}}. I membri di un prodotto ne condividono il dominio, quindi scegli un successore dello stesso dominio."
+      },
+      "members": {
+        "domain_has_members": "Il prodotto dati {{data_product}} non può passare al dominio {{domain}} finché contiene membri di un altro dominio: {{members}}. Rimuovili prima dal prodotto."
       },
       "finding": {
         "no_members": "Nessuna tabella, vista o comando appartiene a questo prodotto dati.",

@@ -77,7 +77,13 @@ def state(monkeypatch):
     monkeypatch.setattr("provisa.api.data.action_exec.dispatch_function", _dispatch)
     monkeypatch.setattr("provisa.api.data.action_exec.govern_action_rows", _governed)
     return SimpleNamespace(
-        roles={"reader": {"id": "reader", "capabilities": [], "domain_access": ["shelter"]}},
+        roles={
+            "reader": {
+                "id": "reader",
+                "capabilities": ["command_execution"],
+                "domain_access": ["shelter"],
+            }
+        },
         tracked_functions={"tck_do_nothing": _DO_NOTHING, "tck_my_proc": _MY_PROC},
         tracked_webhooks={},
         undefined_commands={},
@@ -114,7 +120,16 @@ async def test_a_void_command_is_stored_as_declaring_no_outputs():
 
     stored: list[dict] = []
 
+    class _NoRows:
+        def fetchall(self):
+            return []
+
     class _Conn:
+        # REQ-1634: a command keeps to the domain of every product it is a member of, so the
+        # upsert reads its memberships first; this command is in none.
+        async def execute_core(self, _stmt):
+            return _NoRows()
+
         async def upsert_returning(self, _table, vals, **_kw):
             stored.append(vals)
             return 1

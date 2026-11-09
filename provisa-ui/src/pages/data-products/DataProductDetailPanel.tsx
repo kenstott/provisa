@@ -15,10 +15,21 @@
 // checker's or profile run's results, read in their own domains as the same user.
 
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Alert, Badge, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Anchor,
+  Badge,
+  Group,
+  List,
+  Loader,
+  Modal,
+  Stack,
+  Text,
+} from "@mantine/core";
 import {
   Braces,
   Cable,
@@ -41,6 +52,7 @@ import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineag
 import type { MetaReader } from "../../api/metaGraph";
 import { OntologySnippet } from "../../components/graph3d/OntologyGraph";
 import { productPreset } from "../../components/graph3d/ontologyPresets";
+import { upstreamLineage } from "./upstreamLineage";
 import type { ContractViewer } from "./ContractView";
 import { ProductContracts } from "./ProductContracts";
 import {
@@ -93,6 +105,9 @@ interface DataProductDetailPanelProps {
    *  promises. The split hides lists and cards only, never a right: Edit and Delete follow
    *  canEdit. What either view is shown is already cut to the reader's rights (REQ-2152). */
   owner: boolean;
+  /** REQ-2174 (amended 2026-11-07), REQ-2219: the reader owns the product (productOwner.ts): only
+   *  then is its Consumers card shown at all. */
+  seesConsumers: boolean;
   lineageLoading: boolean;
   lineageError: string;
   // REQ-1640, REQ-2156: the product's member tables, their full upstream ancestry and one hop
@@ -160,6 +175,7 @@ export function DataProductDetailPanel({
   canEdit,
   canDelete,
   owner,
+  seesConsumers,
   lineageLoading,
   lineageError,
   lineageGraph,
@@ -188,18 +204,44 @@ export function DataProductDetailPanel({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // REQ-1667: the same graph at 90% of the viewport; collapse state is shared with the inline one.
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
-  // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
+  // REQ-1667, REQ-2174 (amended 2026-11-07): lane 0 is this product's tables, lane -1 its inputs,
+  // each lane further up named by its hops beyond the inputs; a view between an input and a table
+  // is on the edge between them, not a lane. Nothing downstream is drawn.
   const laneTitle = useCallback(
     (lane: number) =>
       lane === 0
-        ? t("dataProductsTab.tablesLabel")
+        ? t("dataProductsTab.detail.lineageLaneTables")
         : lane === -1
-          ? t("dataProductsTab.detail.field.inputPorts")
-          : lane > 0
-            ? t("dataProductsTab.detail.lineageLaneDownstream", { n: lane })
-            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane }),
+          ? t("dataProductsTab.detail.lineageLaneInputs")
+          : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane - 1 }),
     [t],
   );
+  // One value while its parts hold: a new one redraws the DAG, its zoom and pan lost.
+  // The Input Ports card's inputs, pinned to the Inputs lane.
+  const lineageInputs = useMemo(
+    () => new Set((lineageGraph?.inputs ?? []).map((i) => i.relation)),
+    [lineageGraph],
+  );
+  const lineageLanes = useMemo(
+    () => lineageMembers && { members: lineageMembers, inputs: lineageInputs, title: laneTitle },
+    [lineageMembers, lineageInputs, laneTitle],
+  );
+  // REQ-2174 (amended 2026-11-07): where the product comes from, never who consumes it.
+  const upstream = useMemo(
+    () => (lineageGraph ? upstreamLineage(lineageGraph) : null),
+    [lineageGraph],
+  );
+  // The Input Ports card links to the Lineage panel: opened, and scrolled to.
+  const [revealLineage, setRevealLineage] = useState<string | null>(null);
+  const lineageRef = useRef<HTMLDivElement | null>(null);
+  const showLineage = () => {
+    setRevealLineage("lineage");
+    requestAnimationFrame(() => {
+      lineageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Asked again later, the panel opens again.
+      setRevealLineage(null);
+    });
+  };
   const toggleRelation = (relation: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -381,8 +423,8 @@ export function DataProductDetailPanel({
             {t("dataProductCore.scans", { table: restModelName(c.checked_table) })}
             {related &&
               ` · ${
-                c.owner_product_id
-                  ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
+                c.owner_product_ids.length > 0
+                  ? t("dataProductCore.assignedTo", { product: c.owner_product_ids.join(", ") })
                   : t("dataProductCore.unassigned")
               }`}
           </Text>
@@ -832,31 +874,41 @@ export function DataProductDetailPanel({
                 expectations={lineageGraph.dq.expectations}
                 testId={`data-product-detail-inputs-${p.id}`}
               />
+              <Anchor
+                component="button"
+                type="button"
+                size="xs"
+                onClick={showLineage}
+                data-testid={`data-product-detail-inputs-lineage-link-${p.id}`}
+              >
+                {t("dataProductsTab.detail.inputsLineageLink")}
+              </Anchor>
             </>
           ) : (
             <LineagePending loading={lineageLoading} error={lineageError} />
           )}
         </DetailCard>
         {/* REQ-2160: the owner's view of who reads the product, one hop downstream (the product
-            lineage endpoint, cut to the reader). */}
-        <DetailCard
-          section="consumers"
-          testId={`data-product-card-consumers-${p.id}`}
-          label={t("dataProductCore.consumers")}
-          hint={t("dataProductCore.consumersHint")}
-        >
-          {!owner ? (
-            <OwnerOnlyList />
-          ) : lineageGraph ? (
-            <ConsumersList
-              consumers={lineageGraph.consumers}
-              ports={core.tables}
-              testId={`data-product-detail-consumers-${p.id}`}
-            />
-          ) : (
-            <LineagePending loading={lineageLoading} error={lineageError} />
-          )}
-        </DetailCard>
+            lineage endpoint, cut to the reader). REQ-2174 (amended 2026-11-07), REQ-2219: shown to
+            those who own the product alone; no one else sees the card. */}
+        {seesConsumers && (
+          <DetailCard
+            section="consumers"
+            testId={`data-product-card-consumers-${p.id}`}
+            label={t("dataProductCore.consumers")}
+            hint={t("dataProductCore.consumersHint")}
+          >
+            {lineageGraph ? (
+              <ConsumersList
+                consumers={lineageGraph.consumers}
+                ports={core.tables}
+                testId={`data-product-detail-consumers-${p.id}`}
+              />
+            ) : (
+              <LineagePending loading={lineageLoading} error={lineageError} />
+            )}
+          </DetailCard>
+        )}
         {/* Compact: the product, its members, commands and bound terms; the full graph opens
             from its expand button. */}
         <DetailCard
@@ -870,15 +922,15 @@ export function DataProductDetailPanel({
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws
           it; the tallest panel on the page, so it starts closed. */}
-      <div>
-        <Collapsibles id="data-products.lineage">
+      <div ref={lineageRef}>
+        <Collapsibles id="data-products.lineage" reveal={revealLineage}>
           <CollapsibleItem
             value="lineage"
             defaultOpen={false}
             controlTestId={`data-product-detail-lineage-toggle-${p.id}`}
             title={
               <Group gap={4} align="baseline" component="span">
-                <span>{t("dataProductsTab.detail.field.lineage")}</span>
+                <span>{t("dataProductsTab.detail.lineageTitle")}</span>
                 <Tip text={t("dataProductsTab.detail.lineageHint")}>
                   <Text
                     size="xs"
@@ -901,20 +953,20 @@ export function DataProductDetailPanel({
               <Text size="sm" c="red">
                 {lineageError}
               </Text>
-            ) : !lineageGraph || lineageGraph.nodes.length === 0 ? (
+            ) : !upstream || upstream.nodes.length === 0 ? (
               <Text size="sm" c="var(--text-muted)">
                 {t("dataProductsTab.detail.lineageEmpty")}
               </Text>
             ) : (
               <div data-testid={`data-product-detail-lineage-${p.id}`}>
                 <LineageDag
-                  graph={lineageGraph}
+                  graph={upstream}
                   height={720}
                   readable
                   relationLabel={relationLabel}
                   collapsedRelations={collapsed}
                   onToggleRelation={toggleRelation}
-                  lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                  lanes={lineageLanes}
                   onOpenModal={() => setLineageModalOpen(true)}
                   describeColumn={describeColumn}
                 />
@@ -922,17 +974,17 @@ export function DataProductDetailPanel({
                   opened={lineageModalOpen}
                   onClose={() => setLineageModalOpen(false)}
                   size="90%"
-                  title={t("dataProductsTab.detail.field.lineage")}
+                  title={t("dataProductsTab.detail.lineageTitle")}
                   data-testid={`data-product-detail-lineage-modal-${p.id}`}
                   styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
                 >
                   <LineageDag
-                    graph={lineageGraph}
+                    graph={upstream}
                     height="calc(90vh - 140px)"
                     relationLabel={relationLabel}
                     collapsedRelations={collapsed}
                     onToggleRelation={toggleRelation}
-                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                    lanes={lineageLanes}
                     describeColumn={describeColumn}
                   />
                 </Modal>

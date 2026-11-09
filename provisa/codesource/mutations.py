@@ -181,9 +181,17 @@ def operation_of(tree: exp.Expr) -> str:
 
 
 def key_read(tree: exp.Expr, key: list[str], dialect: str = "postgres") -> tuple[str, list[str]]:
+    """An UPDATE's or a DELETE's key read (:func:`key_select`): its text, and the columns its SET
+    values are of, in order."""
+    select, columns = key_select(tree, key)
+    return select.sql(dialect=dialect), columns
+
+
+def key_select(tree: exp.Expr, key: list[str]) -> tuple[exp.Select, list[str]]:
     """An UPDATE's or a DELETE's key read: a SELECT of the target's key columns -- and an UPDATE's
-    SET values, each as ``__set_<column>`` -- over the statement's own FROM and WHERE. Its text,
-    and the columns its SET values are of, in order."""
+    SET values, each as ``__set_<column>`` -- over the statement's own WITH, FROM and WHERE (REQ-039:
+    a governed write's leading key-set CTE is read with it). The SELECT, and the columns its SET
+    values are of, in order."""
     if isinstance(tree, exp.Update):
         target = tree.this
         sets = [(e.this.name, e.expression) for e in tree.expressions]
@@ -208,7 +216,10 @@ def key_read(tree: exp.Expr, key: list[str], dialect: str = "postgres") -> tuple
     where = tree.args.get("where")
     if where is not None:
         select = select.where(where.this.copy())
-    return select.sql(dialect=dialect), [column for column, _ in sets]
+    with_ = tree.args.get("with_")
+    if with_ is not None:
+        select.set("with_", with_.copy())
+    return select, [column for column, _ in sets]
 
 
 def inserted_rows(tree: exp.Insert, params: list | None) -> list[dict[str, Any]] | None:
@@ -253,6 +264,16 @@ def _value(node: exp.Expr, params: list | None) -> Any:
         "?",
         f"an INSERT into a code table gives each value as a literal or a parameter, not {node.sql()}",
     )
+
+
+def changes_of(rows: list[tuple], width: int, columns: list[str]) -> dict[tuple, list[tuple]]:
+    """An UPDATE's key read's rows (``width`` key columns, then the SET values of ``columns``)
+    grouped by the changes their SET gives them -- one group when the SET is literals, one a key
+    when it is computed per row -- in the order they were read."""
+    groups: dict[tuple, list[tuple]] = {}
+    for row in rows:
+        groups.setdefault(tuple(zip(columns, row[width:], strict=True)), []).append(row)
+    return groups
 
 
 def keys_of(rows: list[tuple], key: list[str], bare: bool) -> list[Any]:

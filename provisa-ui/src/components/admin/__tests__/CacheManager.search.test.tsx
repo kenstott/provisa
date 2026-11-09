@@ -22,6 +22,11 @@ const table = (id: number, tableName: string, domainId: string) => ({
   sourceId: "pg",
 });
 
+const auth = vi.hoisted(() => ({
+  capabilities: ["org_settings"] as string[],
+  demonstrated: [] as string[],
+}));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
   ...(await orig<typeof import("../../../hooks/useAdminOpsQueries")>()),
   useCacheStats: () => ({
@@ -65,6 +70,7 @@ vi.mock("../../../api/admin", async (orig) => ({
 }));
 vi.mock("../CacheStorageTab", () => ({
   ResponseCacheSettingsPanel: () => null,
+  HotCacheStoreSettingsPanel: () => null,
   HotTablesSettingsPanel: () => null,
   MaterializedSettingsPanel: () => null,
 }));

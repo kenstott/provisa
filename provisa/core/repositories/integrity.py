@@ -223,6 +223,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("profiler_classifications", "table_id", "table"),
     # REQ-2189: a table's place in a saved ERD layout goes with it: it disappears from the layout.
     _part("erd_layout_tables", "table_id", "table"),
+    _part("data_product_tables", "table_id", "table"),  # REQ-1634: its memberships go with it
     # --- to a saved ERD layout (REQ-2189): its places go with it -------------------------------
     _part("erd_layout_domains", "layout_name", "erd_layout"),
     _part("erd_layout_tables", "layout_name", "erd_layout"),
@@ -316,11 +317,14 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a command or a webhook -------------------------------------------------------------
     _part("rls_rules", "action_name", "command"),
     _part("tag_assignments", "command_name", "command"),
+    _part("data_product_commands", "command_name", "command"),
     _part("rls_rules", "action_name", "webhook"),
     _part("tag_assignments", "command_name", "webhook"),
     # --- to a data product ---------------------------------------------------------------------
-    _dep("registered_tables", "product_id", "data_product", "table", "id"),
-    _dep("tracked_functions", "product_id", "data_product", "command", "name"),
+    # REQ-1634: a product's member tables and commands block it; a membership row is a part of its
+    # member, and goes with it.
+    _dep("data_product_tables", "product_id", "data_product", "table", "table_id"),
+    _dep("data_product_commands", "product_id", "data_product", "command", "command_name"),
     _part("tag_assignments", "product_id", "data_product"),
     # REQ-1634 STATUS: a retired product names the product its members moved to.
     _dep("data_products", "successor_id", "data_product", "data_product", "id"),

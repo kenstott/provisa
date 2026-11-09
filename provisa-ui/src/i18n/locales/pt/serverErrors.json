@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains deve ser true, false ou null",
       "claims_with_multitenancy": "Uma implantação multilocatário não pode ler as atribuições de funções das claims de início de sessão: ela própria concede as funções, por organização, e as claims iriam substituí-las. Defina a origem das atribuições como Provisa.",
       "federation_unknown_field": "Não é uma configuração de federação: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Configuração de federação inválida: {{error}}",
       "federation_role_unknown": "A função de federação '{{role}}' não é uma função desta organização"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Um produto de dados não pode suceder a si mesmo.",
         "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um produto de dados em serviço.",
         "successor_other_domain": "O sucessor '{{successor}}' está no domínio {{domain}}. Os membros de um produto compartilham o domínio dele, então escolha um sucessor do mesmo domínio."
+      },
+      "members": {
+        "domain_has_members": "O produto de dados {{data_product}} não pode mudar para o domínio {{domain}} enquanto tiver membros de outro domínio: {{members}}. Retire-os primeiro do produto."
       },
       "finding": {
         "no_members": "Nenhuma tabela, view ou comando pertence a este produto de dados.",

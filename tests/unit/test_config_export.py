@@ -40,6 +40,7 @@ async def _run(
     metrics=None,
     data_products=None,
     sources=None,
+    member_ids=None,
 ):
     from provisa.api.admin import config_export
 
@@ -85,6 +86,20 @@ async def _run(
             patch(
                 "provisa.core.repositories.data_product.list_all",
                 AsyncMock(return_value=data_products or []),
+            )
+        )
+        # REQ-1634: the stored membership relation — the fake connection holds none, so the test
+        # names a product's members here (empty unless given).
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_table_ids",
+                AsyncMock(return_value=member_ids or []),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_command_names",
+                AsyncMock(return_value=[]),
             )
         )
         # REQ-1919: every other section the store holds — none, unless a test gives some.
@@ -284,9 +299,10 @@ async def test_table_id_resolves_to_alias_when_set():
     assert cfg["relationships"][0]["source_table_id"] == "pet_by_status"  # alias, not table_name
 
 
-async def test_internal_tables_and_their_relationships_excluded():
-    # meta/ops (and provisa-internal-schema) tables are internal-only; neither they nor relationships
-    # referencing them may appear in the external config.
+async def test_seeded_tables_are_not_exported_but_the_relationships_to_them_are():
+    # meta/ops (and provisa-internal-schema) tables are seeded in every store, so the file does
+    # not hold them; a relationship to one is the model's and is exported (REQ-1634): applied,
+    # its name resolves to the seeded table.
     tables = [
         {
             "id": 1,
@@ -315,9 +331,9 @@ async def test_internal_tables_and_their_relationships_excluded():
             "cardinality": "many-to-one",
         },
         {
-            "id": "internal",
-            "source_table_id": 9,
-            "target_table_id": 1,
+            "id": "to-seeded",
+            "source_table_id": 1,
+            "target_table_id": 9,
             "source_column": "id",
             "target_column": "id",
             "cardinality": "many-to-one",
@@ -325,7 +341,38 @@ async def test_internal_tables_and_their_relationships_excluded():
     ]
     cfg = await _run(base={"tables": []}, tables=tables, rels=rels)
     assert [t["table"] for t in cfg["tables"]] == ["pets"]
-    assert [r["id"] for r in cfg["relationships"]] == ["ok"]
+    assert [r["id"] for r in cfg["relationships"]] == ["ok", "to-seeded"]
+    assert cfg["relationships"][1]["target_table_id"] == "meta_v"
+
+
+async def test_a_data_product_keeps_its_seeded_members():  # REQ-1634
+    tables = [
+        {
+            "id": 1,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": "pets",
+            "domain_id": "pet-store",
+            "columns": [],
+        },
+        {
+            "id": 5,
+            "source_id": "graphql-demo",
+            "schema_name": "graphql",
+            "table_name": "assignments",
+            "domain_id": "shelter",
+            "columns": [],
+        },
+    ]
+    stored = {
+        "id": "workforce_ops",
+        "domain_id": "shelter",
+        "name": "Workforce Ops",
+        "successor_id": None,
+    }
+    cfg = await _run(base={"tables": []}, tables=tables, data_products=[stored], member_ids=[5, 1])
+    assert cfg["data_products"][0]["tables"] == ["assignments", "pets"]
+    assert [t["table"] for t in cfg["tables"]] == ["pets"]
 
 
 async def test_internal_meta_ops_excluded():

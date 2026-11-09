@@ -230,6 +230,8 @@ data_products = Table(  # REQ-1634
     # REQ-2118: when the product was created, its ODPS productCreatedTs; set on insert, never
     # written by a save.
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2219: who created it, set on insert only; it grants nothing.
+    Column("created_by", Text),
 )
 
 naming_rules = Table(
@@ -287,7 +289,6 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
-    Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
     # its own (provisa.core.models.DataContract); NULL for a table in no product.
     Column("contract", JSON(none_as_null=True)),
@@ -519,8 +520,49 @@ roles = Table(
     # A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     Column("inactivity_days", Integer),
     Column("relationship_guard", Boolean, nullable=False, server_default=true()),  # REQ-1919
+    # REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}, written from
+    # domain_access when that is set; narrowed afterwards. Absent kinds are the whole role.
+    Column("default_entitlements", JSON(none_as_null=True)),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
+)
+
+# REQ-2219: the entitlement store. Append-only: a change appends a row whose valid_from ends the
+# row before it for the same principal, role, kind and capability; ``removed`` ends it with none.
+entitlements = Table(
+    "entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("source", Text, nullable=False),
+    Column("principal", Text),  # NULL on a role's own rows (source role)
+    Column("role_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("capability", Text),
+    Column("identifiers", JSON, nullable=False, default=list, server_default="[]"),
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("reason", Text),
+    Column("set_by", Text),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("source IN ('idp', 'provisa', 'role')", name="entitlements_source_check"),
+)
+
+# REQ-2219: one row per expiry rule on a person's grant; ``ends`` is {capability: [identifier,
+# ...]}, empty for the whole grant. Append-only: ``removed`` withdraws the rule named by rule_key.
+entitlement_expiries = Table(
+    "entitlement_expiries",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("rule_key", Text, nullable=False),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("ends_at", DateTime(timezone=True), nullable=False),
+    Column("ends", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("reason", Text),
+    Column("set_by", Text),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 # REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -952,6 +994,34 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-194: the names table of the last model version built
+# (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+model_names = Table(
+    "model_names",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("physical_name", Text, nullable=False),
+    Column("label", Text, nullable=False),
+    Column("domain_id", Text, nullable=False, server_default=""),
+    Column("table_id", Integer),
+    Column("is_alias", Boolean, nullable=False, server_default=false()),
+    Column("warnings", JSON, nullable=False, server_default="[]"),
+)
+
+# REQ-194: the name clashes the last model build refused, each naming both objects.
+model_name_clashes = Table(
+    "model_name_clashes",
+    metadata,
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("holder", Text, nullable=False),
+    Column("newcomer", Text, primary_key=True),
+    Column("message", Text, nullable=False),
+)
+
 # REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
 # check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
 # A table with no row has never run. The dry run writes none.
@@ -1095,9 +1165,25 @@ creation_requests = Table(
     Column("resolved_at", DateTime(timezone=True)),
     Column("approvals", JSON, nullable=False, default=list, server_default="[]"),
     Column("required_approvals", Integer, nullable=False, server_default="1"),
+    # REQ-2217, REQ-2216, REQ-2215: see the matching block in schema.sql.
+    Column("environment", Text, nullable=False, server_default="prod"),
+    Column("addressed_roles", JSON, nullable=False, default=list, server_default="[]"),
+    Column("addressed_members", JSON, nullable=False, default=list, server_default="[]"),
+    Column("unresolved_roles", JSON, nullable=False, default=list, server_default="[]"),
     CheckConstraint(
         "status IN ('pending', 'executed', 'rejected')", name="creation_requests_status_check"
     ),
+)
+
+# REQ-2216: approve and decide calls already answered, by Idempotency-Key. See schema.sql.
+idempotent_calls = Table(
+    "idempotent_calls",
+    metadata,
+    Column("scope", Text, primary_key=True),
+    Column("actor", Text, primary_key=True),
+    Column("call_key", Text, primary_key=True),
+    Column("response", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 live_query_state = Table(
@@ -1127,9 +1213,6 @@ tracked_functions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
-    Column(
-        "product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")
-    ),  # REQ-1634: optional data-product membership; FK mirrors schema.sql so copies order after data_products
     Column("return_schema", JSON(none_as_null=True)),
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
     Column("output_columns", JSON(none_as_null=True)),
@@ -1143,6 +1226,32 @@ tracked_functions = Table(
     Column("writes_table", Text),
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
+)
+
+
+# REQ-1634: data-product membership, many-to-many: one row per product and member table (or view),
+# and one per product and member command (schema.sql).
+data_product_tables = Table(
+    "data_product_tables",
+    metadata,
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    PrimaryKeyConstraint("product_id", "table_id"),
+)
+
+data_product_commands = Table(
+    "data_product_commands",
+    metadata,
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column(
+        "command_name",
+        Text,
+        ForeignKey("tracked_functions.name", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    ),
+    PrimaryKeyConstraint("product_id", "command_name"),
 )
 
 tracked_webhooks = Table(
@@ -1541,8 +1650,8 @@ org_settings = Table(
     Column("updated_by", Text),
 )
 
-# REQ-1914: the config stamp of this plane -- one row per kind ("model", "settings"), advanced by
-# trigger in the same transaction as any write to a table of that kind (see
+# REQ-1914: the config stamp of this plane -- one row per kind ("model", "build", "settings"),
+# advanced by trigger in the same transaction as any write to a table of that kind (see
 # provisa/core/config_stamp.py). Every process reloads when the stored stamp differs from the one
 # it loaded. V1: schema-defined, no migration.
 config_stamp = Table(

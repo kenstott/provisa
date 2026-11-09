@@ -67,7 +67,6 @@
     "tourStart": "Geführte Tour starten",
     "userMenu": "Benutzermenü",
     "profile": "Profil",
-    "settings": "Einstellungen",
     "whatsNew": "Neuigkeiten",
     "logout": "Abmelden",
     "dev": "DEV",
@@ -81,6 +80,7 @@
     "itemContainerRegistries": "Container-Registries",
     "itemSparql": "SPARQL",
     "itemCatalogs": "Kataloge",
-    "itemReferenceLibrary": "Referenzbibliothek"
+    "itemReferenceLibrary": "Referenzbibliothek",
+    "itemPlatformObservability": "Plattform-Observability"
   }
 }

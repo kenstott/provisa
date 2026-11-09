@@ -87,6 +87,8 @@ def _bundle(demo: str, out: Path) -> Path:
         timeout=3600,
     )
     print(done.stdout[-4000:])
+    # Whole: an assertion's message is cut to a line, and a failing step says why on stderr.
+    print(done.stderr, file=sys.stderr)
     assert done.returncode == 0, (demo, done.stdout[-4000:], done.stderr[-8000:])
     (bundle,) = out.glob(f"{demo}-*.tar.gz")
     return bundle

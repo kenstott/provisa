@@ -32,6 +32,9 @@ class AuthIdentity:  # REQ-120
     display_name: str | None
     roles: list[str]
     raw_claims: dict = field(default_factory=dict)
+    # REQ-2219: the claim of ``raw_claims`` this identity's provider names, in its settings, for
+    # the nested entitlement lists; None when it names none, and it then sends no nested lists.
+    entitlements_claim: str | None = None
     active_org_id: str | None = None
     # REQ-1528: the rights held by OWNING the environment this request is bound to. Derived from
     # ``environments.created_by`` when the environment is bound (``env_routing``), never stored and

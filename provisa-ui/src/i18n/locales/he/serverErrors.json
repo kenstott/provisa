@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains חייב להיות true, false או null",
       "claims_with_multitenancy": "פריסה מרובת דיירים אינה יכולה לקרוא הקצאות תפקידים מתוך claims של הכניסה: היא מעניקה תפקידים בעצמה, לכל ארגון, וה-claims היו דורסים אותם. הגדירו את מקור ההקצאות ל-Provisa.",
       "federation_unknown_field": "זו אינה הגדרת פדרציה: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "הגדרת פדרציה לא תקינה: {{error}}",
       "federation_role_unknown": "תפקיד הפדרציה '{{role}}' אינו תפקיד של ארגון זה"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "מוצר נתונים אינו יכול להחליף את עצמו.",
         "successor_retired": "המחליף '{{successor}}' הוצא משימוש. בחרו מוצר נתונים שנמצא בשימוש.",
         "successor_other_domain": "המחליף '{{successor}}' נמצא בתחום {{domain}}. חברי מוצר חולקים את התחום שלו, לכן בחרו מחליף באותו תחום."
+      },
+      "members": {
+        "domain_has_members": "מוצר הנתונים {{data_product}} אינו יכול לעבור לתחום {{domain}} כל עוד יש בו חברים מתחום אחר: {{members}}. יש להוציא אותם מהמוצר תחילה."
       },
       "finding": {
         "no_members": "אף טבלה, תצוגה או פקודה אינן שייכות למוצר נתונים זה.",

@@ -27,6 +27,7 @@ a store has it before any configuration is applied.
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -161,6 +162,23 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
+_PROFILE_RESULT = re.compile(r"(.+)_(\d+)_profile_(\w+)")
+
+
+def _profile_result_of(
+    row: dict[str, Any], by_id: dict[int, dict[str, Any]]
+) -> tuple[str, str] | None:
+    """(member, kind) of a profiler's result table (REQ-2052). Its name carries the member's stored
+    id, which another store does not share, so a configuration names it by its member."""
+    match = _PROFILE_RESULT.fullmatch(row["table_name"])
+    if match is None:
+        return None
+    member = by_id.get(int(match[2]))
+    if member is None or member.get("profiler_source_id") != row["source_id"]:
+        return None
+    return str(member["table_name"]), match[3]
+
+
 def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     fields = _fields(Table, {**row, "class_term": class_term})
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
@@ -181,6 +199,17 @@ def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     written["schema"] = table.schema_name
     written["domain_id"] = table.domain_id
     return written
+
+
+def _named_by_member(
+    written: dict[str, Any], row: dict[str, Any], by_id: dict[int, dict[str, Any]]
+) -> dict[str, Any]:  # REQ-2222
+    """``written`` with the member and kind of a profiler's result table, if ``row`` is one."""
+    profile_result = _profile_result_of(row, by_id)
+    if profile_result is None:
+        return written
+    member, kind = profile_result
+    return {**written, "profile_of": member, "kind": kind}
 
 
 async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
@@ -251,7 +280,8 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 name=r.name,
                 definition=r.definition,
                 domains=declared[r.id],
-                edges=edges.get(r.id, []),
+                # By what names each edge, never its serial: the same model reads the same.
+                edges=sorted(edges.get(r.id, []), key=lambda e: (e.to, e.rel_type)),
                 **_status(r),
             )
         )
@@ -291,7 +321,7 @@ async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
 async def store_model(conn: "Connection") -> dict[str, Any]:
     """Every model section the store holds, as a configuration writes it, and the naming rules
     (``naming_rules``). Sections are complete lists; an empty one is an empty list."""
-    from provisa.core.db import SEEDED_SOURCE_IDS
+    from provisa.core.db import BUILT_IN_SOURCE_IDS, SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
     from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import data_product as data_product_repo
@@ -304,21 +334,26 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import tag as tag_repo
     from provisa.core.repositories import table as table_repo
 
-    # A seeded table is not the model's: only its id is used, to leave out what refers to it, so
-    # its columns are never read (the meta domain's SQL catalog views alone are hundreds).
+    # A seeded table is not the model's, so the file does not hold it and its columns are never
+    # read (the meta domain's SQL catalog views alone are hundreds); a data product's member and a
+    # relationship that name it are the model's, and keep its name (REQ-1634): the import holds
+    # that name until the seeded table exists.
     tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
+    by_id = {int(t["id"]): t for t in tables}
     internal = {int(t["id"]) for t in tables if _internal_table(t)}
+    # REQ-2222: a row rule or a tag on the demo's seeded tables is the model's, as a member or a
+    # relationship naming one is; the built-in catalog tables' are the deployment's.
+    demo_seeded = SEEDED_SOURCE_IDS - BUILT_IN_SOURCE_IDS
+    system = {i for i in internal if by_id[i]["source_id"] not in demo_seeded}
     # A table is named in a configuration by its virtual name: its alias when it has one.
     name_of = {int(t["id"]): str(t.get("alias") or t["table_name"]) for t in tables}
 
     def _refs_internal(row: dict[str, Any]) -> bool:
         ids = [row.get(k) for k in ("source_table_id", "target_table_id", "table_id")]
-        return any(i is not None and int(i) in internal for i in ids)
+        return any(i is not None and int(i) in system for i in ids)
 
     relationships = []
     for row in await rel_repo.list_all(conn):
-        if _refs_internal(row):
-            continue
         fields = _fields(Relationship, row)
         fields["source_table_id"] = name_of[int(row["source_table_id"])]
         if row.get("target_table_id") is not None:
@@ -345,7 +380,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     tag_assignments = []
     for row in await tag_repo.list_assignments(conn):
-        if row.get("table_id") is not None and int(row["table_id"]) in internal:
+        if row.get("table_id") is not None and int(row["table_id"]) in system:
             continue
         fields = _fields(TagAssignment, row)
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
@@ -363,10 +398,24 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         "domains": await _domains(conn),
         "roles": await _roles(conn),
         "data_products": [
-            # REQ-1634 STATUS: the stored successor_id is the config's ``successor``.
+            # REQ-1634 STATUS: the stored successor_id is the config's ``successor``; its members
+            # are named as the configuration names them (a table by its virtual name).
             _written(
                 DataProduct.model_validate(
-                    _fields(DataProduct, {**row, "successor": row["successor_id"]})
+                    _fields(
+                        DataProduct,
+                        {
+                            **row,
+                            "successor": row["successor_id"],
+                            "tables": sorted(
+                                name_of[t]
+                                for t in await data_product_repo.member_table_ids(conn, row["id"])
+                            ),
+                            "commands": await data_product_repo.member_command_names(
+                                conn, row["id"]
+                            ),
+                        },
+                    )
                 )
             )
             for row in await data_product_repo.list_all(conn)
@@ -374,7 +423,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         ],
         "glossary_terms": await _glossary_terms(conn),
         "tables": [
-            _table(t, class_terms.get(int(t["id"]))) for t in tables if int(t["id"]) not in internal
+            _named_by_member(_table(t, class_terms.get(int(t["id"]))), t, by_id)
+            for t in tables
+            if int(t["id"]) not in internal
         ],
         "relationships": relationships,
         "metrics": [
@@ -460,14 +511,30 @@ def _in_a_stable_order(model: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def with_store_model(raw: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+def _without_stored_name(table: dict[str, Any]) -> dict[str, Any]:  # REQ-2222
+    """A table as a configuration states it. A profile result's name carries its member's id in
+    this store, which another store does not share: the configuration names it by member and kind
+    (REQ-2052), and the store it is applied to names it."""
+    if table.get("profile_of") is None:
+        return table
+    return {k: v for k, v in table.items() if k != "table"}
+
+
+def with_store_model(
+    raw: dict[str, Any], model: dict[str, Any], *, stored: bool = False
+) -> dict[str, Any]:
     """The configuration ``raw`` (the deployment's file, as written) with every model section
-    replaced by the store's. The file's settings — server, engine, auth and the rest — stay."""
+    replaced by the store's. The file's settings — server, engine, auth and the rest — stay.
+
+    ``stored``: for the process that runs this store's model, which reads a profile result by the
+    name it has here. Without it, the configuration an export writes."""
     # A ``views:`` block declares tables of the derived source (config_loader.views_as_tables);
     # the store holds them as tables, so the file's are not carried over.
     out = {k: v for k, v in raw.items() if k not in MODEL_SECTIONS and k != "views"}
     for section in MODEL_SECTIONS:
         out[section] = model[section]
+    if not stored:
+        out["tables"] = [_without_stored_name(t) for t in out["tables"]]
     out["naming"] = {**(raw.get("naming") or {}), "rules": model["naming_rules"]}
     return out
 

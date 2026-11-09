@@ -261,7 +261,9 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
             ui_server.app,
             host=host,
             port=ui_port,
-            log_level="warning",
+            # The api server above configured the uvicorn loggers; this one must not reset them.
+            log_config=None,
+            log_level=None,
             timeout_keep_alive=KEEP_ALIVE_SECONDS,
         )
     )
@@ -704,6 +706,21 @@ def main(argv: list[str] | None = None) -> int:
     from provisa.cli_envs import register as register_env
 
     register_env(sub)
+
+    # REQ-2222: drive and explain a query in any language against a running instance.
+    from provisa.cli_query import register as register_query
+
+    register_query(sub)
+
+    # REQ-2222: one generic call to anything else the API offers.
+    from provisa.cli_api import register as register_api
+
+    register_api(sub)
+
+    # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
+    from provisa.cli_config import register as register_config
+
+    register_config(sub)
 
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,

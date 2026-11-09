@@ -16,8 +16,11 @@ differences from the one before it, and one that can break a consumer is marked 
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
-from sqlalchemy import insert, select
+from pydantic import ValidationError
+from sqlalchemy import insert, select, update
 
 from provisa.compiler.supertype import holds
 from provisa.core import contract_versions, data_contracts, model_change
@@ -26,25 +29,42 @@ from provisa.core.database import Database
 from provisa.core.models import (
     Column,
     ContractCheck,
-    ContractColumn,
     ContractSlaProperty,
     ContractTerms,
     DataContract,
     DataProduct,
     Table,
+    ContractVersion,
+    VersionColumn,
 )
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import checker_targets, domains, registered_tables, sources
+from provisa.core.schema_org import (
+    checker_targets,
+    data_product_tables,
+    domains,
+    registered_tables,
+    sources,
+    table_columns,
+)
 from provisa.core.store_config import _table
 
 
-def _contract(version: str = "1.0.0", *columns: ContractColumn, **kw) -> DataContract:
-    return DataContract(version=version, columns=list(columns), **kw)
+def _contract(version: str = "1.0.0", *columns: VersionColumn, **kw) -> ContractVersion:
+    """A saved version: a contract holds no columns, the version snapshots its member's."""
+    return ContractVersion(
+        contract=DataContract(version=version, **kw),
+        columns=list(columns),
+        saved_at=datetime.now(timezone.utc),
+    )
 
 
-def _col(name: str, type_: str = "integer", **kw) -> ContractColumn:
-    return ContractColumn(name=name, type=type_, **kw)
+def _col(name: str, type_: str = "integer", **kw) -> VersionColumn:
+    return VersionColumn(name=name, type=type_, **kw)
+
+
+def _rec(previous: DataContract | None, saved: ContractVersion, checks) -> DataContract:
+    return contract_versions.recorded(previous, saved.contract, checks, saved.columns)
 
 
 def _sla(prop: str, value, unit: str | None = None, **kw) -> ContractSlaProperty:
@@ -58,7 +78,10 @@ def _check(name: str = "row_count", definition: str = "", **kw) -> ContractCheck
 def _kinds(before, after, checks_before=(), checks_after=()) -> dict[str, bool]:
     return {
         c.kind: c.breaking
-        for c in differences(before, list(checks_before), after, list(checks_after))
+        for c in differences(
+            before.model_copy(update={"checks": list(checks_before)}),
+            after.model_copy(update={"checks": list(checks_after)}),
+        )
     }
 
 
@@ -67,7 +90,7 @@ def _kinds(before, after, checks_before=(), checks_after=()) -> dict[str, bool]:
 
 def test_a_field_added_is_recorded_and_breaks_nothing():
     before, after = _contract("1.0.0", _col("id")), _contract("1.1.0", _col("id"), _col("note"))
-    (change,) = differences(before, [], after, [])
+    (change,) = differences(before, after)
     assert (change.kind, change.subject, change.after, change.breaking) == (
         "field_added",
         "note",
@@ -85,9 +108,7 @@ def test_a_field_removed_is_breaking():
 def test_a_field_renamed_is_one_breaking_difference():
     (change,) = differences(
         _contract("1.0.0", _col("id"), _col("note", "text")),
-        [],
         _contract("2.0.0", _col("id"), _col("remark", "text")),
-        [],
     )
     assert (change.kind, change.subject, change.after, change.breaking) == (
         "field_renamed",
@@ -112,6 +133,12 @@ def test_a_type_changed_incompatibly_is_breaking():
     assert _kinds(
         _contract("1.0.0", _col("id", "integer")), _contract("2.0.0", _col("id", "text"))
     ) == {"field_type_changed": True}
+
+
+def test_a_version_column_refuses_a_null_type():
+    # REQ-1426 guarantees a registered column a type: a snapshot never holds one without.
+    with pytest.raises(ValidationError):
+        VersionColumn(name="note", type=None)
 
 
 def test_a_type_widened_is_recorded_and_breaks_nothing():
@@ -302,7 +329,7 @@ def test_a_version_or_status_alone_is_no_difference():
 
 
 def test_the_first_save_records_a_version_with_no_differences():
-    contract = contract_versions.recorded(None, _contract("0.1.0", _col("id")), [])
+    contract = _rec(None, _contract("0.1.0", _col("id")), [])
     (first,) = contract.versions
     assert first.contract.version == "0.1.0"
     assert first.changes == []
@@ -310,54 +337,54 @@ def test_the_first_save_records_a_version_with_no_differences():
 
 
 def test_a_new_version_keeps_the_ones_before_it_and_says_how_it_differs():
-    one = contract_versions.recorded(None, _contract("1.0.0", _col("id")), [])
-    two = contract_versions.recorded(one, _contract("2.0.0", _col("id"), _col("note")), [])
+    one = _rec(None, _contract("1.0.0", _col("id")), [])
+    two = _rec(one, _contract("2.0.0", _col("id"), _col("note")), [])
     assert [v.contract.version for v in two.versions] == ["1.0.0", "2.0.0"]
     assert [c.subject for c in two.versions[-1].changes] == ["note"]
 
 
 def test_saving_what_is_stored_records_nothing():
-    one = contract_versions.recorded(None, _contract("1.0.0", _col("id")), [])
-    again = contract_versions.recorded(one, _contract("1.0.0", _col("id")), [])
+    one = _rec(None, _contract("1.0.0", _col("id")), [])
+    again = _rec(one, _contract("1.0.0", _col("id")), [])
     assert again.versions == one.versions
 
 
 def test_saving_the_same_version_replaces_it_and_measures_from_the_one_before():
-    one = contract_versions.recorded(None, _contract("1.0.0", _col("id")), [])
-    two = contract_versions.recorded(one, _contract("2.0.0", _col("id"), _col("a")), [])
-    edited = contract_versions.recorded(two, _contract("2.0.0", _col("id"), _col("b")), [])
+    one = _rec(None, _contract("1.0.0", _col("id")), [])
+    two = _rec(one, _contract("2.0.0", _col("id"), _col("a"), description="x"), [])
+    edited = _rec(two, _contract("2.0.0", _col("id"), _col("b"), description="y"), [])
     assert [v.contract.version for v in edited.versions] == ["1.0.0", "2.0.0"]
-    assert [c.subject for c in edited.versions[-1].changes] == ["b"]
+    assert [c.subject for c in edited.versions[-1].changes] == ["b", "description"]
 
 
 def test_a_version_records_the_promised_checks_it_was_saved_with():
     check = _check("missing", column="id")
-    contract = contract_versions.recorded(None, _contract("1.0.0"), [check])
+    contract = _rec(None, _contract("1.0.0"), [check])
     assert contract.versions[0].checks == [check]
-    dropped = contract_versions.recorded(contract, _contract("2.0.0"), [])
+    dropped = _rec(contract, _contract("2.0.0"), [])
     assert [c.kind for c in dropped.versions[-1].changes] == ["check_removed"]
 
 
 async def test_a_version_is_saved_by_the_changes_actor():
     async with model_change.scope("save", actor=lambda: "ken@example.com"):
-        contract = contract_versions.recorded(None, _contract("1.0.0"), [])
+        contract = _rec(None, _contract("1.0.0"), [])
     assert contract.versions[0].saved_by == "ken@example.com"
 
 
 def test_a_change_no_one_made_is_the_systems():
-    assert contract_versions.recorded(None, _contract("1.0.0"), []).versions[0].saved_by is None
+    assert _rec(None, _contract("1.0.0"), []).versions[0].saved_by is None
 
 
 def _for_save(**kw) -> DataContract | None:
+    declared = kw.get("declared")
+    if isinstance(declared, ContractVersion):
+        kw = {**kw, "declared": declared.contract, "columns": declared.columns}
     args = {
-        "product_id": "p",
+        "columns": [],
+        "products": ["p"],
         "is_checker": False,
-        "schema_name": "s",
-        "table_name": "t",
         "declared": None,
         "stored": None,
-        "stored_product_id": None,
-        "column_types": {"id": "integer"},
     }
     return data_contracts.for_save(**{**args, **kw})
 
@@ -368,15 +395,30 @@ def test_a_new_members_draft_is_its_first_version():
 
 
 def test_a_reload_keeps_the_versions_of_a_contract_it_does_not_declare():
-    first = _for_save(declared=_contract("1.0.0", _col("id", "integer")))
+    members = [_col("id", "integer")]
+    first = _for_save(declared=_contract("1.0.0", *members))
     stored = first.model_dump(mode="json")
-    assert _for_save(stored=stored, stored_product_id="p").versions == first.versions
+    assert _for_save(stored=stored, columns=members).versions == first.versions
+
+
+def test_a_member_whose_columns_changed_makes_no_version_until_a_version_is_saved():
+    first = _for_save(declared=_contract("1.0.0", _col("id"), _col("note")))
+    reloaded = _for_save(stored=first.model_dump(mode="json"), columns=[_col("id")])
+    assert reloaded.versions == first.versions
+    next_version = _for_save(
+        stored=reloaded.model_dump(mode="json"),
+        declared=DataContract(version="2.0.0"),
+        columns=[_col("id")],
+    )
+    assert [(c.kind, c.subject, c.breaking) for c in next_version.versions[-1].changes] == [
+        ("field_removed", "note", True)
+    ]
 
 
 def test_a_declared_contract_cannot_supply_its_own_history():
     first = _for_save(declared=_contract("1.0.0", _col("id", "integer")))
-    forged = _contract("2.0.0", _col("id", "integer")).model_copy(update={"versions": []})
-    saved = _for_save(stored=first.model_dump(mode="json"), stored_product_id="p", declared=forged)
+    forged = DataContract(version="2.0.0", versions=[_contract("9.9.9")])
+    saved = _for_save(stored=first.model_dump(mode="json"), declared=forged)
     assert [v.contract.version for v in saved.versions] == ["1.0.0", "2.0.0"]
 
 
@@ -402,7 +444,6 @@ def _table_model(*columns: str, contract: DataContract | None = None) -> Table:
         domain_id="sales",
         schema_name="public",
         table_name="orders",
-        product_id="p",
         contract=contract,
         columns=[Column(name=c, visible_to=["analyst"], data_type="integer") for c in columns],
     )
@@ -416,6 +457,10 @@ async def plane(control_plane) -> Database:
         await conn.execute_core(insert(domains).values(id="sales"))
         await data_product_repo.upsert(conn, DataProduct(id="p", domain_id="sales", name="P"))
         await table_repo.upsert(conn, _table_model("id", "amount"))
+        # REQ-1634: the table joins the product on the product.
+        await data_product_repo.set_members(
+            conn, "p", table_ids=[await _orders_id(conn)], commands=[]
+        )
     return db
 
 
@@ -440,11 +485,11 @@ async def _stored(conn) -> DataContract:
 async def test_save_contract_keeps_every_version_in_the_model_store(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
-        await data_product_repo.save_contract(
-            conn, table_id, _contract("1.0.0", _col("id"), _col("amount"))
-        )
+        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
+        # The member loses a column; the next version snapshots the member as it is then.
+        await table_repo.upsert(conn, _table_model("id"))
         async with model_change.scope("save", actor=lambda: "ken@example.com"):
-            await data_product_repo.save_contract(conn, table_id, _contract("2.0.0", _col("id")))
+            await data_product_repo.save_contract(conn, table_id, DataContract(version="2.0.0"))
         stored = await _stored(conn)
     assert [v.contract.version for v in stored.versions] == ["0.1.0", "1.0.0", "2.0.0"]
     latest = stored.versions[-1]
@@ -454,20 +499,114 @@ async def test_save_contract_keeps_every_version_in_the_model_store(plane):
     ]
 
 
+async def test_a_saved_version_snapshots_the_members_columns(plane):
+    async with plane.acquire() as conn:
+        table_id = await _orders_id(conn)
+        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
+        stored = await _stored(conn)
+    assert [(c.name, c.type, c.required) for c in stored.versions[-1].columns] == [
+        ("id", "integer", False),
+        ("amount", "integer", False),
+    ]
+    assert "columns" not in stored.model_dump()
+
+
 async def test_a_table_save_keeps_the_versions_save_contract_made(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
-        await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", _col("id")))
+        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
         await table_repo.upsert(conn, _table_model("id", "amount"))
         stored = await _stored(conn)
     assert [v.contract.version for v in stored.versions] == ["0.1.0", "1.0.0"]
 
 
+async def test_a_resave_that_omits_a_stored_columns_type_snapshots_the_stored_type(plane):
+    """REQ-2158, REQ-1426: a table save need not restate a column's type; the version it records
+    snapshots the type the save writes, the stored one."""
+    restated = Table(
+        source_id="pg",
+        domain_id="sales",
+        schema_name="public",
+        table_name="orders",
+        contract=DataContract(version="2.0.0"),
+        columns=[Column(name=c, visible_to=["analyst"]) for c in ("id", "amount")],
+    )
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, restated)
+        stored = await _stored(conn)
+    assert stored.versions[-1].contract.version == "2.0.0"
+    assert [(c.name, c.type) for c in stored.versions[-1].columns] == [
+        ("id", "integer"),
+        ("amount", "integer"),
+    ]
+
+
+def _ledger(data_type: str, version: str) -> Table:
+    """A table in no product, so each of its saves records a version (REQ-2158)."""
+    return Table(
+        source_id="pg",
+        domain_id="sales",
+        schema_name="public",
+        table_name="ledger",
+        contract=DataContract(version=version),
+        columns=[Column(name="amount", visible_to=["analyst"], data_type=data_type)],
+    )
+
+
+async def _ledger_contract(conn) -> DataContract:
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.contract).where(registered_tables.c.table_name == "ledger")
+        )
+    ).fetchone()
+    return DataContract.model_validate(row.contract)
+
+
+@pytest.mark.parametrize(
+    "first, second",
+    [
+        ("numeric(10,2)", "decimal(10, 2)"),
+        ("numeric(10,2)", "NUMERIC(10,2)"),
+        ("money", "numeric(21,4)"),
+        ("inet", "text"),
+    ],
+)
+async def test_a_column_respelled_or_subtyped_is_no_difference_between_versions(
+    plane, first, second
+):
+    """REQ-2158, REQ-2171: a table's save snapshots the type it stores, so the same column
+    spelled two ways is not a changed type."""
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _ledger(first, "1.0.0"))
+        await table_repo.upsert(conn, _ledger(second, "2.0.0"))
+        stored = await _ledger_contract(conn)
+    assert [c.type for c in stored.versions[-2].columns] == [
+        c.type for c in stored.versions[-1].columns
+    ]
+    assert [c.kind for c in stored.versions[-1].changes] == []
+
+
+async def test_a_real_type_change_is_still_breaking_between_table_saves(plane):
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _ledger("numeric(10,2)", "1.0.0"))
+        await table_repo.upsert(conn, _ledger("text", "2.0.0"))
+        stored = await _ledger_contract(conn)
+    assert [(c.kind, c.breaking) for c in stored.versions[-1].changes] == [
+        ("field_type_changed", True)
+    ]
+
+
+async def test_a_malformed_numeric_is_refused_before_a_version_is_recorded(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(table_repo.NumericSizeRefused):
+            await table_repo.upsert(conn, _ledger("numeric(0,2)", "1.0.0"))
+
+
 async def test_a_refused_save_records_no_version(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
-        with pytest.raises(data_contracts.ContractRefused):
-            await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", _col("nope")))
+        with pytest.raises(data_contracts.ContractRefused, match="no data product's output port"):
+            await data_product_repo.save_contract(conn, table_id + 1, DataContract(version="1.0.0"))
         stored = await _stored(conn)
     assert [v.contract.version for v in stored.versions] == ["0.1.0"]
 
@@ -497,9 +636,7 @@ async def test_a_contract_is_held_by_its_products_u_rule(plane, monkeypatch):  #
         async with plane.acquire() as conn:
             table_id = await _orders_id(conn)
             with pytest.raises(ModelRowRefused, match="data_products"):
-                await data_product_repo.save_contract(
-                    conn, table_id, _contract("1.0.0", _col("id"))
-                )
+                await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
     finally:
         current_acting_role.reset(token)
     async with plane.acquire() as conn:
@@ -515,7 +652,7 @@ async def test_a_contract_of_a_product_the_rule_admits_saves(plane, monkeypatch)
     try:
         async with plane.acquire() as conn:
             table_id = await _orders_id(conn)
-            await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", _col("id")))
+            await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
             stored = await _stored(conn)
     finally:
         current_acting_role.reset(token)
@@ -532,7 +669,6 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
                 domain_id="sales",
                 schema_name="dq",
                 table_name="orders_quality",
-                product_id=owner,
                 dq_contract="dataset: a/b/c",
                 dq_rules=[
                     {
@@ -549,15 +685,17 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
     await conn.execute_core(
         insert(checker_targets).values(table_id=checker, checked_table_id=table_id)
     )
+    if owner is not None:  # REQ-1634: the checker table is a member of its owning product
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=owner, table_id=checker)
+        )
 
 
 async def test_a_version_holds_the_products_promised_checks_on_the_member(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
         await _a_check_on(conn, table_id, owner="p")
-        await data_product_repo.save_contract(
-            conn, table_id, _contract("1.0.0", _col("id"), _col("amount"))
-        )
+        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
         stored = await _stored(conn)
     assert stored.versions[-1].checks == [
         ContractCheck(
@@ -573,8 +711,28 @@ async def test_a_check_no_product_owns_is_no_promise(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
         await _a_check_on(conn, table_id, owner=None)
-        await data_product_repo.save_contract(
-            conn, table_id, _contract("1.0.0", _col("id"), _col("amount"))
-        )
+        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
         stored = await _stored(conn)
     assert stored.versions[-1].checks == []
+
+
+async def test_a_member_column_with_no_data_type_fails_the_save_and_records_no_version(plane):
+    async with plane.acquire() as conn:
+        table_id = await _orders_id(conn)
+        # table_repo.upsert refuses an untyped column (REQ-1426), so a row holding none is a
+        # corrupt store: the snapshot fails loudly rather than record a type nobody declared.
+        await conn.execute_core(
+            update(table_columns)
+            .where(table_columns.c.table_id == table_id, table_columns.c.column_name == "amount")
+            .values(data_type=None)
+        )
+        with pytest.raises(ValidationError):
+            await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
+        row = (
+            await conn.execute_core(
+                select(registered_tables.c.contract).where(
+                    registered_tables.c.table_name == "orders"
+                )
+            )
+        ).fetchone()
+    assert [v["contract"]["version"] for v in row.contract["versions"]] == ["0.1.0"]

@@ -594,6 +594,7 @@ class DataProduct(BaseModel):  # REQ-1634
     status_reason: str | None = None
     retire_on: date | None = None
     successor: str | None = None
+    created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
     # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
@@ -601,6 +602,13 @@ class DataProduct(BaseModel):  # REQ-1634
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
+    # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
+    # relationship names a table (its alias, else its table name) or as source.schema.table where
+    # that is not unique, and the commands, by name. A
+    # member joins only products of its own domain. The product owns its membership: these lists
+    # are the one place it is declared.
+    tables: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -619,13 +627,14 @@ CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
 FIRST_CONTRACT_VERSION = "0.1.0"
 
 
-class ContractColumn(BaseModel):  # REQ-2158
-    """A column an output port promises: the member's column, of the type it is stored as."""
+class VersionColumn(BaseModel):  # REQ-2158
+    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
+    what a version's field differences compare is what the member's columns were when it was saved."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-    type: str = Field(min_length=1)
+    type: str = Field(min_length=1)  # registration guarantees a data_type (REQ-1426)
     description: str | None = None
     required: bool = False  # ODCS: the column is never null
 
@@ -692,8 +701,9 @@ class ContractChange(BaseModel):  # REQ-2158
 
 
 class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
-    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
+    is its member table's columns, never a selection of its own; its promises are the checks the
+    product owns on the member (REQ-2157), read when the contract is."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -702,7 +712,6 @@ class DataContract(BaseModel):  # REQ-2158
     description: str | None = None
     terms: ContractTerms = Field(default_factory=ContractTerms)
     sla: list[ContractSlaProperty] = Field(default_factory=list)
-    columns: list[ContractColumn] = Field(default_factory=list)
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
@@ -719,6 +728,8 @@ class ContractVersion(BaseModel):  # REQ-2158
     model_config = ConfigDict(extra="forbid")
 
     contract: DataContract
+    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
+    columns: list[VersionColumn] = Field(default_factory=list)
     checks: list[ContractCheck] = Field(default_factory=list)
     changes: list[ContractChange] = Field(default_factory=list)
     saved_at: datetime
@@ -1690,10 +1701,27 @@ def config_table_name(raw: dict) -> str:  # REQ-2052
     return raw["table"]
 
 
+def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
+    """A table, view or command declaring ``product_id`` is refused by name: membership is
+    many-to-many and declared on the product (DataProduct.tables / .commands), never on a member."""
+    if isinstance(data, dict) and "product_id" in data:
+        name = data.get("table") or data.get("table_name") or data.get("id") or data.get("name")
+        raise ValueError(
+            f"{member} {name!r} declares product_id; a data product's members are declared on the "
+            "product, in its tables or commands list"
+        )
+    return data
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
+        return _refuse_member_product_id(data, "table")
 
     source_id: str
     domain_id: str
@@ -1899,9 +1927,8 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
     # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
     contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
@@ -2041,7 +2068,7 @@ class Table(
 
     @model_validator(mode="before")
     @classmethod
-    def _pending_profile_result_name(cls, data: Any) -> Any:
+    def _pending_profile_result_name(cls, data: Any, info: ValidationInfo) -> Any:
         """REQ-2052: a result table named by ``profile_of`` and ``kind`` has no table name yet;
         it takes the pending one, ``<member>_profile_<kind>``, until the seed resolves it."""
         if not isinstance(data, dict) or data.get("profile_of") is None:
@@ -2049,7 +2076,10 @@ class Table(
         kind = data.get("kind", data.get("profile_kind"))
         if kind is None:
             raise ValueError(f"table profile_of {data['profile_of']!r} names no kind")
-        if data.get("table", data.get("table_name")) is not None:
+        held = data.get("table", data.get("table_name"))
+        if held is not None:
+            if (info.context or {}).get(STORED_MODEL):
+                return data  # REQ-2222: the store's model names it by its member and its stored id
             raise ValueError(
                 f"table profile_of {data['profile_of']!r}: its name is resolved from its member; "
                 "it names no table"
@@ -2325,6 +2355,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     # current_setting('provisa.<name>') reads when the request binds nothing of that name. A child
     # takes its ancestors' under its own (nearest wins).
     session_vars: dict[str, str] = Field(default_factory=dict)
+    # REQ-2219: what a holder gets with no list. Left out, a save writes it from domain_access
+    # when domain_access changed, and keeps what is stored when it did not.
+    default_entitlements: dict[str, list[str]] | None = None
 
     @field_validator("description")
     @classmethod
@@ -2530,6 +2563,11 @@ class CommandBinding(BaseModel):  # REQ-2168
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     """Tracked DB function exposed as a GraphQL query or mutation."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
+        return _refuse_member_product_id(data, "command")
+
     name: str  # exposed field name
     source_id: str
     schema_name: str = Field(
@@ -2541,13 +2579,12 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
     # The one list of roles the command is assigned to; empty assigns it to every role. A role
-    # calls it when it is assigned, reaches its domain, and — for a mutation — holds the write
-    # right (security/mutation_authz.admit_command).
+    # calls it when it holds command_execution, is assigned and reaches its domain, whether the
+    # command writes or not (security/mutation_authz.admit_command).
     visible_to: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
-    product_id: str | None = None  # REQ-1634: optional data-product membership
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.
@@ -3795,6 +3832,36 @@ class ProvisaConfig(BaseModel):
                 f"command names used more than once (functions and webhooks share one address "
                 f"space): {dupes}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _products_list_members_of_their_domain(self) -> "ProvisaConfig":
+        # REQ-1634: a member joins only products of its own domain. A product listing a table or
+        # command this configuration declares in another domain is refused as it is read; one the
+        # configuration does not declare is held to the same rule where the members are stored
+        # (data_product.set_members).
+        tables: dict[str, list[Table]] = {}
+        for t in self.tables:
+            tables.setdefault(t.alias or t.table_name, []).append(t)
+            tables.setdefault(f"{t.source_id}.{t.schema_name}.{t.table_name}", []).append(t)
+        commands = {f.name: f for f in self.functions}
+        for product in self.data_products:
+            for name in product.tables:
+                for t in tables.get(name, []):
+                    if t.domain_id and t.domain_id != product.domain_id:
+                        raise ValueError(
+                            f"data product {product.id!r} lists table {name!r}, which is in domain "
+                            f"{t.domain_id!r}; a product's members share its domain "
+                            f"{product.domain_id!r}"
+                        )
+            for name in product.commands:
+                f = commands.get(name)
+                if f is not None and f.domain_id and f.domain_id != product.domain_id:
+                    raise ValueError(
+                        f"data product {product.id!r} lists command {name!r}, which is in domain "
+                        f"{f.domain_id!r}; a product's members share its domain "
+                        f"{product.domain_id!r}"
+                    )
         return self
 
     @model_validator(mode="after")

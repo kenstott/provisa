@@ -156,8 +156,12 @@ CREATE TABLE IF NOT EXISTS data_products (
     support_contact TEXT,
     custom_properties JSONB NOT NULL DEFAULT '{}',
     -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- REQ-2219: who created it, set on insert only; it grants nothing.
+    created_by    TEXT
 );
+
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
 
 -- REQ-1634: added to a table that predates them.
 DO $$ BEGIN
@@ -320,7 +324,6 @@ DO $$ BEGIN
     -- REQ-1443 clause 10: the contract's checks, parsed at registration, for the meta dq_rules.
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_rules JSONB;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS file_glob TEXT;  -- REQ-788
@@ -513,13 +516,54 @@ CREATE TABLE IF NOT EXISTS roles (
     max_rows        INTEGER,  -- REQ-005: the role's result-size ceiling; NULL = none of its own
     -- A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     inactivity_days INTEGER,
-    relationship_guard BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1919: held so the store owns it
+    relationship_guard BOOLEAN NOT NULL DEFAULT TRUE,  -- REQ-1919: held so the store owns it
+    -- REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}, written from
+    -- domain_access when that is set; narrowed afterwards. Absent kinds are the whole role.
+    default_entitlements JSONB
 );
 
 -- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
 -- so a roles table made before the column existed needs it here first.
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 ALTER TABLE roles ADD COLUMN IF NOT EXISTS inactivity_days INTEGER;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS default_entitlements JSONB;
+
+-- REQ-2219: the entitlement store. Append-only: a change appends a row whose valid_from ends the
+-- row before it for the same principal, role, kind and capability; ``removed`` ends it with none.
+-- principal is NULL on a role's own rows (source role).
+CREATE TABLE IF NOT EXISTS entitlements (
+    id           BIGSERIAL PRIMARY KEY,
+    source       TEXT NOT NULL CHECK (source IN ('idp', 'provisa', 'role')),
+    principal    TEXT,
+    role_id      TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    capability   TEXT,
+    identifiers  JSONB NOT NULL DEFAULT '[]',
+    removed      BOOLEAN NOT NULL DEFAULT FALSE,
+    reason       TEXT,
+    set_by       TEXT,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS entitlements_principal_idx ON entitlements (principal, role_id, kind);
+
+-- REQ-2219: one row per expiry rule on a person's grant; ends is {capability: [identifier, ...]},
+-- empty for the whole grant. Append-only: ``removed`` withdraws the rule named by rule_key.
+CREATE TABLE IF NOT EXISTS entitlement_expiries (
+    id           BIGSERIAL PRIMARY KEY,
+    rule_key     TEXT NOT NULL,
+    principal    TEXT NOT NULL,
+    role_id      TEXT NOT NULL,
+    ends_at      TIMESTAMPTZ NOT NULL,
+    ends         JSONB NOT NULL DEFAULT '{}',
+    removed      BOOLEAN NOT NULL DEFAULT FALSE,
+    reason       TEXT,
+    set_by       TEXT,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
+    ON entitlement_expiries (principal, role_id);
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
@@ -994,6 +1038,33 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-194: the names table of the last model version built -- every model object's name on every
+-- surface, with the naming problems found in it. Derived state: each build replaces every row.
+CREATE TABLE IF NOT EXISTS model_names (
+    object_kind   TEXT NOT NULL,
+    object_id     TEXT NOT NULL,
+    surface       TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    physical_name TEXT NOT NULL,
+    label         TEXT NOT NULL,
+    domain_id     TEXT NOT NULL DEFAULT '',
+    table_id      INTEGER,
+    is_alias      BOOLEAN NOT NULL DEFAULT FALSE,
+    warnings      JSONB NOT NULL DEFAULT '[]',
+    PRIMARY KEY (object_kind, object_id, surface)
+);
+
+-- REQ-194: the name clashes the last model build refused, each naming both objects. Emptied by a
+-- build that refuses none.
+CREATE TABLE IF NOT EXISTS model_name_clashes (
+    surface  TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    holder   TEXT NOT NULL,
+    newcomer TEXT NOT NULL,
+    message  TEXT NOT NULL,
+    PRIMARY KEY (surface, name, newcomer)
+);
+
 -- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
 -- no row has never run; the dry run writes none.
 CREATE TABLE IF NOT EXISTS checker_latest_runs (
@@ -1137,6 +1208,46 @@ CREATE TABLE IF NOT EXISTS creation_requests (
 );
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS approvals JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS required_approvals INT NOT NULL DEFAULT 1;
+-- REQ-2217: the environment a request is for. REQ-2216/REQ-2215: the roles it is addressed to and
+-- their members as resolved when it was raised (principals: id, display_name, email), and the
+-- roles none could be resolved for, by name.
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'prod';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_roles JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_members JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS unresolved_roles JSONB NOT NULL DEFAULT '[]';
+
+-- REQ-2216: ops.requests is subscribable. Every insert, update or delete of a request is reported
+-- on this schema's own channel (subscriptions.pg_provider.schema_channel: NOTIFY is database-wide
+-- and the org schemas share a database) with the request's id only; the subscription reads the
+-- row back through the governed pipeline as the subscriber, so the event is the table's columns.
+CREATE OR REPLACE FUNCTION provisa_notify_requests()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid int;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_requests_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_requests ON creation_requests;
+CREATE TRIGGER provisa_sub_requests
+AFTER INSERT OR UPDATE OR DELETE ON creation_requests
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_requests();
+
+-- REQ-2216: an approve or decide call carrying an Idempotency-Key applies once; a repeat of the
+-- same key by the same caller on the same endpoint is answered with the first call's result.
+CREATE TABLE IF NOT EXISTS idempotent_calls (
+    scope       TEXT NOT NULL,         -- method and path of the call
+    actor       TEXT NOT NULL,         -- the caller's user id
+    call_key    TEXT NOT NULL,         -- the Idempotency-Key header
+    response    JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (scope, actor, call_key)
+);
 
 -- Live Query Engine watermark state (Phase AM, Phase AY)
 CREATE TABLE IF NOT EXISTS live_query_state (
@@ -1427,11 +1538,23 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1634: optional data-product membership for commands, mirroring registered_tables.product_id.
-DO $$ BEGIN
-    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
+-- REQ-1634: data-product membership is many-to-many, a relation of its own: one row per product and
+-- member table (or view), and one per product and member command. A member joins only products of
+-- its own domain (checked when the product's members are set). A member's rows go with it; a
+-- product's members block its deletion (integrity.REFERENCES), so the cascade there never fires.
+CREATE TABLE IF NOT EXISTS data_product_tables (
+    product_id TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    table_id   INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    PRIMARY KEY (product_id, table_id)
+);
+CREATE INDEX IF NOT EXISTS idx_data_product_tables_table ON data_product_tables(table_id);
+
+CREATE TABLE IF NOT EXISTS data_product_commands (
+    product_id   TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    command_name TEXT NOT NULL REFERENCES tracked_functions(name) ON DELETE CASCADE ON UPDATE CASCADE,
+    PRIMARY KEY (product_id, command_name)
+);
+CREATE INDEX IF NOT EXISTS idx_data_product_commands_command ON data_product_commands(command_name);
 
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
@@ -1460,8 +1583,8 @@ CREATE TABLE IF NOT EXISTS org_settings (
     updated_by  TEXT
 );
 
--- REQ-1914: the config stamp of this plane -- one row per kind ('model', 'settings'), advanced by
--- trigger in the same transaction as any write to a table of that kind. The rows and the triggers
+-- REQ-1914: the config stamp of this plane -- one row per kind ('model', 'build', 'settings'),
+-- advanced by trigger in the same transaction as any write to a table of that kind. The rows and the triggers
 -- are created by provisa/core/config_stamp.py once every table exists.
 CREATE TABLE IF NOT EXISTS config_stamp (
     kind   TEXT PRIMARY KEY,

@@ -67,7 +67,6 @@
     "tourStart": "Hacer una visita guiada",
     "userMenu": "Menú de usuario",
     "profile": "Perfil",
-    "settings": "Configuración",
     "whatsNew": "Novedades",
     "logout": "Cerrar sesión",
     "dev": "DEV",
@@ -81,6 +80,7 @@
     "itemContainerRegistries": "Registros de contenedores",
     "itemSparql": "SPARQL",
     "itemCatalogs": "Catálogos",
-    "itemReferenceLibrary": "Biblioteca de referencia"
+    "itemReferenceLibrary": "Biblioteca de referencia",
+    "itemPlatformObservability": "Observabilidad de la plataforma"
   }
 }

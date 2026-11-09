@@ -1,0 +1,616 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "customer360" (start-ui-install.sh --demo customer360; REQ-2034).
+# Halyard Software sells to businesses. Its question: which accounts renewing this quarter have open
+# P1 incidents, blocked fixes or overdue invoices? Four SaaS systems hold the answer, each with its
+# own id for a customer and none shared:
+#
+#   salesforce  the CRM: accounts and their renewal opportunities (replica_rows/salesforce/)
+#   servicenow  the service desk: companies and their incidents (replica_rows/servicenow/)
+#   jira        engineering's ENG project: bugs, each naming its customer in the Customer field
+#               (replica_rows/jira/)
+#   stripe      billing: customers and their invoices (replica_rows/stripe/)
+#   hub         the company's customer master (db/init.sql), read live: master customers, the
+#               crosswalk from each to every system's id, and when it last synced
+#
+# The demo declares the four systems' rows (replica_rows/, REQ-2089): nothing calls Salesforce,
+# ServiceNow, Jira or Stripe. Each system relates to the hub, not to the others.
+#
+# The answer through the hub is renewal_risk_hub. The check of the hub is one cascade of
+# materialized views: system_records (each system record's evidence) -> crosswalk (each record
+# matched to a Salesforce account by a rule it names) -> master (a golden record a group, its id
+# from a hash of the group's anchor account) -> hub_findings (where the hub and the evidence
+# disagree) -> hub_match_rate (the hub's links the evidence confirms, by month) and hub_corrected
+# (the hub's links with the findings applied), which renewal_risk_checked reads. "This quarter" and
+# "overdue" are measured from the day the hub last synced (sync_run).
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+data_products:
+# Account health: the renewal risk answer, the golden customer record behind it, and the check that
+# says how far the hub can be trusted.
+- id: account_health
+  domain_id: customer360
+  name: Account Health
+  owner_role: org_admin
+  purpose: Which accounts renewing this quarter are at risk, read across the CRM, the service desk,
+    engineering and billing through the customer master, checked against the evidence in each system
+  usage: Read renewal_risk_checked for the at-risk renewals, master for the golden customer record, and
+    hub_findings and hub_match_rate for how far the customer master can be trusted
+  limitations: A system record no rule can match to a Salesforce account (a short name, a personal
+    email) keeps the link the hub gives it
+  sla: Rebuilt each time the customer master syncs from the four systems
+  support_contact: kennethstott@gmail.com
+  tables: [view_master, view_hub_findings, view_hub_match_rate, view_renewal_risk_checked]
+domains:
+- id: customer360
+  description: Halyard Software's customers across Salesforce, ServiceNow, Jira and Stripe, and the
+    customer master that links them
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: customer_success
+  parents: [analyst]
+  description: "Customer success: reads every system's customer records, the customer master and the renewal risk."
+  capabilities: [data_product_read, glossary_read, query_development, usage]
+  domain_access:
+  - customer360
+server:
+  limits:
+    default_row_limit: 200
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: salesforce
+  type: salesforce
+  base_url: ${env:CUSTOMER360_SF_LOGIN_URL:-}
+  username: ${env:CUSTOMER360_SF_CONSUMER_KEY:-}
+  password: ${env:CUSTOMER360_SF_CONSUMER_SECRET:-}
+  cache_ttl: -1
+  replicate: 0
+  description: 'Halyard''s Salesforce CRM: its customers'' accounts and their renewals'
+- id: servicenow
+  type: servicenow
+  base_url: ${env:CUSTOMER360_SERVICENOW_URL:-}
+  username: ${env:CUSTOMER360_SERVICENOW_USERNAME:-}
+  password: ${env:CUSTOMER360_SERVICENOW_PASSWORD:-}
+  cache_ttl: -1
+  replicate: 0
+  description: 'Halyard''s ServiceNow service desk: its customers'' companies and their incidents'
+- id: jira
+  type: jira
+  base_url: ${env:CUSTOMER360_JIRA_URL:-}
+  username: ${env:CUSTOMER360_JIRA_EMAIL:-}
+  password: ${env:CUSTOMER360_JIRA_TOKEN:-}
+  cache_ttl: -1
+  replicate: 0
+  description: 'Halyard''s Jira: engineering''s bugs, each naming the customer it was raised for'
+- id: stripe
+  type: openapi
+  path: brand:stripe
+  base_url: https://api.stripe.com
+  auth: {type: bearer, token: '${env:CUSTOMER360_STRIPE_KEY:-}'}
+  cache_ttl: -1
+  replicate: 0
+  description: 'Halyard''s Stripe account (test mode): its customers and their invoices'
+- id: hub
+  type: postgresql
+  host: ${env:CUSTOMER360_PG_HOST:-localhost}
+  port: ${env:CUSTOMER360_PG_PORT:-30532}
+  database: customer360${env:CUSTOMER360_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  description: 'Halyard''s customer master: master customers and the crosswalk to each system''s id'
+tables:
+- source_id: salesforce
+  domain_id: customer360
+  schema: salesforce
+  table: Account
+  alias: accounts
+  description: Each customer's account in the CRM
+  columns:
+  - {name: Id, data_type: varchar, is_primary_key: true, description: 'The account''s Salesforce id', visible_to: [data_steward, customer_success]}
+  - {name: Name, data_type: varchar, description: The customer's name, visible_to: [data_steward, customer_success]}
+  - {name: Website, data_type: varchar, description: The customer's website, visible_to: [data_steward, customer_success]}
+  - {name: Industry, data_type: varchar, description: Its industry, visible_to: [data_steward, customer_success]}
+  - {name: Type, data_type: varchar, description: Customer, visible_to: [data_steward, customer_success]}
+  - {name: BillingCountry, data_type: varchar, description: The country it is billed in, visible_to: [data_steward, customer_success]}
+  - {name: CreatedDate, data_type: timestamp, description: When the account was created, visible_to: [data_steward, customer_success]}
+- source_id: salesforce
+  domain_id: customer360
+  schema: salesforce
+  table: Opportunity
+  alias: opportunities
+  description: Each account's renewals, won and open
+  columns:
+  - {name: Id, data_type: varchar, is_primary_key: true, description: 'The opportunity''s Salesforce id', visible_to: [data_steward, customer_success]}
+  - {name: AccountId, data_type: varchar, description: The account it renews, visible_to: [data_steward, customer_success]}
+  - {name: Name, data_type: varchar, description: What it is, visible_to: [data_steward, customer_success]}
+  - {name: Type, data_type: varchar, description: Renewal, visible_to: [data_steward, customer_success]}
+  - {name: StageName, data_type: varchar, description: Where it stands, visible_to: [data_steward, customer_success]}
+  - {name: Amount, data_type: double, description: The contract's annual value in USD, visible_to: [data_steward, customer_success]}
+  - {name: CloseDate, data_type: date, description: The day it is expected to close, visible_to: [data_steward, customer_success]}
+  - {name: IsClosed, data_type: boolean, description: Whether it has closed, visible_to: [data_steward, customer_success]}
+- source_id: servicenow
+  domain_id: customer360
+  schema: servicenow
+  table: core_company
+  alias: companies
+  description: Each customer's company record in the service desk
+  columns:
+  - {name: sys_id, data_type: varchar, is_primary_key: true, description: 'The company''s ServiceNow record id', visible_to: [data_steward, customer_success]}
+  - {name: name, data_type: varchar, description: The company's name as the service desk wrote it, visible_to: [data_steward, customer_success]}
+  - {name: website, data_type: varchar, description: The company's website, visible_to: [data_steward, customer_success]}
+  - {name: city, data_type: varchar, description: Its city, visible_to: [data_steward, customer_success]}
+  - {name: country, data_type: varchar, description: Its country, visible_to: [data_steward, customer_success]}
+  - {name: customer, data_type: boolean, description: Whether it is a customer, visible_to: [data_steward, customer_success]}
+  - {name: sys_created_on, data_type: timestamp, description: When the record was created, visible_to: [data_steward, customer_success]}
+- source_id: servicenow
+  domain_id: customer360
+  schema: servicenow
+  table: incident
+  alias: incidents
+  description: Every incident a customer raised with the service desk
+  columns:
+  - {name: sys_id, data_type: varchar, is_primary_key: true, description: 'The incident''s record id', visible_to: [data_steward, customer_success]}
+  - {name: number, data_type: varchar, description: 'The incident''s number', visible_to: [data_steward, customer_success]}
+  - {name: short_description, data_type: varchar, description: What it is about, visible_to: [data_steward, customer_success]}
+  - {name: state, data_type: integer, description: '1 new, 2 in progress, 3 on hold, 6 resolved, 7 closed', visible_to: [data_steward, customer_success]}
+  - {name: priority, data_type: integer, description: '1 critical, 2 high, 3 moderate, 4 low', visible_to: [data_steward, customer_success]}
+  - {name: opened_at, data_type: timestamp, description: When it was opened, visible_to: [data_steward, customer_success]}
+  - {name: resolved_at, data_type: timestamp, description: When it was resolved; empty while it is open, visible_to: [data_steward, customer_success]}
+  - {name: company, data_type: varchar, description: 'The company that raised it, by record id', visible_to: [data_steward, customer_success]}
+  - {name: company__display, data_type: varchar, description: The company that raised it, visible_to: [data_steward, customer_success]}
+  - {name: correlation_id, data_type: varchar, description: The Jira bug that fixes it; empty when none, visible_to: [data_steward, customer_success]}
+# A Jira form: the ENG project's bugs, with the Customer field.
+- source_id: jira
+  domain_id: customer360
+  schema: jira
+  table: bug
+  alias: bugs
+  description: Engineering's bugs, each naming the customer it was raised for
+  arguments: {project: ENG, issue_type: Bug}
+  columns:
+  - {name: key, data_type: varchar, is_primary_key: true, description: 'The bug''s key, such as ENG-401', visible_to: [data_steward, customer_success]}
+  - {name: id, data_type: varchar, description: 'The bug''s Jira id', visible_to: [data_steward, customer_success]}
+  - {name: summary, data_type: varchar, description: What it is about, visible_to: [data_steward, customer_success]}
+  - {name: status, data_type: varchar, description: 'To Do, In Progress, Blocked or Done', visible_to: [data_steward, customer_success]}
+  - {name: created, data_type: timestamp, description: When it was raised, visible_to: [data_steward, customer_success]}
+  - {name: updated, data_type: timestamp, description: When it last changed, visible_to: [data_steward, customer_success]}
+  - {name: priority, data_type: varchar, description: 'Highest, High, Medium or Low', visible_to: [data_steward, customer_success]}
+  - {name: customer, data_type: varchar, path: customfield_10050, description: 'The customer it was raised for, as the support engineer typed it', visible_to: [data_steward, customer_success]}
+- source_id: stripe
+  domain_id: customer360
+  schema: default
+  table: get_customers
+  alias: stripe_customers
+  description: Each customer billed in Stripe
+  columns:
+  - {name: id, data_type: varchar, is_primary_key: true, description: 'The customer''s Stripe id', visible_to: [data_steward, customer_success]}
+  - {name: name, data_type: varchar, description: The customer's name as billing wrote it, visible_to: [data_steward, customer_success]}
+  - {name: email, data_type: varchar, description: The address its invoices are sent to, visible_to: [data_steward, customer_success]}
+  - {name: created, data_type: bigint, description: 'When it was created, in seconds since 1970', visible_to: [data_steward, customer_success]}
+  - {name: currency, data_type: varchar, description: The currency it is billed in, visible_to: [data_steward, customer_success]}
+  - {name: delinquent, data_type: boolean, description: Whether its latest invoice is past due, visible_to: [data_steward, customer_success]}
+  - {name: description, data_type: varchar, description: A note about it, visible_to: [data_steward, customer_success]}
+- source_id: stripe
+  domain_id: customer360
+  schema: default
+  table: get_invoices
+  alias: invoices
+  description: Every invoice Stripe has raised
+  columns:
+  - {name: id, data_type: varchar, is_primary_key: true, description: 'The invoice''s Stripe id', visible_to: [data_steward, customer_success]}
+  - {name: customer, data_type: varchar, description: 'The Stripe customer it bills', visible_to: [data_steward, customer_success]}
+  - {name: number, data_type: varchar, description: The invoice number, visible_to: [data_steward, customer_success]}
+  - {name: status, data_type: varchar, description: 'paid, or open while unpaid', visible_to: [data_steward, customer_success]}
+  - {name: amount_due, data_type: bigint, description: 'What it bills, in cents', visible_to: [data_steward, customer_success]}
+  - {name: amount_remaining, data_type: bigint, description: 'What is still unpaid, in cents', visible_to: [data_steward, customer_success]}
+  - {name: currency, data_type: varchar, description: Its currency, visible_to: [data_steward, customer_success]}
+  - {name: created, data_type: bigint, description: 'When it was raised, in seconds since 1970', visible_to: [data_steward, customer_success]}
+  - {name: due_date, data_type: bigint, description: 'When it is due, in seconds since 1970', visible_to: [data_steward, customer_success]}
+  - {name: collection_method, data_type: varchar, description: How it is collected, visible_to: [data_steward, customer_success]}
+- source_id: hub
+  domain_id: customer360
+  schema: mdm
+  table: master_customer
+  description: The customer master's customers, one a real customer as the hub holds them
+  columns:
+  - {name: master_id, data_type: varchar, is_primary_key: true, description: 'The master customer''s id, such as MC-10001', visible_to: [data_steward, customer_success]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, customer_success]}
+  - {name: created_at, data_type: timestamp, description: When the master was created, visible_to: [data_steward, customer_success]}
+- source_id: hub
+  domain_id: customer360
+  schema: mdm
+  table: xref
+  description: 'The customer master''s crosswalk: each system''s id for a customer, and the master it belongs to'
+  columns:
+  - {name: master_id, data_type: varchar, description: The master customer it belongs to, visible_to: [data_steward, customer_success]}
+  - {name: system, data_type: varchar, is_primary_key: true, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, is_primary_key: true, description: 'The system''s own id for the customer: a Salesforce account id, a ServiceNow company sys_id, a Jira Customer value or a Stripe customer id', visible_to: [data_steward, customer_success]}
+  - {name: linked_at, data_type: timestamp, description: When the link was made, visible_to: [data_steward, customer_success]}
+  - {name: linked_by, data_type: varchar, description: 'Who made it: the initial load, a steward, the support desk or a bulk import', visible_to: [data_steward, customer_success]}
+- source_id: hub
+  domain_id: customer360
+  schema: mdm
+  table: sync_run
+  description: When the customer master last synced from each system
+  columns:
+  - {name: system, data_type: varchar, is_primary_key: true, description: The system, visible_to: [data_steward, customer_success]}
+  - {name: synced_at, data_type: timestamp, description: When the hub last synced from it, visible_to: [data_steward, customer_success]}
+views:
+# The question answered through the hub: each account renewing this quarter (its open renewal
+# closing in the quarter of the hub's last sync), with what the hub links to it in each system.
+- id: renewal_risk_hub
+  domain_id: customer360
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The accounts renewing this quarter with an open P1 incident, a blocked fix or an overdue
+    invoice, read through the customer master''s links'
+  sql: >-
+    SELECT r.account_id, r.account, r.renewal_date, r.renewal_amount, x.master_id,
+      COALESCE(p.open_p1, 0) AS open_p1_incidents, COALESCE(b.blocked, 0) AS blocked_fixes,
+      COALESCE(v.overdue, 0) AS overdue_invoices, COALESCE(v.overdue_usd, 0) AS overdue_usd
+    FROM (
+      SELECT a."Id" AS account_id, a."Name" AS account, o."CloseDate" AS renewal_date, o."Amount" AS renewal_amount
+      FROM "customer360"."opportunities" AS o
+      JOIN "customer360"."accounts" AS a ON a."Id" = o."AccountId"
+      WHERE o."Type" = 'Renewal' AND NOT o."IsClosed"
+        AND o."CloseDate" >= DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run"))
+        AND o."CloseDate" < DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run")) + INTERVAL '3 months'
+    ) AS r
+    JOIN "customer360"."xref" AS x ON x.system = 'salesforce' AND x.system_key = r.account_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS open_p1 FROM "customer360"."incidents" AS i
+      JOIN "customer360"."xref" AS l ON l.system = 'servicenow' AND l.system_key = i.company
+      WHERE i.priority = 1 AND i.state IN (1, 2, 3) GROUP BY l.master_id
+    ) AS p ON p.master_id = x.master_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS blocked FROM "customer360"."bugs" AS g
+      JOIN "customer360"."xref" AS l ON l.system = 'jira' AND l.system_key = g.customer
+      WHERE g.status = 'Blocked' GROUP BY l.master_id
+    ) AS b ON b.master_id = x.master_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS overdue, SUM(n.amount_remaining) / 100.0 AS overdue_usd
+      FROM "customer360"."invoices" AS n
+      JOIN "customer360"."xref" AS l ON l.system = 'stripe' AND l.system_key = n.customer
+      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run") GROUP BY l.master_id
+    ) AS v ON v.master_id = x.master_id
+    WHERE COALESCE(p.open_p1, 0) + COALESCE(b.blocked, 0) + COALESCE(v.overdue, 0) > 0
+  columns:
+  - {name: account_id, data_type: varchar, description: 'The account''s Salesforce id', visible_to: [data_steward, customer_success]}
+  - {name: account, data_type: varchar, description: The account, visible_to: [data_steward, customer_success]}
+  - {name: renewal_date, data_type: date, description: The day its renewal is expected to close, visible_to: [data_steward, customer_success]}
+  - {name: renewal_amount, data_type: double, description: The renewal's annual value in USD, visible_to: [data_steward, customer_success]}
+  - {name: master_id, data_type: varchar, description: The master customer the hub links the account to, visible_to: [data_steward, customer_success]}
+  - {name: open_p1_incidents, data_type: bigint, description: Open P1 incidents of the companies the hub links to it, visible_to: [data_steward, customer_success]}
+  - {name: blocked_fixes, data_type: bigint, description: Blocked bugs of the Jira customers the hub links to it, visible_to: [data_steward, customer_success]}
+  - {name: overdue_invoices, data_type: bigint, description: Overdue invoices of the Stripe customers the hub links to it, visible_to: [data_steward, customer_success]}
+  - {name: overdue_usd, data_type: double, description: What those invoices leave unpaid in USD, visible_to: [data_steward, customer_success]}
+# The evidence: every record each system holds for a customer, with what a rule can match it by --
+# its website or email domain (none for a personal mailbox) and its name normalised (lower-cased,
+# punctuation and company suffixes dropped).
+- id: system_records
+  domain_id: customer360
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Every customer record in the four systems, with the domain and the normalised name a rule
+    can match it by'
+  sql: >-
+    SELECT system, system_key, record_name, recorded_at,
+      CASE WHEN domain IN ('gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com') THEN NULL ELSE domain END AS domain,
+      TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(LOWER(record_name), '[^a-z0-9]+', ' ', 'g'),
+        '\b(inc|corp|corporation|llc|llp|ltd|pty|gmbh|co|company|the|and)\b', ' ', 'g'), ' +', ' ', 'g')) AS normalised_name
+    FROM (
+      SELECT 'salesforce' AS system, a."Id" AS system_key, a."Name" AS record_name, a."CreatedDate" AS recorded_at,
+        LOWER(REGEXP_REPLACE(REGEXP_REPLACE(a."Website", '^(https?://)?(www[.])?', ''), '/.*$', '')) AS domain
+      FROM "customer360"."accounts" AS a
+      UNION ALL
+      SELECT 'servicenow', c.sys_id, c.name, c.sys_created_on,
+        LOWER(REGEXP_REPLACE(REGEXP_REPLACE(c.website, '^(https?://)?(www[.])?', ''), '/.*$', ''))
+      FROM "customer360"."companies" AS c
+      UNION ALL
+      SELECT 'jira', g.customer, g.customer, MIN(g.created), CAST(NULL AS VARCHAR)
+      FROM "customer360"."bugs" AS g WHERE g.customer IS NOT NULL GROUP BY g.customer
+      UNION ALL
+      SELECT 'stripe', s.id, s.name, CAST(TO_TIMESTAMP(s.created) AS TIMESTAMP), LOWER(SPLIT_PART(s.email, '@', 2))
+      FROM "customer360"."stripe_customers" AS s
+    ) AS r
+  columns:
+  - {name: system, data_type: varchar, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
+  - {name: record_name, data_type: varchar, description: The customer's name as the system wrote it, visible_to: [data_steward, customer_success]}
+  - {name: recorded_at, data_type: timestamp, description: When the system created the record, visible_to: [data_steward, customer_success]}
+  - {name: domain, data_type: varchar, description: Its website or email domain; empty for a personal mailbox or none, visible_to: [data_steward, customer_success]}
+  - {name: normalised_name, data_type: varchar, description: 'Its name lower-cased, without punctuation or company suffixes', visible_to: [data_steward, customer_success]}
+# The crosswalk: each record matched to the Salesforce account its evidence names, and the rule that
+# matched it. An account's anchor is the earliest account with its website's domain.
+- id: crosswalk
+  domain_id: customer360
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each system record matched by its evidence to a customer''s anchor account in Salesforce,
+    naming the rule that matched it'
+  sql: >-
+    SELECT s.system, s.system_key, s.record_name, s.recorded_at, COALESCE(dm.anchor_account_id, nm.anchor_account_id) AS anchor_account_id,
+      CASE
+        WHEN s.system = 'salesforce' AND dm.anchor_account_id = s.system_key THEN 'anchor account'
+        WHEN dm.anchor_account_id IS NOT NULL AND s.system = 'stripe' THEN 'email domain'
+        WHEN dm.anchor_account_id IS NOT NULL THEN 'website domain'
+        WHEN nm.anchor_account_id IS NOT NULL THEN 'normalised name'
+        ELSE 'no match'
+      END AS rule,
+      COALESCE(s.domain, s.normalised_name) AS matched_on
+    FROM "customer360"."view_system_records" AS s
+    LEFT JOIN (
+      SELECT domain, MIN(anchor_account_id) AS anchor_account_id FROM (
+        SELECT domain, FIRST_VALUE(system_key) OVER (PARTITION BY domain ORDER BY recorded_at, system_key) AS anchor_account_id
+        FROM "customer360"."view_system_records" WHERE system = 'salesforce' AND domain IS NOT NULL
+      ) AS a GROUP BY domain
+    ) AS dm ON dm.domain = s.domain
+    LEFT JOIN (
+      SELECT a.normalised_name, MIN(d.anchor_account_id) AS anchor_account_id
+      FROM "customer360"."view_system_records" AS a
+      JOIN (
+        SELECT domain, FIRST_VALUE(system_key) OVER (PARTITION BY domain ORDER BY recorded_at, system_key) AS anchor_account_id
+        FROM "customer360"."view_system_records" WHERE system = 'salesforce' AND domain IS NOT NULL
+      ) AS d ON d.domain = a.domain
+      WHERE a.system = 'salesforce' GROUP BY a.normalised_name
+    ) AS nm ON nm.normalised_name = s.normalised_name AND dm.anchor_account_id IS NULL
+  columns:
+  - {name: system, data_type: varchar, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
+  - {name: record_name, data_type: varchar, description: The customer's name as the system wrote it, visible_to: [data_steward, customer_success]}
+  - {name: recorded_at, data_type: timestamp, description: When the system created the record, visible_to: [data_steward, customer_success]}
+  - {name: anchor_account_id, data_type: varchar, description: 'The Salesforce account the evidence matches it to; empty when no rule does', visible_to: [data_steward, customer_success]}
+  - {name: rule, data_type: varchar, description: 'The rule that matched it: anchor account, website domain, email domain, normalised name or no match', visible_to: [data_steward, customer_success]}
+  - {name: matched_on, data_type: varchar, description: The domain or normalised name the rule compared, visible_to: [data_steward, customer_success]}
+# The golden record: one master a group of matched records, its id a hash of the group's anchor
+# account (so a rebuild never renumbers it); its name the account's, its billing email the latest
+# Stripe customer's, its support name the service desk's.
+- id: master
+  domain_id: customer360
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The golden customer record the evidence builds: one a group of matched records, its id
+    derived from its anchor account'
+  sql: >-
+    SELECT CONCAT('C360-', UPPER(SUBSTRING(MD5(g.anchor_account_id), 1, 8))) AS master_id, g.anchor_account_id,
+      a."Name" AS name, a."Website" AS website, a."Industry" AS industry, e.billing_email, n.support_name,
+      g.records, g.systems
+    FROM (
+      SELECT anchor_account_id, COUNT(*) AS records, COUNT(DISTINCT system) AS systems
+      FROM "customer360"."view_crosswalk" WHERE anchor_account_id IS NOT NULL GROUP BY anchor_account_id
+    ) AS g
+    JOIN "customer360"."accounts" AS a ON a."Id" = g.anchor_account_id
+    LEFT JOIN (
+      SELECT c.anchor_account_id, s.email AS billing_email,
+        ROW_NUMBER() OVER (PARTITION BY c.anchor_account_id ORDER BY c.recorded_at DESC, c.system_key) AS n
+      FROM "customer360"."view_crosswalk" AS c JOIN "customer360"."stripe_customers" AS s ON s.id = c.system_key
+      WHERE c.system = 'stripe'
+    ) AS e ON e.anchor_account_id = g.anchor_account_id AND e.n = 1
+    LEFT JOIN (
+      SELECT c.anchor_account_id, MIN(c.record_name) AS support_name FROM "customer360"."view_crosswalk" AS c
+      WHERE c.system = 'servicenow' GROUP BY c.anchor_account_id
+    ) AS n ON n.anchor_account_id = g.anchor_account_id
+  columns:
+  - {name: master_id, data_type: varchar, description: 'The golden record''s id, derived from its anchor account', visible_to: [data_steward, customer_success]}
+  - {name: anchor_account_id, data_type: varchar, description: The Salesforce account the group is anchored on, visible_to: [data_steward, customer_success]}
+  - {name: name, data_type: varchar, description: 'The customer''s name: the anchor account''s', visible_to: [data_steward, customer_success]}
+  - {name: website, data_type: varchar, description: The anchor account's website, visible_to: [data_steward, customer_success]}
+  - {name: industry, data_type: varchar, description: The anchor account's industry, visible_to: [data_steward, customer_success]}
+  - {name: billing_email, data_type: varchar, description: 'Where invoices go: the latest Stripe customer''s address', visible_to: [data_steward, customer_success]}
+  - {name: support_name, data_type: varchar, description: The service desk's name for the customer, visible_to: [data_steward, customer_success]}
+  - {name: records, data_type: bigint, description: How many system records the group holds, visible_to: [data_steward, customer_success]}
+  - {name: systems, data_type: bigint, description: How many of the four systems they are in, visible_to: [data_steward, customer_success]}
+# The check: where the hub and the evidence disagree. A hub link the evidence gives to another
+# customer is a wrong merge when that customer is a master with an account of its own, and a
+# duplicate customer when the hub's master has none; a record the hub does not hold is a coverage
+# gap; a hub link to a record the system no longer holds is stale.
+- id: hub_findings
+  domain_id: customer360
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Every place the customer master disagrees with the evidence: wrong merges, duplicate
+    customers, coverage gaps and stale links'
+  sql: >-
+    SELECT CASE WHEN hs.master_id IS NOT NULL THEN 'wrong merge' ELSE 'duplicate customer' END AS finding,
+      x.system, x.system_key, c.record_name, x.master_id AS hub_master_id, hm.name AS hub_customer,
+      xa.master_id AS evidence_master_id, em.name AS evidence_customer, c.rule, x.linked_by, x.linked_at
+    FROM "customer360"."xref" AS x
+    JOIN "customer360"."view_crosswalk" AS c ON x.system_key = c.system_key
+    JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    JOIN "customer360"."master_customer" AS hm ON hm.master_id = x.master_id
+    JOIN "customer360"."master_customer" AS em ON em.master_id = xa.master_id
+    LEFT JOIN (SELECT DISTINCT master_id FROM "customer360"."xref" WHERE system = 'salesforce') AS hs
+      ON hs.master_id = x.master_id
+    WHERE x.system_key NOT IN (
+      SELECT k.system_key FROM "customer360"."xref" AS k
+      JOIN "customer360"."view_crosswalk" AS kc ON k.system_key = kc.system_key
+      JOIN "customer360"."xref" AS ka ON ka.system = 'salesforce' AND ka.system_key = kc.anchor_account_id
+        AND ka.master_id = k.master_id
+    )
+    UNION ALL
+    SELECT 'coverage gap', c.system, c.system_key, c.record_name, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
+      xa.master_id, em.name, c.rule, CAST(NULL AS VARCHAR), CAST(NULL AS TIMESTAMP)
+    FROM "customer360"."view_crosswalk" AS c
+    LEFT JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
+    LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    LEFT JOIN "customer360"."master_customer" AS em ON em.master_id = xa.master_id
+    WHERE x.system_key IS NULL
+    UNION ALL
+    SELECT 'stale link', x.system, x.system_key, CAST(NULL AS VARCHAR), x.master_id, hm.name,
+      CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), x.linked_by, x.linked_at
+    FROM "customer360"."xref" AS x
+    JOIN "customer360"."master_customer" AS hm ON hm.master_id = x.master_id
+    LEFT JOIN "customer360"."view_system_records" AS s ON s.system_key = x.system_key
+    WHERE s.system_key IS NULL
+  columns:
+  - {name: finding, data_type: varchar, description: 'wrong merge, duplicate customer, coverage gap or stale link', visible_to: [data_steward, customer_success]}
+  - {name: system, data_type: varchar, description: The system the record is in, visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
+  - {name: record_name, data_type: varchar, description: The customer's name as the system wrote it; empty when the system no longer holds it, visible_to: [data_steward, customer_success]}
+  - {name: hub_master_id, data_type: varchar, description: The master the hub links it to; empty when it links it to none, visible_to: [data_steward, customer_success]}
+  - {name: hub_customer, data_type: varchar, description: That master's name, visible_to: [data_steward, customer_success]}
+  - {name: evidence_master_id, data_type: varchar, description: The master of the account the evidence matches it to, visible_to: [data_steward, customer_success]}
+  - {name: evidence_customer, data_type: varchar, description: That master's name, visible_to: [data_steward, customer_success]}
+  - {name: rule, data_type: varchar, description: The rule that matched it, visible_to: [data_steward, customer_success]}
+  - {name: linked_by, data_type: varchar, description: Who made the hub's link, visible_to: [data_steward, customer_success]}
+  - {name: linked_at, data_type: timestamp, description: When the hub's link was made, visible_to: [data_steward, customer_success]}
+# The hub's match rate, by month: of the links the hub held at each month's end, how many the
+# evidence confirms (it matches the record to the account of the same master).
+- id: hub_match_rate
+  domain_id: customer360
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The customer master''s match rate by month: the share of the links it held at each month''s end that the evidence confirms'
+  sql: >-
+    SELECT month, SUM(links) OVER (ORDER BY month) AS links, SUM(confirmed) OVER (ORDER BY month) AS confirmed,
+      ROUND(100.0 * SUM(confirmed) OVER (ORDER BY month) / SUM(links) OVER (ORDER BY month), 1) AS match_rate_pct
+    FROM (
+      SELECT CAST(DATE_TRUNC('month', x.linked_at) AS DATE) AS month, COUNT(*) AS links,
+        SUM(CASE WHEN xa.master_id = x.master_id THEN 1 ELSE 0 END) AS confirmed
+      FROM "customer360"."xref" AS x
+      LEFT JOIN "customer360"."view_crosswalk" AS c ON x.system_key = c.system_key
+      LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+      GROUP BY 1
+    ) AS m
+  columns:
+  - {name: month, data_type: date, description: The month, visible_to: [data_steward, customer_success]}
+  - {name: links, data_type: bigint, description: The links the hub held at its end, visible_to: [data_steward, customer_success]}
+  - {name: confirmed, data_type: bigint, description: How many of them the evidence confirms, visible_to: [data_steward, customer_success]}
+  - {name: match_rate_pct, data_type: double, description: 'The share confirmed, in percent', visible_to: [data_steward, customer_success]}
+# The hub corrected by its check: each system record under the master of the account its evidence
+# matches it to, and under the hub's own master where no rule matches it. A stale link has no
+# record, so it is gone.
+- id: hub_corrected
+  domain_id: customer360
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The customer master''s crosswalk with its findings applied: each system record under the
+    master its evidence names'
+  sql: >-
+    SELECT c.system, c.system_key, c.record_name, COALESCE(xa.master_id, x.master_id) AS master_id,
+      CASE WHEN xa.master_id IS NOT NULL AND xa.master_id <> x.master_id THEN 'moved' ELSE 'kept' END AS correction
+    FROM "customer360"."view_crosswalk" AS c
+    JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
+    LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    UNION ALL
+    SELECT c.system, c.system_key, c.record_name, xa.master_id, 'added'
+    FROM "customer360"."view_crosswalk" AS c
+    LEFT JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
+    JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    WHERE x.system_key IS NULL
+  columns:
+  - {name: system, data_type: varchar, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
+  - {name: record_name, data_type: varchar, description: The customer's name as the system wrote it, visible_to: [data_steward, customer_success]}
+  - {name: master_id, data_type: varchar, description: The master it belongs to once the check is applied, visible_to: [data_steward, customer_success]}
+  - {name: correction, data_type: varchar, description: 'kept, moved to another master, or added', visible_to: [data_steward, customer_success]}
+# The question answered again through the corrected hub, and which answers the hub alone missed.
+- id: renewal_risk_checked
+  domain_id: customer360
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The accounts renewing this quarter with an open P1 incident, a blocked fix or an overdue
+    invoice, read through the customer master once its check is applied'
+  sql: >-
+    SELECT r.account_id, r.account, r.renewal_date, r.renewal_amount, x.master_id,
+      COALESCE(p.open_p1, 0) AS open_p1_incidents, COALESCE(b.blocked, 0) AS blocked_fixes,
+      COALESCE(v.overdue, 0) AS overdue_invoices, COALESCE(v.overdue_usd, 0) AS overdue_usd,
+      r.account_id NOT IN (SELECT h.account_id FROM "customer360"."view_renewal_risk_hub" AS h) AS missed_by_hub
+    FROM (
+      SELECT a."Id" AS account_id, a."Name" AS account, o."CloseDate" AS renewal_date, o."Amount" AS renewal_amount
+      FROM "customer360"."opportunities" AS o
+      JOIN "customer360"."accounts" AS a ON a."Id" = o."AccountId"
+      WHERE o."Type" = 'Renewal' AND NOT o."IsClosed"
+        AND o."CloseDate" >= DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run"))
+        AND o."CloseDate" < DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run")) + INTERVAL '3 months'
+    ) AS r
+    JOIN "customer360"."view_hub_corrected" AS x ON x.system = 'salesforce' AND x.system_key = r.account_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS open_p1 FROM "customer360"."incidents" AS i
+      JOIN "customer360"."view_hub_corrected" AS l ON l.system = 'servicenow' AND l.system_key = i.company
+      WHERE i.priority = 1 AND i.state IN (1, 2, 3) GROUP BY l.master_id
+    ) AS p ON p.master_id = x.master_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS blocked FROM "customer360"."bugs" AS g
+      JOIN "customer360"."view_hub_corrected" AS l ON l.system = 'jira' AND l.system_key = g.customer
+      WHERE g.status = 'Blocked' GROUP BY l.master_id
+    ) AS b ON b.master_id = x.master_id
+    LEFT JOIN (
+      SELECT l.master_id, COUNT(*) AS overdue, SUM(n.amount_remaining) / 100.0 AS overdue_usd
+      FROM "customer360"."invoices" AS n
+      JOIN "customer360"."view_hub_corrected" AS l ON l.system = 'stripe' AND l.system_key = n.customer
+      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run") GROUP BY l.master_id
+    ) AS v ON v.master_id = x.master_id
+    WHERE COALESCE(p.open_p1, 0) + COALESCE(b.blocked, 0) + COALESCE(v.overdue, 0) > 0
+  columns:
+  - {name: account_id, data_type: varchar, description: 'The account''s Salesforce id', visible_to: [data_steward, customer_success]}
+  - {name: account, data_type: varchar, description: The account, visible_to: [data_steward, customer_success]}
+  - {name: renewal_date, data_type: date, description: The day its renewal is expected to close, visible_to: [data_steward, customer_success]}
+  - {name: renewal_amount, data_type: double, description: The renewal's annual value in USD, visible_to: [data_steward, customer_success]}
+  - {name: master_id, data_type: varchar, description: The master customer the corrected hub links the account to, visible_to: [data_steward, customer_success]}
+  - {name: open_p1_incidents, data_type: bigint, description: Open P1 incidents of its companies, visible_to: [data_steward, customer_success]}
+  - {name: blocked_fixes, data_type: bigint, description: Blocked bugs of its Jira customers, visible_to: [data_steward, customer_success]}
+  - {name: overdue_invoices, data_type: bigint, description: Overdue invoices of its Stripe customers, visible_to: [data_steward, customer_success]}
+  - {name: overdue_usd, data_type: double, description: What those invoices leave unpaid in USD, visible_to: [data_steward, customer_success]}
+  - {name: missed_by_hub, data_type: boolean, description: Whether the answer through the hub alone left it out, visible_to: [data_steward, customer_success]}
+relationships:
+# Inside each system: its own records' links.
+- {id: opportunity-to-account, alias: RENEWS, cardinality: many-to-one, source_table_id: opportunities, source_column: AccountId, target_table_id: accounts, target_column: Id}
+- {id: incident-to-company, alias: RAISED_BY, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: companies, target_column: sys_id}
+- {id: invoice-to-customer, alias: BILLS, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: stripe_customers, target_column: id}
+# An incident's fix: the Jira bug its correlation id names.
+- {id: incident-to-bug, alias: FIXED_BY, cardinality: many-to-one, source_table_id: incidents, source_column: correlation_id, target_table_id: bugs, target_column: key}
+# Hub and spoke: each system's id relates to the hub's crosswalk, the crosswalk to its master.
+- {id: link-to-master, alias: OF_CUSTOMER, cardinality: many-to-one, source_table_id: xref, source_column: master_id, target_table_id: master_customer, target_column: master_id}
+- {id: link-to-account, alias: IS_ACCOUNT, cardinality: many-to-one, source_table_id: xref, source_column: system_key, target_table_id: accounts, target_column: Id}
+- {id: link-to-company, alias: IS_COMPANY, cardinality: many-to-one, source_table_id: xref, source_column: system_key, target_table_id: companies, target_column: sys_id}
+- {id: link-to-stripe-customer, alias: IS_BILLED_AS, cardinality: many-to-one, source_table_id: xref, source_column: system_key, target_table_id: stripe_customers, target_column: id}
+- {id: bug-to-link, alias: FOR_CUSTOMER, cardinality: many-to-one, source_table_id: bugs, source_column: customer, target_table_id: xref, target_column: system_key}
+# The check's findings, to the hub's master they question.
+- {id: finding-to-master, alias: QUESTIONS, cardinality: many-to-one, source_table_id: view_hub_findings, source_column: hub_master_id, target_table_id: master_customer, target_column: master_id}
+# What the views join along. The hub's crosswalk to itself (the records of one master) and to each
+# system's id for a customer, as each system's records name it.
+- {id: link-to-link, alias: SAME_CUSTOMER, cardinality: one-to-many, source_table_id: xref, source_column: master_id, target_table_id: xref, target_column: master_id}
+- {id: incident-to-link, alias: RAISED_BY_CUSTOMER, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: xref, target_column: system_key}
+- {id: invoice-to-link, alias: BILLS_CUSTOMER, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: xref, target_column: system_key}
+# The check's rules: records sharing a domain or a normalised name.
+- {id: same-domain, alias: SAME_DOMAIN, graphql_alias: sameDomainRecords, cardinality: one-to-many, source_table_id: view_system_records, source_column: domain, target_table_id: view_system_records, target_column: domain}
+- {id: same-name, alias: SAME_NAME, graphql_alias: sameNameRecords, cardinality: one-to-many, source_table_id: view_system_records, source_column: normalised_name, target_table_id: view_system_records, target_column: normalised_name}
+- {id: hub-link-to-record, alias: LINKS_RECORD, cardinality: one-to-one, source_table_id: xref, source_column: system_key, target_table_id: view_system_records, target_column: system_key}
+# The crosswalk: each record to its anchor account, the records of one anchor, the master built
+# on it, and the hub's links it checks.
+- {id: crosswalk-to-anchor, alias: ANCHORED_ON, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: accounts, target_column: Id}
+- {id: crosswalk-same-anchor, alias: SAME_ANCHOR, cardinality: one-to-many, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
+- {id: crosswalk-to-stripe-customer, alias: MATCHES_BILLED, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: stripe_customers, target_column: id}
+- {id: master-to-crosswalk, alias: GROUPS, cardinality: one-to-many, source_table_id: view_master, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
+- {id: crosswalk-to-link, alias: CHECKS, graphql_alias: hubLink, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: xref, target_column: system_key}
+- {id: anchor-to-link, alias: ANCHOR_LINK, graphql_alias: anchorHubLink, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: xref, target_column: system_key}
+# The corrected crosswalk, joined as the hub's is.
+- {id: corrected-same-customer, alias: SAME_CORRECTED_CUSTOMER, cardinality: one-to-many, source_table_id: view_hub_corrected, source_column: master_id, target_table_id: view_hub_corrected, target_column: master_id}
+- {id: corrected-to-account, alias: CORRECTED_ACCOUNT, cardinality: one-to-one, source_table_id: view_hub_corrected, source_column: system_key, target_table_id: accounts, target_column: Id}
+- {id: incident-to-corrected, alias: RAISED_BY_CORRECTED, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: view_hub_corrected, target_column: system_key}
+- {id: bug-to-corrected, alias: FOR_CORRECTED, cardinality: many-to-one, source_table_id: bugs, source_column: customer, target_table_id: view_hub_corrected, target_column: system_key}
+- {id: invoice-to-corrected, alias: BILLS_CORRECTED, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: view_hub_corrected, target_column: system_key}

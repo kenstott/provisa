@@ -30,6 +30,9 @@ CARRIED: frozenset[str] = frozenset(
     {
         "domains",
         "data_products",  # REQ-1634: domain-scoped metadata, travels with the domain it belongs to
+        # REQ-1634: a product's members travel with the product and the tables and commands.
+        "data_product_tables",
+        "data_product_commands",
         "naming_rules",
         "registered_tables",
         "table_columns",
@@ -113,7 +116,18 @@ IDENTITY_ONLY: frozenset[str] = frozenset({"sources", "api_sources", "kafka_sour
 #: ``user_idp_attributes`` (REQ-1383) is what each identity provider said at a sign-in to THIS
 #: environment; it is rewritten there at the next one.
 NEVER_SENSITIVE: frozenset[str] = frozenset(
-    {"org_secrets", "user_directory", "user_idp_attributes"}
+    {
+        "org_secrets",
+        "user_directory",
+        "user_idp_attributes",
+        # REQ-2219: what each person is entitled to within a role, and when it ends: grants
+        # keyed by this environment's principals, as the directory is. A role's defaults
+        # (roles.default_entitlements) travel with the role; a person's narrowing and expiry
+        # are this environment's own answer, and carrying them through a merge would be a way
+        # to grant or to widen a right, the escalation REQ-1539 closed for roles.
+        "entitlements",
+        "entitlement_expiries",
+    }
 )
 
 #: Never copied: runtime state and evidence, which belong to the environment that PRODUCED them.
@@ -126,6 +140,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_delta_ledger",
         "relationship_candidates",
         "creation_requests",
+        # REQ-2216: the approve and decide calls this environment already answered.
+        "idempotent_calls",
         "live_query_state",
         "file_source_mtimes",
         "node_ids",
@@ -201,6 +217,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-194: its own names table and refused clashes, from its own model build.
+        "model_names",
+        "model_name_clashes",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.

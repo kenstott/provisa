@@ -29,7 +29,7 @@ def test_a_postgres_json_object_constructor_runs_on_duckdb(fn: str) -> None:
         "FROM (VALUES ('a', 1), ('b', 2)) AS t(name, n)"
     )
     assert fn.upper() not in sql.upper()
-    (value,) = duckdb.sql(sql).fetchone()
+    ((value,),) = duckdb.sql(sql).fetchall()
     assert '"name":"a"' in value.replace(" ", "") and '"n":2' in value.replace(" ", "")
 
 
@@ -38,5 +38,5 @@ def test_a_nested_constructor_is_rewritten_too() -> None:
         "SELECT jsonb_build_object('outer', jsonb_build_object('inner', 1)) AS j"
     )
     assert "BUILD_OBJECT" not in sql.upper()
-    (value,) = duckdb.sql(sql).fetchone()
+    ((value,),) = duckdb.sql(sql).fetchall()
     assert value.replace(" ", "") == '{"outer":{"inner":1}}'

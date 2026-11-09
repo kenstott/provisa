@@ -21,6 +21,7 @@ import asyncio
 import logging
 import hashlib
 import os
+import threading
 import time
 import uuid
 from collections import deque
@@ -41,6 +42,7 @@ from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
 from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
+from provisa.api.data.endpoint_explain import router as explain_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
@@ -86,7 +88,7 @@ from provisa.api.app_startup import (
     _warmup_readiness,
 )
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
-from provisa.compiler.naming import source_to_catalog
+from provisa.compiler.naming import active_sql_convention, source_to_catalog
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
@@ -96,6 +98,7 @@ from provisa.core.config_loader import (
     parse_store_raw,
     rebuild_from_config,
     seed_config,
+    set_product_members,
     store_config,
     store_raw,
     parse_config_dict,
@@ -145,6 +148,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.compiler.names_table import NamesTable
     from provisa.compiler.compiled_query_cache import CompiledQueryCache
     from provisa.cache.hot_tables import HotTableManager
     from provisa.core.tenant_context import TenantContextCache
@@ -929,6 +933,29 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
+    def held_entitlements(self) -> dict[str, Any]:
+        """user id -> the entitlement lists Provisa holds for them (REQ-2219)."""
+        return self._active_runtime().held_entitlements
+
+    @held_entitlements.setter
+    def held_entitlements(self, value: dict[str, Any]) -> None:
+        self._active_runtime().held_entitlements = value
+
+    @property
+    def data_product_refs(self) -> tuple[tuple[str, str], ...]:
+        """(data product id, domain id) of every product, for entitlement lists (REQ-2219)."""
+        return self._active_runtime().data_product_refs
+
+    @data_product_refs.setter
+    def data_product_refs(self, value: tuple[tuple[str, str], ...]) -> None:
+        self._active_runtime().data_product_refs = value
+
+    @property
+    def entitlement_masks(self) -> Any:
+        """The masks computed for this runtime's requests (REQ-2219)."""
+        return self._active_runtime().entitlement_masks
+
+    @property
     def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
@@ -1120,6 +1147,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def names_table(self) -> "NamesTable | None":
+        """This model version's names table (OrgRuntime.names_table, REQ-194)."""
+        return self._active_runtime().names_table
+
+    @names_table.setter
+    def names_table(self, value: "NamesTable | None") -> None:
+        self._active_runtime().names_table = value
 
     @property
     def view_path_map(self) -> dict | None:
@@ -1315,6 +1351,7 @@ retire_hooks.append(_stop_retired_runtime_listeners)
 from provisa.core import model_row_rules  # noqa: E402
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
+    register_org_overrides_provider,
     register_org_store_provider,
     register_platform_config_provider,
 )
@@ -1352,6 +1389,18 @@ def _org_store_of(side: str) -> Database:
     return db
 
 
+_process_state = state  # the process's own, whatever a handler's module global is rebound to
+
+
+def _acting_org_overrides() -> dict:
+    """The settings rows of the org and environment this work is bound to (REQ-1327), from the
+    runtime that holds them. A runtime not built in this process holds none, and nothing this
+    process does for that org compiles until it is built."""
+    rt = _process_state.org_registry.get(runtime_key(require_current_org(), current_env.get()))
+    return rt.settings_overrides if rt is not None else {}
+
+
+register_org_overrides_provider(_acting_org_overrides)
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
 
@@ -1870,6 +1919,9 @@ async def _load_and_build(
                         await _rel_repo.upsert(_retry_conn, _rel)
                     except ValueError as exc:
                         raise ValueError(f"seeded relationship {_rel.id!r}: {exc}") from exc
+                # The products' members naming those tables, held until now (REQ-1634): a name
+                # still unregistered fails the boot, naming the product.
+                await set_product_members(_retry_conn, _seed_file)
 
     _mark("source-pools+ingest+remote")
 
@@ -2997,8 +3049,47 @@ async def _build_org_runtime(
 
 # REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
 # connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
-_rebuild_schemas_lock = CrossLoopLock()
+# One lock per runtime (an org's environment): a rebuild publishes into its own runtime alone, so
+# two orgs' rebuilds never wait for each other -- one org's 10 s rebuild held every other org's
+# write behind it.
+_rebuild_locks: dict[str, CrossLoopLock] = {}
+_rebuild_locks_guard = threading.Lock()
+# The process's schema generation is bumped by rebuilds of different runtimes on different threads.
+_schema_version_guard = threading.Lock()
 _SLOW_REBUILD_S = 2.0
+
+
+def _rebuild_lock() -> CrossLoopLock:
+    """The rebuild lock of the runtime the current work is bound to: keyed by the org and the
+    environment bound, as the runtime is registered (``runtime_key``). Asking whether a rebuild is
+    in progress needs no runtime built -- a reader bound to an org asks before its runtime is."""
+    key = runtime_key(require_current_org(), current_env.get())
+    with _rebuild_locks_guard:
+        lock = _rebuild_locks.get(key)
+        if lock is None:
+            lock = _rebuild_locks[key] = CrossLoopLock()
+        return lock
+
+
+def rebuild_in_progress() -> bool:
+    """Whether the bound runtime's model is being rebuilt now (REQ-1877: no plan is kept then)."""
+    return _rebuild_lock().locked()
+
+
+async def _built_current() -> bool:
+    """Whether the bound runtime is built at the ``build`` stamp the control plane holds now. When
+    it is, nothing a build reads has changed since, so the runtime now holds the stored model and
+    takes its ``model`` stamp (REQ-1914). Called holding the rebuild lock, so a build finishing
+    cannot be overtaken by the older stamp read here."""
+    from provisa.core import config_stamp
+
+    assert state.model_db is not None
+    stored = await config_stamp.read(state.model_db)
+    runtime = state._active_runtime()
+    if runtime.build_stamp != stored[config_stamp.BUILD]:
+        return False
+    runtime.model_stamp = stored[config_stamp.MODEL]
+    return True
 
 
 def start_replica_convergence() -> None:
@@ -3028,8 +3119,12 @@ async def _converge_after_seed(org_id: str, env: str) -> None:
 
 
 async def _rebuild_schemas(
-    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
-) -> None:
+    raw_config: dict | None = None,
+    *,
+    announce: bool = True,
+    converge: bool = True,
+    if_stale: bool = False,
+) -> bool:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -3042,9 +3137,20 @@ async def _rebuild_schemas(
     # ``converge=False`` (REQ-2006) leaves the replica convergence to the caller: an org's runtime
     # build starts it once a demo template's seed is adopted (_converge_after_seed).
     #
+    # ``if_stale=True`` (REQ-1914) is the config watcher's reload: it saw a stamp newer than the
+    # runtime's, which the change's own rebuild -- running, or waited for here -- often records
+    # first. A runtime already built at the stored ``build`` stamp is what the reload was for, and
+    # building it again spent a whole rebuild after every write. Answers True when that reload
+    # found only the ``model`` stamp behind, a change the build does not read (a data product's
+    # status): the runtime took the stamp and there is nothing else to reload. Otherwise False.
+    #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
     asked = time.monotonic()
-    async with _rebuild_schemas_lock:
+    async with _rebuild_lock():
+        if if_stale and state.model_db is not None:
+            loaded = state._active_runtime().model_stamp
+            if await _built_current():
+                return state._active_runtime().model_stamp != loaded
         began = time.monotonic()
         # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
         # landed tables' reconcile and the routes it publishes alike.
@@ -3061,6 +3167,7 @@ async def _rebuild_schemas(
             began - asked,
             time.monotonic() - began,
         )
+    return False
 
 
 async def _rebuild_schemas_impl(
@@ -3075,9 +3182,10 @@ async def _rebuild_schemas_impl(
         _rebuild_log.warning("_rebuild_schemas: model_db is None, returning")
         return
 
-    # REQ-1914: the ``model`` stamp this build is loaded at, read BEFORE the model. A change that
-    # lands while the build reads leaves the runtime at the older stamp, so the config watcher
-    # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
+    # REQ-1914: the ``model`` and ``build`` stamps this build is loaded at, read in one statement
+    # BEFORE the model. A change that lands while the build reads leaves the runtime at the older
+    # stamps, so the config watcher rebuilds once more; reading them afterwards would record stamps
+    # newer than the model built.
     from provisa.core import config_stamp as _config_stamp
     from provisa.core.relationship_names import store_effective_names
 
@@ -3089,7 +3197,7 @@ async def _rebuild_schemas_impl(
         await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
-    _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
+    _stamps = await _config_stamp.read(state.model_db)
 
     # REQ-1919: the process's configuration follows the default org's model store — the file's
     # settings with every model section as the store holds it now, so an admin's change governs.
@@ -3498,6 +3606,13 @@ async def _rebuild_schemas_impl(
         from provisa.core.repositories import user_attribute as _attr_repo
 
         state.user_attributes = await _attr_repo.org_by_user(conn)
+        # REQ-2219: what Provisa holds of its members' entitlements, and the products a list can
+        # name, so a request's mask reads nothing.
+        from provisa.core.repositories import data_product as _product_repo
+        from provisa.entitlements import store as _entitlement_store
+
+        state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.data_product_refs = await _product_repo.refs(conn)
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
@@ -3591,23 +3706,32 @@ async def _rebuild_schemas_impl(
     # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
     # phase: it runs with this rebuild's connection given back, so concurrent requests and the
     # health probe are not kept waiting at the connection gate for all of it.
-    _checked = _build_and_register_schemas(
-        roles=roles,
-        tables=tables,
-        relationships=relationships,
-        col_types_converted=col_types_converted,
-        naming_rules=naming_rules,
-        domains=domains,
-        domain_prefix=domain_prefix,
-        kafka_physical=kafka_physical,
-        tracked_functions=tracked_functions,
-        tracked_webhooks=tracked_webhooks,
-        gql_object_cols=_gql_object_cols,
-        rls_rules=rls_rules,
-        metrics=_metric_dicts,  # REQ-1319
-        field_numbers=_field_numbers,
-        draft_tables=draft_tables,  # REQ-1921
-    )
+    from provisa.compiler.names_table import NamesClashRefused
+    from provisa.core.repositories import model_names as _model_names
+
+    try:
+        _checked = _build_and_register_schemas(
+            roles=roles,
+            tables=tables,
+            relationships=relationships,
+            col_types_converted=col_types_converted,
+            naming_rules=naming_rules,
+            domains=domains,
+            domain_prefix=domain_prefix,
+            kafka_physical=kafka_physical,
+            tracked_functions=tracked_functions,
+            tracked_webhooks=tracked_webhooks,
+            gql_object_cols=_gql_object_cols,
+            rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
+            field_numbers=_field_numbers,
+            draft_tables=draft_tables,  # REQ-1921
+        )
+    except NamesClashRefused as refused:
+        # REQ-194: the clashes are kept for the names report, each naming both objects.
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_refused_clashes(conn, refused.clashes)
+        raise
 
     async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
@@ -3621,6 +3745,12 @@ async def _rebuild_schemas_impl(
         from provisa.dq.registration import write_checker_targets
 
         await write_checker_targets(conn, _checked)
+
+        # REQ-194: this build's names table, for the meta domain and the names report, and each
+        # name the disambiguate policy derived kept as its object's alias.
+        assert state.names_table is not None, "the build stores the names table it built"
+        await _model_names.write_names_table(conn, state.names_table.rows)
+        await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
 
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
@@ -3662,7 +3792,7 @@ async def _rebuild_schemas_impl(
         "naming_rules": naming_rules,
         "domains": domains,
         "domain_prefix": domain_prefix,
-        "sql_naming_convention": state.global_sql_naming_convention,
+        "sql_naming_convention": active_sql_convention(),
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
@@ -3673,8 +3803,10 @@ async def _rebuild_schemas_impl(
         },
         "metrics": _metric_dicts,  # REQ-1319
     }
-    state.schema_version += 1
-    _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
+    with _schema_version_guard:
+        state.schema_version += 1
+    _stamped_runtime.model_stamp = _stamps[_config_stamp.MODEL]  # REQ-1914
+    _stamped_runtime.build_stamp = _stamps[_config_stamp.BUILD]
     await _finalize_rebuild_state(_rebuild_log)
     # REQ-1494: the measured values faked reads compute from, taken from the model just built.
     from provisa.fakes.measured import measure_model
@@ -3799,6 +3931,21 @@ def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     )
 
 
+async def install_server_extensions() -> None:
+    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): a DuckDB deployment with no
+    bundled set installs its extension set as this worker starts, before it serves anything, and
+    its engine is rebuilt on what installed: the engine built with AppState knew nothing yet, and
+    nothing has read it. Every org's engine built after this is gated the same way."""
+    from provisa.federation.duckdb_extensions import install_extension_set
+    from provisa.federation import engine as engine_module
+    from provisa.federation.runtime import EngineRuntime
+
+    if engine_module.configured_engine_kind() not in ("duckdb", "motherduck"):
+        return
+    if await asyncio.to_thread(install_extension_set) is not None:
+        state.federation_engine = EngineRuntime(engine_module.build_engine(), state)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
@@ -3874,6 +4021,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         # reads an org's runtime unbound.
         state.org_id = _scope
         _boot_org_token = set_current_org(_scope)
+        await install_server_extensions()
         _launch = launch_id()
         # A launcher that names a launch names its worker count with it; one without the other
         # fails here, at boot, rather than in the first /health request.
@@ -4913,6 +5061,7 @@ def create_app() -> FastAPI:
     app.include_router(redirect_file_router)  # REQ-1191
     app.include_router(signal_router)  # REQ-1149: the signal change signal's webhook
     app.include_router(dev_router)
+    app.include_router(explain_router)  # REQ-2222
     app.include_router(grpc_proxy_router)
     app.include_router(sdl_router)
 
@@ -5057,6 +5206,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
 
     app.include_router(catalogs_router)
+    from provisa.api.admin.request_delivery_router import (  # REQ-2216
+        router as request_delivery_router,
+    )
+
+    app.include_router(request_delivery_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )

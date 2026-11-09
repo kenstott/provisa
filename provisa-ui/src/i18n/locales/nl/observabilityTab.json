@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "De tracetabellen van Provisa konden niet worden gecontroleerd ({{reason}}). Het is onbekend of ze rijen ontvangen; de controle wordt elke 30 seconden herhaald.",
     "tracesTableEmpty": "Er is een endpoint ingesteld, maar de tracetabellen van Provisa bevatten nog geen rijen. Als het endpoint een externe aanbieder is en niet de collector van Provisa, verplaats het dan naar de exporters van de collector.",
-    "tracesTableStale": "Er is een endpoint ingesteld, maar de tracetabellen van Provisa hebben de afgelopen {{minutes}} minuten geen rijen ontvangen. Als Provisa inactief is geweest, is dat normaal. Controleer anders of het endpoint de collector van Provisa is en geen externe aanbieder."
+    "tracesTableStale": "Er is een endpoint ingesteld, maar de tracetabellen van Provisa hebben de afgelopen {{minutes}} minuten geen rijen ontvangen. Als Provisa inactief is geweest, is dat normaal. Controleer anders of het endpoint de collector van Provisa is en geen externe aanbieder.",
+    "schemaClustersTitle": "Schemaclusters"
   }
 }

@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { render, screen, within } from "../../../test-utils/render";
 import type { MVInfo } from "../../../api/admin";
 
-const mv = (over: Partial<MVInfo>): MVInfo => ({
+const mv =(over: Partial<MVInfo>): MVInfo => ({
   id: "view-daily_totals",
   sourceTables: ["payments"],
   targetTable: "mv_daily_totals",
@@ -49,10 +49,17 @@ vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
 }));
 
 import { MaterializedStoreTab } from "../CacheManager";
+import { cacheTabsFor } from "../cacheTabs";
 
 describe("a table's version log in the materialized store", () => {
+  it("shows no refresh, enable or capture action without table_registration, which the mutations ask", () => {
+    // The tab holding them is not offered: the refresh and enable mutations answer 403 without it.
+    expect(cacheTabsFor(["org_settings"], [])).not.toContain("materialized");
+    expect(cacheTabsFor(["table_registration"], [])).toContain("materialized");
+  });
+
   it("is named for its table and offers a full capture, not a disable", async () => {
-    render(<MaterializedStoreTab platform={false} />);
+    render(<MaterializedStoreTab />);
     const log = screen.getByText("Version log of payments").closest("tr") as HTMLElement;
     expect(within(log).queryByTestId("mv-toggle-btn-versions-7")).toBeNull();
     await userEvent.click(within(log).getByTestId("mv-log-settings-btn-versions-7"));
@@ -64,7 +71,7 @@ describe("a table's version log in the materialized store", () => {
   });
 
   it("sets how often it is captured and how late a row it reads may be committed", async () => {
-    render(<MaterializedStoreTab platform={false} />);
+    render(<MaterializedStoreTab />);
     await userEvent.click(screen.getByTestId("mv-log-settings-btn-versions-7"));
     const interval = await screen.findByTestId("mv-log-interval-versions-7");
     await userEvent.clear(interval);
@@ -77,7 +84,7 @@ describe("a table's version log in the materialized store", () => {
   });
 
   it("leaves every other view as it was", () => {
-    render(<MaterializedStoreTab platform={false} />);
+    render(<MaterializedStoreTab />);
     const view = screen.getByText("daily_totals").closest("tr") as HTMLElement;
     expect(within(view).getByTestId("mv-toggle-btn-view-daily_totals")).toBeInTheDocument();
     expect(within(view).queryByTestId("mv-full-capture-btn-view-daily_totals")).toBeNull();

@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains moet true, false of null zijn",
       "claims_with_multitenancy": "Een multi-tenant-implementatie kan roltoewijzingen niet uit aanmeldclaims lezen: zij kent rollen zelf toe, per organisatie, en claims zouden die overschrijven. Stel de bron van de toewijzingen in op Provisa.",
       "federation_unknown_field": "Geen federatie-instelling: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Ongeldige federatie-instelling: {{error}}",
       "federation_role_unknown": "De federatierol '{{role}}' is geen rol van deze organisatie"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Een dataproduct kan niet zijn eigen opvolger zijn.",
         "successor_retired": "De opvolger '{{successor}}' is buiten gebruik gesteld. Kies een dataproduct dat in gebruik is.",
         "successor_other_domain": "De opvolger '{{successor}}' hoort bij domein {{domain}}. De leden van een product delen zijn domein, dus kies een opvolger in hetzelfde domein."
+      },
+      "members": {
+        "domain_has_members": "Dataproduct {{data_product}} kan niet naar domein {{domain}} verhuizen zolang het leden uit een ander domein bevat: {{members}}. Haal ze eerst uit het product."
       },
       "finding": {
         "no_members": "Er hoort geen tabel, view of opdracht bij dit dataproduct.",

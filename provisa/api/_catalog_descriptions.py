@@ -57,6 +57,9 @@ _META: dict[str, str] = {
     "naming a value outside this set is refused",
     "tag_expiry": "Tag assignments carrying a planned end date, with expiring/expired state "
     "derived at query time — the governance review queue",
+    "model_names": "The names table of the last model version built — every model object's name "
+    "on every surface (SQL, GraphQL, Cypher, proto, pg constraint) with the naming problems "
+    "found in it",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
     # REQ-1443
@@ -69,6 +72,11 @@ _META: dict[str, str] = {
     # REQ-2188
     "metric_definitions": "Every governed metric — a named aggregate expression with no grain of its own, "
     "the roles that read it, and the fact it was registered from",
+    # REQ-1634
+    "data_product_tables": "Every data product's member tables and views — one row per product "
+    "and member; a table may be a member of any number of products of its domain",
+    "data_product_commands": "Every data product's member commands — one row per product and "
+    "member command",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -165,10 +173,14 @@ _OPS: dict[str, str] = {
     "sla_breach_log": "One row per service-level breach — the latency or availability of the "
     "org's last hour past the operator's limit: when it opened, the worst and latest measure, "
     "the limit, and when it recovered",
+    "requests": "One row per request: what was asked, by whom, the environment it is for, the "
+    "roles it is addressed to and their members, its state, the decision, who decided and when",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
     "fake covers it, and the reason when none does",
+    "names_report": "Names: every model object with its name on each surface and the naming "
+    "problems found in it, and every name clash the last model build refused, naming both objects",
 }
 
 # A model reading the catalog took ops.query_audit_log -- its route, status_code and duration_ms
@@ -202,7 +214,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "gql_naming_convention": "Casing convention applied to this table's GraphQL names",
         "watermark_column": "Column whose high value marks how far incremental refresh has read",
         "view_sql": "Defining SQL, for a Provisa-managed virtual view rather than a source table",
-        "product_id": "The DataProduct this table is published as a member of, if any",
         "materialize": "Whether Provisa maintains a materialization of this table",
         "mv_refresh_interval": "How often the materialization is refreshed",
         "l1_cluster": "Top-level semantic cluster, computed from the table's relationships",
@@ -226,8 +237,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_run_at": "For a checker table, when its latest scan ran",
         # REQ-2158
         "contract": "A data product member's contract: its version, status, terms, service "
-        "levels, the columns it promises and its saved versions, each with its differences from "
-        "the one before; empty for a table in no product",
+        "levels and its saved versions, each with its differences from the one before; its "
+        "schema is the table's columns. Empty for a table in no product",
     },
     # REQ-2190
     "table_details": {
@@ -261,6 +272,15 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column_sql_name": "The name a statement queries that column by",
         "referenced_column": "Physical name of the column a foreign key column references",
         "referenced_column_sql_name": "The name a statement queries that column by",
+    },
+    # REQ-1634
+    "data_product_tables": {
+        "product_id": "The data product",
+        "table_id": "A table or view that is a member of it",
+    },
+    "data_product_commands": {
+        "product_id": "The data product",
+        "command_name": "A command that is a member of it",
     },
     # REQ-2126
     "data_product_edges": {
@@ -464,7 +484,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the function does, shown to consumers",
         "created_at": "When the function was registered",
         "updated_at": "When the registration was last changed",
-        "product_id": "The data product the function is a member of, if any",  # REQ-2125
     },
     "tags": {
         "id": "Tag name, e.g. pii or deprecated",
@@ -518,6 +537,22 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term": "That term's name",
         "reason": "Justification recorded with the assignment",
         "tenant_id": _TENANT,
+    },
+    "model_names": {
+        "id": "Synthesized row identity (kind:object:surface)",
+        "object_kind": "Kind of model object named (source, table, view, column, relationship, "
+        "command, enum, enum_value, metric)",
+        "object_id": "The object's identity within its kind (a table's id, table_id:column, "
+        "Type.field for a relationship, a command's or enum's name)",
+        "surface": "Surface the name is served on (sql, graphql_field, graphql_type, "
+        "cypher_label, cypher_rel_type, proto_message, proto_rpc, pg_constraint, ...)",
+        "name": "The object's name on that surface",
+        "physical_name": "The object's name at its source",
+        "label": "How a message names the object (source.schema.table[.column])",
+        "domain_id": "Domain the object is governed under",
+        "table_id": "Table the object is, or belongs to; who may read it may read this row",
+        "is_alias": "Whether the name is an alias an operator set (or the clash policy froze)",
+        "warnings": "Each naming problem found in the name, with its code and message",
     },
     "tag_expiry": {
         "id": "Assignment identifier",
@@ -994,6 +1029,41 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "started_at": "When the breach opened",
         "last_seen_at": "The latest evaluation that found it still in breach",
         "resolved_at": "When the measure came back within its limit; empty: still open",
+    },
+    "names_report": {
+        "id": "Synthesized row identity (kind:object:surface, or clash:surface:name:object)",
+        "object_kind": "Kind of model object named, or clash for a refused clash",
+        "object_id": "The object's identity within its kind; for a clash, the object refused",
+        "surface": "Surface the name is served on",
+        "name": "The object's name on that surface; for a clash, the name both would take",
+        "physical_name": "The object's name at its source; for a clash, the object holding it",
+        "label": "How a message names the object",
+        "domain_id": "Domain the object is governed under",
+        "table_id": "Table the object is, or belongs to",
+        "status": "ok, warning (a naming problem was found), or refused (a clash)",
+        "problems": "Each naming problem found, or the refused clash, with its fix",
+    },
+    "requests": {
+        "id": "The request's number",
+        "request_type": "What is asked for: view, relationship, webhook, source or table",
+        "capability": "The right that decides it",
+        "payload": "What was asked, as submitted",
+        "requested_by": "User id of the person who asked",
+        "requested_by_name": "Display name of the person who asked",
+        "environment": "The environment the request is for",
+        "addressed_roles": "The roles that hold the right the request names",
+        "addressed_members": "Those roles' members when it was raised: id, display_name, email, "
+        "and the roles each is reached through",
+        "unresolved_roles": "Addressed roles none of whose members could be resolved",
+        "state": "pending, executed or rejected",
+        "approvals": "The approvals recorded so far",
+        "required_approvals": "How many approvals carry it out",
+        "decision": "approved or rejected; empty while pending",
+        "decision_reason": "Why a rejected request was rejected",
+        "decided_by": "User id of the person who decided it",
+        "decided_by_name": "Display name of the person who decided it",
+        "decided_at": "When it was decided",
+        "created_at": "When it was raised",
     },
     "sensitive_column_coverage": {
         "id": "Synthesized column identity (table_id:column_name) of the sensitive column",

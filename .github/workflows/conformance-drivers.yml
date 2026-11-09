@@ -28,6 +28,9 @@ name: Conformance (drivers)
 # minimum bcrypt cost.
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:
@@ -250,7 +253,9 @@ jobs:
       # as in psycopg's CI: its typing tests run mypy from it. As psycopg's CI runs it
       # (tools/ci/ci_test.sh), the tests that failed run twice more, for its timing-based tests;
       # each attempt writes its own JUnit, and a later one's report of a test replaces an
-      # earlier one's (driver_suite.py read_attempts).
+      # earlier one's (driver_suite.py read_attempts). join_test_threads waits, for at most two
+      # seconds, for the threads a test started, so a worker's late exception is charged to that
+      # test and not to whichever test comes next.
       - name: Run psycopg's suite
         continue-on-error: true
         timeout-minutes: 120
@@ -259,8 +264,9 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/psycopg"
           export PATH="$RUNNER_TEMP/psycopg-venv/bin:$PATH"
+          export PYTHONPATH="$GITHUB_WORKSPACE/scripts/conformance/drivers"
           mkdir -p "$RUNNER_TEMP/psycopg-junit"
-          suite=(python -m pytest tests -p no:randomly --timeout="$PSYCOPG_TEST_TIMEOUT_S" -q -rN)
+          suite=(python -m pytest tests -p no:randomly -p join_test_threads --timeout="$PSYCOPG_TEST_TIMEOUT_S" -q -rN)
           "${suite[@]}" --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-1.xml" || true
           for attempt in 2 3; do
             "${suite[@]}" --last-failed --last-failed-no-failures none \

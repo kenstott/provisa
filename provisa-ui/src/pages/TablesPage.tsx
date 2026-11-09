@@ -1424,18 +1424,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                     </Badge>
                                   ) : null;
                                 })()}
-                                {t.productId != null && (
+                                {t.productIds.map((productId) => (
                                   <Badge
+                                    key={productId}
                                     size="xs"
                                     variant="light"
                                     color="indigo"
                                     title={translate("tablesPage.dataProductTitle")}
-                                    data-testid={`tables-data-product-${t.tableName}`}
+                                    data-testid={`tables-data-product-${t.tableName}-${productId}`}
                                   >
-                                    {dataProducts.find((p) => p.id === t.productId)?.name ??
-                                      t.productId}
+                                    {dataProducts.find((p) => p.id === productId)?.name ??
+                                      productId}
                                   </Badge>
-                                )}
+                                ))}
                                 <TagControl objectType="table" tableId={t.id} />
                               </Group>
                             </Table.Td>

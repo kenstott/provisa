@@ -604,7 +604,9 @@ async def _answer_live(
 
     read = await answer()
     if len(read.rows) <= RedirectConfig.from_env().threshold:
-        values_cte_entries[tn] = InlineRows(read.rows, [name for name, _ in read.columns])
+        values_cte_entries[tn] = InlineRows(
+            read.rows, [name for name, _ in read.columns], column_types=dict(read.columns)
+        )
         log.warning("[MAT] live %s: %d rows inline", tn, len(read.rows))
         return
     scratch = _STATEMENT_SCRATCH.get()
@@ -830,7 +832,9 @@ def _lookup_gql_remote_table(state, table_name: str):
 
 
 def _lookup_grpc_remote_table(state, table_name: str):
-    """Find a grpc_remote query registration by its landed table name (<ns__>service__method).
+    """Find a grpc_remote query registration by its landed table name (<ns__>service__method) or
+    by the SQL name the naming convention gives it (REQ-325, REQ-194): SQL addresses the table by
+    its alias, so a read names it that way.
 
     Returns (source_id, reg, query) — the registration dict (see grpc_remote_router.py) carries
     no "source_id" key of its own, only its channel/queries/etc., so the source_id must come from
@@ -840,7 +844,8 @@ def _lookup_grpc_remote_table(state, table_name: str):
     for source_id, reg in grpc_srcs.items():
         prefix = f"{reg.get('namespace', '')}__" if reg.get("namespace") else ""
         for q in reg.get("queries", []):
-            if f"{prefix}{q.service}__{q.method}" == table_name:
+            landed = f"{prefix}{q.service}__{q.method}"
+            if table_name in (landed, _sql_name(landed)):
                 return source_id, reg, q
     return None, None, None
 

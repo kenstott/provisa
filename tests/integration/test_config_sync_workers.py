@@ -240,6 +240,49 @@ def test_the_stored_stamp_does_not_move_while_nothing_changes(workers):
     )
 
 
+def _save_product(author: Worker, verb: str, owner_role: str) -> None:
+    res = author.admin(
+        f"mutation {{ {verb}DataProduct(input: "
+        f'{{id: "orders_status", domainId: "sales", name: "Orders", ownerRole: "{owner_role}"}}) '
+        "{ success message } }"
+    )
+    assert res["data"][f"{verb}DataProduct"]["success"], res
+
+
+def _product_status(worker: Worker) -> str | None:
+    products = worker.admin("{ dataProducts { id status } }")["data"]["dataProducts"]
+    return next((p["status"] for p in products if p["id"] == "orders_status"), None)
+
+
+def test_a_status_change_moves_every_workers_stamp_and_rebuilds_none(workers):
+    """REQ-1914 (amended 2026-11-09): the build does not read a data product's status, so every
+    worker of both instances takes the new stamp without a rebuild, and each reads the new status.
+    A change the build does read, the product's owner, still rebuilds every worker."""
+    author = workers[2]
+    _save_product(author, "create", "org_admin")
+    _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp after the create")
+    before = _health(author)["config"]["model"]["stored"]
+    versions = [w.schema_version()[1] for w in workers]
+
+    res = author.admin('mutation { publishDataProduct(id: "orders_status") { success message } }')
+    assert res["data"]["publishDataProduct"]["success"], res
+
+    _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp after the publish")
+    assert _health(author)["config"]["model"]["stored"] > before
+    for worker in workers:
+        assert _product_status(worker) == "live"
+    assert [w.schema_version()[1] for w in workers] == versions, "a status change rebuilt a worker"
+
+    built_at = {w.boot_id: int(w.schema_version()[1]) for w in workers}
+    _save_product(author, "update", "analyst")
+
+    def _rebuilt(w: Worker) -> tuple[bool, dict]:
+        version = int(w.schema_version()[1])
+        return version > built_at[w.boot_id], {"version": version}
+
+    _until_every_worker(workers, _rebuilt, "rebuilt for a change of the product's owner")
+
+
 def _evidence(*flags: str) -> list[tuple[str, str, str, str]]:
     """Run the evidence script; its result table as (change, at 0 s, at 20 s, at 70 s)."""
     proc = subprocess.run(

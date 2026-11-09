@@ -456,6 +456,6 @@ def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) 
     monkeypatch.setattr(app_loaders, "schema_input_for", _schema_input)
     inputs = {"tables": [], "metrics": [], "field_numbers": {}}
     with pytest.raises(_Stop):
-        app_loaders._build_role_surface(appmod.state, runtime, inputs, {"id": "analyst"}, None)
+        app_loaders._RoleParts(appmod.state, runtime, inputs, {"id": "analyst"}, None).surface()
     assert seen == [runtime]
     assert appmod.state.org_registry.get(runtime_key("acme", "recopied")) is None

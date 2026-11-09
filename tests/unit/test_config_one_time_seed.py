@@ -29,6 +29,7 @@ plane.
 from __future__ import annotations
 
 import contextlib
+import copy
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,7 +52,15 @@ from provisa.core.config_loader import (
     store_config,
 )
 from provisa.core.database import Database
-from provisa.core.models import Column, Domain, Role, Source, SourceType, Table
+from provisa.core.models import (
+    Column,
+    Domain,
+    Role,
+    Source,
+    SourceType,
+    Table,
+    pending_profile_result_name,
+)
 from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import role as role_repo
 from provisa.core.repositories import source as source_repo
@@ -218,6 +227,11 @@ def _given(model: Any) -> Any:
     from provisa.judgments.why import SERVER
 
     if isinstance(model, dict):
+        if "profile_of" in model and "kind" in model:  # its table name carries a store's serial
+            model = {
+                **model,
+                "table": pending_profile_result_name(model["profile_of"], model["kind"]),
+            }
         return {
             k: (
                 {kk: _given(vv) for kk, vv in v.items() if kk not in SERVER}
@@ -930,30 +944,302 @@ async def test_kafka_sources_round_trip_through_the_export(db, new_plane):
     assert await _model(fresh) == await _model(db)
 
 
+# --- a seeded table's names survive the export (REQ-1634) -----------------------------------------
+
+
+async def _a_seeded_table(db: Database, name: str = "assignments") -> None:
+    """A table the deployment seeds on its graphql-demo source, as the boot's registration leaves
+    it: in the store, never in a file."""
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(metadata.tables["sources"]).values(id="graphql-demo", type="graphql_remote")
+        )
+        await domain_repo.upsert(conn, Domain(id="shelter", description="Shelter"))
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="graphql-demo",
+                domain_id="shelter",
+                schema_name="graphql",
+                table_name=name,
+                columns=[Column(name="id", data_type="integer", visible_to=["seller"])],
+            ),
+        )
+
+
+def _a_product_and_a_relationship_on_a_seeded_table() -> dict:
+    return _raw(
+        tables=[_table("orders", domain_id="shelter")],
+        domains=("sales", "shelter"),
+        relationships=[
+            {
+                "id": "orders-to-assignments",
+                "source_table_id": "orders",
+                "target_table_id": "assignments",
+                "source_column": "id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ],
+        data_products=[
+            {
+                "id": "workforce_ops",
+                "domain_id": "shelter",
+                "name": "Workforce Ops",
+                "tables": ["assignments", "orders"],
+            }
+        ],
+    )
+
+
+async def test_the_export_keeps_a_seeded_member_and_a_relationship_to_a_seeded_table(db, new_plane):
+    """A product's member that is a seeded table, and a relationship to one, are exported, and
+    the export applied once the seeded table exists restores both."""
+    await _a_seeded_table(db)
+    await _boot(db, _a_product_and_a_relationship_on_a_seeded_table())
+    exported = with_store_model(_raw(), await _model(db))
+    assert exported["data_products"][0]["tables"] == ["assignments", "orders"]
+    assert [r["id"] for r in exported["relationships"]] == ["orders-to-assignments"]
+    assert "assignments" not in [t["table"] for t in exported["tables"]]
+
+    fresh = await new_plane()
+    await _a_seeded_table(fresh)
+    async with fresh.acquire() as conn:
+        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
+    model = await _model(fresh)
+    assert model["data_products"][0]["tables"] == ["assignments", "orders"]
+    assert [r["id"] for r in model["relationships"]] == ["orders-to-assignments"]
+
+
+async def test_a_seed_holds_a_seeded_member_until_its_table_exists(db):
+    """The boot seeds the file before the remote registration brings the seeded table: the seed
+    holds the name, and the retry once the table exists sets the member."""
+    raw = _a_product_and_a_relationship_on_a_seeded_table()
+    seeded, _ = await _boot(db, raw)
+    assert seeded is True
+    assert not (await _model(db))["data_products"][0].get("tables")
+    await _a_seeded_table(db)
+    async with db.acquire() as conn:
+        await config_loader.set_product_members(conn, parse_config_dict(raw))
+    assert (await _model(db))["data_products"][0]["tables"] == ["assignments", "orders"]
+
+
+async def test_a_member_no_registration_holds_is_refused_by_name(db):
+    raw = _a_product_and_a_relationship_on_a_seeded_table()
+    raw["relationships"] = []
+    raw["data_products"][0]["tables"] = ["orders", "nowhere"]
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
+            await apply_config(parse_config_dict(raw), conn)
+    await _boot(db, raw)
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
+            await config_loader.set_product_members(conn, parse_config_dict(raw))
+
+
+async def _seed_like_the_boot(plane: Database, raw: dict) -> None:
+    """The seeded source's tables, in the store before an export is applied to it, as a boot's
+    registration leaves them (a seeded table is in every store and in no file's export)."""
+    from provisa.core.db import SEEDED_SOURCE_IDS
+
+    # Only what those tables stand on: anything more of the file would stand in for what the
+    # export must bring itself.
+    seeded = {
+        **{k: v for k, v in raw.items() if k not in MODEL_SECTIONS and k != "views"},
+        "sources": [s for s in raw.get("sources", []) if s["id"] in SEEDED_SOURCE_IDS],
+        "stores": raw.get("stores", []),
+        "regions": raw.get("regions", []),
+        "domains": raw.get("domains", []),
+        "roles": raw.get("roles", []),
+        "tables": [t for t in raw.get("tables", []) if t["source_id"] in SEEDED_SOURCE_IDS],
+    }
+    async with plane.acquire() as conn:
+        await apply_config(parse_config_dict(seeded), conn)
+
+
 # --- a named demo's whole config ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "config_file", ["config/provisa-install.yaml", "demo/named/perf/config.yaml"]
+#: Every model the product ships: found on disk, so a new demo is covered by being added (REQ-2222).
+_SHIPPED_MODELS = sorted(
+    str(path.relative_to(_REPO))
+    for pattern in ("config/provisa*.yaml", "demo/named/*/config.yaml")
+    for path in _REPO.glob(pattern)
 )
-async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_file, new_plane):
-    """A demo's whole config (the standard one, and a named one such as perf) seeds an empty
-    store once, a demo rebuild from it gives the same model, and its export applied to an empty
-    store builds that model again."""
-    from provisa.core.config_loader import rebuild_from_config
 
+
+def test_the_round_trip_finds_the_shipped_models():
+    assert "config/provisa-install.yaml" in _SHIPPED_MODELS
+    named = {p.parent.name for p in (_REPO / "demo" / "named").glob("*/config.yaml")}
+    assert named == {Path(m).parent.name for m in _SHIPPED_MODELS if m.startswith("demo/named/")}
+
+
+def _losses(declared: Any, exported: Any, at: str = "") -> list[str]:
+    """Where two exports differ: lists of named things are paired by name."""
+    if isinstance(declared, dict) and isinstance(exported, dict):
+        out: list[str] = []
+        for key in sorted(set(declared) | set(exported)):
+            out += _losses(declared.get(key), exported.get(key), f"{at}.{key}")
+        return out
+    if isinstance(declared, list) and isinstance(exported, list):
+        names = [_name_of(item) for item in [*declared, *exported]]
+        if names and all(n is not None for n in names):
+            return _losses(
+                {_name_of(i): i for i in declared}, {_name_of(i): i for i in exported}, at
+            )
+    return [] if declared == exported else [f"{at}: {declared!r} -> {exported!r}"]
+
+
+def _name_of(item: Any) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    if "source_id" in item and {"table", "table_name", "alias"} & set(item):
+        table = item.get("alias") or item.get("table") or item["table_name"]
+        return f"{item['source_id']}.{table}"
+    return next((str(item[k]) for k in ("id", "name") if item.get(k) is not None), None)
+
+
+def _assert_same(stage: str, first: Any, second: Any) -> None:
+    lost = _losses(first, second)
+    assert not lost, f"{stage}:\n" + "\n".join(lost)
+
+
+def _not_stated(declared: Any, exported: Any, at: str = "") -> list[str]:
+    """What ``declared`` states that ``exported`` does not. What the store adds on its own (keys
+    it derives, a contract it opens) is no loss, and neither is the order of a list."""
+    if isinstance(declared, dict):
+        if not isinstance(exported, dict):
+            return [f"{at}: {declared!r} -> {exported!r}"]
+        return [
+            miss
+            for key, value in declared.items()
+            for miss in _not_stated(value, exported.get(key), f"{at}.{key}")
+        ]
+    if isinstance(declared, list):
+        return _list_not_stated(declared, exported, at)
+    return [] if declared == exported else [f"{at}: {declared!r} -> {exported!r}"]
+
+
+def _list_not_stated(declared: list, exported: Any, at: str) -> list[str]:
+    if not declared:
+        return []
+    if not isinstance(exported, list):
+        return [f"{at}: {declared!r} -> {exported!r}"]
+    named = {_name_of(item): item for item in exported if _name_of(item) is not None}
+    out: list[str] = []
+    for item in declared:
+        name = _name_of(item)
+        if name is not None:
+            out += _not_stated(item, named.get(name), f"{at}.{name}")
+        elif not any(not _not_stated(item, other) for other in exported):
+            out.append(f"{at}: {item!r} is gone")
+    return out
+
+
+def _as_the_store_holds_it(declared: dict) -> dict:
+    """A file's model with what the store deliberately holds differently put as the store holds it.
+    What is left is what an export must state."""
+    from provisa.core.db import SEEDED_SOURCE_IDS
+    from provisa.core.numeric_type import stored_type_of
+    from provisa.core.store_config import _seeded_domains
+    from provisa.dq.contract import CHECKERS
+
+    checkers = {s["id"] for s in declared["sources"] if s["type"] in CHECKERS}
+    out = dict(declared)
+    # In every store before any configuration, and in no export (store_config).
+    out["sources"] = [s for s in declared["sources"] if s["id"] not in SEEDED_SOURCE_IDS]
+    out["domains"] = [d for d in declared["domains"] if d["id"] not in _seeded_domains()]
+    out["tables"] = []
+    for table in declared["tables"]:
+        if table["source_id"] in SEEDED_SOURCE_IDS:
+            continue
+        table = dict(table)
+        if table["source_id"] in checkers:  # REQ-1443: its relation has a name of the store's
+            table["alias"] = table.pop("table")
+            table.pop("schema", None)
+            # A checker's columns are the shipped results schema; the file's only carry visible_to.
+            for column in table.get("columns", []):
+                column.pop("description", None)
+        for column in table.get("columns", []):
+            if "data_type" in column:  # REQ-1961: a numeric in its one spelling
+                column["data_type"] = stored_type_of(column["data_type"])
+        out["tables"].append(table)
+    # A fact-derived metric is a part of its fact table: the table brings it.
+    out["metrics"] = [m for m in declared.get("metrics", []) if m.get("from_fact") is None]
+    # REQ-1844: every term name in the catalog is lowercase.
+    out["glossary_terms"] = [
+        {
+            **term,
+            "name": term["name"].strip().lower(),
+            "edges": [{**e, "to": e["to"].strip().lower()} for e in term.get("edges", [])],
+        }
+        for term in declared.get("glossary_terms", [])
+    ]
+    return out
+
+
+def _launch_environment(monkeypatch: pytest.MonkeyPatch, raw: dict, path: Path) -> dict[str, str]:
+    """What a demo's launcher provides: every variable the file names with no default of its own,
+    and the value of each secret it names (returned)."""
+    text = yaml.safe_dump(raw)
+    for name in set(re.findall(r"\$\{env:(\w+)\}", text)):
+        if name == "PROVISA_NAMED_DEMO_DIR":
+            monkeypatch.setenv(name, str(path.parent))
+        elif name.endswith("_URL"):
+            monkeypatch.setenv(name, "postgresql://launcher:5432/launched")
+        else:
+            monkeypatch.setenv(name, "launched")
+    return {name: "launched" for name in re.findall(r"\$\{secret:(\w+)\}", text)}
+
+
+@pytest.mark.parametrize("config_file", _SHIPPED_MODELS)
+async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(
+    db, config_file, new_plane, monkeypatch
+):
+    """REQ-2222: every shipped model seeds an empty store once, a demo rebuild from it gives the
+    same model, its export applied to an empty store builds that model again, and everything the
+    file states is in the export."""
     raw = config_loader.read_config_with_includes(_REPO / config_file)
+    secrets = _launch_environment(monkeypatch, raw, _REPO / config_file)
     # The boot names the config to the operator settings before it seeds (app_loaders): perf's
     # allows the host code its python commands are (REQ-2134).
     settings_registry.bind_config(raw)
+    with secrets_store.bound_to_values("shipped-model", secrets):
+        await _seed_rebuild_and_round_trip(db, raw, new_plane)
+
+
+async def _seed_rebuild_and_round_trip(db: Database, raw: dict, new_plane: Any) -> None:
+    from provisa.core.config_loader import rebuild_from_config, set_product_members
+
     seeded, _config = await _boot(db, raw)
     assert seeded is True
+    async with db.acquire() as conn:
+        # The boot's last step (api.app): the members held until every table was registered.
+        await set_product_members(conn, parse_config_dict(copy.deepcopy(raw)))
     first = await _model(db)
     async with db.acquire() as conn:
-        await rebuild_from_config(parse_config_dict(raw), conn)
-    assert _given(await _model(db)) == _given(first)
+        await rebuild_from_config(parse_config_dict(copy.deepcopy(raw)), conn)
+        await set_product_members(conn, parse_config_dict(copy.deepcopy(raw)))
+    _assert_same("the rebuild", _given(first), _given(await _model(db)))
+
     exported = with_store_model(raw, first)
     fresh = await new_plane()
+    await _seed_like_the_boot(fresh, raw)
+    text = yaml.safe_dump(exported)
     async with fresh.acquire() as conn:
-        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
-    assert _given(await _model(fresh)) == _given(first)
+        await apply_config(parse_config_dict(yaml.safe_load(text)), conn)
+    _assert_same("the export applied", _given(first), _given(await _model(fresh)))
+
+    declared = _as_the_store_holds_it(
+        parse_config_dict(copy.deepcopy(raw)).model_dump(
+            mode="json", by_alias=True, exclude_defaults=True
+        )
+    )
+    written = parse_config_dict(yaml.safe_load(text)).model_dump(mode="json", by_alias=True)
+    lost = [
+        miss
+        for section in MODEL_SECTIONS
+        for miss in _not_stated(declared.get(section), written.get(section), f".{section}")
+        if declared.get(section) is not None
+    ]
+    assert not lost, "the export against the file:\n" + "\n".join(lost)

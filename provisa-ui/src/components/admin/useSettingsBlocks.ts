@@ -24,9 +24,10 @@ type Block = keyof PlatformSettings;
  *
  * The PUT is gated per block server-side, so the payload is narrowed to what this card owns: a
  * card that sends the whole snapshot would drag every deployment-wide block into an org
- * administrator's save and be refused as a whole.
+ * administrator's save and be refused as a whole. `fields` narrows a block shared between
+ * the org and the platform to the fields this card owns.
  */
-export function useSettingsBlocks(blocks: Block[]) {
+export function useSettingsBlocks(blocks: Block[], fields?: Partial<Record<Block, string[]>>) {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -35,6 +36,7 @@ export function useSettingsBlocks(blocks: Block[]) {
   // form is what `save` depends on, which keeps the callback stable without asking every caller to
   // memoize an array it never changes.
   const blockKey = blocks.join(",");
+  const fieldKey = JSON.stringify(fields ?? {});
 
   useEffect(() => {
     fetchSettings().then(setSettings);
@@ -56,7 +58,14 @@ export function useSettingsBlocks(blocks: Block[]) {
         payload.naming = rest;
         continue;
       }
-      payload[block] = value;
+      const owned = (JSON.parse(fieldKey) as Partial<Record<Block, string[]>>)[block];
+      payload[block] = owned
+        ? Object.fromEntries(
+            owned.flatMap((f) =>
+              f in (value as object) ? [[f, (value as Record<string, unknown>)[f]]] : [],
+            ),
+          )
+        : value;
     }
     try {
       const result = await updateSettings(payload as Partial<PlatformSettings>);
@@ -69,7 +78,7 @@ export function useSettingsBlocks(blocks: Block[]) {
     } finally {
       setSaving(false);
     }
-  }, [settings, t, blockKey]);
+  }, [settings, t, blockKey, fieldKey]);
 
   return { settings, setSettings, save, saving, msg };
 }

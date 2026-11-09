@@ -73,7 +73,11 @@ class TestWhatEachHolds:
         assert _rights("viewer") == {"glossary_read", "data_product_read"}
 
     def test_analyst_queries(self):
-        assert _rights("analyst") == _rights("viewer") | {"usage", "query_development"}
+        assert _rights("analyst") == _rights("viewer") | {
+            "usage",
+            "query_development",
+            "command_execution",
+        }
 
     def test_developer_builds_and_switches_but_never_manages_environments(self):
         assert {"create_view", "create_relationship", "write", "environment_switch"} <= _rights(
@@ -250,6 +254,6 @@ class TestTheSeed:
         with db.engine.begin() as sa_conn:
             assert_standard_roles(sa_conn, org_schema("default"))
         analyst = (await self._rows(db))["analyst"]
-        assert analyst["capabilities"] == ["usage", "query_development"]
+        assert analyst["capabilities"] == ["usage", "query_development", "command_execution"]
         assert analyst["parents"] == ["viewer"]
         assert analyst["description"] == STANDARD_ROLES["analyst"].description

@@ -20,11 +20,13 @@ Resolution happens at REQUEST time, not at startup: a read hits the org's table 
 org administrator changing the NL provider sees it on the next query rather than after a restart.
 """
 
-# Requirements: REQ-1349
+# Requirements: REQ-1349, REQ-1327
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+
+from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from provisa.core.db import Database
@@ -35,11 +37,11 @@ if TYPE_CHECKING:
 # NL rate limit. Any key not listed here is deployment-wide by definition and is rejected.
 # REQ-1074: metadata_export is org-scoped — the catalog an org publishes to, and the credentials
 # it publishes with, belong to that org, not to the deployment.
-# REQ-1266: `naming` carries the org's DOMAIN MODE (use_domains/default_domain) — a tenant setting,
-# since one org modelling a single domain says nothing about the next. The rest of the naming block
-# (convention, sql_convention, domain_prefix) is NOT org-overridable: those configure the process-
-# global `provisa.compiler.naming` module at schema-build time, so they remain deployment-wide and
-# the settings router rejects them on this door (see NAMING_ORG_KEYS).
+# REQ-1266, REQ-1327: `naming` carries the org's DOMAIN MODE (use_domains/default_domain) and its
+# naming conventions (convention, sql_convention, domain_prefix), which provisa.compiler.naming
+# reads for the org a compile is bound to.
+# REQ-1327: `sampling`, `hot_tables`, `replication` and `graphql_remote` carry the processing
+# settings an org owns, field by field in ORG_BLOCK_FIELDS; the rest of each block is the platform's.
 # `redirect` (large-result delivery) and `cache` (default response TTL) govern the org's OWN query
 # results, so both are org-owned. The object store they land in — bucket, endpoint, credentials —
 # is the deployment's and stays in the platform env, never here.
@@ -59,12 +61,34 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "classification",  # REQ-2147: the profiler's classification kinds the org disabled
         "federation",  # REQ-259: the org's subgraph and the role it serves as
         "reference_library",  # REQ-2185: the library's retrieval setting, passage or graph
+        "names",  # REQ-194: how the names table settles a name clash (refuse or disambiguate)
+        "requests",  # REQ-2216: how the org is told of requests: email, events only, or both
+        "sampling",  # REQ-1327
+        "hot_tables",  # REQ-1327
+        "replication",  # REQ-1327
+        "graphql_remote",  # REQ-1327
     }
 )
 
-# The only `naming` sub-keys an org owns. Every other sub-key configures the process-global naming
-# module and is deployment-wide.
-NAMING_ORG_KEYS: frozenset[str] = frozenset({"use_domains", "default_domain"})
+# The `naming` sub-keys an org owns (REQ-1327): its domain mode and its conventions.
+NAMING_ORG_KEYS: frozenset[str] = frozenset(
+    {"use_domains", "default_domain", "convention", "sql_convention", "domain_prefix"}
+)
+
+# REQ-1327: of a block shared with the platform, the only fields an org owns.
+ORG_BLOCK_FIELDS: dict[str, frozenset[str]] = {
+    "naming": NAMING_ORG_KEYS,
+    "sampling": frozenset({"default_sample_size"}),
+    "hot_tables": frozenset({"auto_threshold", "max_rows", "max_bytes", "refresh_interval"}),
+    "replication": frozenset({"hot_threshold", "hot_interval", "hot_max_rows"}),
+    "graphql_remote": frozenset({"max_rows"}),
+}
+
+
+def graphql_remote_max_rows(deployment: int) -> int:  # REQ-1327
+    """The acting org's remote GraphQL row limit, else the deployment's."""
+    own = (acting_org_overrides().get("graphql_remote") or {}).get("max_rows")
+    return deployment if own is None else int(own)
 
 
 def merge_org_overrides(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -132,13 +156,14 @@ async def write_org_overrides(
     unknown = set(updates) - ORG_OVERRIDABLE_KEYS
     if unknown:
         raise ValueError(f"not org-overridable: {', '.join(sorted(unknown))}")
-    naming = updates.get("naming")
-    if isinstance(naming, dict):
-        # The guarantee lives at the door, not only in the router: `naming` is overridable for the
-        # domain mode alone, so an org can never reach the deployment's naming conventions here.
-        extra = set(naming) - NAMING_ORG_KEYS
-        if extra:
-            raise ValueError(f"not org-overridable: naming.{', naming.'.join(sorted(extra))}")
+    for block, owned in ORG_BLOCK_FIELDS.items():
+        given = updates.get(block)
+        if isinstance(given, dict):
+            # The guarantee lives at the door, not only in the router: a block shared with the
+            # platform is overridable field by field, so an org never reaches the platform's half.
+            extra = sorted(set(given) - owned)
+            if extra:
+                raise ValueError(f"not org-overridable: {', '.join(f'{block}.{k}' for k in extra)}")
 
     from datetime import datetime, timezone
 

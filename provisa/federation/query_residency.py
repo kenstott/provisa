@@ -33,6 +33,10 @@ request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``)
 A build that fails is recorded on the replica and fails the query with the build's own cause;
 the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
 not ask again until the build's retry wait (``replica_state.RetryPolicy``) has passed.
+
+Only a source with ``freshness_gate`` waits for a refresh of a replica it already holds (REQ-860,
+amended 2026-11-09). Without the guarantee the reader is answered from the current copy, and the
+refresh it asked for runs in the background.
 """
 
 # Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915
@@ -419,7 +423,9 @@ async def ensure_resident(
     it never copies a table on its own thread. A build that failed fails the read
     (:class:`ReplicaBuildFailed`); it is asked for again only after
     its retry wait (``replica_state.RetryPolicy``). A read whose deadline passes while the build is still
-    running raises :class:`ReplicaBuilding`; the build goes on.
+    running raises :class:`ReplicaBuilding`; the build goes on. A source without
+    ``freshness_gate`` that holds a built replica does not wait for its refresh (REQ-860): the
+    read asks for the build and is answered from the replica it holds.
 
     ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
     and waited for. A statement that reads one table of a source does not wait on the source's
@@ -623,9 +629,24 @@ async def ensure_resident(
         resident = state_ is not None and state_["last_refresh_at"] is not None
         return _plan(source, is_stale, lambda sid: resident)
 
+    def _answers_while_refreshing(source: Any, key_: ReplicaKey, record: Any) -> bool:
+        """Whether a read of a replica past its freshness is answered from the copy it holds
+        while the refresh runs (REQ-860): the source gives no freshness guarantee and there is a
+        built copy this engine can read and the model can use. Not one a failed build left, while
+        that failure stands, retry included (REQ-1661: ``last_error`` lasts until a build
+        completes)."""
+        return (
+            not source.freshness_gate
+            and record is not None
+            and record.last_error is None
+            and record.exists_in(_store())
+            and view.serves(org_id, key_, record)
+        )
+
     retry = replica_state.retry_policy()
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     replicas_read: dict[ReplicaKey, datetime] = {}
+    refreshing = False
 
     def _read_from(key: ReplicaKey, record: Any) -> None:
         """The statement reads this replica: keep the time its copy is current as of (its
@@ -689,10 +710,15 @@ async def ensure_resident(
                 raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
             if live_while_building(source, t, engine.engine):
                 continue  # read live while the build runs; the build is requested, not awaited
+            if _answers_while_refreshing(source, key, record):
+                _read_from(key, record)
+                refreshing = True
+                continue
             waiting.append((source, t, key))
+    if waiting or refreshing:
+        replica_builds.kick(org_id)
     if not waiting:
         return Residency(replicas_read=replicas_read, answered_in=answered_in)
-    replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
     asked_at = datetime.now(UTC)
@@ -924,6 +950,21 @@ def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     return None
 
 
+def join_key_column(join: Any) -> tuple[str, Any] | None:
+    """``_join_key_column`` for the item ``join`` reads, by its own alias, with the target's column
+    named as its table's: a governed relation (REQ-039) is read as the table it reads, and its
+    column as the table column it serves as it is. None when that column is masked or computed --
+    its value is not the key's."""
+    from provisa.compiler.governed_relation import read_through
+
+    found = _join_key_column(join, join.this.alias_or_name)
+    relation = read_through(join.this)
+    if found is None or relation is None:
+        return found
+    physical = relation.column(found[0])
+    return None if physical is None else (physical, found[1])
+
+
 def _pushdown_alias(table: Any) -> str:
     """The probe's output column carrying a row-level table's join keys: named for the table's
     registered name, a plain identifier whatever its replica is called."""
@@ -1019,7 +1060,13 @@ async def pushdown_row_materialize(
     if not isinstance(tree, exp.Select):
         return set()
 
-    all_joins = {j.this.name: j for j in tree.find_all(exp.Join) if j.this.name in tables_by_name}
+    from provisa.compiler.governed_relation import base_table
+
+    def joined(join: Any) -> str:
+        read = base_table(join.this)  # REQ-039: a governed relation is read as its table
+        return read.name if read is not None else ""
+
+    all_joins = {joined(j): j for j in tree.find_all(exp.Join) if joined(j) in tables_by_name}
     if not all_joins:
         return set()
 
@@ -1062,14 +1109,14 @@ async def pushdown_row_materialize(
             break
 
         pass_tree = tree.copy()
-        joins_by_name = {j.this.name: j for j in pass_tree.find_all(exp.Join)}
+        joins_by_name = {joined(j): j for j in pass_tree.find_all(exp.Join)}
         key_cols: dict[str, tuple[str, Any]] = {}
         skip: set[str] = set()
         for name in still_pending:
             # _join_key_column matches against the join's OWN alias (e.g. "ce"), not the bare
             # table name ("bench_contains_edge") -- an aliased join's ON-condition columns are
             # always alias-qualified, never re-qualified back to the physical table name.
-            kc = _join_key_column(joins_by_name[name], joins_by_name[name].this.alias_or_name)
+            kc = join_key_column(joins_by_name[name])
             if kc is None:
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue

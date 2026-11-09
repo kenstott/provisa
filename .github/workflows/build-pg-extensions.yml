@@ -5,8 +5,6 @@ name: Build PG Extensions
 # + a checksummed manifest to the Release. scripts/ci/build_pg_extensions.sh is the source of truth.
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:

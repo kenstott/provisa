@@ -804,15 +804,20 @@ def _vanished(e: Engine, text: str) -> str:
 
 
 def _float_in(e: Engine, name: str, type_name: str, sql_type: str, top: str) -> str:
-    value = e.real_of("trim(v)") if sql_type == e.real else f"CAST(trim(v) AS {sql_type})"
+    matches = e.full_match("trim(v)", _FLOAT_TEXT)
+    # The text the number branch casts, NULL where it is no number: DuckDB 2.0 evaluates that
+    # branch's casts of a constant even when the branch is not taken (float4in('x') raised
+    # DuckDB's conversion error instead of PostgreSQL's 22P02).
+    number = f"CASE WHEN {matches} THEN trim(v) END"
+    value = e.real_of(number) if sql_type == e.real else f"CAST({number} AS {sql_type})"
     word = "lower(trim(v))"
     return (
-        f"CASE WHEN {e.full_match('trim(v)', _FLOAT_TEXT)} THEN CASE WHEN "
-        f"abs(CAST(trim(v) AS {e.double})) > {top} THEN "
+        f"CASE WHEN {matches} THEN CASE WHEN "
+        f"abs(CAST({number} AS {e.double})) > {top} THEN "
         + e.raises(
             "22003", f"'\"' || v || {_quoted(f'" is out of range for type {type_name}')}", sql_type
         )
-        + f" WHEN {_vanished(e, 'trim(v)')} THEN {_by_name(e, name, sql_type)}"
+        + f" WHEN {_vanished(e, number)} THEN {_by_name(e, name, sql_type)}"
         + f" ELSE {value} END WHEN {word} IN ({_NANS}) THEN {e.nan(sql_type)} "
         f"WHEN {word} IN ({_INFINITIES}) THEN {e.infinity('', sql_type)} "
         f"WHEN {word} IN ({_NEGATIVE_INFINITIES}) THEN {e.infinity('-', sql_type)} "

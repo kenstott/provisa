@@ -10,6 +10,8 @@
 
 // REQ-2160: INPUT PORTS AND CONSUMERS ARE ALWAYS SHOWN. The owner or team sees the list, or None
 // when it is empty; any other reader sees a muted line that the list is the owner's, never None.
+// REQ-2174 (amended 2026-11-07), REQ-2219: the Consumers card is shown to those who own the product
+// alone; no one else sees the card at all.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
@@ -65,12 +67,17 @@ const FULL: ProductLineage = {
       domain_id: "pet-store",
       table_name: "visit_report",
       alias: null,
-      product_id: null,
+      product_ids: [],
     },
   ],
 } as unknown as ProductLineage;
 
-function panel(over: { owner: boolean; lineageGraph: ProductLineage | null; loading?: boolean }) {
+function panel(over: {
+  owner: boolean;
+  lineageGraph: ProductLineage | null;
+  loading?: boolean;
+  seesConsumers?: boolean;
+}) {
   return render(
     <DataProductDetailPanel
       p={PRODUCT}
@@ -80,6 +87,7 @@ function panel(over: { owner: boolean; lineageGraph: ProductLineage | null; load
       canEdit={false}
       canDelete={false}
       owner={over.owner}
+      seesConsumers={over.seesConsumers ?? over.owner}
       lineageLoading={over.loading ?? false}
       contractsVersion={0}
       lineageError=""
@@ -109,19 +117,6 @@ describe.each(SECTIONS)("the %s card", (section, listId) => {
     expect(within(card(section)).getByText("None")).toBeInTheDocument();
   });
 
-  it("tells any other reader the list is the owner's, with no list and no None", () => {
-    panel({ owner: false, lineageGraph: FULL });
-    const c = card(section);
-    expect(within(c).queryByTestId(listId)).toBeNull();
-    expect(within(c).queryByText("None")).toBeNull();
-    expect(within(c).getByText(/visible to the product's owner/i)).toBeInTheDocument();
-  });
-
-  it("tells a non-owner the same while lineage is still unread", () => {
-    panel({ owner: false, lineageGraph: null, loading: true });
-    expect(within(card(section)).getByText(/visible to the product's owner/i)).toBeInTheDocument();
-  });
-
   it("shows the owner no false None while lineage loads or is null", () => {
     panel({ owner: true, lineageGraph: null, loading: true });
     expect(within(card(section)).queryByText("None")).toBeNull();
@@ -132,5 +127,48 @@ describe.each(SECTIONS)("the %s card", (section, listId) => {
     panel({ owner: true, lineageGraph: null });
     expect(card(section)).toBeInTheDocument();
     expect(within(card(section)).queryByText("None")).toBeNull();
+  });
+});
+
+describe("the Input Ports card for any other reader", () => {
+  const listId = "data-product-detail-inputs-pet_health";
+
+  it("tells them the list is the owner's, with no list and no None", () => {
+    panel({ owner: false, lineageGraph: FULL });
+    const c = card("inputPorts");
+    expect(within(c).queryByTestId(listId)).toBeNull();
+    expect(within(c).queryByText("None")).toBeNull();
+    expect(within(c).getByText(/visible to the product's owner/i)).toBeInTheDocument();
+  });
+
+  it("tells them the same while lineage is still unread", () => {
+    panel({ owner: false, lineageGraph: null, loading: true });
+    expect(
+      within(card("inputPorts")).getByText(/visible to the product's owner/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the Consumers card", () => {
+  it("is not shown at all to a reader who does not own the product", () => {
+    panel({ owner: false, lineageGraph: FULL, seesConsumers: false });
+    expect(screen.queryByTestId("data-product-card-consumers-pet_health")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-consumers-pet_health")).toBeNull();
+  });
+
+  it("is not shown to a holder of the owner's view who does not own the product", () => {
+    // The owner's view of Input Ports (REQ-2188's data_product_rw elsewhere) is not ownership.
+    panel({ owner: true, lineageGraph: FULL, seesConsumers: false });
+    expect(screen.queryByTestId("data-product-card-consumers-pet_health")).toBeNull();
+    expect(
+      within(card("inputPorts")).getByTestId("data-product-detail-inputs-pet_health"),
+    ).toBeInTheDocument();
+  });
+
+  it("is shown, with its list, to the product's owner", () => {
+    panel({ owner: true, lineageGraph: FULL, seesConsumers: true });
+    expect(
+      within(card("consumers")).getByTestId("data-product-detail-consumers-pet_health"),
+    ).toBeInTheDocument();
   });
 });

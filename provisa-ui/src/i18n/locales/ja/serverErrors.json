@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains は true、false、または null である必要があります",
       "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。",
       "federation_unknown_field": "フェデレーションの設定ではありません: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "フェデレーション設定が無効です: {{error}}",
       "federation_role_unknown": "フェデレーションのロール '{{role}}' はこの組織のロールではありません"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "データプロダクトは自分自身の後継になれません。",
         "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
         "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
+      },
+      "members": {
+        "domain_has_members": "データプロダクト {{data_product}} は、別のドメインのメンバー({{members}})を含んでいる間は、ドメイン {{domain}} に移せません。先にそれらをプロダクトから外してください。"
       },
       "finding": {
         "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",

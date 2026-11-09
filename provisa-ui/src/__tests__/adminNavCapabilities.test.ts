@@ -21,7 +21,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { NAV_GROUPS } from "../components/navGroups";
-import { IMPORT_RIGHTS, IMPORT_SURFACE, meetsRequirement } from "../lib/capabilities";
+import {
+  IMPORT_RIGHTS,
+  IMPORT_SURFACE,
+  meetsRequirement,
+  routeRequirement,
+} from "../lib/capabilities";
 
 const SRC = resolve(__dirname, "..");
 
@@ -36,7 +41,7 @@ function navBarAdminCapabilities(): Record<string, string> {
 function routeCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
   const out: Record<string, string> = {};
-  const entry = /\["(\/admin\/[^"]+)",\s*"([a-z_]+)"\]/g;
+  const entry = /\[\s*"(\/admin\/[^"]+)",\s*"([a-z_]+)",?\s*\]/g;
   for (const m of source.matchAll(entry)) out[m[1]] = m[2];
   return out;
 }
@@ -85,18 +90,17 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1469: the org's plan, running bill and next charge. Billing is the org's own commercial
   // relationship, so an org_admin owns it without holding anything deployment-wide.
   "/admin/billing": "org_settings",
-  // REQ-1349: the cache surface is the org's own cached results, response TTL and redirect policy.
-  // The one deployment-wide half of it — which store the node writes to — is gated inside the page
-  // on `platform_settings`, so the route itself belongs to the org.
+  // REQ-1349, REQ-1327: the org's own cached results, response TTL and redirect policy, and the
+  // operations on its materialized views, which table_registration also opens (asserted below).
+  // The deployment's stores are on the Platform page.
   "/admin/cache": "org_settings",
   // REQ-1922: the org's own stores and the platform regions it selects.
   "/admin/regions": "org_settings",
 };
 
-// Deployment-wide surfaces. A multitenant org_admin does not hold `platform_settings`
-// (apply_tenancy_role_grants withdraws it), so none of these appear for one.
+// Deployment-wide surfaces, each on the deployment check its routes ask (REQ-1327). A multitenant
+// org_admin does not hold `platform_settings` and a single-tenant one does not hold `cross_org`.
 const DEPLOYMENT_WIDE = [
-  "/admin/federation-engine",
   "/admin/encryption",
   "/admin/auth",
   "/admin/security",
@@ -107,10 +111,18 @@ const DEPLOYMENT_WIDE = [
   "/admin/deployment-settings",
   // REQ-1922: the platform's regions, read by every node before it opens any store.
   "/admin/platform",
+  // REQ-1327: the exporter, the query engine's lifecycle and org-wide debug tracing.
+  "/admin/platform-observability",
 ];
 
 // Surfaces whose gate is its own <Route> rather than a row of the route table.
-const OWN_ROUTE = ["/admin/requests", "/admin/environments", "/admin/import", "/admin/tags"];
+const OWN_ROUTE = [
+  "/admin/requests",
+  "/admin/environments",
+  "/admin/import",
+  "/admin/tags",
+  "/admin/cache",
+];
 
 describe("admin surface capabilities", () => {
   it("gates every org-scoped surface on the org-scoped right", () => {
@@ -141,6 +153,23 @@ describe("admin surface capabilities", () => {
     });
   });
 
+  it("opens Cache to the org's settings or the views' operations, route and nav alike", () => {
+    // REQ-1327: a platform administrator holds neither, and has the stores on the Platform page.
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/cache"')).slice(0, 400);
+    expect(route).toContain('capability="org_settings"');
+    expect(route).toContain('orCapability="table_registration"');
+    expect(routeCapabilities()["/admin/cache"]).toBeUndefined();
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/cache");
+    expect(item).toMatchObject({
+      capability: "org_settings",
+      orCapability: "table_registration",
+    });
+    expect(meetsRequirement(["table_registration"], item!)).toBe(true);
+    expect(meetsRequirement(["org_settings"], item!)).toBe(true);
+    expect(meetsRequirement(["platform_settings", "cross_org"], item!)).toBe(false);
+  });
+
   it("opens import on any imported object's right, route and nav alike", () => {
     const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     const route = source.slice(source.indexOf('path="/admin/import"')).slice(0, 400);
@@ -162,11 +191,53 @@ describe("admin surface capabilities", () => {
     expect(route.slice(0, 400)).toContain('orCapability="environment_owned_management"');
   });
 
-  it("keeps every deployment-wide surface on platform_settings", () => {
+  it("keeps every deployment-wide surface on the deployment check, route and nav alike", () => {
     const routes = routeCapabilities();
+    const items = NAV_GROUPS.flatMap((g) => g.items);
     for (const path of DEPLOYMENT_WIDE) {
       expect(routes[path], path).toBe("platform_settings");
+      const item = items.find((i) => i.to === path);
+      if (item) expect(item.andCapability, path).toBe("cross_org");
     }
+  });
+
+  it("asks both halves of the deployment check, as require_deployment_settings does", () => {
+    const route = routeRequirement("platform_settings");
+    expect(meetsRequirement(["platform_settings", "cross_org"], route)).toBe(true);
+    // A single-tenant org_admin holds the first alone.
+    expect(meetsRequirement(["platform_settings", "org_settings"], route)).toBe(false);
+    expect(meetsRequirement(["cross_org"], route)).toBe(false);
+    // Every other row asks only the right it names.
+    expect(routeRequirement("org_settings")).toEqual({ capability: "org_settings" });
+  });
+
+  it("gates Federation on the deployment check, read by the org where it has regions", () => {
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/federation-engine"')).slice(0, 400);
+    expect(route).toContain('requirement={routeRequirement("platform_settings")}');
+    expect(route).toContain('regionsCapability="org_settings"');
+    const item = NAV_GROUPS.flatMap((g) => g.items).find(
+      (i) => i.to === "/admin/federation-engine",
+    );
+    expect(item).toMatchObject({
+      capability: "platform_settings",
+      andCapability: "cross_org",
+      regionsCapability: "org_settings",
+      sandboxReadable: true,
+    });
+  });
+
+  it("sends the old local-users address to the org's Team page", () => {
+    // REQ-1327: local users are the org's people, on Team's user_management.
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/local-users"')).slice(0, 200);
+    expect(route).toContain('to="/team?section=local-users"');
+    expect(routeCapabilities()["/admin/local-users"]).toBeUndefined();
+  });
+
+  it("keeps the org's Observability page on observability and the platform's off it", () => {
+    expect(routeCapabilities()["/admin/observability"]).toBe("observability");
+    expect(navBarAdminCapabilities()["/admin/platform-observability"]).toBe("platform_settings");
   });
 
   it("gates cross-org administration on cross_org", () => {

@@ -16,17 +16,28 @@ which names no role, REQ-2154), and a role served one of the table's data column
 and the read is refused for want of it.
 """
 
-# Requirements: REQ-1986, REQ-1614, REQ-2154
+# Requirements: REQ-1986, REQ-1614, REQ-2154, REQ-2100, REQ-2031, REQ-301
 
 from __future__ import annotations
 
+import duckdb
+import sqlglot
+
+from provisa.compiler import stage2
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.nf_extractor import extract_nf_args
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.schema_gen import SchemaInput
-from provisa.compiler.stage2 import apply_governance, build_governance_context
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    apply_governance,
+    build_governance_context,
+)
+from provisa.fakes import digest as digest_mod
+from provisa.fakes.duckdb_functions import register
 from provisa.pgwire._pipeline import context_parameters
+from provisa.security.masking import MaskingRule, MaskType
 
 ROLE = {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]}
 
@@ -77,3 +88,140 @@ def test_a_parameter_with_no_grant_of_its_own_is_passed_by_a_role_served_the_tab
     governed, parameters = _governed(_table(["analyst"]))
     _sql, _params, args = extract_nf_args(governed, [], parameters)
     assert args == {"q": "dogs"}
+
+
+def _read(columns: list[dict], sql: str) -> tuple[str, set[str]]:
+    table = _table(["analyst"])
+    table["columns"] = columns
+    si = SchemaInput(
+        tables=[table],
+        relationships=[],
+        column_types={
+            1: [
+                ColumnMetadata(column_name=c["column_name"], data_type="varchar", is_nullable=True)
+                for c in columns
+            ]
+        },
+        naming_rules=[],
+        role=ROLE,
+        domains=[{"id": "films", "description": "Films"}],
+    )
+    ctx = build_context(si)
+    gov = build_governance_context("analyst", RLSContext(rules={}), {}, ctx, [table], ROLE)
+    return apply_governance(sql, gov), context_parameters(ctx)
+
+
+def _data(name: str) -> dict:
+    return {"column_name": name, "visible_to": ["analyst"]}
+
+
+def _parameter(name: str) -> dict:
+    return {"column_name": name, "visible_to": [], "native_filter_type": "query_arg"}
+
+
+def _binds(sql: str, **columns: list[str]) -> None:
+    """``sql`` binds in DuckDB over tables of these columns (its catalog-less names), as an engine
+    reading the statement does: a condition on a column the relation lost is a Binder Error."""
+    connection = duckdb.connect()
+    try:
+        for table, names in columns.items():
+            connection.execute(
+                f"CREATE TABLE {table} ({', '.join(f'''"{n}" text''' for n in names)})"
+            )
+        connection.execute(sql)
+    finally:
+        connection.close()
+
+
+def test_a_condition_that_stays_in_the_statement_reads_a_parameter_the_relation_exposes():
+    """REQ-2100: a code table read DIRECT keeps its parameter conditions in the statement, applied
+    over rows holding each ``_nf_`` column: the relation drops none of them (run 42527445052,
+    Binder Error: Referenced column "_nf_model" not found in FROM clause)."""
+    governed, _ = _read(
+        [_data("status"), _data("body"), _parameter("_nf_model"), _parameter("_nf_prompt")],
+        "SELECT status, body FROM movies_matching WHERE _nf_model = 'm' AND _nf_prompt = 'p'",
+    )
+    _binds(governed, movies_matching=["status", "body", "_nf_model", "_nf_prompt"])
+
+
+def test_a_parameter_the_statement_does_not_read_stays_out_of_the_relation():
+    governed, _ = _read(
+        [_data("status"), _parameter("_nf_model"), _parameter("_nf_prompt")],
+        "SELECT status FROM movies_matching WHERE _nf_model = 'm'",
+    )
+    assert "_nf_model" in governed
+    assert "_nf_prompt" not in governed
+
+
+def test_a_star_does_not_read_the_parameters():
+    """REQ-301: a parameter is an argument, not a column of the rows a ``*`` returns."""
+    governed, parameters = _read(
+        [_data("status"), _parameter("_nf_model")], "SELECT * FROM movies_matching"
+    )
+    assert "_nf_model" not in governed
+    assert parameters == {"_nf_model"}
+
+
+def test_an_extracted_argument_leaves_the_relation_with_its_condition():
+    governed, parameters = _read(
+        [_data("status"), _parameter("_nf_model")],
+        "SELECT status FROM movies_matching WHERE _nf_model = 'm'",
+    )
+    sql, _params, args = extract_nf_args(governed, [], parameters)
+    assert args == {"model": "m"}
+    assert "_nf_model" not in sql
+    _binds(sql, movies_matching=["status"])
+
+
+def test_a_landed_parameter_filters_the_landed_column_the_statement_does_not_select():
+    """REQ-2031: a table kept for good filters its landed column of the parameter's name, which
+    the read's outputs must keep (run 42527445052, Binder Error: Referenced column "name")."""
+    governed, _ = _read(
+        [_data("name"), _data("fifa_code"), _parameter("_nf_name")],
+        "SELECT fifa_code FROM movies_matching WHERE _nf_name = 'West Germany'",
+    )
+    sql, _params, args = extract_nf_args(governed, [], set(), {"_nf_name": "name"})
+    assert args == {}
+    assert "\"name\" = 'West Germany'" in sql
+    _binds(sql, movies_matching=["name", "fifa_code"])
+
+
+def _faked_table_governed(sql: str) -> str:
+    """``sql`` governed over ``t``, whose faked column reads it through a chain (REQ-1494)."""
+    gov = GovernanceContext(role_id="analyst")
+    gov.table_map = {"t": 1}
+    gov.all_columns = {1: [("a", "varchar"), ("email", "varchar")]}
+    gov.parameter_columns = {1: [("_nf_x", "varchar")]}
+    gov.visible_columns = {1: None}
+    gov.masking_rules = {(1, "email"): (MaskingRule(MaskType.fake, fake="email()"), "varchar")}
+    stage2._bind_fakes(gov)
+    return apply_governance(sql, gov)
+
+
+def _binds_faked(sql: str, *columns: str) -> None:
+    connection = duckdb.connect()
+    try:
+        register(connection)
+        connection.execute(f"CREATE TABLE t ({', '.join(f'{c} text' for c in columns)})")
+        connection.execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    finally:
+        connection.close()
+
+
+def test_an_extracted_argument_leaves_every_level_of_a_chain(monkeypatch):
+    """The landed table holds no parameter column, so none is read at any level once the
+    condition is extracted."""
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    governed = _faked_table_governed("SELECT a FROM t WHERE _nf_x = '1'")
+    sql, _params, args = extract_nf_args(governed, [], {"_nf_x"})
+    assert args == {"x": "1"}
+    assert "_nf_x" not in sql
+    _binds_faked(sql, "a", "email")
+
+
+def test_a_parameter_is_exposed_through_every_level_of_a_chain(monkeypatch):
+    """A faked column's table is read through a chain of projections under the relation
+    (REQ-1494): one the statement names passes through each, or the engine cannot bind it."""
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    governed = _faked_table_governed("SELECT a FROM t WHERE _nf_x = '1'")
+    _binds_faked(governed, "a", "email", "_nf_x")

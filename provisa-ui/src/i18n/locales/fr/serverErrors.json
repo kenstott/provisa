@@ -514,6 +514,7 @@
       "use_domains_invalid": "use_domains doit être true, false ou null",
       "claims_with_multitenancy": "Un déploiement multi-locataire ne peut pas lire les attributions de rôles dans les claims de connexion : il accorde lui-même les rôles, par organisation, et les claims les écraseraient. Définissez la source des attributions sur Provisa.",
       "federation_unknown_field": "Ce n'est pas un paramètre de fédération : {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "Paramètre de fédération non valide : {{error}}",
       "federation_role_unknown": "Le rôle de fédération '{{role}}' n'est pas un rôle de cette organisation"
     },
@@ -757,6 +758,9 @@
         "successor_is_self": "Un produit de données ne peut pas être son propre successeur.",
         "successor_retired": "Le successeur « {{successor}} » est retiré. Choisissez un produit de données en service.",
         "successor_other_domain": "Le successeur « {{successor}} » est dans le domaine {{domain}}. Les membres d'un produit partagent son domaine : choisissez un successeur du même domaine."
+      },
+      "members": {
+        "domain_has_members": "Le produit de données {{data_product}} ne peut pas passer au domaine {{domain}} tant qu'il contient des membres d'un autre domaine : {{members}}. Retirez-les d'abord du produit."
       },
       "finding": {
         "no_members": "Aucune table, vue ni commande n'appartient à ce produit de données.",

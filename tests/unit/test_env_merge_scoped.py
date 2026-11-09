@@ -120,7 +120,6 @@ class TestAScopedMerge:
 class TestWhatAnObjectRequires:
     def test_a_table_requires_its_domain_source_and_the_tables_it_points_at(self):
         body = _order(
-            product_id="orders",
             glossary=[{"column_name": "total", "term": "terms/revenue.yaml"}],
             meta_links=[{"target": "meta/tables/Catalog.yaml"}],
         )
@@ -134,7 +133,21 @@ class TestWhatAnObjectRequires:
             "sales/tables/Link.yaml",
             "terms/revenue.yaml",
             "meta/tables/Catalog.yaml",
-            "data-products/orders.yaml",
+        }
+
+    def test_a_data_product_requires_its_domain_and_its_members(self):
+        # REQ-1634: the product owns its membership, so it stands on its member tables and
+        # commands; a member names no product.
+        body = {
+            "domain_id": "sales",
+            "tables": [{"table": ORDER}, {"table": CUSTOMER}],
+            "commands": [{"command_name": "refund"}],
+        }
+        assert requirements("data-products/orders.yaml", body, {}) == {
+            DOMAIN,
+            ORDER,
+            CUSTOMER,
+            "commands/refund.yaml",
         }
 
     def test_a_table_in_no_domain_requires_the_root_domain(self):
