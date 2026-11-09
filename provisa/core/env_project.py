@@ -56,6 +56,7 @@ KIND_DIRS: dict[str, str] = {
     "sources": "sources",
     "api_sources": "api-sources",
     "kafka_sources": "kafka-sources",
+    "connectors": "connectors",  # REQ-2221
     "metrics": "metrics",
     "roles": "roles",
     "tags": "tags",
@@ -553,6 +554,9 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         tree[kind_path(KIND_DIRS["calendars"], row["name"], row["version"])] = entity(
             "calendars", row
         )
+
+    for row in await _rows(conn, org.connectors, schema):  # REQ-2221
+        tree[kind_path(KIND_DIRS["connectors"], row["name"])] = entity("connectors", row)
 
     for table in (org.tracked_functions, org.tracked_webhooks):
         for row in await _rows(conn, table, schema):

@@ -186,9 +186,10 @@ class Identity:
         der = ssl.PEM_cert_to_DER_cert((self.state / CERTIFICATE).read_text())
         return pairing_code(der, (self.state / SECRET).read_text())
 
-    def pair(self, conn: ssl.SSLSocket, bounds: Bounds) -> None:
+    def pair(self, conn: ssl.SSLSocket, bounds: Bounds, manifest: dict | None = None) -> None:
         """Take one pair message on ``conn``: with the pairing secret, keep its certificate and
-        the bounds of the host's DuckDB it carries."""
+        the bounds of the host's DuckDB it carries, and answer with the image's ``manifest``
+        (REQ-2221), which is what a connector known only by its image is read by."""
         body = read_body(conn)
         message = json.loads(body[1:]) if body and body[:1] == _JSON else {}
         with self._lock:
@@ -218,7 +219,7 @@ class Identity:
             self.context.load_verify_locations(self.state / TRUSTED)
             self.context.verify_mode = ssl.CERT_OPTIONAL
         bounds.apply(message["duckdb"])
-        conn.sendall(frame({"op": "paired"}))
+        conn.sendall(frame({"op": "paired", "manifest": manifest}))
         sys.stderr.write("paired with Provisa\n")
 
 
@@ -664,10 +665,18 @@ class Front(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, port: int, identity: Identity, worker: Worker, names: dict) -> None:
+    def __init__(
+        self,
+        port: int,
+        identity: Identity,
+        worker: Worker,
+        names: dict,
+        manifest: dict | None = None,
+    ) -> None:
         self.identity = identity
         self.worker = worker
         self.names = names
+        self.manifest = manifest
         super().__init__(("", port), _Handler)
 
 
@@ -689,7 +698,7 @@ class _Handler(socketserver.BaseRequestHandler):
                 return
             conn = self.front.identity.context.wrap_socket(raw, server_side=True)
             if not self.front.identity.paired:
-                self.front.identity.pair(conn, self.front.worker.bounds)
+                self.front.identity.pair(conn, self.front.worker.bounds, self.front.manifest)
                 return
             if not conn.getpeercert():
                 return  # no certificate, or not the paired Provisa's: the TLS check refused it
@@ -738,11 +747,14 @@ def main(argv: list[str]) -> int:
         sys.path.insert(1, lib)
     identity = Identity(Path(state))
     names = json.loads(Path(names_file).read_text())
+    # REQ-2221: the image's manifest, handed over on pairing; an image built earlier has none.
+    manifest_file = os.environ.get("PROVISA_MANIFEST_FILE")
+    manifest = json.loads(Path(manifest_file).read_text()) if manifest_file else None
     worker = Worker(worker_argv, Bounds(Path(state), spill))
     pairing = identity.code()
     if pairing is not None:
         sys.stderr.write(f"pairing code: {pairing}\n")
-    server = Front(int(port), identity, worker, names)
+    server = Front(int(port), identity, worker, names, manifest)
     sys.stderr.write(f"remote host listening on {server.server_address[1]}\n")
     server.serve_forever()
     return 0

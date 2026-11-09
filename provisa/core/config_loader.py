@@ -1427,6 +1427,10 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
 
     for spec in config.written.kafka_sources:
         await kafka_repo.upsert(conn, spec)
+    from provisa.core.repositories import connector as connector_repo
+
+    for connector in config.connectors:  # REQ-2221
+        await connector_repo.upsert(conn, connector)
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -2086,6 +2090,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     from provisa.core.repositories.integrity import ObjectRef, discard
     from provisa.core.schema_org import (
         calendars,
+        connectors,
         data_products,
         domains,
         glossary_term_refs,
@@ -2206,6 +2211,7 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
                 await discard(conn, ObjectRef(kind, ident))
     await conn.execute_core(delete(scheduled_triggers))
     await conn.execute_core(delete(kafka_sources))
+    await conn.execute_core(delete(connectors))  # REQ-2221
     await conn.execute_core(delete(naming_rules))
     # Roles a child before its parents; the seeded ones and those who hold them stay.
     remaining = {

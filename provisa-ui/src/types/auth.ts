@@ -70,6 +70,8 @@ export type Capability =
   | "data_product_rw"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
+  // REQ-2229: send OpenLineage run events to the receiver.
+  | "lineage_report"
   | "dq_read"
   | "dq_rw"
   | "ignore_relationships"

@@ -30,9 +30,13 @@ from provisa.codesource.manifest import (
     EnumOf,
     Field,
     ListOf,
+    Manifest,
     ManifestRefused,
     Named,
+    Requirement,
     Scalar,
+    manifest_from_json,
+    manifest_json,
     read_manifest,
 )
 
@@ -143,11 +147,10 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
         )
     )
     (orders,) = manifest.exports
-    assert (orders.kind, orders.description, orders.returns, orders.preview) == (
+    assert (orders.kind, orders.description, orders.returns) == (
         "table",
         "Orders of one customer.",
         Named("Order"),
-        False,
     )
     assert [(p.name, p.shape, p.required, p.nullable) for p in orders.parameters] == [
         ("customerId", Scalar("text"), True, False),
@@ -182,10 +185,26 @@ def test_a_table_that_returns_a_single_object_is_refused_by_name():
     assert problems == ["order: @table returns a single value, not a collection of rows"]
 
 
-def test_a_loose_row_type_is_typed_by_a_preview():
-    for loose in ({"kind": "any"}, {"kind": "unknown"}, {"kind": "record", "value": N}):
-        (table,) = read_manifest(raw(fn("rows", ["table"], [], arr(loose)))).exports
-        assert (table.returns, table.preview) == (LOOSE, True)
+LOOSE_ROW = (
+    "its row type is loose (any, unknown, a Record or a dict); declare a typed row whose fields "
+    "are its columns"
+)
+
+
+@pytest.mark.parametrize(
+    "loose", [{"kind": "any"}, {"kind": "unknown"}, {"kind": "record", "value": N}]
+)
+def test_a_loose_row_type_is_refused_by_name(loose):
+    assert refused(
+        fn("rows", ["table"], [], arr(loose)),
+        fn("feed", ["stream"], [], it(loose, async_=True)),
+    ) == [f"rows: {LOOSE_ROW}", f"feed: {LOOSE_ROW}"]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose():
+    row = inputs(("payload", False, {"kind": "record", "value": N}))
+    (table,) = read_manifest(raw(fn("rows", ["table"], [], arr(row)))).exports
+    assert table.returns == Anonymous((Field("payload", LOOSE, False),))
 
 
 def test_a_row_that_is_not_an_object_is_refused():
@@ -476,3 +495,67 @@ def test_a_columns_function_that_does_not_batch_is_refused_by_name():
         "loose: @columns declares its output columns: its result is a typed object",
         "nothing_in: @columns takes at least one input column",
     ]
+
+
+# -- REQ-2221: what the code requires -------------------------------------------------------------
+
+
+def _tagged(name: str, *requires: str, node: bool = False) -> dict:
+    """A @command export with ``@requires`` tags, as each reader reports them: Node's lists every
+    tag and its text; Python's and Go's list a tag with an argument under tag_arguments alone."""
+    entry = fn(name, ["command"], [], S)
+    arguments = [{"tag": "requires", "text": r} for r in requires if r or node]
+    entry["tag_arguments"] = arguments
+    if node:
+        entry["tags"] += ["requires"] * len(requires)
+    else:
+        entry["tags"] += ["requires"] * sum(1 for r in requires if not r)
+    return entry
+
+
+@pytest.mark.parametrize("node", [True, False])
+def test_requires_is_read_across_exports_by_name(node):
+    raw = {
+        "exports": [
+            _tagged("one", "db_uri:secret", "region", node=node),
+            _tagged("two", "db_uri:secret", node=node),
+        ],
+        "types": {},
+    }
+    assert read_manifest(raw).requires == (
+        Requirement("db_uri", True),
+        Requirement("region", False),
+    )
+
+
+def test_requires_on_an_untagged_export_is_ignored_with_it():
+    entry = _tagged("helper", "db_uri")
+    entry["tags"] = []
+    assert read_manifest({"exports": [entry], "types": {}}).requires == ()
+
+
+@pytest.mark.parametrize("node", [True, False])
+def test_requires_without_a_name_is_refused(node):
+    with pytest.raises(BundleRefused, match="@requires names a value"):
+        read_manifest({"exports": [_tagged("one", "", node=node)], "types": {}})
+
+
+@pytest.mark.parametrize("bad", ["db uri", "db_uri:plain", "1abc", "db_uri:secret:x"])
+def test_requires_badly_written_is_refused(bad):
+    with pytest.raises(BundleRefused, match="write NAME or NAME:secret"):
+        read_manifest({"exports": [_tagged("one", bad)], "types": {}})
+
+
+def test_a_value_secret_in_one_place_only_is_refused():
+    raw = {"exports": [_tagged("one", "db_uri:secret"), _tagged("two", "db_uri")], "types": {}}
+    with pytest.raises(BundleRefused, match="db_uri is a secret in one place only"):
+        read_manifest(raw)
+
+
+def test_requires_is_kept_with_a_built_source():
+    manifest = Manifest((), {}, (Requirement("db_uri", True),))
+    assert manifest_from_json(manifest_json(manifest)) == manifest
+
+
+def test_a_manifest_kept_before_requires_existed_reads_as_requiring_nothing():
+    assert manifest_from_json({"exports": [], "types": {}}).requires == ()

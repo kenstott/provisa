@@ -16,13 +16,18 @@
 import { describe, it, expect } from "vitest";
 // prettier-ignore
 // @ts-expect-error the generator is plain ESM outside the UI's tsconfig
-import { renderPicker, staleCounts, stalePages, REQUIREMENT_ONLY } from "../../../scripts/gen-site-source-picker.mjs";
+import { HOME_ROW, renderPicker, staleCounts, stalePages, REQUIREMENT_ONLY } from "../../../scripts/gen-site-source-picker.mjs";
 import { SOURCE_TYPES } from "../pages/sources/constants";
 
 describe("site source picker", () => {
   it("lists every type the picker lists, plus the requirement-only additions", async () => {
     const { total } = await renderPicker();
     expect(total).toBe(SOURCE_TYPES.length + REQUIREMENT_ONLY.length);
+  });
+
+  it("renders one entry per source of the home page's row", async () => {
+    const { row } = await renderPicker();
+    expect(row.match(/<li>/g)).toHaveLength(HOME_ROW.length);
   });
 
   it("is in step with constants.ts in site/index.html and site/why/sources.html", async () => {

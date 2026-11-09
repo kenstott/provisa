@@ -91,6 +91,13 @@ import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHi
 import { KAFKA, kafkaCredentials, kafkaHints } from "./sources/kafka";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
+import { fetchConnectors, type Connector } from "../api/connectors";
+import {
+  connectorMappingJson,
+  connectorPick,
+  missingConnectorFields,
+  pickedConnector,
+} from "./sources/connector";
 import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
 import { uploadCodeArchive } from "../api/codeUploads";
 import { WIKIPEDIA, wikipediaHints } from "./sources/wikipedia";
@@ -122,7 +129,7 @@ import { useListSortGroup, pageItems, type ListColumn } from "../components/list
 import { KeptTablesNotice } from "../components/KeptTablesNotice";
 import { keptTablesOf } from "../lib/keptTables";
 import type { KeptTable } from "../lib/keptTables";
-import { SourceTypePicker } from "../components/SourceTypePicker";
+import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePicker";
 import { athenaHints } from "./sources/athena";
 import { matchesQuery } from "../lib/searchItems";
 
@@ -168,6 +175,9 @@ export function SourcesPage() {
   const [readSeeded, setReadSeeded] = useState<string | null>(null);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  // The offered connector this source is being made from; null for every other way of adding one.
+  const [connector, setConnector] = useState<Connector | null>(null);
   // "+ Source" opens the type picker first; the create form opens on a choice, with that type.
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   // Only the type-specific branches below (snowflake/databricks/.../sparql) rebuild
@@ -404,6 +414,14 @@ export function SourcesPage() {
       .catch((e) => setError(String(e)));
   }, []);
 
+  // The connectors the organization offers, listed beside the built-in types.
+  useEffect(() => {
+    if (!activeOrgId) return;
+    fetchConnectors(activeOrgId)
+      .then(setConnectors)
+      .catch((e) => setError(String(e)));
+  }, [activeOrgId]);
+
   // The page loader is for the first load only. A refetch (after a save, a registration, a
   // delete) keeps the page mounted, so an open Schema Discovery panel keeps what is typed and
   // discovered in it (REQ-150); the refetched rows replace the old ones in place.
@@ -417,8 +435,20 @@ export function SourcesPage() {
 
   // Type dropdown annotated + gated by the current engine's reach (REQ-947): each option shows
   // LIVE / REPLICA, and a type the engine cannot reach is disabled with the engine(s) that can.
-  const typeSelectData = () =>
-    CATEGORIES.map((cat) => ({
+  const typeSelectData = (): PickerGroup[] => [
+    ...(connectors.length > 0
+      ? [
+          {
+            group: "Connectors",
+            items: connectors.map((c) => ({
+              value: connectorPick(c.name),
+              label: c.name,
+              name: c.name,
+            })),
+          },
+        ]
+      : []),
+    ...CATEGORIES.map((cat) => ({
       group: cat,
       items: SOURCE_TYPES.filter((s) => s.category === cat)
         .filter((s) => s.value !== "soda" || !hostedPlane)
@@ -433,7 +463,8 @@ export function SourcesPage() {
             disabled: !info.selectable,
           };
         }),
-    }));
+    })),
+  ];
 
   const resetSpFields = () => {
     setSpAuthType("CLIENT_CREDENTIALS");
@@ -443,7 +474,11 @@ export function SourcesPage() {
     setSpPassword("");
   };
 
-  const handleTypeChange = (type: string) => {
+  const handleTypeChange = (picked: string) => {
+    // A connector the organization offers is made as a source of its own language.
+    const offered = pickedConnector(picked, connectors);
+    setConnector(offered);
+    const type = offered ? offered.language : picked;
     // REQ-929: keep change_signal valid for the new type's capabilities.
     const signals = sourceChangeSignals(type);
     const changeSignal = signals.includes(form.changeSignal) ? form.changeSignal : signals[0];
@@ -596,6 +631,10 @@ export function SourcesPage() {
     }
     if (form.type === "files" && repeatedNames(excelHintsOf(authFields)).size > 0) {
       setError(t("excelHints.repeatedFix"));
+      return;
+    }
+    if (connector && missingConnectorFields(authFields, connector).length > 0) {
+      setError(t("connectorSetup.missing"));
       return;
     }
     setSubmitting(true);
@@ -779,55 +818,57 @@ export function SourcesPage() {
           ? filesMappingJson(editingSourceId ? editingSourceMappingJson : null, authFields)
           : form.type === "data_profiler"
             ? profilerMappingJson(authFields) // REQ-1934
-            : CODE_SOURCE_TYPES.has(form.type)
-              ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
-              : form.type === "cloudops"
-                ? cloudopsMappingJson(authFields) // REQ-1947
-                : form.type === "sparql"
-                  ? sparqlMappingJson(authFields) // REQ-2138
-                  : form.type === GOOGLE_WORKSPACE
-                    ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-                    : form.type === MICROSOFT_365
-                      ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-                      : form.type === LOGS
-                        ? JSON.stringify(logsMapping(authFields)) // REQ-1996
-                        : form.type === "salesforce"
-                          ? salesforceMappingJson(authFields) // REQ-1946
-                          : form.type === "quickbooks"
-                            ? quickbooksMappingJson(authFields) // REQ-2197
-                            : form.type === "sharepoint"
-                              ? JSON.stringify({
-                                  auth_type: spAuthType,
-                                  ...(spAuthType === "CERTIFICATE"
-                                    ? {
-                                        certificate_path: spCertPath,
-                                        certificate_password: spCertPassword,
-                                      }
-                                    : {}),
-                                  ...(spAuthType === "USERNAME_PASSWORD"
-                                    ? { sp_username: spUsername, sp_password: spPassword }
-                                    : {}),
-                                })
-                              : form.type === "splunk"
+            : connector && CODE_SOURCE_TYPES.has(form.type)
+              ? connectorMappingJson(authFields, connector)
+              : CODE_SOURCE_TYPES.has(form.type)
+                ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
+                : form.type === "cloudops"
+                  ? cloudopsMappingJson(authFields) // REQ-1947
+                  : form.type === "sparql"
+                    ? sparqlMappingJson(authFields) // REQ-2138
+                    : form.type === GOOGLE_WORKSPACE
+                      ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+                      : form.type === MICROSOFT_365
+                        ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                        : form.type === LOGS
+                          ? JSON.stringify(logsMapping(authFields)) // REQ-1996
+                          : form.type === "salesforce"
+                            ? salesforceMappingJson(authFields) // REQ-1946
+                            : form.type === "quickbooks"
+                              ? quickbooksMappingJson(authFields) // REQ-2197
+                              : form.type === "sharepoint"
                                 ? JSON.stringify({
-                                    use_token: splunkAuthMode === "token",
-                                    ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                                    auth_type: spAuthType,
+                                    ...(spAuthType === "CERTIFICATE"
+                                      ? {
+                                          certificate_path: spCertPath,
+                                          certificate_password: spCertPassword,
+                                        }
+                                      : {}),
+                                    ...(spAuthType === "USERNAME_PASSWORD"
+                                      ? { sp_username: spUsername, sp_password: spPassword }
+                                      : {}),
                                   })
-                                : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                                  // sheet id (which rides in `database`), so it travels in the mapping like the other
-                                  // connectors' extra options.
-                                  form.type === "google_sheets"
+                                : form.type === "splunk"
                                   ? JSON.stringify({
-                                      credentials_json: authFields.credentials_json ?? "",
+                                      use_token: splunkAuthMode === "token",
+                                      ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
                                     })
-                                  : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                                    // region/endpoint) are a mapping-discriminated config choice read by
-                                    // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                                    // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                                    // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                                    form.type === "hive" || form.type === "hive_s3"
-                                    ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                                    : undefined;
+                                  : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                                    // sheet id (which rides in `database`), so it travels in the mapping like the other
+                                    // connectors' extra options.
+                                    form.type === "google_sheets"
+                                    ? JSON.stringify({
+                                        credentials_json: authFields.credentials_json ?? "",
+                                      })
+                                    : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                      // region/endpoint) are a mapping-discriminated config choice read by
+                                      // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                      // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                      // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                      form.type === "hive" || form.type === "hive_s3"
+                                      ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                      : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -1227,6 +1268,7 @@ export function SourcesPage() {
   const sourceFormFieldsProps: SourceFormFieldsProps = {
     form,
     setForm,
+    connector,
     authType,
     setAuthType,
     authFields,

@@ -48,6 +48,7 @@ import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES } from "./codeSource";
+import { ConnectorSetupFields } from "./ConnectorSetupFields";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -84,6 +85,7 @@ export function SourceFormFieldsExtended({
   setAuthType,
   authFields,
   setAuthFields,
+  connector,
   editingSourceId,
   essential,
   cdc,
@@ -671,7 +673,14 @@ export function SourceFormFieldsExtended({
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
-      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+      {connector && (
+        <ConnectorSetupFields
+          connector={connector}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
+      )}
+      {!connector && CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
         <CodeSourceFields
           type={form.type}
           fields={authFields}

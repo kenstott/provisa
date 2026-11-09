@@ -19,6 +19,7 @@ import { IcebergCatalogFields } from "./IcebergCatalogFields";
 import { ObjectStoreCredentialFields } from "./ObjectStoreCredentialFields";
 import { CLOUD_FILE_TYPES, objectStoreOf } from "./objectStoreHints";
 import { SourceFormFieldsExtended } from "./SourceFormFieldsExtended";
+import type { Connector } from "../../api/connectors";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { FileLocationFields } from "./FileLocationFields";
 import { UPLOAD_TYPES, fileLocationOf } from "./sourceUpload";
@@ -72,6 +73,8 @@ export interface CdcState {
 export interface SourceFormFieldsProps {
   form: SourceFormState;
   setForm: (f: SourceFormState) => void;
+  /** The connector the organization offers that this source is being made from, if any. */
+  connector?: Connector | null;
   authType: string;
   setAuthType: (v: string) => void;
   authFields: Record<string, string>;
