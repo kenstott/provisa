@@ -879,7 +879,9 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
         )
     _identity = getattr(request.state, "identity", None)
     _apply_scalars(body, state, updated, getattr(_identity, "user_id", "anonymous"))
-    if "graphql_remote" in body:
+    # REQ-1327: only a save naming a traversal limit, the one the deployment check was asked for,
+    # writes the deployment's file; the row limit went to the org's rows above.
+    if "graphql_remote" in body and not _graphql_remote_is_org_only(body):
         _apply_graphql_remote(body["graphql_remote"], updated)
     if "otel" in body:
         _apply_otel(body["otel"], updated, updated_by=getattr(_identity, "user_id", "anonymous"))
