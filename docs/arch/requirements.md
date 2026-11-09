@@ -26763,3 +26763,15 @@ Maintainer 2026-11-09. The start scripts compare the checkout's virtual environm
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2224 · Table Registration {#REQ-2224}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included. Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout. Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh. Both are set on the table, and every setting has its UI.
+
+**Code:** —
+
+**Tests:** —

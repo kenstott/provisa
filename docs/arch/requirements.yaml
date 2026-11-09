@@ -93997,3 +93997,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the start stops, the environment is unchanged, and the sync command is printed'
   stakeholders:
   - app-developer
+- id: REQ-2224
+  value: A table can say how long a read waits for its first landing, and can serve what it holds while
+    a refresh runs.
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Table Registration
+  feature: replicas-and-freshness-freshness-gate
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included.
+    Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout.
+    Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh.
+    Both are set on the table, and every setting has its UI.'
+  scenario: Given a code table with a read wait longer than its run, and lazy refresh\n\nWhen it is first
+    read\n\nThen the read waits for the rows\n\nWhen it is read past its TTL\n\nThen the held rows are
+    answered with their landing time and a refresh starts
+  stakeholders:
+  - data-engineer
