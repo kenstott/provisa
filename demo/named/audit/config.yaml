@@ -326,18 +326,18 @@ relationships:
 # The words of a Single Audit, grounded through their edges in the terms the firm's and the public
 # tables' columns derive (expended, obligated, Assistance Listing).
 glossary_terms:
-- name: Single Audit
+- name: single audit
   approve: true
   definition: 'The audit the Uniform Guidance requires of an organisation that spends $750,000 or more of federal awards in a year ($1,000,000 from fiscal 2025): its financial statements and its compliance with each major program, filed with the Federal Audit Clearinghouse.'
   domains:
   - audit
-- name: Schedule of Expenditures of Federal Awards
+- name: schedule of expenditures of federal awards
   approve: true
   definition: 'The schedule an auditee prepares of every federal award it spent in the year, by Assistance Listing, direct or passed through, with the amount expended; the auditor tests it against the award records.'
   domains:
   - audit
   edges:
-  - to: Single Audit
+  - to: single audit
     rel_type: PART_OF
 - name: amount expended
   approve: true
@@ -347,7 +347,7 @@ glossary_terms:
   edges:
   - to: schedule of expenditures of federal awards
     rel_type: PART_OF
-- name: Assistance Listing
+- name: assistance listing
   approve: true
   definition: 'The number a federal assistance program is listed under (formerly the CFDA number), agency prefix and program, such as 93.224 for the Health Center Program.'
   domains:
@@ -390,7 +390,7 @@ glossary_terms:
   domains:
   - audit
   edges:
-  - to: Schedule of Expenditures of Federal Awards
+  - to: schedule of expenditures of federal awards
     rel_type: RELATED_TO
 - name: readiness memo
   approve: true
@@ -398,5 +398,5 @@ glossary_terms:
   domains:
   - audit
   edges:
-  - to: Single Audit
+  - to: single audit
     rel_type: RELATED_TO

@@ -262,7 +262,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     from provisa.api.demo_templates import demo_scans
 
     scanned = set(demo_scans(home))
-    terms = {t["name"] for t in config.get("glossary_terms", [])}
+    terms = {t["name"].strip().lower() for t in config.get("glossary_terms", [])}  # as stored
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     profiled = {
@@ -861,6 +861,29 @@ def test_each_surface_s_call_on_the_demo_is_accepted():
             },
         ],
     )
+
+
+@pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
+def test_a_demo_writes_its_term_names_in_lower_case_and_the_tour_names_one_it_has(path):
+    """REQ-1844: every term name in the catalog is lower case. The glossary list marks each row
+    data-glossary-term=<stored name>, and the tour clicks the row by that exact string, so a step
+    that spells its term other than as stored never finds the row and the page waits forever. The
+    demo's config and tour write the names as stored, so none is upper case, and each term step
+    names a term the config declares."""
+    config = yaml.safe_load((path.parent / "config.yaml").read_text())
+    declared = config.get("glossary_terms") or []
+    written = [t["name"] for t in declared]
+    written += [e["to"] for t in declared for e in t.get("edges") or []]
+    steps = yaml.safe_load(path.read_text())["steps"]
+    written += [s["term"] for s in steps if "term" in s]
+    upper = [n for n in written if n != n.strip().lower()]
+    assert not upper, f"{path.parent.name}: term names not in lower case: {upper}"
+    names = {t["name"] for t in declared}
+    for step in steps:
+        if "term" in step:
+            assert step["term"] in names, (
+                f"{path.parent.name}: step {step['key']}: {step['term']!r}"
+            )
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])

@@ -79,6 +79,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.column_name,
     table_columns.c.domain_id,
     table_columns.c.data_type,
+    table_columns.c.path,  # REQ-2222: a nested field's location is the model's
     table_columns.c.alias,
     table_columns.c.description,
     table_columns.c.visible_to,

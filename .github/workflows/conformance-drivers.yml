@@ -28,6 +28,9 @@ name: Conformance (drivers)
 # minimum bcrypt cost.
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:

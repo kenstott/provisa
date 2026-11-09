@@ -24,6 +24,9 @@ name: Conformance (Cypher)
 run-name: ${{ inputs.features && format('Conformance (Cypher) [{0}]', inputs.features) || 'Conformance (Cypher)' }}
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:
@@ -34,8 +37,6 @@ on:
         description: "TCK feature-name globs, comma-separated (e.g. Merge*,Set1*); empty runs all"
         required: false
         default: ""
-  # verification calls it (verify-surface.yml), on the run's own commit.
-  workflow_call:
 
 permissions:
   contents: read
