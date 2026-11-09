@@ -47,6 +47,7 @@ def _input(**over):
         off_peak_tz=None,  # REQ-1141
         arguments=None,  # REQ-2061
         landing_filter=None,  # REQ-2062
+        read_wait=None,  # REQ-2224
         view_sql=None,
         dq_contract=None,  # REQ-1443
         profiler_source_id=None,  # REQ-1934

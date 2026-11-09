@@ -514,6 +514,7 @@ export interface RegisteredTable {
   fileGlob?: string | null; // REQ-788: one logical table over a glob of files (files sources only)
   arguments?: Record<string, unknown> | null; // REQ-2061: an API's arguments fixed for every read
   landingFilter?: string | null; // REQ-2062: the predicate its replica's rows pass
+  readWait?: number | null; // REQ-2224: seconds a read waits with nothing landed; 0 answers no rows
   sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path
   materialize: boolean;
   mvRefreshInterval: number;

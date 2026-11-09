@@ -37,6 +37,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     sourceFileColumn: t.sourceFileColumn || null, // REQ-788
     arguments: t.arguments ?? null, // REQ-2061
     landingFilter: t.landingFilter || null, // REQ-2062
+    readWait: t.readWait ?? null, // REQ-2224
     materialize: t.materialize,
     mvRefreshInterval: t.mvRefreshInterval,
     mvDebounceQuiet: t.mvDebounceQuiet,

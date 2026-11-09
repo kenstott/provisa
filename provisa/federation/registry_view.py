@@ -266,6 +266,8 @@ def _build_registered_tables(registered: list[dict]) -> list[Any]:
                 query_template=rt["query_template"],
                 # REQ-2062: what of the table its replica holds (None = every row).
                 landing_filter=rt["landing_filter"],
+                # REQ-2224: what a read does with nothing landed.
+                read_wait=rt["read_wait"],
                 live=None if not rt["live"] else LiveDeliveryConfig.model_validate(rt["live"]),
                 # REQ-929: the table's own change signal is on its row — saved there by the config
                 # load and by the admin alike — so a table registered at runtime (no config entry)

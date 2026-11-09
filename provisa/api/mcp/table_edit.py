@@ -158,6 +158,7 @@ def table_input(t: Any) -> Any:
         import_set=t.import_set or None,
         arguments=dict(t.arguments or {}),
         landing_filter=t.landing_filter or None,
+        read_wait=t.read_wait,
         load_protected=t.load_protected,
         off_peak_window=t.off_peak_window,
         off_peak_tz=t.off_peak_tz,
