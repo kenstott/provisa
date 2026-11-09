@@ -3091,17 +3091,6 @@ async def _built_current() -> bool:
     return True
 
 
-async def model_stamp_moved_without_a_build() -> bool:
-    """The config watcher's first step for a changed ``model`` stamp (REQ-1914): if the change was
-    one the build does not read (a data product's status), bring the bound runtime's stamp forward
-    and answer True; there is nothing else to reload. False when a build is what it takes, or when
-    the runtime was already at the stored stamp, as after this worker's own rebuild."""
-    runtime = state._active_runtime()
-    async with _rebuild_lock():
-        loaded = runtime.model_stamp
-        return await _built_current() and runtime.model_stamp != loaded
-
-
 def start_replica_convergence() -> None:
     """REQ-1915: converge the bound org's replicas to the model just built, detached, in a process
     that does background work (replica_converge.converge_logged)."""
@@ -3134,7 +3123,7 @@ async def _rebuild_schemas(
     announce: bool = True,
     converge: bool = True,
     if_stale: bool = False,
-) -> None:
+) -> bool:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -3150,13 +3139,17 @@ async def _rebuild_schemas(
     # ``if_stale=True`` (REQ-1914) is the config watcher's reload: it saw a stamp newer than the
     # runtime's, which the change's own rebuild -- running, or waited for here -- often records
     # first. A runtime already built at the stored ``build`` stamp is what the reload was for, and
-    # building it again spent a whole rebuild after every write.
+    # building it again spent a whole rebuild after every write. Answers True when that reload
+    # found only the ``model`` stamp behind, a change the build does not read (a data product's
+    # status): the runtime took the stamp and there is nothing else to reload. Otherwise False.
     #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
     asked = time.monotonic()
     async with _rebuild_lock():
-        if if_stale and state.model_db is not None and await _built_current():
-            return
+        if if_stale and state.model_db is not None:
+            loaded = state._active_runtime().model_stamp
+            if await _built_current():
+                return state._active_runtime().model_stamp != loaded
         began = time.monotonic()
         # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
         # landed tables' reconcile and the routes it publishes alike.
@@ -3173,6 +3166,7 @@ async def _rebuild_schemas(
             began - asked,
             time.monotonic() - began,
         )
+    return False
 
 
 async def _rebuild_schemas_impl(

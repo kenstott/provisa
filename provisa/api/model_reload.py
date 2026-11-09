@@ -193,18 +193,17 @@ async def reload_model(rt: "OrgRuntime") -> object:
     A change the build does not read builds nothing: the runtime takes the new ``model`` stamp and
     its schema generation stays, as what a kept plan was made from has not changed. What follows
     the stamp (the response cache, the hot tables, the audit record) moves with it."""
-    from provisa.api.app import _rebuild_schemas, model_stamp_moved_without_a_build
+    from provisa.api.app import _rebuild_schemas
 
     if not _held(rt):
         return NOT_RELOADED  # dropped since the watcher listed it: there is no copy left to reload
 
     async def _rebuild() -> None:
-        if await model_stamp_moved_without_a_build():
-            return
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
         # Built at the stored stamp by the time its turn comes (this worker's own change), it is
         # not built again.
-        await _rebuild_schemas(announce=False, if_stale=True)
+        if await _rebuild_schemas(announce=False, if_stale=True):
+            return  # only the stamp moved: the model these steps follow has not changed
         # REQ-1922: this region's state rows whose model owner the change removed.
         await prune_region_state(rt)
         # REQ-1003: the org's triggers are its model, so a trigger made or changed on another
