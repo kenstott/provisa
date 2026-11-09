@@ -33,6 +33,7 @@
     "dq_rw": "Datenqualitätsprüfungen, Erwartungen und Zusagen verwalten.",
     "ignore_relationships": "Tabellen verknüpfen, für die keine genehmigte Beziehung besteht.",
     "write": "Daten schreiben, wo die Rolle eine Schreibberechtigung hat.",
+    "command_execution": "Die dieser Rolle zugewiesenen Befehle in den von ihr aufgeführten Domänen ausführen.",
     "no_aggregations": "Dieser Rolle Aggregatabfragen entziehen.",
     "data_residency": "Für die aufgeführten Regionen festlegen, wo die Daten einer Tabelle, einer Quelle oder einer materialisierten View liegen.",
     "notHeldByParent": "Kein übergeordnetes Element dieser Rolle hat dieses Recht.",

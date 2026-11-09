@@ -40,8 +40,8 @@ def unknown_command(name: str) -> ApiError:
 
 def admit_command(command: dict, state, role_id: str | None, name: str) -> dict:
     """The one command admission (security/mutation_authz.admit_command) rendered as the API's
-    answer: not found for a command the role may not use, 403 for a mutation without the write
-    right. Returns the acting role."""
+    answer: not found for a command the role may not use, 403 for a call without a role. Returns
+    the acting role."""
     role = state.roles.get(role_id) if role_id is not None else None
     try:
         _admit_command(command, role, name)

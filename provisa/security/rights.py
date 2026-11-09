@@ -146,6 +146,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # beside the domain ownership the edit needs anyway. Exists only when the platform declares
     # regions; region is never an access dimension.
     DATA_RESIDENCY = "data_residency"
+    # REQ-870: run the commands the role is assigned, in the domains it lists. Alone it reads no
+    # data (reads_data). The read-only catalog commands of meta stay under CATALOG_READ.
+    COMMAND_EXECUTION = "command_execution"
 
 
 # REQ-1132: the system domains and the capability that holds each, THE list every other reads.
@@ -313,7 +316,9 @@ def domain_access_for_claims(  # REQ-1530
     out: set[str] = set()
     for role_id in role_ids_from_claims(claims):
         role = (roles or {}).get(role_id)
-        if role is None:
+        if role is None or command_only(
+            role.get("capabilities")
+        ):  # REQ-870: its reach is commands'
             continue
         access = role.get("domain_access")
         if access is None:
@@ -399,6 +404,23 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
+def reads_data(capabilities: Iterable[str] | None) -> bool:
+    """Whether a role holding ``capabilities`` reads data: a right other than running commands.
+    A role with no capabilities reads nothing, and nor does one holding only command_execution,
+    whose domains are where its commands run (REQ-870)."""
+    return bool(set(capabilities or ()) - {Capability.COMMAND_EXECUTION.value})
+
+
+def command_only(capabilities: Iterable[str] | None) -> bool:
+    """Whether ``capabilities`` are command_execution and nothing else (REQ-870)."""
+    return set(capabilities or ()) == {Capability.COMMAND_EXECUTION.value}
+
+
+#: On a meta-role only: the domains its commands run in, the reach of the members holding
+#: command_execution (security/meta_role.py). Each member's right stays paired with its own reach.
+COMMAND_DOMAIN_ACCESS = "command_domain_access"
+
+
 def lists_data_domain(domain_access: Iterable[str] | None) -> bool:
     """Whether ``domain_access`` names a data domain or ``"*"``: what a system domain added for its
     capability does not make a role that lists no domain a role with a data surface."""
@@ -471,7 +493,7 @@ def served_roles(  # REQ-2152
     return frozenset(
         role_id
         for role_id, definition in roles.items()
-        if definition["capabilities"]  # REQ-2155: a role with no capabilities reads nothing
+        if reads_data(definition["capabilities"])  # REQ-2155, REQ-870
         and column_served(
             {"id": role_id},
             domain_id,

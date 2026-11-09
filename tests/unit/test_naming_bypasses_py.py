@@ -68,7 +68,7 @@ def _command_input(functions: list[dict], webhooks: list[dict]) -> SchemaInput:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ["command_execution"], "domain_access": ["*"]},
         domains=[{"id": "pets", "description": "Pets"}],
         domain_prefix=False,
         functions=functions,
