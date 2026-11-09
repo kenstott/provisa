@@ -109,6 +109,10 @@ function write(type, at) {
   }
   const name = symbolName(type);
   if (name && fromLib(type)) {
+    if (name === "Record") {
+      const index = checker.getIndexInfoOfType(type, ts.IndexKind.String);
+      if (index) return { kind: "record", value: write(index.type, at) };
+    }
     if (name === "Date") return { kind: "date" };
     if (name === "Promise" || name === "PromiseLike") {
       return { kind: "promise", value: write(checker.getTypeArguments(type)[0], at) };

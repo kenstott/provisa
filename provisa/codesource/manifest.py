@@ -28,8 +28,8 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
   the output columns (REQ-2131); a parameter that is not a list, or a result that is not a list of
   objects, is a problem by name;
 - a non-optional parameter is required by the source; an optional one is not;
-- the columns are the row type's fields, or -- when the row type is loose (``any``, ``unknown``
-  or a ``Record``) -- found by a preview;
+- the columns are the row type's fields; a row type that is loose (``any``, ``unknown``, a
+  ``Record`` or a ``dict``) is a problem by name, though a single field of a typed row may be;
 - every type a tagged function refers to is mapped (string -> text, number -> double, bigint ->
   bigint, boolean -> boolean, Date -> timestamp, ``T | null`` / ``T | undefined`` / an optional
   field -> nullable ``T``, arrays -> lists, interfaces and object types -> named object types, a
@@ -127,8 +127,10 @@ class EnumOf:
 
 Shape = Scalar | ListOf | Named | Anonymous | EnumOf
 
-#: Loose: a value of any shape, served as json (and, as a row type, typed by a preview).
+#: Loose: a value of any shape, served as json. A field may be; a row type may not.
 LOOSE = Scalar("json")
+#: The reader's kinds for a value of no declared shape.
+LOOSE_KINDS = ("any", "unknown", "record")
 
 
 @dataclass(frozen=True)
@@ -167,8 +169,6 @@ class Export:
     #: A table's or stream's row type; a command's result (None: it returns nothing); a
     #: ``@columns`` function's result row, whose fields are its output columns.
     returns: Shape | None
-    #: Whether the columns are found by a preview: the row type is loose.
-    preview: bool = False
     #: A command's result: rows (a collection) or one value.
     many: bool = False
     #: REQ-2100: a ``@loader`` table, called with a join's keys in batches, in its read context.
@@ -278,7 +278,6 @@ def manifest_json(manifest: Manifest) -> dict:
                     for p in e.parameters
                 ],
                 "returns": _shape_json(e.returns),
-                "preview": e.preview,
                 "many": e.many,
                 "loader": e.loader,
                 "loader_batch": e.loader_batch,
@@ -312,7 +311,6 @@ def manifest_from_json(raw: dict) -> Manifest:
                 e["description"],
                 tuple(parameters),
                 _shape(e["returns"]),
-                e["preview"],
                 e["many"],
                 e["loader"],
                 e["loader_batch"],
@@ -391,7 +389,7 @@ class _Mapper:
         if kind == "number":
             # A Python int is an integer; a JavaScript number, and a Python float, a double.
             return Scalar("bigint" if node.get("integer") else "double")
-        if kind in ("any", "unknown", "record"):
+        if kind in LOOSE_KINDS:
             return LOOSE
         if kind == "literal":
             if isinstance(node["value"], str):
@@ -430,14 +428,18 @@ def _unwrap_promise(node: dict) -> dict:
     return node["value"] if node["kind"] == "promise" else node
 
 
-def _rows(mapper: _Mapper, export: str, element: dict) -> tuple[Shape, bool]:
-    """The row type of a table or stream, and whether its columns come from a preview."""
-    if element["kind"] in ("any", "unknown", "record"):
-        return LOOSE, True
+def _rows(mapper: _Mapper, export: str, element: dict) -> Shape:
+    """The row type of a table or stream; a loose one is a problem by name."""
+    if element["kind"] in LOOSE_KINDS:
+        return mapper.fail(
+            export,
+            "its row type is loose (any, unknown, a Record or a dict); declare a typed row whose "
+            "fields are its columns",
+        )
     shape, _ = mapper.shape(element, f"{export} (row)")
     if not isinstance(shape, (Named, Anonymous)):
         mapper.fail(export, "its rows are not objects; a row is an object whose fields are columns")
-    return shape, False
+    return shape
 
 
 def _columns_export(
@@ -458,7 +460,7 @@ def _columns_export(
         mapper.fail(name, "@columns returns a list holding one result per input row")
         return None
     element = result["element"]
-    if element["kind"] in ("any", "unknown", "record"):
+    if element["kind"] in LOOSE_KINDS:
         mapper.fail(name, "@columns declares its output columns: its result is a typed object")
         return None
     row, _ = mapper.shape(element, f"{name} (result)")
@@ -628,7 +630,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             else:
                 problems.append(f"{name}: @table returns a single value, not a collection of rows")
                 continue
-            row, preview = _rows(mapper, name, element)
+            row = _rows(mapper, name, element)
             loader, batch = _loader(mapper, name, entry, takes)
             exports.append(
                 Export(
@@ -637,7 +639,6 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     entry["description"],
                     tuple(parameters),
                     row,
-                    preview,
                     loader=loader,
                     loader_batch=batch,
                     takes=takes,
@@ -659,11 +660,9 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     else f"{name}: @stream is an async generator (returns AsyncGenerator<T>)"
                 )
                 continue
-            row, preview = _rows(mapper, name, returns["element"])
+            row = _rows(mapper, name, returns["element"])
             exports.append(
-                Export(
-                    name, kind, entry["description"], tuple(parameters), row, preview, takes=takes
-                )
+                Export(name, kind, entry["description"], tuple(parameters), row, takes=takes)
             )
         else:
             result = _unwrap_promise(returns)
