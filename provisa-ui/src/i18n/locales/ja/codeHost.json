@@ -32,6 +32,8 @@
     "statusUnknown": "リモートホストを確認しています...",
     "answering": "リモートホストは応答しています。",
     "notAnswering": "リモートホストが応答しません: {{error}}",
+    "health_healthy": "正常",
+    "health_unhealthy": "異常",
     "otherCode": "リモートホストは、このソースが固定されているコード ({{pinned}}) とは別のコード ({{reported}}) を実行しています。コードを確認して固定し直すまで、読み取りは拒否されます。",
     "repin": "ホストのコードに固定し直す",
     "refresh": "再確認",

@@ -820,6 +820,10 @@
       "duckdb_threads": {
         "label": "程式碼來源 DuckDB 執行緒",
         "help": "程式碼來源的 DuckDB 回答其陳述式所用的執行緒數。"
+      },
+      "health_poll_interval": {
+        "label": "連接器健康輪詢間隔",
+        "help": "每個 Provisa 程序詢問連接器主機狀態並在資料來源上顯示結果的頻率。重新啟動的主機會在下次輪詢時被發現，並再次執行其 on-start 函式。"
       }
     },
     "config": {

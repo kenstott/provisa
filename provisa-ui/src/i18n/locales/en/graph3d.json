@@ -151,6 +151,7 @@
     "hopsFrom": "Hops from {{focus}}",
     "hopsFromMatches": "Hops from the matches",
     "relatedTables": "Related tables",
+    "restOfModel": "Show the rest of the model",
     "lateral": "Lateral edges",
     "grounding_grounded": "Grounded",
     "grounding_grounded_pending": "Grounded, via a draft"

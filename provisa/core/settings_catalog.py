@@ -368,6 +368,19 @@ DECLARED: list[Setting] = [
         unit="threads",
     ),
     Setting(
+        key="codesource.health_poll_interval",
+        card="limits",
+        type="int",
+        effect="live",  # read before each sweep
+        # REQ-2221: how often Provisa asks a connector's host for its health; 30 seconds notices a
+        # restarted host, which then runs its @on-start again, without loading a healthy one.
+        req="REQ-2221",
+        env="PROVISA_CODESOURCE_HEALTH_POLL_INTERVAL",
+        default=30,
+        min=5,
+        unit="seconds",
+    ),
+    Setting(
         key="kaggle.api_token",
         card="security",
         type="str",

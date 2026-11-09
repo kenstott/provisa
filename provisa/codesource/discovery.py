@@ -118,8 +118,10 @@ async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:
     source = await _source(state, source_id)
     if source is None:
         return None
+    from provisa.codesource.manifest import LIFECYCLE_TAGS
+
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
-    return [(e.name, e.kind) for e in prepared.manifest.exports]
+    return [(e.name, e.kind) for e in prepared.manifest.exports if e.kind not in LIFECYCLE_TAGS]
 
 
 async def columns(state: Any, source_id: str, function: str) -> list[dict] | None:

@@ -615,10 +615,12 @@ export function reach(
         if (t === "table" && via !== rule.tableEnteredBy) continue;
       }
       for (const [m, kind] of next.get(id) ?? []) {
-        if (!seen.has(m)) {
-          seen.add(m);
-          out.push([m, kind]);
-        }
+        if (seen.has(m)) continue;
+        seen.add(m);
+        // A term a table IS (a class term) is drawn beside the table and passed through no
+        // further: the other tables it grounds are no part of what the focus reaches.
+        if (kind === "term_binding" && byId.get(id)?.type === "table") continue;
+        out.push([m, kind]);
       }
     }
     frontier = out;

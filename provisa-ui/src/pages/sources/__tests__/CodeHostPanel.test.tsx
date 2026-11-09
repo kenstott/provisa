@@ -150,6 +150,47 @@ describe("a dev-mode source's remote host", () => {
   });
 });
 
+describe("a connector host's health", () => {
+  const BUILT = {
+    code_mode: "built",
+    code_remote: JSON.stringify({ host: "h", port: 7443 }),
+    code_content_hash: "h".repeat(64),
+  };
+
+  it("shows a healthy host", async () => {
+    vi.mocked(fetchHostStatus).mockResolvedValue({
+      mode: "built",
+      answering: true,
+      health: { state: "healthy", detail: "ok", checked_at: "2026-11-09T12:00:00Z" },
+    });
+    renderInForm(<Harness initial={BUILT} seen={[]} />);
+    const health = await screen.findByTestId("code-host-health");
+    expect(health).toHaveTextContent(/healthy/i);
+    expect(screen.getByTestId("code-host-health-detail")).toHaveTextContent("ok");
+  });
+
+  it("shows why a host is unhealthy", async () => {
+    vi.mocked(fetchHostStatus).mockResolvedValue({
+      mode: "built",
+      answering: true,
+      health: {
+        state: "unhealthy",
+        detail: "its @on-start function failed: connect: no database",
+        checked_at: "2026-11-09T12:00:00Z",
+      },
+    });
+    renderInForm(<Harness initial={BUILT} seen={[]} />);
+    expect(await screen.findByTestId("code-host-health")).toHaveTextContent(/unhealthy/i);
+    expect(screen.getByTestId("code-host-health-detail")).toHaveTextContent("no database");
+  });
+
+  it("shows nothing before a poll has run", async () => {
+    renderInForm(<Harness initial={BUILT} seen={[]} />);
+    await screen.findByTestId("code-host-status");
+    expect(screen.queryByTestId("code-host-health")).toBeNull();
+  });
+});
+
 describe("a built source's remote host", () => {
   const BUILT = {
     code_mode: "built",

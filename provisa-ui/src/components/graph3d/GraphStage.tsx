@@ -26,7 +26,7 @@ export interface StageState {
   graph: GraphData;
   at: Map<string, [number, number, number]>;
   /** Changes when the graph is laid out afresh (a preset), so the camera is reset to fit it. */
-  frame: number;
+  frame: number | string;
   /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
   flat: boolean;
   /** REQ-2174: laid out in layers, where lateral edges are drawn as arcs over the rest. */
@@ -104,7 +104,7 @@ export function GraphStage({
   const drawn = useRef<{
     graph: GraphData;
     at: Map<string, [number, number, number]>;
-    frame: number;
+    frame: number | string;
     flat: boolean;
     layout: LayoutKind;
   } | null>(null);

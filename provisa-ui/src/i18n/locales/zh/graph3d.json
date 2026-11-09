@@ -151,6 +151,7 @@
     "hopsFrom": "距 {{focus}} 的跳数",
     "hopsFromMatches": "距匹配项的跳数",
     "relatedTables": "相关表",
+    "restOfModel": "显示模型的其余部分",
     "lateral": "横向边",
     "grounding_grounded": "已锚定",
     "grounding_grounded_pending": "已锚定，经由草稿"
