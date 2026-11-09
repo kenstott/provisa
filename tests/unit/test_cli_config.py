@@ -354,6 +354,57 @@ def test_apply_posts_the_file_to_the_org(monkeypatch, capsys, tmp_path):
     assert _TOKEN not in captured.out + captured.err
 
 
+_DRY_RUN = json.dumps(
+    {
+        **json.loads(_APPLIED),
+        "dry_run": {
+            "changes": True,
+            "unchanged": 2,
+            "sections": {
+                "tables": {
+                    "add": ["pg/public/orders"],
+                    "change": [{"item": "pg/public/items", "fields": ["description"]}],
+                    "remove": [],
+                }
+            },
+            "unreachable_change_feeds": [],
+            "not_run": ["engine catalogs"],
+        },
+    }
+).encode()
+
+
+def test_apply_dry_run_asks_the_server_for_a_dry_run(monkeypatch, capsys, tmp_path):
+    seen = _stub(monkeypatch, _DRY_RUN)
+    assert cli.main(["apply", _write(tmp_path, _config()), "--org", "acme", "--dry-run"]) == 0
+    assert json.loads(seen["data"])["dry_run"] is True
+    out = capsys.readouterr().out
+    assert "nothing was saved" in out
+    assert "A tables/pg/public/orders" in out
+    assert "C tables/pg/public/items  (description)" in out
+    assert "unchanged 2" in out
+    assert "not run: engine catalogs" in out
+
+
+def test_apply_without_dry_run_does_not_ask_for_one(monkeypatch, capsys, tmp_path):
+    seen = _stub(monkeypatch, _APPLIED)
+    assert cli.main(["apply", _write(tmp_path, _config()), "--org", "acme"]) == 0
+    assert "dry_run" not in json.loads(seen["data"])
+
+
+def test_apply_dry_run_as_json_is_the_answer(monkeypatch, capsys, tmp_path):
+    _stub(monkeypatch, _DRY_RUN)
+    args = ["apply", _write(tmp_path, _config()), "--org", "acme", "--dry-run", "--json"]
+    assert cli.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["dry_run"]["changes"] is True
+
+
+def test_apply_dry_run_of_a_refused_model_exits_one_with_its_code(monkeypatch, capsys, tmp_path):
+    _stub(monkeypatch, _refusal(400, "import.refused"))
+    assert cli.main(["apply", _write(tmp_path, _config()), "--org", "acme", "--dry-run"]) == 1
+    assert capsys.readouterr().err.startswith("refused (import.refused): ")
+
+
 def test_apply_sends_a_secret_as_its_reference(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("J1050_UNSET_PASSWORD", _LEAK)
     seen = _stub(monkeypatch, _APPLIED)

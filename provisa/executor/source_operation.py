@@ -169,6 +169,19 @@ def _grpc_operations(state, source_id: str) -> list[Operation] | None:
     ]
 
 
+async def _snowflake_operations(state, source_id: str, schema_name: str) -> list[Operation] | None:
+    """REQ-2230: what can be run on the Dynamic Tables and Tasks of ``schema_name``; None when the
+    source is not connected."""
+    if not state.source_pools.has(source_id):
+        return None
+    from provisa.executor.snowflake_objects import operations
+
+    return [
+        Operation(name=name, comment=statement, arguments=())
+        for name, statement in await operations(state.source_pools, source_id, schema_name)
+    ]
+
+
 async def _dbt_operations(state, source_id: str) -> list[Operation] | None:  # REQ-2228
     """Everything a dbt source's manifest offers to run: None until its manifest is held."""
     from provisa.dbt.commands import offered_commands
@@ -184,9 +197,11 @@ async def _dbt_operations(state, source_id: str) -> list[Operation] | None:  # R
     ]
 
 
-async def offered_operations(state, source_id: str) -> list[Operation] | None:
-    """Every write operation ``source_id`` offers, or None when it is not a remote source this
-    process holds."""
+async def offered_operations(
+    state, source_id: str, schema_name: str | None = None
+) -> list[Operation] | None:
+    """Every write operation ``source_id`` offers, or None when it is not a source of operations
+    this process holds. A Snowflake source offers them by schema (REQ-2230), so one is named."""
     source_type = _source_type(state, source_id)
     if source_type == "openapi":
         return _openapi_operations(state, source_id)
@@ -194,14 +209,18 @@ async def offered_operations(state, source_id: str) -> list[Operation] | None:
         return await _graphql_operations(state, source_id)
     if source_type == "grpc_remote":
         return _grpc_operations(state, source_id)
+    if source_type == "snowflake" and schema_name is not None:
+        return await _snowflake_operations(state, source_id, schema_name)
     if source_type == "dbt":
         return await _dbt_operations(state, source_id)
     return None
 
 
-async def offered_operation(state, source_id: str, name: str) -> Operation:
+async def offered_operation(
+    state, source_id: str, name: str, schema_name: str | None = None
+) -> Operation:
     """The operation ``name`` of ``source_id``; refused when the source offers none by it."""
-    offered = await offered_operations(state, source_id)
+    offered = await offered_operations(state, source_id, schema_name)
     if offered is None:
         raise ApiError(
             422,
@@ -433,10 +452,17 @@ async def _call_grpc(state, source_id: str, operation: str, args: dict) -> list[
     return _rows(answer)
 
 
-async def call_operation(state, source_id: str, operation: str, args: dict) -> list[dict]:
+async def call_operation(
+    state, source_id: str, operation: str, args: dict, schema_name: str | None = None
+) -> list[dict]:
     """Call the write operation ``operation`` of ``source_id`` with ``args`` as given."""
-    await offered_operation(state, source_id, operation)
+    await offered_operation(state, source_id, operation, schema_name)
     source_type = _source_type(state, source_id)
+    if source_type == "snowflake":  # REQ-2230: on the source's own connection, its credential
+        from provisa.executor.snowflake_objects import run
+
+        assert schema_name is not None  # the operation was offered in it
+        return await run(state.source_pools, source_id, schema_name, operation)
     if source_type == "openapi":
         return await _call_openapi(state, source_id, operation, args)
     if source_type == "graphql_remote":

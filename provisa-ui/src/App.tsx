@@ -316,9 +316,6 @@ function App() {
                     engine cluster (REQ-1465) fails queries everywhere, so the notice cannot be
                     the property of any one page. */}
                                 <MaintenanceBanner />
-                                {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
-                    nag: visible from day one whenever unlicensed, never gates anything. */}
-                                <LicenseBadge />
                                 <NavBar />
                                 {/* REQ-1559: the admin rail stands beside the page rather than above it, so
                     the row is the shell for both. It renders nothing off an admin route.
@@ -829,6 +826,10 @@ function App() {
                                   </main>
                                   <ChatPanel />
                                 </div>
+                                {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
+                    nag: visible from day one whenever unlicensed, never gates anything. A row of
+                    the shell below the page, so no page's content can sit under it. */}
+                                <LicenseBadge />
                               </SubnavExtraProvider>
                             </TourProvider>
                           </PollyProvider>
