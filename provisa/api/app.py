@@ -3886,6 +3886,21 @@ def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     )
 
 
+async def install_server_extensions() -> None:
+    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): a DuckDB deployment with no
+    bundled set installs its extension set as this worker starts, before it serves anything, and
+    its engine is rebuilt on what installed: the engine built with AppState knew nothing yet, and
+    nothing has read it. Every org's engine built after this is gated the same way."""
+    from provisa.federation.duckdb_extensions import install_extension_set
+    from provisa.federation import engine as engine_module
+    from provisa.federation.runtime import EngineRuntime
+
+    if engine_module.configured_engine_kind() not in ("duckdb", "motherduck"):
+        return
+    if await asyncio.to_thread(install_extension_set) is not None:
+        state.federation_engine = EngineRuntime(engine_module.build_engine(), state)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
@@ -3961,6 +3976,7 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         # reads an org's runtime unbound.
         state.org_id = _scope
         _boot_org_token = set_current_org(_scope)
+        await install_server_extensions()
         _launch = launch_id()
         # A launcher that names a launch names its worker count with it; one without the other
         # fails here, at boot, rather than in the first /health request.
