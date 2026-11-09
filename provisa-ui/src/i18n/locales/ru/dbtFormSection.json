@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "Источник манифеста",
+    "specLocation": "URL или расположение артефакта",
+    "specUpload": "Загрузить",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "URL манифеста или расположение артефакта",
+    "locationPlaceholder": "https://example.com/manifest.json или s3://bucket/target/manifest.json",
+    "uploadLabel": "Файл manifest.json",
+    "cloudHostLabel": "URL dbt Cloud",
+    "accountLabel": "ID аккаунта",
+    "jobLabel": "ID задания",
+    "tokenLabel": "Токен API",
+    "tokenHint": "Хранится вместе с этим источником и используется для чтения манифеста и запуска заданий.",
+    "commandLineLabel": "Команда запуска dbt",
+    "commandLineHint": "Команды выполняются через неё там, где установлен dbt, например dbt --project-dir /srv/project.",
+    "previewButton": "Просмотреть манифест",
+    "summary": "{{project}} ({{adapter}}): доступно моделей — {{models}}, команд — {{commands}}.",
+    "warehouseFound": "{{database}} читается через источник {{source}}.",
+    "warehouseMissing": "Ни один зарегистрированный источник не читает базу {{adapter}} {{database}}. Создайте источник:",
+    "warehouseId": "ID нового источника",
+    "warehouseHost": "Аккаунт или хост",
+    "warehouseUser": "Имя пользователя",
+    "warehouseCredential": "Учётные данные",
+    "adapterUnknown": "Для адаптера {{adapter}} нет подходящего типа источника. Сначала зарегистрируйте его хранилище, затем добавьте этот источник."
+  }
+}

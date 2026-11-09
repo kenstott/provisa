@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "Where the manifest comes from",
+    "specLocation": "URL or artifact location",
+    "specUpload": "Upload",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "Manifest URL or artifact location",
+    "locationPlaceholder": "https://example.com/manifest.json or s3://bucket/target/manifest.json",
+    "uploadLabel": "manifest.json file",
+    "cloudHostLabel": "dbt Cloud URL",
+    "accountLabel": "Account ID",
+    "jobLabel": "Job ID",
+    "tokenLabel": "API token",
+    "tokenHint": "Held with this source and used to read the manifest and run jobs.",
+    "commandLineLabel": "Command that runs dbt",
+    "commandLineHint": "Run where dbt is installed, for example dbt --project-dir /srv/project.",
+    "previewButton": "Preview manifest",
+    "summary": "{{project}} ({{adapter}}): {{models}} models and {{commands}} commands on offer.",
+    "warehouseFound": "{{database}} is read through source {{source}}.",
+    "warehouseMissing": "No registered source reads the {{adapter}} database {{database}}. Create one:",
+    "warehouseId": "New source ID",
+    "warehouseHost": "Account or host",
+    "warehouseUser": "Username",
+    "warehouseCredential": "Credential",
+    "adapterUnknown": "The {{adapter}} adapter has no matching source type. Register its warehouse first, then add this source."
+  }
+}

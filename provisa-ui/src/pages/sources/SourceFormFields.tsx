@@ -130,6 +130,7 @@ export interface SourceFormFieldsProps {
   openapiPreviewing: boolean;
   openapiPreviewError: string | null;
   onOpenapiPreview: () => void;
+  dbt: import("./dbt").DbtSourceForm; // REQ-2228
   gqlNamespace: string;
   setGqlNamespace: (v: string) => void;
   brandSetup: Record<string, string>;
