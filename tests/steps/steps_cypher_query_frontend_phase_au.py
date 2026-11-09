@@ -97,7 +97,7 @@ from __future__ import annotations
 import pytest
 from pytest_bdd import given, when, then, scenarios
 
-from provisa.cypher.parser import parse_cypher, CypherParseError
+from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import (
     CypherLabelMap,
     NodeMapping,
@@ -1071,9 +1071,13 @@ def given_path_query(shared_data: dict) -> None:
 def then_recursive_cte_and_rejects_unbounded(shared_data: dict) -> None:
     assert shared_data["error"] is None
     assert "WITH RECURSIVE" in shared_data["sql"].upper()
-    # Unbounded [*] must be rejected at compile time (parser level).
-    with pytest.raises(CypherParseError):
-        parse_cypher("MATCH (a:Person)-[:KNOWS*]->(b:Person) RETURN b.name")
+    # REQ-348, amended 2026-11-03: an unbounded [*] is no longer refused; it parses with no upper
+    # bound and compiles with the maximum depth substituted. (The scenario's text is generated
+    # from docs/arch/requirements.yaml, which still says "rejects".)
+    unbounded = "MATCH (a:Person)-[:KNOWS*]->(b:Person) RETURN b.name"
+    rel = parse_cypher(unbounded).match_clauses[0].pattern.rels[0]
+    assert rel.variable_length and rel.max_hops is None
+    assert "WITH RECURSIVE" in _translate(unbounded, shared_data["label_map"], {}).upper()
 
 
 # ---------------------------------------------------------------------------

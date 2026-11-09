@@ -549,7 +549,11 @@ def _pgw_build_state(pool):
             "domain_access": ["*"],
         }
     }
-    state.schema_build_cache = {"column_types": col_types, "tables": [], "domains": []}
+    state.schema_build_cache = {
+        "column_types": col_types,
+        "tables": _PGW_TABLES,
+        "domains": [{"id": _PGW_SCHEMA, "graphql_alias": None}],
+    }
     state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
     state.auth_middleware_active = False
     state.masking_rules = {}

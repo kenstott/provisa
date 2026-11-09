@@ -239,6 +239,23 @@ def test_an_instant_trino_reads_as_a_plain_timestamp_is_an_output_at_utc(source_
     )
 
 
+def test_an_instant_read_through_its_governed_relation_is_read_with_its_zone():
+    """REQ-039: a governed read of the table is a derived table of its served columns. The
+    outermost column reads the derived table's bare column, and is the instant all the same."""
+    from provisa.transpiler.transpile import rewrite_instants_for_trino
+
+    columns = {("src", "shop", "orders"): {"placed_at"}}
+    sql = (
+        'SELECT "id", "placed_at" FROM (SELECT "orders"."id" AS "id", '
+        '"orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" AS "orders") AS "orders"'
+    )
+    assert rewrite_instants_for_trino(sql, columns) == (
+        'SELECT "id", WITH_TIMEZONE("placed_at", \'UTC\') AS "placed_at" FROM (SELECT '
+        '"orders"."id" AS "id", "orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" '
+        'AS "orders") AS "orders"'
+    )
+
+
 def test_an_instant_trino_reads_with_its_zone_or_a_wall_time_is_left_as_read():
     from provisa.federation.trino_connectors import trino_utc_wall_columns
 
