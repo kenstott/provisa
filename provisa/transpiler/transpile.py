@@ -431,7 +431,7 @@ def _rewrite_empty_json_list_for_trino(sql: str) -> str:
                     default.replace(exp.Literal.string("[]"))
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
@@ -598,7 +598,7 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
                 )
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:
@@ -628,7 +628,7 @@ def _rewrite_json_build_object_for_trino(sql: str) -> str:
             return exp.JSONObject(expressions=pairs)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
@@ -671,7 +671,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
             return _list(inner, None)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
@@ -897,7 +897,9 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
         return pg_sql
     from provisa.codehost.duckdb_sql import escape_likes
 
-    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(dialect="postgres")
+    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(
+        dialect="postgres", copy=False
+    )
 
 
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:

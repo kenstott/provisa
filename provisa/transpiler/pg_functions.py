@@ -749,6 +749,7 @@ def readable(pg_sql: str) -> str:
     if not any(p.search(pg_sql) for p in (_SYNTAX_CALLS, _BIT_VARYING, _TO_HEX)):
         return pg_sql
     converted = False
+    differs = False
 
     def held(node: exp.Expr) -> exp.Expr:
         nonlocal converted
@@ -760,15 +761,18 @@ def readable(pg_sql: str) -> str:
             return exp.Anonymous(this=_FORMS[node.name.lower()], expressions=node.expressions)
         return node
 
-    tree = sqlglot.parse_one(pg_sql, read=_HexKept)
-    written = tree.transform(held)
-    if written == tree:
+    def _watched(node: exp.Expr) -> exp.Expr:
+        nonlocal differs
+        out = held(node)
+        # What a statement with nothing to write compares equal on: its form is kept as written.
+        differs = differs or (out is not node and out != node)
+        return out
+
+    written = sqlglot.parse_one(pg_sql, read=_HexKept).transform(_watched, copy=False)
+    if not differs:
         return pg_sql
-    return (
-        postgres_literals(written.sql(dialect="postgres"))
-        if converted
-        else written.sql(dialect="postgres")
-    )
+    rendered = written.sql(dialect="postgres", copy=False)
+    return postgres_literals(rendered) if converted else rendered
 
 
 def typed_calls(pg_sql: str) -> str:
@@ -788,8 +792,8 @@ def typed_calls(pg_sql: str) -> str:
         rewritten = rewritten or out is not node
         return out
 
-    tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched)
-    return tree.sql(dialect="postgres") if rewritten else pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched, copy=False)
+    return tree.sql(dialect="postgres", copy=False) if rewritten else pg_sql
 
 
 def before(pg_sql: str) -> str:
@@ -805,8 +809,8 @@ def before(pg_sql: str) -> str:
         rewritten = rewritten or out is not node
         return out
 
-    tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched)
-    return tree.sql(dialect="postgres") if rewritten else pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres").transform(_watched, copy=False)
+    return tree.sql(dialect="postgres", copy=False) if rewritten else pg_sql
 
 
 def _regexp_matches(args: list[exp.Expr]) -> str:
