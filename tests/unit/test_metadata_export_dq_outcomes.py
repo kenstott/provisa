@@ -139,3 +139,68 @@ def test_one_products_documents_read_only_the_checker_tables_it_owns(monkeypatch
     # REQ-2157, REQ-2158: a product's documents carry only its own checks.
     assert _read_with(monkeypatch, product_id="orders") == ["quality.orders_scans"]
     assert _read_with(monkeypatch, product_id="nothing_checked") == []
+
+
+def _checker_config_with_broken_peer():
+    """Config with a good checker product and a broken non-checker product: the broken
+    product's member is not in config.tables (simulates a seeded-source table missing from
+    the export model — Root Cause #1). Root Cause #2: reading the good product must not
+    fail because the broken product is also in the config."""
+    from provisa.core.models import Column, DataProduct, Domain, ProvisaConfig, Source, SourceType
+    from provisa.core.models import Table
+
+    def results(name: str) -> Table:
+        return Table(
+            source_id="dq",
+            domain_id="sales",
+            schema_name="quality",
+            table_name=name,
+            dq_contract="dataset: provisa/sales/orders\nchecks:\n  - row_count: {}\n",
+            columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
+        )
+
+    return ProvisaConfig(
+        sources=[Source(id="dq", type=SourceType.soda, description="quality")],
+        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        data_products=[
+            DataProduct(id="orders", domain_id="sales", name="Orders", tables=["orders_scans"]),
+            # broken: "assignments" is not in config.tables (simulates graphql-demo table
+            # excluded by the old store_model — the workforce_ops scenario)
+            DataProduct(
+                id="workforce_ops", domain_id="sales", name="Workforce Ops", tables=["assignments"]
+            ),
+        ],
+        tables=[results("orders_scans")],
+        roles=[],
+    )
+
+
+def _read_config_with(monkeypatch, config, **scope) -> list[str]:
+    """Like _read_with but accepts a config argument."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
+
+    queried: list[str] = []
+
+    async def govern(sql, role):
+        queried.append(sql.split(" FROM ")[1].split(" ")[0])
+        return sql
+
+    async def execute(plan):
+        return SimpleNamespace(column_names=[], rows=[])
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", govern)
+    monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", execute)
+    asyncio.run(read_latest_outcomes(config, **scope))
+    return queried
+
+
+def test_reading_one_products_contracts_survives_a_broken_peer_product(monkeypatch):
+    """Root Cause #2: a bad member reference in workforce_ops must not raise when
+    pet_health (orders here) is the requested product. The computation is scoped."""
+    config = _checker_config_with_broken_peer()
+    # "orders" product's checker tables are read; workforce_ops's broken member is ignored
+    queried = _read_config_with(monkeypatch, config, product_id="orders")
+    assert queried == ["quality.orders_scans"]

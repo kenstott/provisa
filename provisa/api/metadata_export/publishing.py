@@ -179,11 +179,13 @@ async def _model_for_export() -> "ProvisaConfig":
     from provisa.api.app import state
     from provisa.core.config_loader import parse_config_dict
     from provisa.core.repositories import source as source_repo
+    from provisa.core.store_config import seeded_table_names
 
     raw = await build_live_config()
     pool = await _get_pool()
     async with pool.acquire() as conn:
         source_rows = await source_repo.list_all(conn)
+        seeded_names = await seeded_table_names(conn)
     # The snapshot needs each source's identity, type and description — never credentials —
     # so the DB rows project onto minimal Source models rather than the credentialed file ones.
     # The __derived__ sentinel is not a source: a derived relation's provenance is the lineage
@@ -204,6 +206,7 @@ async def _model_for_export() -> "ProvisaConfig":
         if r["id"] != DERIVED_SOURCE_ID
     ]
     config = parse_config_dict(raw)
+    config._seeded_table_names = seeded_names
     if state.config is not None:
         config.tags = state.config.tags
         config.tag_assignments = state.config.tag_assignments
