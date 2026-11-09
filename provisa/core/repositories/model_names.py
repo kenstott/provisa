@@ -12,14 +12,15 @@
 aliases the disambiguate policy froze. The build is the only writer of the first two; the third
 is a model change of its own."""
 
-# Requirements: REQ-194
+# Requirements: REQ-194, REQ-1914
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
+from contextlib import asynccontextmanager
 from typing import Any
 
-from sqlalchemy import and_, delete, insert, update
+from sqlalchemy import and_, delete, insert, text, update
 
 from provisa.core.schema_org import (
     model_name_clashes,
@@ -29,11 +30,23 @@ from provisa.core.schema_org import (
 )
 
 
+@asynccontextmanager
+async def _one_build_at_a_time(conn: Any) -> AsyncGenerator[None]:
+    """One transaction for a build's clearing and writing of the stored names, holding the table
+    against every other build of this org (the table is the org's: search_path).
+
+    Every worker of an org rebuilds on a model change (REQ-1914), so builds replace these rows at
+    once. The transaction alone would not serialize them: a build's DELETE reads a snapshot from
+    before the other's commit and clears none of its new rows. Waiting here, before the DELETE,
+    each build clears what the last one committed. Reads of the table do not wait."""
+    async with conn.transaction():
+        await conn.execute_core(text("LOCK TABLE model_names IN SHARE ROW EXCLUSIVE MODE"))
+        yield
+
+
 async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
     """Replace the stored names table with ``rows`` (names_table.NameRow) and clear the refused
     clashes: a build that stored a names table refused none."""
-    await conn.execute_core(delete(model_names))
-    await conn.execute_core(delete(model_name_clashes))
     values = [
         {
             "object_kind": r.object_kind,
@@ -51,13 +64,15 @@ async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
     ]
     # One statement however many names: a multi-row VALUES binds ten parameters a name, and
     # PostgreSQL refuses a statement of more than 65535.
-    await conn.execute_core_many(insert(model_names), values)
+    async with _one_build_at_a_time(conn):
+        await conn.execute_core(delete(model_names))
+        await conn.execute_core(delete(model_name_clashes))
+        await conn.execute_core_many(insert(model_names), values)
 
 
 async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
     """Replace the stored refused clashes with ``clashes`` (names_table.NameClash). The names
     table stays as the last version built stored it."""
-    await conn.execute_core(delete(model_name_clashes))
     values = {
         (c.surface, c.name, c.newcomer): {
             "surface": c.surface,
@@ -68,7 +83,9 @@ async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
         }
         for c in clashes
     }
-    await conn.execute_core_many(insert(model_name_clashes), list(values.values()))
+    async with _one_build_at_a_time(conn):
+        await conn.execute_core(delete(model_name_clashes))
+        await conn.execute_core_many(insert(model_name_clashes), list(values.values()))
 
 
 async def freeze_aliases(conn: Any, frozen: Iterable[Any]) -> None:

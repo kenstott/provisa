@@ -14,6 +14,12 @@ standard report listing every name, its problems, and the clashes the last build
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import threading
+import time
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -195,6 +201,10 @@ class _RecordingConn:
     def __init__(self) -> None:
         self.statements: list[Any] = []
 
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[None]:
+        yield
+
     async def execute_core(self, stmt: Any) -> None:
         self.statements.append(stmt)
 
@@ -241,6 +251,94 @@ async def test_what_a_build_sends_does_not_grow_with_its_names(write, many):
         return [len(s.compile().params) for s in conn.statements]
 
     assert await sent(2) == await sent(500)
+
+
+class _OtherWorkerWritesBeforeTheInsert:
+    """A worker's connection on which another worker's whole build runs between this worker's
+    clearing of the table and its INSERT: the interleaving of two workers reloading one change."""
+
+    def __init__(self, conn: Any, other_worker: Any) -> None:
+        self._conn = conn
+        self._other_worker = other_worker
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
+        await self._other_worker()
+        await self._conn.execute_core_many(stmt, rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("write", "many", "table"),
+    [
+        (write_names_table, _many_names, "model_names"),
+        (write_refused_clashes, _many_clashes, "model_name_clashes"),
+    ],
+    ids=["names", "clashes"],
+)
+async def test_two_workers_replacing_the_table_at_once_do_not_collide(
+    control_plane, write, many, table
+):
+    """REQ-1914, REQ-194: every worker of an org rebuilds on a model change and each build replaces
+    the table, so two replace it at once. Each replacement is whole: the second begins from what
+    the first committed, and neither finds the other's rows when it inserts."""
+    first, second = control_plane.org(), control_plane.org()
+    finished = threading.Event()
+    failed: list[BaseException] = []
+
+    async def second_worker() -> None:
+        try:
+            async with second.acquire() as conn:
+                await write(conn, many(1))
+        except BaseException as err:  # noqa: BLE001 - asserted on below
+            failed.append(err)
+        finally:
+            finished.set()
+
+    thread: threading.Thread | None = None
+
+    async def start_second_and_let_it_finish_or_block() -> None:
+        nonlocal thread
+        context = contextvars.copy_context()
+        thread = threading.Thread(target=context.run, args=(asyncio.run, second_worker()))
+        thread.start()
+        deadline = time.monotonic() + 30
+        while not finished.is_set():
+            async with first.acquire() as probe:
+                blocked = (
+                    await probe.execute_core(
+                        text(
+                            "SELECT count(*) FROM pg_stat_activity "
+                            "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                        )
+                    )
+                ).scalar_one()
+            if blocked:
+                return
+            assert time.monotonic() < deadline, "the second worker neither finished nor waited"
+            await asyncio.sleep(0.02)
+
+    try:
+        async with first.acquire() as conn:
+            await write(
+                _OtherWorkerWritesBeforeTheInsert(conn, start_second_and_let_it_finish_or_block),
+                many(3),
+            )
+        assert thread is not None
+        thread.join(30)
+        assert not thread.is_alive()
+        assert failed == []
+        async with first.acquire() as conn:
+            stored = (await conn.execute_core(text(f"SELECT count(*) FROM {table}"))).scalar_one()
+    finally:
+        if thread is not None:
+            thread.join(30)
+        await first.close()
+        await second.close()
+    # The second worker's replacement, whole: it cleared what the first committed.
+    assert stored == 1
 
 
 @pytest.mark.asyncio
