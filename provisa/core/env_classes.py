@@ -116,7 +116,18 @@ IDENTITY_ONLY: frozenset[str] = frozenset({"sources", "api_sources", "kafka_sour
 #: ``user_idp_attributes`` (REQ-1383) is what each identity provider said at a sign-in to THIS
 #: environment; it is rewritten there at the next one.
 NEVER_SENSITIVE: frozenset[str] = frozenset(
-    {"org_secrets", "user_directory", "user_idp_attributes"}
+    {
+        "org_secrets",
+        "user_directory",
+        "user_idp_attributes",
+        # REQ-2219: what each person is entitled to within a role, and when it ends: grants
+        # keyed by this environment's principals, as the directory is. A role's defaults
+        # (roles.default_entitlements) travel with the role; a person's narrowing and expiry
+        # are this environment's own answer, and carrying them through a merge would be a way
+        # to grant or to widen a right, the escalation REQ-1539 closed for roles.
+        "entitlements",
+        "entitlement_expiries",
+    }
 )
 
 #: Never copied: runtime state and evidence, which belong to the environment that PRODUCED them.

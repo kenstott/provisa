@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+async def refs(conn: "Connection") -> tuple[tuple[str, str], ...]:  # REQ-2219
+    """(id, domain id) of every data product: what an entitlement list can name."""
+    result = await conn.execute_core(select(data_products.c.id, data_products.c.domain_id))
+    return tuple((r.id, r.domain_id) for r in result.fetchall())
+
+
 async def upsert(  # REQ-1634, REQ-1919
     conn: "Connection", product: DataProduct
 ) -> None:
@@ -64,6 +70,7 @@ async def upsert(  # REQ-1634, REQ-1919
             "support": product.support,
             "support_contact": product.support_contact,
             "custom_properties": product.custom_properties,
+            "created_by": product.created_by,  # REQ-2219: on insert; update_columns leaves it
         },
         index_elements=["id"],
         update_columns=[

@@ -933,6 +933,29 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
+    def held_entitlements(self) -> dict[str, Any]:
+        """user id -> the entitlement lists Provisa holds for them (REQ-2219)."""
+        return self._active_runtime().held_entitlements
+
+    @held_entitlements.setter
+    def held_entitlements(self, value: dict[str, Any]) -> None:
+        self._active_runtime().held_entitlements = value
+
+    @property
+    def data_product_refs(self) -> tuple[tuple[str, str], ...]:
+        """(data product id, domain id) of every product, for entitlement lists (REQ-2219)."""
+        return self._active_runtime().data_product_refs
+
+    @data_product_refs.setter
+    def data_product_refs(self, value: tuple[tuple[str, str], ...]) -> None:
+        self._active_runtime().data_product_refs = value
+
+    @property
+    def entitlement_masks(self) -> Any:
+        """The masks computed for this runtime's requests (REQ-2219)."""
+        return self._active_runtime().entitlement_masks
+
+    @property
     def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
@@ -3570,6 +3593,13 @@ async def _rebuild_schemas_impl(
         from provisa.core.repositories import user_attribute as _attr_repo
 
         state.user_attributes = await _attr_repo.org_by_user(conn)
+        # REQ-2219: what Provisa holds of its members' entitlements, and the products a list can
+        # name, so a request's mask reads nothing.
+        from provisa.core.repositories import data_product as _product_repo
+        from provisa.entitlements import store as _entitlement_store
+
+        state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.data_product_refs = await _product_repo.refs(conn)
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
