@@ -50,6 +50,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/platform-connectors
+
       # Slim AppImage: images are NOT bundled (they'd push it over GitHub's 2 GB
       # asset limit alongside the native venv payload). The Docker tier acquires
       # provisa-core-images-amd64-<ver>.zip on demand at first launch.

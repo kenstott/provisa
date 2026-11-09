@@ -125,6 +125,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/platform-connectors
+
       # The app image's build and the saved images need more disk than every hosted runner
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
       - name: Free runner disk
@@ -251,6 +253,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - uses: ./.github/actions/platform-connectors
 
       # The app image's build and the saved images need more disk than every hosted runner
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).

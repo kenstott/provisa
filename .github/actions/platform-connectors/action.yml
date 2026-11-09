@@ -1,0 +1,13 @@
+name: Platform connector block
+description: >-
+  REQ-2225: puts the run's platform connector block (the platform-connectors job of build-dmg.yml)
+  in the checkout, before anything is packaged, so every Provisa package of a release carries it.
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: platform-connectors
+        path: ${{ runner.temp }}/platform-connectors
+    - shell: bash
+      run: cp "$RUNNER_TEMP/platform-connectors/platform_connectors.yaml" provisa/core/platform_connectors.yaml

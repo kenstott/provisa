@@ -57,6 +57,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/platform-connectors
+
       - name: Download prebuilt provisa-ui dist
         uses: actions/download-artifact@v4
         with:
@@ -97,6 +99,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - uses: ./.github/actions/platform-connectors
 
       - name: Build container-tier installer (WSL2, Inno Setup)
         shell: pwsh

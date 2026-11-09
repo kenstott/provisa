@@ -175,6 +175,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/platform-connectors
+
       - name: Set up Python
         id: python
         uses: actions/setup-python@v5

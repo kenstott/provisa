@@ -73,6 +73,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: ./.github/actions/platform-connectors
+
       - name: Import Apple signing certificate
         uses: ./.github/actions/apple-signing
         with:
@@ -125,6 +127,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - uses: ./.github/actions/platform-connectors
 
       - name: Import Apple signing certificate
         uses: ./.github/actions/apple-signing
