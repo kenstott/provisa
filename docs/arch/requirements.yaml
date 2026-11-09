@@ -94447,3 +94447,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     model with the pains it removes and a same-query, two-roles proof; a short row of sources; and
     download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a
     why page answers opens that page.'
+- id: REQ-2232
+  value: A named demo shows a dbt project working with Provisa, with dbt still building.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type
+    (REQ-2228). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables
+    dbt built governed by role, lineage running through its models and on to a consumer, freshness and
+    test results from its run, and a model run from Provisa through its command.
+  scenario: 'Given the dbt demo
+
+
+    When a visitor follows its tour
+
+
+    Then the tables dbt built are served with less to a restricted role
+
+
+    And lineage runs through the dbt models to what consumes them
+
+
+    And the run''s freshness and test results are shown
+
+
+    When the visitor runs a model through its command
+
+
+    Then dbt builds that model and the call is recorded'
+  stakeholders:
+  - data-engineer

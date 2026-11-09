@@ -26855,3 +26855,13 @@ Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer 
 **Code:** —
 
 **Tests:** —
+
+### REQ-2232 · Demo Provisioning {#REQ-2232}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type ([REQ-2228](#REQ-2228)). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables dbt built governed by role, lineage running through its models and on to a consumer, freshness and test results from its run, and a model run from Provisa through its command.
+
+**Code:** —
+
+**Tests:** —
