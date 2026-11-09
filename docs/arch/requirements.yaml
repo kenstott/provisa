@@ -94379,7 +94379,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     DESCRIPTIONS AND MACROS:) Maintainer 2026-11-09: on an operator-run connector a dbt command is a code
     source @command taking the dbt invocation as a fixed argument. A new manifest updates a description
     only if no steward has changed it. Each macro means the project''s and its installed packages'' macros,
-    not dbt''s own internal dbt and dbt_* macros.'
+    not dbt''s own internal dbt and dbt_* macros. (Amended 2026-11-09, DBT IS A CHECKER:) Maintainer 2026-11-09:
+    dbt is a third checker type under REQ-1443: a steward registers a results table per tested model and
+    each new run results file appends rows in the fixed schema, with the data quality tag, product panels
+    and export assertions.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
