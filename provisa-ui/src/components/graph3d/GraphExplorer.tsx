@@ -17,7 +17,7 @@
 // from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
 // a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
@@ -95,6 +95,8 @@ export function GraphExplorer({
   scope,
   preset: initialPreset,
   focus: initialFocus = null,
+  home = null,
+  onRest,
   selected: initialSelected = initialFocus,
   depth: initialDepth,
   layers: openingLayers,
@@ -112,6 +114,11 @@ export function GraphExplorer({
   scope: GraphScope;
   preset: PresetId;
   focus?: string | null;
+  /** The product this view is the graph of: focused on it by the Focus filter, it offers the
+   * rest of the model on asking, and Set Defaults comes back to it. */
+  home?: string | null;
+  /** Told whether the rest of the model is being shown, the page reading it then. */
+  onRest?: (rest: boolean) => void;
   /** The node selected when the view opens, the focus by default: the whole ontology a snippet
    * expands to opens with the snippet's focus selected (REQ-2174), drawing everything. */
   selected?: string | null;
@@ -304,6 +311,19 @@ export function GraphExplorer({
       return next;
     });
   const [frame, setFrame] = useState(0);
+  // A product's graph shows the rest of the model whenever its focus is anything but the product.
+  const showsRest = home !== null && !(focus.length === 1 && focus[0] === home);
+  useEffect(() => onRest?.(showsRest), [onRest, showsRest]);
+  // What the rest brings in is read after the control flips: the camera fits it once it is here.
+  const refit = useRef(false);
+  useEffect(() => {
+    refit.current = home !== null;
+  }, [home, showsRest]);
+  useEffect(() => {
+    if (!refit.current) return;
+    refit.current = false;
+    setFrame((f) => f + 1);
+  }, [data]);
   const [picked, setSelected] = useState<string | null>(initialSelected);
   const [hover, setHover] = useState<GraphHover | null>(null);
   const [command, setCommand] = useState<CameraCommand | null>(null);
@@ -572,6 +592,16 @@ export function GraphExplorer({
       {t("graph3d.relatedTables")}
     </Chip>
   );
+  const restControl = home !== null && (
+    <Chip
+      size="xs"
+      checked={showsRest}
+      onChange={(on) => setFocus(on ? [] : [home])}
+      data-testid={`${testId}-rest`}
+    >
+      {t("graph3d.restOfModel")}
+    </Chip>
+  );
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
       <Text size="sm" c="dimmed">
@@ -632,6 +662,7 @@ export function GraphExplorer({
         />
         <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
         {depthControl}
+        {restControl}
         {relatedControl}
         {/* A 2D graph is a lane diagram: it has one layout, no floor, never turns, and draws no
             lateral edge. */}
@@ -671,7 +702,16 @@ export function GraphExplorer({
         {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
-        <ResetSettingsButton onReset={resetSettings} testId={testId} />
+        <ResetSettingsButton
+          onReset={() => {
+            resetSettings();
+            if (home !== null) {
+              setFocus([home]);
+              setDepth(initialDepth);
+            }
+          }}
+          testId={testId}
+        />
         {query && <OpenAsQuery query={query.text} focused={focused} testId={testId} />}
         {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
       </Group>
@@ -872,6 +912,8 @@ function GraphDetail({
   const counts = useMemo(() => {
     const by = new Map<string, { key: string; type: string; count: number }>();
     for (const n of graph.nodes) {
+      // A table's folded columns are one node drawn, not one column.
+      if (n.folded) continue;
       const key = kindKey(n);
       const seen = by.get(key);
       if (seen) seen.count += 1;

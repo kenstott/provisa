@@ -2654,6 +2654,7 @@
   "ru/graph3d.json::graph3d.quality_none": "Not run yet",
   "ru/graph3d.json::graph3d.quality_pass": "Passing",
   "ru/graph3d.json::graph3d.relatedTables": "Related tables",
+  "ru/graph3d.json::graph3d.restOfModel": "Show the rest of the model",
   "ru/graph3d.json::graph3d.search": "Search…",
   "ru/graph3d.json::graph3d.show": "Show",
   "ru/graph3d.json::graph3d.showColumns": "Show columns",

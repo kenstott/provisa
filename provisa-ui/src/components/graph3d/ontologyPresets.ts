@@ -66,6 +66,20 @@ export const productPreset = (product: string): SnippetPreset => ({
   products: true,
 });
 
+/** A product's graph, expanded from its panel, opens at what the product delivers: its tables (1),
+ * their columns (2) and the terms grounded on those columns (3). */
+export const PRODUCT_GRAPH_DEPTH = 3;
+
+/** The expanded product graph's preset, for a product's panel preset. */
+export const productGraph = (p: SnippetPreset): SnippetPreset => ({
+  ...p,
+  depth: PRODUCT_GRAPH_DEPTH,
+});
+
+/** Its layers: the terms, the columns they bind and the product's tables, no domain and no
+ * related table; the Layers menu adds them. */
+export const PRODUCT_GRAPH_LAYERS: LayerId[] = ["ontology", "columns", "data"];
+
 /** The graph scope a preset's rules draw with. */
 export const scopeOf = (p: Pick<OntologyPreset, "products">): GraphScope =>
   p.products ? PRODUCT_MAP_SCOPE : ONTOLOGY_SCOPE;
