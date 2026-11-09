@@ -186,7 +186,18 @@ JSON = "application/json"
 
 
 #: Every service under ``$PROVISA_SERVICES`` (provisa/codesource/service_ops.py for REQ-2106's).
-SERVICES = ("secrets", "llm", "settings", "cache", "vectors", "http", "log", "metric", "dq")
+SERVICES = (
+    "secrets",
+    "llm",
+    "settings",
+    "cache",
+    "vectors",
+    "http",
+    "log",
+    "metric",
+    "audit",
+    "dq",
+)
 
 #: The header a worker's services request names its call by (the call's id), so the services'
 #: stages report to the request that call serves (REQ-2106).
@@ -273,6 +284,8 @@ def _dispatch(
             return cl.run(service_ops.cache(grant, method, sub, body, span))
         if service == "vectors":
             return cl.run(service_ops.vectors(grant, method, sub, body, span))
+        if service == "audit":
+            return cl.run(service_ops.audit(grant, method, body, span))
         if service == "dq":
             from provisa.dq import service as dq_service
 
@@ -298,6 +311,8 @@ def read_secret(grant: ServiceGrant, name: str) -> str:
 
 
 async def _read(grant: ServiceGrant, name: str) -> str:
+    from provisa.security.redaction import note_secret_value
+
     if name not in grant.secrets:
         await _audit(grant, name, "undeclared")
         raise ServiceRefused(
@@ -323,6 +338,9 @@ async def _read(grant: ServiceGrant, name: str) -> str:
     if not value:
         await _audit(grant, name, "unresolved")
         raise ServiceRefused(404, f"the secret {name!r} ({named}) resolves to nothing")
+    # What the code now holds is matched wherever Provisa writes from here on, an ${env:...}
+    # reference included, which the resolver itself does not note.
+    note_secret_value(name, value)
     await _audit(grant, name, "read")
     return value
 

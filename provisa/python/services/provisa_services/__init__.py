@@ -23,6 +23,7 @@ Provisa it is not there, and code that imports it is tested by mocking it.
     ps.http.get("https://api.example.com/rates").json()
     ps.llm.chat("provisa:sql_generation", [{"role": "user", "content": "..."}])
     ps.log("scored", level="info", accounts=12); ps.metric("scored", 12)
+    ps.audit("spark.run", application_id=app_id, ui=ui_url, rows=12)
 
 Each call is made to ``$PROVISA_SERVICES`` through the worker's egress proxy, naming the call it
 serves, so what it does is recorded against the request that called the code. A refusal is raised
@@ -67,6 +68,7 @@ __all__ = [
     "Order",
     "ReadContext",
     "ServiceError",
+    "audit",
     "cache",
     "dq",
     "http",
@@ -350,6 +352,13 @@ def metric(name: str, value: float, kind: str = "counter", **attributes: Any) ->
         "metric",
         {"name": name, "value": value, "kind": kind, "attributes": attributes},
     )
+
+
+def audit(event: str, /, **fields: Any) -> None:
+    """A structured event written to the org's trail, attached to the request this call serves:
+    ``event`` names it (lower-case letters, digits, ``_`` and ``.``), ``fields`` are JSON values,
+    at most 64 KB. A secret value does not belong in it, and is redacted if it is there."""
+    _json("audit", "POST", "audit", {"event": event, "fields": fields})
 
 
 # -- the read context (REQ-2100) ---------------------------------------------------------------

@@ -325,6 +325,138 @@ def test_a_metric_point_carries_its_source_and_org(token, monkeypatch):
         assert _call(token, "POST", "metric", bad)[0] == 400
 
 
+# -- an audit event -----------------------------------------------------------------------------
+
+_TRACE = "0af7651916cd43dd8448eb211c80319c"
+#: Lower-case on purpose: it fits an event's name as well as a field's value.
+_SPARK_TOKEN = "sparkhistorytoken9f3a7c"
+
+
+@pytest.fixture
+def trail(monkeypatch) -> list[dict]:
+    """The rows the real trail writer inserts, in an org with no database behind it."""
+    rows: list[dict] = []
+
+    class Conn:
+        async def execute_core(self, stmt):
+            rows.append(dict(stmt.compile().params))
+
+    class Db:
+        @asynccontextmanager
+        async def acquire(self):
+            yield Conn()
+
+    @asynccontextmanager
+    async def bound(grant):
+        yield Db(), {}
+
+    monkeypatch.setattr("provisa.codesource.llm_service.org_bound", bound)
+    return rows
+
+
+def _spark_run() -> dict:
+    return {
+        "application_id": "application_1700000000000_0042",
+        "ui": "https://spark.example.com/history/application_1700000000000_0042",
+        "input_paths": ["s3://lake/orders/2026/11/"],
+        "rows": {"read": 1200, "written": 1187},
+    }
+
+
+def test_an_event_is_written_to_the_orgs_trail_with_the_request_it_serves(
+    token, trail, monkeypatch
+):
+    events: list = []
+    monkeypatch.setattr(
+        "provisa.otel_compat.request_event", lambda name, **a: events.append((name, a))
+    )
+    monkeypatch.setattr(
+        "provisa.otel_compat.current_traceparent", lambda: f"00-{_TRACE}-b7ad6b7169203331-01"
+    )
+    assert _call(token, "POST", "audit", {"event": "spark.run", "fields": _spark_run()}) == (
+        200,
+        {},
+    )
+    (row,) = trail
+    assert row["action"] == service_ops.CODE_AUDIT
+    assert row["actor_id"] == "source:scorer" and row["subject_id"] == "spark.run"
+    assert row["detail"] == {"source": "scorer", "trace_id": _TRACE, "fields": _spark_run()}
+    # On the request's span the event is named; what it says is only in the trail.
+    assert events == [("codesource.audit", {"source": "scorer", "event": "spark.run"})]
+
+
+def test_an_event_outside_any_request_says_it_serves_none(token, trail, monkeypatch):
+    monkeypatch.setattr("provisa.otel_compat.current_traceparent", lambda: None)
+    assert _call(token, "POST", "audit", {"event": "worker.loaded"}) == (200, {})
+    (row,) = trail
+    assert row["detail"] == {"source": "scorer", "trace_id": None, "fields": {}}
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {},
+        {"event": 7},
+        {"event": "Bad Name"},
+        {"event": "spark.run", "fields": ["a"]},
+        {"event": "spark.run", "fields": {"rows": float("nan")}},
+        {"event": "spark.run", "fields": {"blob": "x" * (64 * 1024 + 1)}},
+    ],
+)
+def test_a_malformed_event_is_refused_and_not_written(token, trail, bad):
+    status, answered = _call(token, "POST", "audit", bad)
+    assert status in (400, 413) and "xxxx" not in answered["error"]["message"]
+    assert trail == []
+
+
+def test_an_event_is_posted(token, trail):
+    assert _call(token, "GET", "audit")[0] == 405
+    assert trail == []
+
+
+@pytest.fixture
+def secret_holder(monkeypatch, trail):
+    """A worker that read a secret declared as a reference to the deployment's environment."""
+    from provisa.core import secrets_store
+
+    async def decrypted(admin_db, org_id, owner_id):
+        return {}
+
+    async def read_audited(grant, name, outcome):
+        return None
+
+    monkeypatch.setattr(secrets_store, "_decrypted", decrypted)
+    monkeypatch.setattr(services, "_audit", read_audited)
+    monkeypatch.setenv("SPARK_TOKEN", _SPARK_TOKEN)
+    issued = services.issue(_grant(secrets={"spark": "${env:SPARK_TOKEN}"}))
+    status, _, value = services.answer("GET", f"/{issued}/secrets/spark")
+    assert status == 200 and value.decode() == _SPARK_TOKEN
+    yield issued
+    services.revoke(issued)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"token": _SPARK_TOKEN},
+        {"ui": f"https://spark.example.com/history?token={_SPARK_TOKEN}"},
+        {"runs": [{"auth": {"token": _SPARK_TOKEN}}]},
+        {_SPARK_TOKEN: "a key"},
+        {"nested": {f"x-{_SPARK_TOKEN}": 1}},
+    ],
+)
+def test_a_secret_the_code_read_never_reaches_the_trail(secret_holder, trail, fields):
+    assert _call(secret_holder, "POST", "audit", {"event": "spark.run", "fields": fields})[0] == 200
+    (row,) = trail
+    assert _SPARK_TOKEN not in json.dumps(row)
+
+
+def test_an_event_named_by_a_secret_is_refused_without_repeating_it(secret_holder, trail):
+    status, answered = _call(secret_holder, "POST", "audit", {"event": _SPARK_TOKEN})
+    assert status == 400 and _SPARK_TOKEN not in json.dumps(answered)
+    assert trail == []
+
+
 # -- the request's scope ------------------------------------------------------------------------
 
 
