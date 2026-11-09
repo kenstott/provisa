@@ -34,7 +34,9 @@ analyst:
   description: "Reads and queries the governed data it is granted. What an invitation gives when it names no role."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [usage, query_development]
+  # REQ-870: command_execution, with what a command assigned to it needs: developer, data_steward,
+  # org_admin and the sandbox hold it through this role.
+  capabilities: [usage, query_development, command_execution]
 
 developer:
   description: "Builds queries, views and relationships, writes data and works in the org's environments."

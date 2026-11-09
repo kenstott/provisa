@@ -19,10 +19,10 @@ OpenAPI, gRPC, Hasura):
    and default-denied rather than silently executed.
 
 2. ADMIT a command call (``admit_command``), the one admission every surface's call passes:
-   the role is assigned the command (its one role list, ``visible_to``; empty assigns it to
-   every role), reaches the command's domain, and — for a mutation — holds the global WRITE
-   capability (REQ-868). A command the role may not use is not found, the same as one never
-   registered. No capability stands above the assignment.
+   the role holds command_execution (REQ-870), is assigned the command (its one role list,
+   ``visible_to``; empty assigns it to no role) and reaches the command's domain. The assignment
+   is the grant: whether the command writes asks nothing more. A command the role may not use is
+   not found, the same as one never registered. No capability stands above the assignment.
 
 The executor (api/data/action_exec.py) renders these as the API's answers; this module is pure
 and unit-testable with no I/O.
@@ -32,7 +32,14 @@ from __future__ import annotations
 
 from enum import Enum
 
-from provisa.security.rights import Capability, InsufficientRightsError, has_capability
+from provisa.security.rights import (
+    COMMAND_DOMAIN_ACCESS,
+    META_DOMAIN_ID,
+    Capability,
+    InsufficientRightsError,
+    has_capability,
+    reaches_command_domain,
+)
 
 
 class MutationNotPermitted(PermissionError):
@@ -152,24 +159,37 @@ def command_assigned(command: dict, role_id: str) -> bool:
     return role_id in (command.get("visible_to") or ())
 
 
-def command_reachable(command: dict, role: dict) -> bool:
-    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain by
-    rights.reaches_command_domain, which a capability opening a system domain does not widen. A
-    role with no capabilities needs only the assignment: a command's list of roles is the grant
-    of a role that exists to run it (REQ-2155)."""
-    from provisa.security.rights import reaches_command_domain
-
-    if not command_assigned(command, str(role.get("id", ""))):
-        return False
-    return not role.get("capabilities") or reaches_command_domain(
-        role.get("domain_access"), command.get("domain_id") or ""
+def _is_catalog_command(command: dict) -> bool:
+    """A read-only command of the meta domain (the APOC set, REQ-2168): catalog_read's, by its
+    reach of meta, not command_execution's."""
+    return (
+        command.get("domain_id") == META_DOMAIN_ID
+        and classify_kind(command.get("kind")) is MutationKind.READ
     )
 
 
+def command_reachable(command: dict, role: dict) -> bool:
+    """Whether ``role`` may see ``command`` at all (REQ-870): it holds command_execution, is
+    assigned the command and reaches its domain by rights.reaches_command_domain, which a
+    capability opening a system domain does not widen. A role with no capabilities reaches no
+    command. A read-only catalog command stays under catalog_read."""
+    if not command_assigned(command, str(role.get("id", ""))):
+        return False
+    domain_id = command.get("domain_id") or ""
+    if _is_catalog_command(command):
+        return reaches_command_domain(role.get("domain_access"), domain_id)
+    if not has_capability(role, Capability.COMMAND_EXECUTION):
+        return False
+    reach = (
+        role[COMMAND_DOMAIN_ACCESS] if COMMAND_DOMAIN_ACCESS in role else role.get("domain_access")
+    )
+    return reaches_command_domain(reach, domain_id)
+
+
 def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-869, REQ-1758
-    """The one command admission, for every surface: the role is assigned the command, reaches
-    its domain, and — for a command declared ``mutation`` (or of unknown kind) — holds the write
-    right. Approval, where the command declares it, is the caller's next step.
+    """The one command admission, for every surface: the role may use the command by
+    :func:`command_reachable`, whether the command writes or not; it needs no write capability
+    for it (REQ-870). Approval, where the command declares it, is the caller's next step.
 
     A command is opaque within these rights: what it does once admitted is not inspected here.
     There is no call without a role (REQ-1758)."""
@@ -177,9 +197,3 @@ def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-8
         raise MutationNotPermitted(name, "no acting role: a command is called as a role")
     if not command_reachable(command, role):
         raise CommandNotFound(name)
-    # REQ-2155: a role with no capabilities that a command names runs it, and nothing else.
-    needs_write = classify_kind(command.get("kind")) is MutationKind.WRITE and role.get(
-        "capabilities"
-    )
-    if needs_write and not has_capability(role, Capability.WRITE):
-        raise MutationNotPermitted(name, "role lacks the WRITE capability")

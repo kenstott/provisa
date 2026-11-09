@@ -132,21 +132,33 @@ def meta_description(members: list[dict]) -> str:  # REQ-2080
 
 def _role(members: list[dict], meta_id: str) -> dict:
     from provisa.security.inheritance import OWN_DOMAIN_ACCESS
-    from provisa.security.rights import normalized_reach
+    from provisa.security.rights import (
+        COMMAND_DOMAIN_ACCESS,
+        Capability,
+        command_only,
+        normalized_reach,
+    )
 
     caps: set[str] = set()
     domains: set[str] = set()
     own_domains: set[str] = set()
+    command_domains: set[str] = set()
     for m in members:
-        caps.update(m.get("capabilities") or [])
-        domains.update(m.get("domain_access") or [])
-        own_domains.update(m[OWN_DOMAIN_ACCESS])  # REQ-2153: every built role carries it
+        held = m.get("capabilities") or []
+        caps.update(held)
+        if Capability.COMMAND_EXECUTION.value in held:
+            command_domains.update(m.get("domain_access") or [])
+        # REQ-870, REQ-2152: a member holding only command_execution adds no read reach.
+        if not command_only(held):
+            domains.update(m.get("domain_access") or [])
+            own_domains.update(m[OWN_DOMAIN_ACCESS])  # REQ-2153: every built role carries it
     return {
         "id": meta_id,
         "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
         "domain_access": normalized_reach(domains),
         OWN_DOMAIN_ACCESS: normalized_reach(own_domains),
+        COMMAND_DOMAIN_ACCESS: normalized_reach(command_domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.

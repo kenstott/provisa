@@ -36,7 +36,7 @@ from provisa.compiler.naming import (
     to_pascal_case,
 )
 from provisa.compiler.type_map import JSONScalar
-from provisa.security.mutation_authz import command_assigned
+from provisa.security.mutation_authz import command_reachable
 from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
@@ -153,9 +153,6 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     # field -> the command holding it, for each of the two root types: no two share one.
     held_by: dict[tuple[str, str], str] = {}
 
-    role_id = si.role["id"]
-    from provisa.security.rights import acts_in_domain
-
     def _gql_scalar(type_str: str):
         if type_str == _IR_JSON:
             return cast(GraphQLScalarType, JSONScalar)
@@ -196,17 +193,12 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             called = binding_name(item, "graphql")
             if called is None:
                 continue
-            if not command_assigned(item, role_id):  # REQ-2153: an empty list names no role
-                continue
             domain_id = item.get("domain_id", "")
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
-            # REQ-2155: a role with no capabilities needs only the assignment above.
-            if not domain_id or not (
-                not si.role.get("capabilities")
-                or acts_in_domain(si.role["domain_access"], domain_id)
-            ):
+            # REQ-870: the one rule admission reads, so the schema offers what a call is admitted.
+            if not domain_id or not command_reachable(item, si.role):
                 continue
             # A per-domain schema offers only the commands of the domains it was asked for.
             if not offers_domain(si, domain_id):

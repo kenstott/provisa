@@ -43,7 +43,13 @@ _SAMPLE = {
 
 def _state() -> SimpleNamespace:
     return SimpleNamespace(
-        roles={"seller": {"id": "seller", "capabilities": [], "domain_access": ["sales"]}},
+        roles={
+            "seller": {
+                "id": "seller",
+                "capabilities": ["command_execution"],
+                "domain_access": ["sales"],
+            }
+        },
         tracked_functions={"sample_rows": _SAMPLE},
         tracked_webhooks={},
     )
@@ -122,7 +128,7 @@ def _schema_input():
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "seller", "capabilities": [], "domain_access": ["sales"]},
+        role={"id": "seller", "capabilities": ["command_execution"], "domain_access": ["sales"]},
         domains=[{"id": "sales", "description": "Sales"}],
         domain_prefix=False,
         functions=[{**_SAMPLE, "returns": ""}],
@@ -142,6 +148,7 @@ def test_the_grpc_argument_with_a_default_is_optional():
     from tests.unit.test_proto_gen import _make_si
 
     si = _make_si()
+    si.role = {**si.role, "capabilities": ["command_execution"]}
     si.functions = [
         {
             "name": "sample_rows",

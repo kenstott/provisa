@@ -148,4 +148,4 @@ def held(tree: exp.Expr) -> exp.Expr:
         suffix = "[]" if written != element else ""
         return exp.DataType.build(f"{_ON_THE_ENGINE[element]}{suffix}", dialect="duckdb")
 
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)
