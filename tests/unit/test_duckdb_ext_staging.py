@@ -342,3 +342,99 @@ def test_a_community_extension_is_still_installed_from_community():
     con = _Con()
     install_and_load(con, "mssql")  # type: ignore[arg-type]
     assert con.statements == ["INSTALL mssql FROM community", "LOAD mssql"]
+
+
+# REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): no bundled set, so the extension
+# set is installed when the server starts and a connector is attachable only when its extensions
+# installed.
+
+
+class _InstallingConnection:
+    """A connection on which INSTALL of ``refused`` fails as an extension with no build does."""
+
+    def __init__(self, refused: frozenset[str], ran: list[str]) -> None:
+        self.refused, self.ran = refused, ran
+
+    def execute(self, statement: str) -> None:
+        self.ran.append(statement)
+        words = statement.split()
+        if words[0] == "INSTALL" and words[1] in self.refused:
+            raise duckdb.HTTPException(f"HTTP Error: no build of {words[1]}")
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.fixture
+def server_tier(monkeypatch):
+    """No staged directory; INSTALL of gsheets fails. Yields the statements run."""
+    from provisa.federation import duckdb_extensions
+
+    ran: list[str] = []
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.setattr(duckdb_extensions, "_installed_at_start", None)
+    monkeypatch.setattr(
+        duckdb_extensions, "connect", lambda: _InstallingConnection(frozenset({"gsheets"}), ran)
+    )
+    return ran
+
+
+def test_the_server_tier_installs_its_extension_set_and_never_loads_it(server_tier):
+    from provisa.federation.duckdb_extensions import install_extension_set
+
+    installed = install_extension_set()
+    assert installed is not None
+    assert {"postgres", "sqlite", "iceberg", "avro", "mssql", "azure"} <= installed
+    assert "gsheets" not in installed
+    assert "INSTALL postgres" in server_tier and "INSTALL mongo FROM community" in server_tier
+    assert "INSTALL airport FROM query_farm" in server_tier
+    assert not [s for s in server_tier if s.startswith("LOAD")]
+
+
+def test_the_server_tier_gates_attach_on_what_installed(server_tier):
+    from provisa.federation.duckdb_extensions import install_extension_set
+    from provisa.federation.engine import build_duckdb_engine
+
+    assert "google_sheets" in build_duckdb_engine().connectors  # nothing installed yet: not gated
+    install_extension_set()
+    engine = build_duckdb_engine()
+    assert "postgresql" in engine.connectors
+    assert "google_sheets" not in engine.connectors
+    assert "gsheets" in (engine.unreachable_reason("google_sheets") or "")
+
+
+def test_a_staged_directory_installs_nothing_at_server_start(server_tier, monkeypatch, tmp_path):
+    from provisa.federation.duckdb_extensions import install_extension_set
+
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path))
+    assert install_extension_set() is None
+    assert server_tier == []
+
+
+async def test_the_server_rebuilds_its_engine_on_what_installed(monkeypatch):
+    from types import SimpleNamespace
+
+    from provisa.api import app as app_module
+    from provisa.federation import duckdb_extensions, engine, runtime
+
+    built: list[str] = []
+    state = SimpleNamespace(federation_engine="the engine built before anything installed")
+    monkeypatch.setattr(app_module, "state", state)
+    monkeypatch.setattr(engine, "configured_engine_kind", lambda: "duckdb")
+    monkeypatch.setattr(duckdb_extensions, "install_extension_set", lambda: frozenset({"postgres"}))
+    monkeypatch.setattr(engine, "build_engine", lambda: built.append("rebuilt") or "gated")
+    monkeypatch.setattr(runtime, "EngineRuntime", lambda e, _s: f"runtime of {e}")
+    await app_module.install_server_extensions()
+    assert built == ["rebuilt"] and state.federation_engine == "runtime of gated"
+
+
+async def test_a_server_on_another_engine_installs_no_duckdb_extensions(monkeypatch):
+    from provisa.api import app as app_module
+    from provisa.federation import duckdb_extensions, engine
+
+    def installed():
+        raise AssertionError("a Trino deployment installed DuckDB's extensions")
+
+    monkeypatch.setattr(engine, "configured_engine_kind", lambda: "trino")
+    monkeypatch.setattr(duckdb_extensions, "install_extension_set", installed)
+    await app_module.install_server_extensions()
