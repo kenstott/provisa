@@ -219,33 +219,26 @@ class TestAiModels:
 
 
 class TestCacheStorageWarmAndMv:
-    def test_put_hot_replication_and_mv_default_persist(self, client, settings_store):
+    def test_put_mv_default_persists_and_replication_is_not_this_doors(
+        self, client, settings_store
+    ):
         r = client.put(
             "/admin/cache-storage",
             json={
-                "replication": {
-                    "hot_threshold": 250,
-                    "hot_interval": 120,
-                    "hot_max_rows": 5_000_000,
-                },
+                "replication": {"hot_threshold": 250},  # REQ-1327: the org's, saved elsewhere
                 "materialized_views": {"default_ttl": 900},
             },
         )
         assert r.status_code == 200
         # REQ-1913: stored in the control plane; the node's config file is not written.
         stored = settings_store.resolve
-        assert stored("replication.hot_threshold") == (250, "stored")
-        assert stored("replication.hot_interval") == (120, "stored")
-        assert stored("replication.hot_max_rows") == (5_000_000, "stored")
+        assert stored("replication.hot_threshold").source != "stored"
         assert stored("materialized_views.default_ttl") == (900, "stored")
         assert "replication" not in read_config()
-        # ...and the page reads them back
+        # ...and the page reads it back
         shown = client.get("/admin/cache-storage").json()
-        assert shown["replication"] == {
-            "hot_threshold": 250,
-            "hot_interval": 120,
-            "hot_max_rows": 5_000_000,
-        }
+        assert shown["materialized_views"]["default_ttl"] == 900
+        assert "replication" not in shown
         # the filesystem read-cache settings are gone (REQ-238): no block for them
         assert "warm_tables" not in shown
 
@@ -318,16 +311,13 @@ class TestSettingsGraphqlRemoteAndSampling:
         assert r.status_code == 200
         assert read_config()["graphql_remote"]["max_object_depth"] == 9
 
-    def test_put_sample_size_is_stored_in_the_control_plane(self, client):
-        """REQ-1900: a deployment-wide setting is a control-plane row every worker reads, not an
-        environment write in the worker that served the request."""
+    def test_put_sample_size_is_stored_in_the_orgs_rows(self, client, org_overrides):
+        """REQ-1327: the default sample size is the org's, a row of its own settings, not a
+        deployment-wide value and not an environment write in the worker that served it."""
         from provisa.api.admin import settings_router
-        from provisa.api.app import state
 
-        control_plane = object()
         with (
             patch.dict(os.environ, {}, clear=False),
-            patch.object(state, "admin_db", control_plane),
             patch.object(settings_router._deployment_settings, "write") as write,
         ):
             os.environ.pop("PROVISA_SAMPLE_SIZE", None)
@@ -335,9 +325,8 @@ class TestSettingsGraphqlRemoteAndSampling:
             assert r.status_code == 200
             assert r.json()["updated"] == ["sampling.default_sample_size"]
             assert "PROVISA_SAMPLE_SIZE" not in os.environ
-        write.assert_called_once_with(
-            control_plane, {"sampling.default_sample_size": 555}, updated_by="anonymous"
-        )
+        write.assert_not_called()
+        assert org_overrides["sampling"] == {"default_sample_size": 555}
 
 
 # --- Encryption provider registry (REQ-918) -------------------------------------

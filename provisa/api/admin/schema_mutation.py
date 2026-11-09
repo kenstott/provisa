@@ -5959,7 +5959,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def update_gql_naming_convention(
         self, info: StrawberryInfo, convention: str
     ) -> MutationResult:  # REQ-253, REQ-416
-        """Set the global naming convention and rebuild schemas for all roles."""
+        """Set the acting org's GraphQL naming convention (REQ-1327) and rebuild its schemas."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
 
@@ -5971,8 +5971,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=err)
 
         convention = _naming.normalize_convention(convention)  # REQ-195: kept as its preset
-        state.global_gql_naming_convention = convention
-        _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
+        from provisa.core.org_settings import read_org_overrides, write_org_overrides
+
+        assert state.model_db is not None, "an org's convention is stored in its model"
+        overrides = await read_org_overrides(state.model_db)
+        await write_org_overrides(
+            state.model_db,
+            {"naming": {**(overrides.get("naming") or {}), "convention": convention}},
+            updated_by=getattr(
+                getattr(info.context["request"].state, "identity", None), "user_id", "anonymous"
+            ),
+        )
+        state.settings_overrides = await read_org_overrides(state.model_db)
         await _rebuild_schemas()
         return MutationResult(
             success=True,

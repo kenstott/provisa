@@ -26,6 +26,8 @@ import {
   Text,
 } from "@mantine/core";
 import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
+import { useAuth } from "../../context/AuthContext";
+import { hasCapability } from "../../lib/capabilities";
 import { VersionLogSettings } from "./VersionLogSettings";
 import {
   useCacheStats,
@@ -38,6 +40,7 @@ import {
   useToggleMV,
 } from "../../hooks/useAdminOpsQueries";
 import {
+  HotCacheStoreSettingsPanel,
   HotTablesSettingsPanel,
   MaterializedSettingsPanel,
   ResponseCacheSettingsPanel,
@@ -118,7 +121,7 @@ export function CacheManager() {
         </Tabs.List>
       </Tabs>
       {tab === "response" && <ResponseCacheTab platform={platform} />}
-      {tab === "hot" && <HotTablesTab platform={platform} />}
+      {tab === "hot" && <HotTablesTab />}
       {tab === "materialized" && <MaterializedStoreTab platform={platform} />}
       {tab === "redirect" && <RedirectSettingsCard />}
     </div>
@@ -231,7 +234,8 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
         )}
       </SimpleGrid>
 
-      <ResponseCacheSettingsPanel platform={platform} />
+      <ResponseCacheSettingsPanel />
+      {platform && <HotCacheStoreSettingsPanel />}
 
       {tables.length > 0 && (
         <Stack gap="sm">
@@ -320,7 +324,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
 }
 
 /** Exported for its component test. */
-export function HotTablesTab({ platform }: { platform: boolean }) {
+export function HotTablesTab() {
   const { t } = useTranslation();
   const unknown = t("cacheManager.hot.unknown");
   const { hotTables } = useHotTables();
@@ -427,7 +431,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
           )}
         />
       )}
-      {platform && <HotTablesSettingsPanel />}
+      <HotTablesSettingsPanel />
     </Stack>
   );
 }
@@ -440,6 +444,10 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { mvList } = useMVList();
   const { refreshMV } = useRefreshMV();
   const { toggleMV } = useToggleMV();
+  // The refresh and enable mutations ask table_registration, not the right this page opens on
+  // (org_settings): without it the buttons are not shown rather than answering a refusal.
+  const { capabilities } = useAuth();
+  const canOperate = hasCapability(capabilities, "table_registration");
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [mvPage, setMvPage] = useState(0);
 
@@ -584,48 +592,52 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
                 </Table.Td>
                 <ListActions>
                   <Group gap={4} wrap="nowrap">
-                    <Tip
-                      text={
-                        refreshing === mv.id
-                          ? t("cacheManager.materialized.refreshing")
-                          : t("cacheManager.materialized.refresh")
-                      }
-                      named
-                    >
-                      <ActionIcon
-                        variant="subtle"
-                        onClick={() => handleRefresh(mv.id)}
-                        disabled={refreshing === mv.id}
-                        data-testid={`mv-refresh-btn-${mv.id}`}
-                      >
-                        <RefreshCw size={16} />
-                      </ActionIcon>
-                    </Tip>
-                    {mv.versionLogOf ? (
-                      // A version log is kept as its table declares: here only its capture
-                      // settings, and a full capture, which records what the table deleted.
-                      <VersionLogSettings
-                        log={mv}
-                        capturing={refreshing === mv.id}
-                        onFullCapture={() => handleRefresh(mv.id, true)}
-                      />
-                    ) : (
-                      <Tip
-                        text={
-                          mv.enabled
-                            ? t("cacheManager.materialized.disable")
-                            : t("cacheManager.materialized.enable")
-                        }
-                        named
-                      >
-                        <ActionIcon
-                          variant="subtle"
-                          onClick={() => toggleMV(mv.id, !mv.enabled)}
-                          data-testid={`mv-toggle-btn-${mv.id}`}
+                    {canOperate && (
+                      <>
+                        <Tip
+                          text={
+                            refreshing === mv.id
+                              ? t("cacheManager.materialized.refreshing")
+                              : t("cacheManager.materialized.refresh")
+                          }
+                          named
                         >
-                          {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
-                        </ActionIcon>
-                      </Tip>
+                          <ActionIcon
+                            variant="subtle"
+                            onClick={() => handleRefresh(mv.id)}
+                            disabled={refreshing === mv.id}
+                            data-testid={`mv-refresh-btn-${mv.id}`}
+                          >
+                            <RefreshCw size={16} />
+                          </ActionIcon>
+                        </Tip>
+                        {mv.versionLogOf ? (
+                          // A version log is kept as its table declares: here only its capture
+                          // settings, and a full capture, which records what the table deleted.
+                          <VersionLogSettings
+                            log={mv}
+                            capturing={refreshing === mv.id}
+                            onFullCapture={() => handleRefresh(mv.id, true)}
+                          />
+                        ) : (
+                          <Tip
+                            text={
+                              mv.enabled
+                                ? t("cacheManager.materialized.disable")
+                                : t("cacheManager.materialized.enable")
+                            }
+                            named
+                          >
+                            <ActionIcon
+                              variant="subtle"
+                              onClick={() => toggleMV(mv.id, !mv.enabled)}
+                              data-testid={`mv-toggle-btn-${mv.id}`}
+                            >
+                              {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                            </ActionIcon>
+                          </Tip>
+                        )}
+                      </>
                     )}
                   </Group>
                 </ListActions>

@@ -12,10 +12,13 @@
 // materialized store lists it read-only, named for its table, with a full capture that records
 // the rows the table deleted.
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, within } from "../../../test-utils/render";
 import type { MVInfo } from "../../../api/admin";
+
+const auth = vi.hoisted(() => ({ capabilities: ["table_registration"] as string[] }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
 
 const mv = (over: Partial<MVInfo>): MVInfo => ({
   id: "view-daily_totals",
@@ -51,6 +54,20 @@ vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
 import { MaterializedStoreTab } from "../CacheManager";
 
 describe("a table's version log in the materialized store", () => {
+  beforeEach(() => {
+    auth.capabilities = ["table_registration"];
+  });
+
+  it("shows no refresh, enable or capture action without table_registration, which the mutations ask", () => {
+    // The page opens on org_settings; the refresh and enable mutations answer 403 without it.
+    auth.capabilities = ["org_settings"];
+    render(<MaterializedStoreTab platform={false} />);
+    expect(screen.queryByTestId("mv-refresh-btn-view-daily_totals")).toBeNull();
+    expect(screen.queryByTestId("mv-toggle-btn-view-daily_totals")).toBeNull();
+    expect(screen.queryByTestId("mv-refresh-btn-versions-7")).toBeNull();
+    expect(screen.queryByTestId("mv-log-settings-btn-versions-7")).toBeNull();
+  });
+
   it("is named for its table and offers a full capture, not a disable", async () => {
     render(<MaterializedStoreTab platform={false} />);
     const log = screen.getByText("Version log of payments").closest("tr") as HTMLElement;

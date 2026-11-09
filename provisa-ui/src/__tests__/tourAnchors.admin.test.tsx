@@ -68,6 +68,9 @@ vi.mock("../api/admin", async (orig) => ({
     naming: { use_domains: true },
     // REQ-194: the org's clash policy, which the Domains tab's settings show.
     names: { clash_policy: "refuse" },
+    // REQ-1327: the org's sample size and remote row limit, which the Domains tab edits.
+    sampling: { default_sample_size: 100 },
+    graphql_remote: { max_rows: 1000 },
     federation: { enabled: false, subgraph_name: "provisa", role: null },
     otel: {
       endpoint: "http://otel-collector:4317",

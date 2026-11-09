@@ -1751,9 +1751,11 @@ def _validate_triggers(config) -> None:  # REQ-2054
 def _validate_paging(config) -> None:  # REQ-318
     """A table's paging must suit what reads the table, and a connection table's max_rows may only
     lower the operator's graphql_remote.max_rows -- refused at load as it is at save."""
+    from provisa.core.org_settings import graphql_remote_max_rows
     from provisa.core.paging import CONNECTION, ENDPOINT, check_paging, paging_kind
 
     kinds = {s.id: s.type.value for s in config.sources}
+    ceiling_rows = graphql_remote_max_rows(config.graphql_remote.max_rows)  # REQ-1327
     for table in config.tables:
         if table.pagination is None:
             continue
@@ -1765,14 +1767,14 @@ def _validate_paging(config) -> None:  # REQ-318
                 table.pagination,
                 table=table.table_name,
                 kind=CONNECTION if table.pagination.max_rows is not None else ENDPOINT,
-                ceiling_rows=config.graphql_remote.max_rows,
+                ceiling_rows=ceiling_rows,
             )
             continue
         check_paging(
             table.pagination,
             table=table.table_name,
             kind=paging_kind(kinds[table.source_id]),
-            ceiling_rows=config.graphql_remote.max_rows,
+            ceiling_rows=ceiling_rows,
         )
 
 
