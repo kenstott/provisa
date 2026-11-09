@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from provisa.core import model_change
 from provisa.core.schema_org import connectors
@@ -72,7 +72,3 @@ def public(row: dict[str, Any]) -> dict[str, Any]:
 async def offered(conn: "Connection") -> list[dict[str, Any]]:
     """What Sources lists: every connector, without its build settings."""
     return [public(row) for row in await list_all(conn)]
-
-
-async def forget(conn: "Connection", name: str) -> None:
-    await conn.execute_core(delete(connectors).where(connectors.c.name == name))
