@@ -189,6 +189,7 @@ _mcp_scheme() {
 print_query_surfaces() {
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ "${PROVISA_MINTED_PGWIRE_PORT:-0}" != 0 ] && echo "  minted:  postgresql://localhost:${PROVISA_MINTED_PGWIRE_PORT}/provisa  (tokens minted for one code-source call only)"
   echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
   echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
@@ -908,6 +909,7 @@ start_backend() {
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
+    PROVISA_MINTED_PGWIRE_PORT="${PROVISA_MINTED_PGWIRE_PORT:-5440}"
     GRPC_PORT="$GRPC_PORT"
     FLIGHT_PORT="$FLIGHT_PORT"
     # MCP over plain HTTP: Claude Desktop reaches a local server only via the stdio bridge (works

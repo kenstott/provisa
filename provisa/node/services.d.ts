@@ -52,6 +52,18 @@ export interface TableRef<Row> {
   ref: string;
   /** The input columns the function declares. */
   columns: (keyof Row & string)[];
+  /** A PostgreSQL connection to the table; `password` is a token good for this call only. */
+  connection: {
+    host: string;
+    port: number;
+    user: string;
+    password: string;
+    database: string;
+    /** The TLS the listener requires of the connection. */
+    sslmode: "disable" | "require";
+  };
+  /** The statement that reads the declared columns. */
+  sql: string;
 }
 
 export declare class ServiceError extends Error {

@@ -188,7 +188,7 @@ def _registered(monkeypatch, tag: str, answer) -> tuple[_Worker, dict]:
         )
     )
     worker = _Worker(answer)
-    prepared = SimpleNamespace(manifest=manifest, worker=lambda: worker)
+    prepared = SimpleNamespace(manifest=manifest, worker=lambda: worker, remote=None)
 
     async def _prepare(_state, _source_id, _function):
         return prepared
@@ -206,22 +206,49 @@ def _registered(monkeypatch, tag: str, answer) -> tuple[_Worker, dict]:
     }
 
 
+class _Tokens:
+    async def mint(self, _call) -> str:
+        return "provisa_call_test"
+
+    async def retire(self, _token) -> None:
+        return None
+
+
+def _listening(monkeypatch) -> SimpleNamespace:
+    """A state whose minted-token listener runs, with its store stood in for."""
+    from provisa.core import settings_registry
+    from provisa.pgwire import minted
+
+    monkeypatch.setattr(minted, "MintedTokenStore", lambda _db: _Tokens())
+    monkeypatch.setattr(settings_registry, "value", {"server.minted_pgwire_port": 6543}.__getitem__)
+    return SimpleNamespace(
+        admin_db=None,
+        _minted_pgwire_server=SimpleNamespace(ssl_ctx=None),
+        meta_qualifiers={},
+        org_id="org1",
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_call_gives_the_function_the_table_reference_and_its_declared_columns(monkeypatch):
     rows = [{"region": "emea", "score": 0.5}]
     worker, fn = _registered(monkeypatch, "query", rows)
     answered = await dispatch_function(
-        fn, {"a0": "main.public.orders"}, SimpleNamespace(), "analyst"
+        fn, {"a0": "main.public.orders"}, _listening(monkeypatch), "analyst"
     )
     assert answered == rows
     from provisa.codesource.worker import ABSENT
 
     export, args, names, schema = worker.calls[0]
     assert (export, names) == ("score", ["orders", "floor"])
-    assert args == [
-        {"kind": "table_ref", "ref": "main.public.orders", "columns": ["id", "region"]},
-        ABSENT,
-    ]
+    assert args[1:] == [ABSENT]
+    given = {k: v for k, v in args[0].items() if k != "connection"}
+    assert given == {
+        "kind": "table_ref",
+        "ref": "main.public.orders",
+        "columns": ["id", "region"],
+        "sql": 'SELECT "id", "region" FROM main.public.orders',
+    }
     assert schema is not None
 
 
@@ -231,7 +258,9 @@ async def test_rows_off_the_declared_output_contract_fail_loud(monkeypatch):
 
     _, fn = _registered(monkeypatch, "query", [{"region": "emea"}])
     with pytest.raises(HTTPException):
-        await dispatch_function(fn, {"a0": "main.public.orders"}, SimpleNamespace(), "analyst")
+        await dispatch_function(
+            fn, {"a0": "main.public.orders"}, _listening(monkeypatch), "analyst"
+        )
 
 
 # -- composition and lineage --------------------------------------------------------------------

@@ -795,6 +795,17 @@ def current_udf_correlation_id() -> str | None:
     return _current_udf_correlation.get()
 
 
+@contextmanager
+def udf_correlation_scope(correlation_id: str) -> "Iterator[None]":
+    """Bind a UDF invocation's correlation id where the invocation's own context is not (a minted
+    pgwire session, REQ-2226), so an audit row written there joins back to its trace (REQ-886)."""
+    token = _current_udf_correlation.set(correlation_id)
+    try:
+        yield
+    finally:
+        _current_udf_correlation.reset(token)
+
+
 @dataclass
 class MintedSession:
     """A scoped, short-TTL pgwire session minted for a UDF invocation (REQ-885/886).

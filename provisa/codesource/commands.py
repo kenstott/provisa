@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from provisa.otel_compat import MintedSession
 from provisa.codesource.manifest import (
     COMMAND,
     COMMANDS,
@@ -154,10 +155,11 @@ def _rows(value: Any, export: Export, manifest: Manifest) -> list[dict]:
     return list(values) if is_object else [{RESULT_COLUMN: v} for v in values]
 
 
-async def run(state: Any, command: dict, payload: dict) -> list[dict]:
+async def run(state: Any, command: dict, payload: dict, session: MintedSession) -> list[dict]:
     """Call the registered function with ``payload``, its arguments by name; one it leaves out
-    takes the function's own default."""
+    takes the function's own default. A table argument is readable for the call (REQ-2226)."""
     from provisa.codesource.arrow_rows import row_schema, schema_text
+    from provisa.codesource.table_reads import readable
     from provisa.codesource.worker import ABSENT
 
     function = command["function_name"]
@@ -169,8 +171,11 @@ async def run(state: Any, command: dict, payload: dict) -> list[dict]:
             f"source {command['source_id']!r} no longer has a @command or @query of that name",
         )
     names = [p.name for p in export.parameters]
-    args = [payload.get(n, ABSENT) for n in names]
     rows_are_objects = export.many and _fields_of(prepared.manifest, export.returns) is not None
     schema = schema_text(row_schema(prepared.manifest, export)) if rows_are_objects else None
-    value = await asyncio.to_thread(prepared.worker().command, function, args, names, schema=schema)
+    async with readable(state, session, payload, remote=prepared.remote is not None):
+        args = [payload.get(n, ABSENT) for n in names]
+        value = await asyncio.to_thread(
+            prepared.worker().command, function, args, names, schema=schema
+        )
     return _rows(value, export, prepared.manifest)

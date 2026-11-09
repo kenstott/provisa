@@ -362,6 +362,25 @@ personal_access_tokens = Table(
     Column("suspended_reason", Text),
 )
 
+# REQ-2226: the token a code source's function reads its table with, one per call: bound to the
+# calling role and retired when the call ends (provisa/pgwire/minted.py). In the control plane
+# because a connection reaches any process of any node (REQ-1900). Only the token's hash is kept.
+minted_call_tokens = Table(
+    "minted_call_tokens",
+    metadata,
+    Column("token_hash", Text, primary_key=True),
+    Column("call_id", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("members", JSON, nullable=False),
+    Column("qualifiers", JSON, nullable=False),
+    Column("user_id", Text, nullable=False),
+    Column("org_id", Text),
+    Column("tables", JSON, nullable=False),
+    Column("session_vars", JSON, nullable=False),
+    Column("entitlements", JSON),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+)
+
 # REQ-2006: the demo sandboxes. Each is an org of its own (``orgs``, id ``sbx<hex>``) cloned from
 # its demo's template org; this row is what makes it a sandbox -- the demo it is a copy of, who it
 # was opened for, and when a request last reached it. A sandbox that no request has reached for
@@ -1003,6 +1022,7 @@ REGISTRY_TABLES = [
     org_code_bundles,
     deployment_encryption_key,
     personal_access_tokens,
+    minted_call_tokens,
     demo_sandboxes,
     sandbox_tier_use,
     demo_template_readiness,

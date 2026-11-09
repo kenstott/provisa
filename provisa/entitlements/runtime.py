@@ -82,6 +82,32 @@ def entitlements_scope(identity: Any) -> Iterator[None]:
         reset_entitlements(token)
 
 
+def captured_entitlements() -> dict | None:
+    """The bound person's lists as JSON, to bind again where the call's context is not (a minted
+    pgwire session, REQ-2226): without them that session would see the whole role."""
+    request = _current.get()
+    if request is None:
+        return None
+    return {"user_id": request.user_id, "idp": request.idp, "idp_hash": request.idp_hash}
+
+
+@contextmanager
+def restored_entitlements(captured: dict | None) -> Iterator[None]:
+    """Bind what :func:`captured_entitlements` captured, for the block."""
+    if captured is None:
+        yield
+        return
+    idp = {
+        kind: {name: tuple(values) for name, values in lists.items()}
+        for kind, lists in captured["idp"].items()
+    }
+    token = _current.set(EntitlementRequest(captured["user_id"], idp, captured["idp_hash"]))
+    try:
+        yield
+    finally:
+        _current.reset(token)
+
+
 def _role_context(state: Any, role_id: str) -> Any:
     """The compilation context of ``role_id``'s schema, or None for a role with no schema (a
     qualifier a meta-role carries, such as a region's derived role)."""

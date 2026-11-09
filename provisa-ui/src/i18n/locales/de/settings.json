@@ -271,6 +271,10 @@
         "label": "PostgreSQL-Wire-Port",
         "help": "Der Port, auf dem der Server für das PostgreSQL-Protokoll lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
       },
+      "minted_pgwire_port": {
+        "label": "PostgreSQL-Wire-Port für ausgestellte Token",
+        "help": "Der Port, den die Sandbox einer Codequelle erreichen darf, um die ihr übergebene Tabelle zu lesen, und die Adresse, die ein entfernter Host erhält. Er akzeptiert nur Token, die für einen einzelnen Aufruf ausgestellt wurden; 0 lässt ihn ausgeschaltet, und ein Befehl, dem eine Tabelle übergeben wird, wird dann abgelehnt. Neustart erforderlich; geschützt, da er einen Listener öffnet oder schließt."
+      },
       "bolt_port": {
         "label": "Bolt-Port",
         "help": "Der Port, auf dem der Bolt-Server (Neo4j) lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."

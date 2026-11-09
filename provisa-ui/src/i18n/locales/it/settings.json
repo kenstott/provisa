@@ -271,6 +271,10 @@
         "label": "Porta PostgreSQL wire",
         "help": "La porta su cui è in ascolto il server con protocollo PostgreSQL; 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
       },
+      "minted_pgwire_port": {
+        "label": "Porta wire PostgreSQL per token emessi",
+        "help": "La porta che la sandbox di una sorgente di codice può raggiungere per leggere la tabella che le è stata data, e l'indirizzo comunicato a un host remoto. Accetta solo token emessi per una singola chiamata; 0 la lascia disattivata, e un comando che riceve una tabella viene quindi rifiutato. Riavvio richiesto; protetta perché apre o chiude un listener."
+      },
       "bolt_port": {
         "label": "Porta Bolt",
         "help": "La porta su cui è in ascolto il server Bolt (Neo4j); 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."

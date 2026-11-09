@@ -509,11 +509,13 @@ def _rows_from_response(
     )
 
 
-async def _exec_code_command(fn: dict, _args, state, payload: dict, _session) -> list[dict]:
+async def _exec_code_command(
+    fn: dict, _args, state, payload: dict, session: MintedSession
+) -> list[dict]:
     """REQ-2226: a code source's @command or @query, called in its source's worker."""
     from provisa.codesource.commands import run
 
-    return await run(state, fn, payload)
+    return await run(state, fn, payload, session)
 
 
 async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> list[dict]:

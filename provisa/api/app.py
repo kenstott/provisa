@@ -208,6 +208,7 @@ class AppState:
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
     _pgwire_server: Any | None = None  # ProvisaServer
+    _minted_pgwire_server: Any | None = None  # ProvisaServer: minted tokens only (REQ-2226)
     _bolt_listener: Any | None = None  # BoltListener
     _airport_server: Any | None = None  # ProvisaAirportServer
     _airport_relay: Any | None = None  # FlightRelay: the advertised airport port (REQ-1900)
@@ -4192,6 +4193,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     if state._pgwire_server is not None:
         await asyncio.to_thread(stop_pgwire_server, state._pgwire_server)
         state._pgwire_server = None
+    if state._minted_pgwire_server is not None:
+        await asyncio.to_thread(stop_pgwire_server, state._minted_pgwire_server)
+        state._minted_pgwire_server = None
 
     # Stop the Arrow Flight servers: each relay (the advertised port) before the server behind it.
     if state._flight_relay:

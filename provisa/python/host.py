@@ -181,10 +181,17 @@ def _with_table_refs(fn: typing.Callable, args: list, keywords: dict) -> tuple[l
     tables = {n for n in inspect.signature(fn).parameters if _is_table_ref(hints.get(n))}
     if not tables:
         return args, keywords
-    kind = sys.modules["provisa_services"].TableRef
+    services = sys.modules["provisa_services"]
 
     def made(name: str, value: typing.Any) -> typing.Any:
-        return kind(value["ref"], tuple(value["columns"])) if name in tables else value
+        if name not in tables:
+            return value
+        return services.TableRef(
+            value["ref"],
+            tuple(value["columns"]),
+            services.TableConnection(**value["connection"]),
+            value["sql"],
+        )
 
     names = list(inspect.signature(fn).parameters)
     return (
