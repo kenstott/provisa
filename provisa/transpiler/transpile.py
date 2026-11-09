@@ -685,33 +685,25 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
 
 @functools.lru_cache(maxsize=2048)
 def _duckdb_form(pg_sql: str) -> str:
-    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone, and
-    the steps parse it about six times. A statement a client repeats reaches here on each run, its
+    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone. A
+    statement a client repeats reaches here on each run, its
     plan kept or not. A refusal raises and is not kept."""
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
-    return pg_functions.after(
-        _postgres_semantics_for_duckdb(
-            _lengths_for_duckdb(
-                _null_order_as_key(
-                    _rewrite_list_functions_for_duckdb(
-                        _rewrite_json_agg_for_duckdb(
-                            transpile(
-                                pg_functions.before(
-                                    _catalog_functions_unqualified(
-                                        to_char_for_duckdb(
-                                            postgres_literals(pg_functions.typed_calls(pg_sql))
-                                        )
-                                    )
-                                ),
-                                "duckdb",
-                            )
-                        )
-                    )
-                )
+    written = transpile(
+        pg_functions.before(
+            _catalog_functions_unqualified(
+                to_char_for_duckdb(postgres_literals(pg_functions.typed_calls(pg_sql)))
             )
-        )
+        ),
+        "duckdb",
     )
+    # From here every step is of DuckDB's tree, read once: the JSON forms are several times the
+    # statement's text, and each step that read it again paid for all of them.
+    tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
+    tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
+    tree = _postgres_semantics_for_duckdb(_lengths_for_duckdb(tree))
+    return pg_functions.after_in(tree).sql(dialect="duckdb")
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -768,7 +760,7 @@ _DIVISION_REFUSED = sqlglot.parse_one(
 )
 
 
-def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
+def _postgres_semantics_for_duckdb(tree: exp.Expr) -> exp.Expr:  # REQ-2167
     """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
     is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
     that raises PostgreSQL's message on zero (a nonzero literal divisor is left as it is; any
@@ -776,7 +768,6 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
     zero: DuckDB's ``/`` answers a DOUBLE, its ``//`` PostgreSQL's ``/`` (a non-integer operand
     divides exactly). And a set-returning function aliased in FROM with no column list names its
     one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _guarded(divisor: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(divisor, exp.Literal) and not divisor.is_string and divisor.to_py() != 0:
@@ -803,24 +794,20 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
                 node.set("columns", [node.this.copy()])
         return node
 
-    tree = tree.transform(_transform)
+    tree = tree.transform(_transform, copy=False)
     # After the transform, which does not revisit what a replaced node holds (a / (b / c)).
     for div in list(tree.find_all(exp.Div)):
         div.replace(exp.IntDiv(this=div.this, expression=div.expression))
-    return tree.sql(dialect="duckdb")
+    return tree
 
 
-def _lengths_for_duckdb(sql: str) -> str:
+def _lengths_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """PostgreSQL's ``length`` and ``octet_length`` of a bytea, a text or a list as DuckDB computes
     them. DuckDB's ``length`` takes no BLOB and its ``octet_length`` no VARCHAR, and which the
     argument is is known only once DuckDB binds it -- every branch of a CASE is bound whatever
     the argument -- so each is a CASE on ``typeof`` (folded at bind) whose branches read the
     argument through TRY_CAST: a BLOB's byte count, a list's elements, a text's characters
     (``length``) or bytes (``strlen``)."""
-    upper = sql.upper()
-    if "LENGTH(" not in upper:
-        return sql
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _try_cast(arg: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         return exp.TryCast(this=arg.copy(), to=exp.DataType.build(to, dialect="duckdb"))
@@ -837,7 +824,7 @@ def _lengths_for_duckdb(sql: str) -> str:
             branches.append(
                 exp.If(
                     this=exp.Like(this=kind.copy(), expression=exp.Literal.string("%[]")),
-                    true=exp.Anonymous(this="len", expressions=[_try_cast(arg, "VARCHAR[]")]),
+                    true=exp.Length(this=_try_cast(arg, "VARCHAR[]")),
                 )
             )
         text_len = exp.Anonymous(this=text_fn, expressions=[_try_cast(arg, "VARCHAR")])
@@ -854,7 +841,7 @@ def _lengths_for_duckdb(sql: str) -> str:
             return _of(node.expressions[0].transform(_transform), "strlen")
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    return tree.transform(_transform, copy=False)
 
 
 #: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
@@ -913,12 +900,12 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(dialect="postgres")
 
 
-def _null_order_as_key(sql: str) -> str:
+def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
     """#294: DuckDB SQL with each ORDER BY key whose nulls come first written as a null-test key
     of its own (codehost.duckdb_sql, the one form every DuckDB answering a statement runs)."""
     from provisa.codehost.duckdb_sql import null_order_as_key
 
-    return null_order_as_key(sqlglot.parse_one(sql, read="duckdb")).sql(dialect="duckdb")
+    return null_order_as_key(tree)
 
 
 #: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose
@@ -961,7 +948,7 @@ def _three_valued(
     )
 
 
-def _rewrite_list_functions_for_duckdb(sql: str) -> str:
+def _rewrite_list_functions_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """A Cypher read's list functions as DuckDB computes them: a list index ``element_at(l, i)``
     (1-based, negative from the end) is ``list_extract`` and a map key ``element_at(m, 'k')``
     ``map_extract_value`` (DuckDB's element_at is a map's alone, and answers a list of the
@@ -970,9 +957,8 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
     predicate values or'd or and'd, three-valued as Trino's (on an empty list any is false, all
     and none true; a null value with no deciding one answers null);
     ``sequence`` is ``generate_series`` (both inclusive)."""
-    if not any(name in sql.upper() for name in _DUCKDB_LIST_FUNCTIONS):
-        return sql
-    tree = sqlglot.parse_one(sql, read="duckdb")
+    if not any(n.name.upper() in _DUCKDB_LIST_FUNCTIONS for n in tree.find_all(exp.Anonymous)):
+        return tree
 
     def _fn(name: str, *args: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         return exp.Anonymous(this=name, expressions=list(args))
@@ -1051,7 +1037,11 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         found = _three_valued(_predicates(args), decided, exp.true(), exp.false())
         return found if name == "ANY_MATCH" else exp.Not(this=exp.Paren(this=found))
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    # Read back: what is written here by name (len, generate_series) is a typed node to the steps
+    # after this one, as it is to DuckDB's parser.
+    return sqlglot.parse_one(
+        tree.transform(_transform, copy=False).sql(dialect="duckdb"), read="duckdb"
+    )
 
 
 def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]
@@ -1067,7 +1057,7 @@ def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore
     return None
 
 
-def _rewrite_json_agg_for_duckdb(sql: str) -> str:
+def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
     JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
 
@@ -1081,8 +1071,6 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
     ``json_object`` (which DuckDB does register, in the flat k, v form SQLGlot writes)
     needs no rewrite.
     """
-    # Parse failure must fail loud: returning input skips the required DuckDB rewrite.
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         listed = _list_arg(node.this) if isinstance(node, exp.Filter) else None
@@ -1134,7 +1122,7 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
             node.set("expressions", [node.expressions[0], json_member(node.expressions[1])])
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    return tree.transform(_transform, copy=False)
 
 
 def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
