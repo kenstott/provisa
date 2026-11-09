@@ -26843,3 +26843,15 @@ Maintainer 2026-11-09. A Snowflake source offers its Dynamic Tables as tables wi
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2231 · Commercial Website {#REQ-2231}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one job, and moves them to trying the product. It has five parts: a hero whose primary action opens a live demo with no login; six job cards, each linking to its quick start; one statement of the single model with the pains it removes and a same-query, two-roles proof; a short row of sources; and download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a why page answers opens that page.
+
+**Code:** —
+
+**Tests:** —
