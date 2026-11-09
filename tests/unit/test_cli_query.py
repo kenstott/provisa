@@ -213,7 +213,7 @@ class TestFlags:
     def test_a_person_is_refused_until_entitlements_apply(self, instance, capsys):
         """A run naming a person and answered as the bare role would be read as that person's."""
         assert _run(instance, "query", "sql", "SELECT 1", "--person", "ann") == USAGE
-        assert "REQ-2219" in capsys.readouterr().err
+        assert "acting as a person is not available yet" in capsys.readouterr().err
         assert instance.seen == []
 
     def test_the_statement_comes_from_a_file(self, instance, capsys, tmp_path):

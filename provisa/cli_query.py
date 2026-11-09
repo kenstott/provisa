@@ -299,7 +299,7 @@ def _run(args: argparse.Namespace, call: Any) -> int:
             # REQ-2219: no instance applies a person's entitlements yet, and a run that named one
             # and got the role's answer would be read as that person's.
             raise _UsageError(
-                "--person needs entitlements (REQ-2219), which no instance applies yet"
+                "--person: acting as a person is not available yet, no instance applies entitlements"
             )
         answer = call(args, _statement(args), _arguments(args))
     except _UsageError as exc:
