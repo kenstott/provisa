@@ -94469,7 +94469,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     dbt builds a model and Provisa delivers it as a governed data product. (Amended 2026-11-09, A PRODUCT
     INHERITS THE DOORS AND THE RULES:) Maintainer 2026-11-09: the demo shows that the data product built
     from a dbt model inherits every access method Provisa offers (the APIs, the SQL drivers and the rest)
-    and every access control, with nothing added in dbt.'
+    and every access control, with nothing added in dbt. (Amended 2026-11-09, IT ENDS WITH THE AGENT YOU
+    CHOOSE:) Maintainer 2026-11-09: the demo closes by joining the data product with the ontology and the
+    policies in the Library (REQ-2185), through Provisa''s MCP tool, used with whichever agent the visitor
+    chooses, the agent seeing only what its role can see.'
   scenario: 'Given the dbt demo
 
 
