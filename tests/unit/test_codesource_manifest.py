@@ -143,11 +143,10 @@ def test_a_table_is_its_functions_parameters_and_its_row_types_fields():
         )
     )
     (orders,) = manifest.exports
-    assert (orders.kind, orders.description, orders.returns, orders.preview) == (
+    assert (orders.kind, orders.description, orders.returns) == (
         "table",
         "Orders of one customer.",
         Named("Order"),
-        False,
     )
     assert [(p.name, p.shape, p.required, p.nullable) for p in orders.parameters] == [
         ("customerId", Scalar("text"), True, False),
@@ -182,10 +181,26 @@ def test_a_table_that_returns_a_single_object_is_refused_by_name():
     assert problems == ["order: @table returns a single value, not a collection of rows"]
 
 
-def test_a_loose_row_type_is_typed_by_a_preview():
-    for loose in ({"kind": "any"}, {"kind": "unknown"}, {"kind": "record", "value": N}):
-        (table,) = read_manifest(raw(fn("rows", ["table"], [], arr(loose)))).exports
-        assert (table.returns, table.preview) == (LOOSE, True)
+LOOSE_ROW = (
+    "its row type is loose (any, unknown, a Record or a dict); declare a typed row whose fields "
+    "are its columns"
+)
+
+
+@pytest.mark.parametrize(
+    "loose", [{"kind": "any"}, {"kind": "unknown"}, {"kind": "record", "value": N}]
+)
+def test_a_loose_row_type_is_refused_by_name(loose):
+    assert refused(
+        fn("rows", ["table"], [], arr(loose)),
+        fn("feed", ["stream"], [], it(loose, async_=True)),
+    ) == [f"rows: {LOOSE_ROW}", f"feed: {LOOSE_ROW}"]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose():
+    row = inputs(("payload", False, {"kind": "record", "value": N}))
+    (table,) = read_manifest(raw(fn("rows", ["table"], [], arr(row)))).exports
+    assert table.returns == Anonymous((Field("payload", LOOSE, False),))
 
 
 def test_a_row_that_is_not_an_object_is_refused():

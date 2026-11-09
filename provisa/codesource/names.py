@@ -65,16 +65,11 @@ def name_tables(manifest: Manifest) -> dict[str, dict[str, Any]]:
     problems: list[str] = []
     tables: dict[str, dict[str, Any]] = {}
     for export in manifest.exports:
-        if export.kind not in ("table", "stream") or export.preview:
+        if export.kind not in ("table", "stream"):
             continue
         row = export.returns
-        fields = (
-            manifest.types[row.name].fields
-            if isinstance(row, Named)
-            else row.fields
-            if isinstance(row, Anonymous)
-            else ()
-        )
+        assert isinstance(row, (Named, Anonymous))  # the manifest admits no other row type
+        fields = manifest.types[row.name].fields if isinstance(row, Named) else row.fields
         columns = [_forms(f.name, f.shape) for f in fields]
         parameters = [
             {**_forms(f"{NF_PREFIX}{p.name}", p.shape), "parameter": p.name}

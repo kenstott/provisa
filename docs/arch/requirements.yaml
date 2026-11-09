@@ -83503,6 +83503,7 @@
   status: complete
   tests:
   - tests/integration/test_streaming_demo.py
+  - tests/unit/test_streaming_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83615,6 +83616,8 @@
   tests:
   - tests/integration/test_retail_demo.py
   - tests/integration/test_retail_regions_tier_e2e.py
+  - tests/unit/test_retail_demo.py
+  - tests/unit/test_start_ui_install_named_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83736,6 +83739,8 @@
   status: complete
   tests:
   - tests/integration/test_insurance_demo.py
+  - tests/unit/test_insurance_glossary.py
+  - tests/unit/test_demo_bundle_setup.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85130,6 +85135,8 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   status: complete
   tests:
   - tests/integration/test_provisioning_demo.py
+  - tests/unit/test_provisioning_demo_consumer.py
+  - tests/unit/test_provisioning_setup_pulls.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -92229,6 +92236,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_jdbc_source_e2e.py
+  - tests/unit/jdbc_source/test_jdbc_source.py
+  - tests/unit/jdbc_source/test_jdbc_source_attach.py
+  - tests/unit/jdbc_source/test_jdbc_source_detect.py
+  - tests/unit/jdbc_source/test_jdbc_source_floor.py
   since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
@@ -92799,6 +92810,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_banksecrecy_demo.py
+  - tests/unit/test_term_scan_carry.py
+  - tests/unit/test_demo_template_scans.py
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
