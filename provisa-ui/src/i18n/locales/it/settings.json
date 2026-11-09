@@ -820,6 +820,10 @@
       "duckdb_threads": {
         "label": "Thread DuckDB della sorgente di codice",
         "help": "I thread su cui la DuckDB di una sorgente di codice risponde alle sue istruzioni."
+      },
+      "health_poll_interval": {
+        "label": "Intervallo di polling dello stato del connettore",
+        "help": "Ogni quanto ogni processo Provisa chiede all'host di un connettore il suo stato e mostra il risultato sulla sorgente. Un host riavviato viene rilevato al polling successivo, che esegue di nuovo la sua funzione on-start."
       }
     },
     "config": {

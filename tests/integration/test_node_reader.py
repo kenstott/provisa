@@ -101,6 +101,29 @@ def test_each_runtime_reads_the_same_tables_commands_and_streams(runtime, cache,
     assert manifest.export("cancel").returns is None
 
 
+def test_the_lifecycle_tags_are_read_from_jsdoc(cache, compiler, tmp_path):
+    """REQ-2221: a hyphenated tag reaches the manifest whole."""
+    (tmp_path / "index.d.ts").write_text(
+        """
+        /** @on-start */
+        export declare function connect(values: Record<string, string>): Promise<void>;
+        /** @on-stop */
+        export declare function close(): void;
+        /** @health */
+        export declare function check(): Promise<string>;
+        """
+    )
+    executable = CodeRuntimeResolver(cache_root=cache).resolve("node")
+    manifest = read_bundle(
+        runtime="node", executable=executable, compiler=compiler, bundle=tmp_path
+    )
+    assert {e.name: e.kind for e in manifest.exports} == {
+        "connect": "on-start",
+        "close": "on-stop",
+        "check": "health",
+    }
+
+
 def test_a_loose_row_type_is_refused_by_name(cache, compiler, tmp_path):
     (tmp_path / "index.d.ts").write_text(
         """

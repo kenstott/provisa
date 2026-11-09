@@ -32,7 +32,8 @@ import secrets
 import socket
 import ssl
 import tempfile
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ from typing import Any
 from provisa.codesource.worker import (
     CONNECTIONS,
     START_TIMEOUT_S,
+    OnStartFailed,
     Worker,
     WorkerFailed,
     _frame,
@@ -50,6 +52,10 @@ from provisa.codesource.worker import (
 
 #: The port a remote host's container listens on, fixed in its image (REQ-2098).
 HOST_PORT = 7443
+#: REQ-2221: how long a host's @on-start function has to finish.
+ON_START_TIMEOUT_S = 120.0
+#: REQ-2221: how long a host's @health function has to answer.
+HEALTH_TIMEOUT_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -231,6 +237,7 @@ class RemoteWorker(Worker):
         pin: str,
         identity: Identity,
         exports: Sequence[str] | None = None,
+        setup: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         # No process to start: the connection is dialled (start).
         super().__init__(source_id, content_hash, command=None)  # pyright: ignore[reportArgumentType]
@@ -239,6 +246,12 @@ class RemoteWorker(Worker):
         self._pin = pin
         self._identity = identity
         self._pinned_exports = None if exports is None else sorted(exports)
+        #: REQ-2221: what gives the host its setup values; None for a dial that has none to give
+        #: (a status probe, a hello check), which leaves @on-start to one that has.
+        self._setup = setup
+        self._setup_done = threading.Event()
+        self._setup_done.set()
+        self._setup_failure: str | None = None
 
     @property
     def where(self) -> str:
@@ -262,6 +275,57 @@ class RemoteWorker(Worker):
         self._attach(list(conns), hello, f"code-remote-{self.source_id}")
         #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
         self.names = dict(hello.get("names") or {})
+        if self._setup is not None and hello.get("setup_needed"):
+            self._begin_setup()
+
+    def _begin_setup(self) -> None:
+        """REQ-2221: give the host its setup values on a thread of its own, so a slow @on-start
+        holds no pool lock; every call waits for it (:meth:`ready`)."""
+        self._setup_done.clear()
+        threading.Thread(
+            target=self._run_setup, name=f"code-remote-setup-{self.source_id}", daemon=True
+        ).start()
+
+    def _run_setup(self) -> None:
+        from provisa.codesource.services import ServiceRefused
+
+        assert self._setup is not None
+        try:
+            try:
+                values = self._setup()
+            except (ServiceRefused, ValueError) as unread:
+                self._setup_failure = f"its setup values could not be given: {unread}"
+                return
+            answer = self._exchange({"op": "setup", "values": values}, ON_START_TIMEOUT_S)
+            if answer is None:
+                self._setup_failure = (
+                    f"its @on-start function did not finish within {ON_START_TIMEOUT_S:g}s"
+                )
+            elif answer.get("failed"):
+                self._setup_failure = f"its @on-start function failed: {answer['failed']}"
+        finally:
+            self._setup_done.set()
+
+    def ready(self) -> None:
+        """Wait for the host's @on-start to finish; :class:`OnStartFailed`, naming it, when it
+        failed. A host whose @on-start failed stays connected and fails each call this way until
+        it restarts, which runs @on-start again."""
+        self._setup_done.wait()
+        if self._setup_failure is not None:
+            raise OnStartFailed(self.source_id, self._setup_failure)
+
+    def _open(self) -> Any:
+        self.ready()
+        return super()._open()
+
+    def health(self) -> dict[str, Any]:
+        """The host's answer to a health call: ``{"status": ...}`` as its @health function gave
+        it, or ``{"failed": why}``."""
+        self.ready()
+        answer = self._exchange({"op": "health"}, HEALTH_TIMEOUT_S)
+        if answer is None:
+            return {"failed": f"its host {self.where} did not answer within {HEALTH_TIMEOUT_S:g}s"}
+        return {k: v for k, v in answer.items() if k not in ("op", "id")}
 
     def _hello_of(self, conn: ssl.SSLSocket, timeout: float) -> dict:
         """The host's hello on ``conn``, checked: refused by name when it is not this source's."""

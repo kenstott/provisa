@@ -228,16 +228,36 @@ async def connect(state: Any, source_id: str, host: str, port: int, code: str) -
 
 
 def _check(
-    source_id: str, code_hash: str, host: str, port: int, pin: str, me: Identity, exports: list[str]
+    source_id: str,
+    code_hash: str,
+    host: str,
+    port: int,
+    pin: str,
+    me: Identity,
+    exports: list[str],
+    setup: Any = None,
 ) -> None:
-    """Dial the host and check its hello: refused by name when it is not the source's code."""
-    from provisa.codesource.worker import WorkerFailed
+    """Dial the host and check its hello: refused by name when it is not the source's code. With
+    ``setup`` (REQ-2221), give it its setup values and wait for its @on-start:
+    :class:`~provisa.codesource.worker.OnStartFailed` when that fails."""
+    from provisa.codesource.worker import OnStartFailed, WorkerFailed
 
     worker = RemoteWorker(
-        source_id, code_hash, address=host, port=port, pin=pin, identity=me, exports=exports
+        source_id,
+        code_hash,
+        address=host,
+        port=port,
+        pin=pin,
+        identity=me,
+        exports=exports,
+        setup=setup,
     )
     try:
         worker.start()
+        worker.ready()
+    except OnStartFailed:
+        worker.stop()
+        raise
     except WorkerFailed as failed:
         raise RemoteRefused("remote_refused", str(failed)) from None
     worker.stop()
@@ -260,9 +280,11 @@ async def to_dev(state: Any, source_id: str) -> dict:
 async def status(state: Any, source_id: str) -> dict:
     """The source's mode and, built, whether its host answers: what it reports (its code hash and
     exports) or why it does not, as this process dials it."""
+    from provisa.api.org_runtime import runtime_key
+    from provisa.codesource import lifecycle
     from provisa.codesource.remote import RemoteWorker as _Remote
     from provisa.codesource.worker import WorkerFailed, pool
-    from provisa.core.request_context import require_current_org
+    from provisa.core.request_context import active_env, require_current_org
 
     source = await _source(state, source_id)
     mapping = source.mapping
@@ -304,6 +326,9 @@ async def status(state: Any, source_id: str) -> dict:
         "host": where,
         "pinned_hash": mapping.get("content_hash"),
         "pool": pool.remote_status(org_id, source_id),
+        # REQ-2221: what this process last found polling its @on-start and @health; None when the
+        # code has neither, or no poll has run yet.
+        "health": lifecycle.health(runtime_key(org_id, active_env()), source_id),
         **probed,
     }
 
@@ -518,6 +543,9 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
     built source's, ``connector_join`` and its pairing code gone. The code is not fetched or read
     here, and no build setting of the block is read."""
     from provisa.codesource.languages import LANGUAGES
+    from provisa.codesource.lifecycle import setup_values
+    from provisa.codesource.manifest import ON_START
+    from provisa.codesource.worker import OnStartFailed
     from provisa.core.request_context import require_current_org
 
     join = mapping.pop("connector_join")
@@ -561,9 +589,19 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             connector=name,
         )
     exports = sorted(e.name for e in manifest.exports)
-    await asyncio.to_thread(
-        _check, source_id, row["code_hash"], host, port, paired.pin, me, exports
-    )
+    setup = None
+    if manifest.lifecycle(ON_START) is not None:
+        setup = setup_values(org_id, source_id, manifest, mapping, state.admin_db)
+    try:
+        await asyncio.to_thread(
+            _check, source_id, row["code_hash"], host, port, paired.pin, me, exports, setup
+        )
+    except OnStartFailed as failed:
+        raise RemoteRefused(
+            "connector_on_start",
+            f"connector {name}: {failed}",
+            connector=name,
+        ) from None
     mapping.update(
         mode=BUILT,
         runtime=runtime,
@@ -582,10 +620,17 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
 
 
 def worker_for(
-    org_id: str, source_id: str, code_hash: str, remote: dict, me: Identity
+    org_id: str,
+    source_id: str,
+    code_hash: str,
+    remote: dict,
+    me: Identity,
+    *,
+    setup: Any = None,
 ) -> RemoteWorker:
     """A built source's worker: its remote host, dialled, its hello checked against the code hash
-    and exports the source is pinned to."""
+    and exports the source is pinned to. ``setup`` (REQ-2221) gives a host that has just started
+    its setup values."""
     return RemoteWorker(
         source_id,
         code_hash,
@@ -594,6 +639,7 @@ def worker_for(
         pin=remote["pin"],
         identity=me,
         exports=remote.get("exports"),
+        setup=setup,
     )
 
 

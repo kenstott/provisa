@@ -32,6 +32,8 @@
     "statusUnknown": "Verifica dell'host remoto...",
     "answering": "L'host remoto risponde.",
     "notAnswering": "L'host remoto non risponde: {{error}}",
+    "health_healthy": "Integro",
+    "health_unhealthy": "Non integro",
     "otherCode": "L'host remoto esegue un codice diverso ({{reported}}) da quello a cui è vincolata questa sorgente ({{pinned}}). Le sue letture vengono rifiutate finché non esaminate il codice e lo vincolate di nuovo.",
     "repin": "Vincola al codice dell'host",
     "refresh": "Verifica di nuovo",

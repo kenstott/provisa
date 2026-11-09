@@ -23,6 +23,7 @@ import pytest
 from provisa.codesource import install
 from provisa.codesource import source as code_source
 from provisa.codesource.bundle import BundleRefused
+from provisa.codesource.manifest import Manifest
 from provisa.python import prepare as python_prepare
 
 pytestmark = pytest.mark.unit
@@ -96,7 +97,7 @@ async def test_an_edit_in_the_directory_is_read_by_the_next_query(roots, monkeyp
 
         found = content_hash(roots / "rates", install.DIRECTORY_SKIPPED)
         built.append(found)
-        return SimpleNamespace(content_hash=found)
+        return SimpleNamespace(content_hash=found, manifest=Manifest(exports=(), types={}))
 
     monkeypatch.setattr(python_prepare, "prepare", _build)
     monkeypatch.setattr(code_source, "_prepared", {})

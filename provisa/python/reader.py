@@ -40,9 +40,9 @@ import sys
 import types
 import typing
 
-_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
+_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_-]*)$")
 #: A tag line with an argument, ``@name argument`` (REQ-2100: ``@loader N``).
-_TAG_ARGUMENT = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
+_TAG_ARGUMENT = re.compile(r"^@([A-Za-z_][A-Za-z0-9_-]*)\s+(\S+)$")
 _NONE = type(None)
 
 

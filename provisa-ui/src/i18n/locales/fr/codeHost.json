@@ -32,6 +32,8 @@
     "statusUnknown": "Vérification de l'hôte distant...",
     "answering": "L'hôte distant répond.",
     "notAnswering": "L'hôte distant ne répond pas : {{error}}",
+    "health_healthy": "Sain",
+    "health_unhealthy": "Défaillant",
     "otherCode": "L'hôte distant exécute un autre code ({{reported}}) que celui auquel cette source est épinglée ({{pinned}}). Ses lectures sont refusées jusqu'à ce que vous examiniez le code et le réépingliez.",
     "repin": "Réépingler au code de l'hôte",
     "refresh": "Vérifier à nouveau",

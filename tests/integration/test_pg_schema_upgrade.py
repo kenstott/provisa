@@ -410,6 +410,9 @@ _CREATE_ONLY = {
     ),
     "code_source_vectors": "source_id item_id vector text item_metadata",
     "config_stamp": "kind stamp",
+    "connectors": (
+        'name git ref "commit" path build_command language image digest code_hash arch requires'
+    ),
     "creation_requests": (
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"
@@ -489,6 +492,10 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_run_datasets": (
+        "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
+        "column_lineage"
+    ),
     "org_regions": "id engine replicas views cache state record",
     "org_secrets": "key value_enc updated_at updated_by",
     "org_settings": "key value updated_at updated_by",
@@ -657,3 +664,163 @@ async def test_schema_sql_alone_restores_every_column_added_to_an_existing_table
         if column not in restored[table]
     ]
     assert not still_missing, still_missing
+
+
+# --- a constraint added to a table that already exists ----------------------------------------
+#
+# The same gap for constraints: CREATE TABLE IF NOT EXISTS does nothing on a table that is already
+# there, so a key or CHECK declared only in the CREATE never reaches a control plane created before
+# it. A table's key that replaced an older one has to take the older one away too, or the older one
+# goes on refusing the rows written now.
+
+_CONSTRAINT_TABLES = (
+    "api_endpoints",
+    "catalog_bindings",
+    "live_query_state",
+    "relationships",
+    "scheduled_triggers",
+    "tags",
+)
+_NOT_NULL_ONCE_EMPTY = (
+    ("catalog_bindings", "target"),
+    ("live_query_state", "source"),
+    ("live_query_state", "output_type"),
+    ("profiler_constraints", "physical_column"),
+)
+# Each table as it was before the constraint (git log -p provisa/core/schema.sql).
+_OLDER_CONSTRAINTS = """
+ALTER TABLE catalog_bindings DROP CONSTRAINT catalog_bindings_target_semantic_uri_key;
+ALTER TABLE catalog_bindings ALTER COLUMN target DROP NOT NULL;
+ALTER TABLE catalog_bindings ADD COLUMN provider TEXT NOT NULL;
+ALTER TABLE catalog_bindings ADD CONSTRAINT catalog_bindings_provider_semantic_uri_key
+    UNIQUE (provider, semantic_uri);
+
+ALTER TABLE live_query_state DROP CONSTRAINT live_query_state_pkey;
+ALTER TABLE live_query_state ALTER COLUMN source DROP NOT NULL;
+ALTER TABLE live_query_state ALTER COLUMN output_type DROP NOT NULL;
+ALTER TABLE live_query_state ADD COLUMN query_id TEXT PRIMARY KEY;
+
+ALTER TABLE profiler_constraints ALTER COLUMN physical_column DROP NOT NULL;
+
+ALTER TABLE tags DROP CONSTRAINT tags_param_policy_check;
+
+ALTER TABLE relationships DROP CONSTRAINT relationships_cardinality_check;
+ALTER TABLE relationships ADD CONSTRAINT relationships_cardinality_check
+    CHECK (cardinality IN ('many-to-one', 'one-to-many'));
+
+ALTER TABLE api_endpoints DROP CONSTRAINT api_endpoints_source_table_key;
+ALTER TABLE api_endpoints ADD CONSTRAINT api_endpoints_table_name_key UNIQUE (table_name);
+
+ALTER TABLE scheduled_triggers DROP CONSTRAINT scheduled_triggers_when;
+ALTER TABLE scheduled_triggers DROP CONSTRAINT scheduled_triggers_kind_fields;
+ALTER TABLE scheduled_triggers ADD CONSTRAINT scheduled_triggers_kind_fields CHECK (
+    (kind = 'sql' AND sql IS NOT NULL AND role IS NOT NULL)
+    OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))
+);
+ALTER TABLE scheduled_triggers ALTER COLUMN cron SET NOT NULL;
+"""
+
+
+def _constraints(db) -> dict[tuple[str, str], str]:
+    """(table, constraint name) -> its definition, for the tables whose constraints changed."""
+    with db.engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT t.relname, c.conname, pg_get_constraintdef(c.oid) "
+                "FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                "WHERE n.nspname = :schema AND t.relname = ANY(:tables)"
+            ),
+            {"schema": _SCHEMA, "tables": list(_CONSTRAINT_TABLES)},
+        ).fetchall()
+    return {(r[0], r[1]): r[2] for r in rows}
+
+
+def _nullable(db, table: str, column: str) -> bool:
+    shape = {c[0]: c[2] for c in _column_shapes(db, _SCHEMA, table)}
+    return shape[column] == "YES"
+
+
+async def _run_in_org_schema(db, sql: str) -> None:
+    async with db.acquire() as conn:
+        await conn.execute(f'SET search_path TO "{_SCHEMA}"')
+        await conn.execute(sql)
+
+
+async def test_schema_sql_alone_restores_every_constraint_added_to_an_existing_table(own_database):
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+    fresh = _constraints(db)
+    await _run_in_org_schema(db, _OLDER_CONSTRAINTS)
+    assert _constraints(db) != fresh
+
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    assert _constraints(db) == fresh
+    assert [c for c in _NOT_NULL_ONCE_EMPTY if _nullable(db, *c)] == []
+    assert _nullable(db, "scheduled_triggers", "cron")
+
+    # A second start changes nothing.
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    assert _constraints(db) == fresh
+    assert [c for c in _NOT_NULL_ONCE_EMPTY if _nullable(db, *c)] == []
+
+
+async def test_constraints_reach_a_table_holding_rows_that_have_no_key(own_database):
+    """Rows from before the key column have NULL in it and no value can be derived for them. They
+    stay, what they block waits, and the writes of today work beside them; once they are gone the
+    next start finishes the job."""
+    from provisa.core.repositories import catalog_binding
+    from provisa.live import watermark
+
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+    fresh = _constraints(db)
+    await _run_in_org_schema(db, _OLDER_CONSTRAINTS)
+    await _run_in_org_schema(
+        db,
+        # no registered table to hang the older decision on: only its nullability is under test
+        "ALTER TABLE profiler_constraints DROP CONSTRAINT profiler_constraints_table_id_fkey;"
+        "INSERT INTO catalog_bindings (provider, semantic_uri, vendor_ref, physical_key) "
+        "VALUES ('atlas', 'urn:old', 'guid', 'key');"
+        "INSERT INTO live_query_state (query_id) VALUES ('old_query');"
+        "INSERT INTO profiler_constraints (id, table_id, signature, kind, column_name, definition, "
+        "evidence, sampled, status, run_id) "
+        "VALUES ('old', 1, 'sig', 'not_null', 'c', 'd', 'e', FALSE, 'accepted', 'r');",
+    )
+
+    for _ in range(2):
+        await _run_in_org_schema(db, _SCHEMA_SQL)
+
+    assert [c for c in _NOT_NULL_ONCE_EMPTY if not _nullable(db, *c)] == []
+    async with db.acquire() as conn:
+        await conn.execute(f'SET search_path TO "{_SCHEMA}"')
+        for sql in (
+            "INSERT INTO catalog_bindings (target, semantic_uri, vendor_ref, physical_key) "
+            "VALUES ('t', 'urn:new', 'guid', 'key') ON CONFLICT (target, semantic_uri) "
+            "DO UPDATE SET vendor_ref = EXCLUDED.vendor_ref",
+            "INSERT INTO live_query_state (source, output_type, last_watermark) "
+            "VALUES ('s', 'o', '1') ON CONFLICT (source, output_type) "
+            "DO UPDATE SET last_watermark = EXCLUDED.last_watermark",
+        ):
+            await conn.execute(sql)
+            await conn.execute(sql)  # the second one is the conflict
+        # and the code that writes them, on the rows that were already there
+        await catalog_binding.upsert_bindings(conn, "t2", {"urn:x": ("v", "k")})
+        assert await catalog_binding.load_bindings(conn, "t2") == {"urn:x": ("v", "k")}
+        await watermark.set_watermark(conn, "s2", "o2", "9")
+        assert await watermark.get_watermark(conn, "s2", "o2") == "9"
+        kept = await conn.fetch("SELECT query_id FROM live_query_state WHERE query_id IS NOT NULL")
+        assert [r["query_id"] for r in kept] == ["old_query"]
+        old = await conn.fetch("SELECT provider FROM catalog_bindings WHERE target IS NULL")
+        assert [r["provider"] for r in old] == ["atlas"]
+
+    await _run_in_org_schema(
+        db,
+        "DELETE FROM catalog_bindings WHERE target IS NULL;"
+        "DELETE FROM live_query_state WHERE source IS NULL OR output_type IS NULL;"
+        "DELETE FROM profiler_constraints WHERE physical_column IS NULL;",
+    )
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    assert _constraints(db) == fresh
+    assert [c for c in _NOT_NULL_ONCE_EMPTY if _nullable(db, *c)] == []
