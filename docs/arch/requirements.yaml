@@ -94120,21 +94120,32 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     function runs against the configured cluster. [SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types
     are dropped. Kept here for history; do not implement against it.] A table''s columns come from its tags,
     or from the DataFrame''s schema when the script does not declare them. [END SUPERSEDED BLOCK] (Amended
-    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: a connector can declare
-    values for the source it creates: a default, applied when the source is created and changeable by a
-    steward, or a fixed value, shown read-only, a save that changes it refused. The Spark connector defaults
-    replication on, so a long job is built and refreshed without a query. A steward with a fast script can
-    turn replication off; queries then run the script live, held to the request timeout. (Amended 2026-11-09,
-    THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09: the Spark connector''s documentation covers small
-    jobs, big jobs, replication and caching, and what each means for performance and timeliness. (Amended
-    2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer 2026-11-09: the script declares each table''s
-    row type, as any code source does (REQ-1984), so a table''s shape changes only when the script does.
-    (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:) Maintainer 2026-11-09: the Spark connector
-    states replication on by default in the standard file of REQ-2221. (Amended 2026-11-09, A COMMAND CAN
-    TAKE A TABLE:) Maintainer 2026-11-09: a code source''s @command, in any language and so in the Spark
-    script, can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference
-    to a governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view
-    can then have table inputs, a command that runs Spark, and a table output.'
+    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2221,
+    2026-11-09 -- the standard file states this for every connector. Kept here for history; do not implement
+    against it.] a connector can declare values for the source it creates: a default, applied when the source
+    is created and changeable by a steward, or a fixed value, shown read-only, a save that changes it refused.
+    [END SUPERSEDED BLOCK] The Spark connector defaults replication on, so a long job is built and refreshed
+    without a query. A steward with a fast script can turn replication off; queries then run the script
+    live, held to the request timeout. (Amended 2026-11-09, THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09:
+    the Spark connector''s documentation covers small jobs, big jobs, replication and caching, and what
+    each means for performance and timeliness. (Amended 2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer
+    2026-11-09: the script declares each table''s row type, as any code source does (REQ-1984), so a table''s
+    shape changes only when the script does. (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:)
+    Maintainer 2026-11-09: the Spark connector states replication on by default in the standard file of
+    REQ-2221. (Amended 2026-11-09, A COMMAND CAN TAKE A TABLE:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2226,
+    2026-11-09 -- moved to its own requirement, since it holds for every code source. Kept here for history;
+    do not implement against it.] a code source''s @command, in any language and so in the Spark script,
+    can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference to a
+    governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view can
+    then have table inputs, a command that runs Spark, and a table output. [END SUPERSEDED BLOCK] (Amended
+    2026-11-09, BUILT BY THE STANDARD CONNECTOR BUILD:) Maintainer 2026-11-09: the Spark connector is an
+    ordinary connector project built by the standard connector build (REQ-2221), with its standard file
+    and icon. What differs is that Provisa offers it to every organization, and that its tables and commands
+    come from the script given at setup rather than from the image: the host reads the script''s tags at
+    join. The standard file marks the script as multi-line text and states replication on by default. A
+    @table in the script is the frontier, like any connector''s table: it brings data from outside and lineage
+    starts there. A @command with table inputs is inside the boundary (REQ-2226). On a live read a function
+    is given the statement''s read context (REQ-2100), which the script may apply to its DataFrame.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
@@ -94155,5 +94166,38 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     Then the join is refused by name'
+  stakeholders:
+  - data-engineer
+- id: REQ-2226
+  value: A code source's command can take a governed table as an argument, so a materialized view can
+    be table inputs, code, and a table output.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A @command of a code source, in any language (REQ-1984, REQ-1993,
+    REQ-2200), can take a table as an argument, as a registered function does (REQ-885 table_ref, REQ-1159):
+    a reference to a governed Provisa table, which the code reads over a scoped pgwire session as the
+    calling role, so what the role cannot see the code cannot read. It composes inline in SQL like any
+    command (REQ-1159), so a materialized view can have table inputs, a command that runs code such as
+    Spark, and a table output. As for any command, one that writes is never composed in a view or a materialized
+    view (REQ-1924, REQ-1928). The command declares its input and output columns, so it is a lineage node
+    like any command (REQ-1160).'
+  scenario: 'Given a code source command that takes a table and declares its input and output columns
+
+
+    And a materialized view over that command with a governed table as its input
+
+
+    When the view is built as a role that cannot see a column of the input
+
+
+    Then the code reads the table as that role and the column is not available to it
+
+
+    And the view''s lineage runs from the input table through the command to its output columns'
   stakeholders:
   - data-engineer
