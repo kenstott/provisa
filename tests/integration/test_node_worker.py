@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pyarrow as pa
@@ -264,26 +265,52 @@ def test_a_connection_that_does_not_go_through_the_proxy_is_refused(
         started.stop()
 
 
-@pytest.mark.parametrize("runtime", ["node", "bun"])
-def test_a_host_serves_over_a_socket_it_inherits(runtime, cache, bundle):
-    """The Linux sandbox hands the host its socket already connected (it may open no socket but
-    TCP); each runtime's host serves over it as over one it connected itself."""
+def _inheriting(runtime, cache, bundle, **env) -> w.Worker:
+    """A host on connections it inherits, already connected, with no sandbox around it."""
     from provisa.node.worker import HOST, entry_module
 
     executable = CodeRuntimeResolver(cache_root=cache).resolve(runtime)
     entry = entry_module(bundle)
     command = w.HostCommand(
         argv=lambda address: [str(executable), str(HOST), address, str(entry)],
-        env=w.private_environment(PROVISA_HOST_LIB=str(_host_lib(cache))),
+        env=w.private_environment(PROVISA_HOST_LIB=str(_host_lib(cache)), **env),
         cwd=bundle,
         inherit_socket=True,
     )
     started = w.Worker(f"{runtime}-src", "h", command)
     started.start()
+    return started
+
+
+@pytest.mark.parametrize("runtime", ["node", "bun"])
+def test_a_host_serves_over_a_socket_it_inherits(runtime, cache, bundle):
+    """The Linux sandbox hands the host its socket already connected (it may open no socket but
+    TCP); each runtime's host serves over it as over one it connected itself."""
+    started = _inheriting(runtime, cache, bundle)
     try:
         assert [len(b) for b in started.rows("many", "table", [1500], schema=_schema("many"))] == [
             1000,
             500,
         ]
+    finally:
+        started.stop()
+
+
+@pytest.mark.parametrize("runtime", ["node", "bun"])
+def test_every_inherited_connection_is_served_on_a_host_with_few_cores(runtime, cache, bundle):
+    """Each inherited connection's read holds one of the runtime's pool threads while it waits. Bun
+    sizes its pool once, as it starts, from the cores it has (GOMAXPROCS stands in for them here):
+    with fewer threads than connections, a call on a connection no thread is reading is never
+    heard. Every connection is in use at once, each call bounded so a hang fails by name."""
+    started = _inheriting(runtime, cache, bundle, GOMAXPROCS="2")
+
+    def call(_: int) -> list[int]:
+        with request_deadline.within(30):
+            return [len(b) for b in started.rows("many", "table", [1500], schema=_schema("many"))]
+
+    try:
+        with ThreadPoolExecutor(w.CONNECTIONS) as pool:
+            answers = list(pool.map(call, range(w.CONNECTIONS)))
+        assert answers == [[1000, 500]] * w.CONNECTIONS
     finally:
         started.stop()
