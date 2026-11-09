@@ -27,6 +27,7 @@ a store has it before any configuration is applied.
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -161,7 +162,26 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
-def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
+_PROFILE_RESULT = re.compile(r"(.+)_(\d+)_profile_(\w+)")
+
+
+def _profile_result_of(
+    row: dict[str, Any], by_id: dict[int, dict[str, Any]]
+) -> tuple[str, str] | None:
+    """(member, kind) of a profiler's result table (REQ-2052). Its name carries the member's stored
+    id, which another store does not share, so a configuration names it by its member."""
+    match = _PROFILE_RESULT.fullmatch(row["table_name"])
+    if match is None:
+        return None
+    member = by_id.get(int(match[2]))
+    if member is None or member.get("profiler_source_id") != row["source_id"]:
+        return None
+    return str(member["table_name"]), match[3]
+
+
+def _table(
+    row: dict[str, Any], class_term: str | None, by_id: dict[int, dict[str, Any]]
+) -> dict[str, Any]:
     fields = _fields(Table, {**row, "class_term": class_term})
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
@@ -180,6 +200,9 @@ def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     # tables by (source, schema, table).
     written["schema"] = table.schema_name
     written["domain_id"] = table.domain_id
+    profile_result = _profile_result_of(row, by_id)
+    if profile_result is not None:  # REQ-2222
+        written["profile_of"], written["kind"] = profile_result
     return written
 
 
@@ -251,7 +274,8 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 name=r.name,
                 definition=r.definition,
                 domains=declared[r.id],
-                edges=edges.get(r.id, []),
+                # By what names each edge, never its serial: the same model reads the same.
+                edges=sorted(edges.get(r.id, []), key=lambda e: (e.to, e.rel_type)),
                 **_status(r),
             )
         )
@@ -291,7 +315,7 @@ async def _naming_rules(conn: "Connection") -> list[dict[str, str]]:
 async def store_model(conn: "Connection") -> dict[str, Any]:
     """Every model section the store holds, as a configuration writes it, and the naming rules
     (``naming_rules``). Sections are complete lists; an empty one is an empty list."""
-    from provisa.core.db import SEEDED_SOURCE_IDS
+    from provisa.core.db import BUILT_IN_SOURCE_IDS, SEEDED_SOURCE_IDS
     from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS
     from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import data_product as data_product_repo
@@ -309,13 +333,18 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     # relationship that name it are the model's, and keep its name (REQ-1634): the import holds
     # that name until the seeded table exists.
     tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
+    by_id = {int(t["id"]): t for t in tables}
     internal = {int(t["id"]) for t in tables if _internal_table(t)}
+    # REQ-2222: a row rule or a tag on the demo's seeded tables is the model's, as a member or a
+    # relationship naming one is; the built-in catalog tables' are the deployment's.
+    demo_seeded = SEEDED_SOURCE_IDS - BUILT_IN_SOURCE_IDS
+    system = {i for i in internal if by_id[i]["source_id"] not in demo_seeded}
     # A table is named in a configuration by its virtual name: its alias when it has one.
     name_of = {int(t["id"]): str(t.get("alias") or t["table_name"]) for t in tables}
 
     def _refs_internal(row: dict[str, Any]) -> bool:
         ids = [row.get(k) for k in ("source_table_id", "target_table_id", "table_id")]
-        return any(i is not None and int(i) in internal for i in ids)
+        return any(i is not None and int(i) in system for i in ids)
 
     relationships = []
     for row in await rel_repo.list_all(conn):
@@ -345,7 +374,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     tag_assignments = []
     for row in await tag_repo.list_assignments(conn):
-        if row.get("table_id") is not None and int(row["table_id"]) in internal:
+        if row.get("table_id") is not None and int(row["table_id"]) in system:
             continue
         fields = _fields(TagAssignment, row)
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
@@ -388,7 +417,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         ],
         "glossary_terms": await _glossary_terms(conn),
         "tables": [
-            _table(t, class_terms.get(int(t["id"]))) for t in tables if int(t["id"]) not in internal
+            _table(t, class_terms.get(int(t["id"])), by_id)
+            for t in tables
+            if int(t["id"]) not in internal
         ],
         "relationships": relationships,
         "metrics": [

@@ -2234,6 +2234,26 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
+async def _unstamp_revived_terms(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-2222
+    """A rebuild drops every table, so a term derived from columns and named by another term's edge
+    is kept meanwhile with its domains stamped on it (REQ-1591). The rebuilt tables give it its refs
+    again, and its domains are derived from them: a stamp left behind would declare a term the
+    configuration does not."""
+    from sqlalchemy import delete
+
+    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs, glossary_terms
+
+    declared = [term.name.strip().lower() for term in config.glossary_terms]
+    await conn.execute_core(
+        delete(glossary_term_domains).where(
+            glossary_term_domains.c.term_id.in_(select(glossary_term_refs.c.term_id)),
+            glossary_term_domains.c.term_id.not_in(
+                select(glossary_terms.c.id).where(glossary_terms.c.name.in_(declared))
+            ),
+        )
+    )
+
+
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     config: ProvisaConfig,
     conn: "Connection",
@@ -2309,6 +2329,8 @@ async def _apply(
                     from provisa.term_finding.carry import load_scans  # noqa: PLC0415
 
                     await load_scans(conn, carried_scans)
+                if reset:
+                    await _unstamp_revived_terms(conn, config)
                 await _mark_seeded(conn)
     if reset:
         # After the commit, in transactions of their own: the backlog of a template's rebuilds,
