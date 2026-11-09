@@ -38,7 +38,7 @@ export const SUB_ITEMS = {
 };
 
 // The sources named in the home page's one-line row, in this order.
-export const HOME_ROW = ["postgresql", "snowflake", "salesforce", "mongodb", "elasticsearch", "databricks", "google_sheets", "stripe"];
+export const HOME_ROW = ["postgresql", "snowflake", "salesforce", "mongodb", "elasticsearch", "databricks", "google_sheets"];
 
 // Categories shown first, in this order; the rest follow in the picker's own order.
 const CATEGORY_FIRST = ["Enterprise"];
