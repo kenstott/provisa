@@ -94221,7 +94221,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     function tagged @query is identical to one tagged @command, in its signature, its arguments and how
     it is called, except that within Provisa its kind is query and not mutation, with what that kind already
     means (REQ-1156, REQ-1928): it composes in a view or a materialized view and is called once per distinct
-    argument set. A @command is a mutation.'
+    argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
+    2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
+    each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
