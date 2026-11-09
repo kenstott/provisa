@@ -29,6 +29,7 @@ plane.
 from __future__ import annotations
 
 import contextlib
+import copy
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -1028,12 +1029,15 @@ async def _seed_like_the_boot(plane: Database, raw: dict) -> None:
     registration leaves them (a seeded table is in every store and in no file's export)."""
     from provisa.core.db import SEEDED_SOURCE_IDS
 
+    # Only what those tables stand on: anything more of the file would stand in for what the
+    # export must bring itself.
     seeded = {
-        **raw,
+        **{k: v for k, v in raw.items() if k not in MODEL_SECTIONS and k != "views"},
+        "sources": [s for s in raw.get("sources", []) if s["id"] in SEEDED_SOURCE_IDS],
+        "domains": raw.get("domains", []),
+        "roles": raw.get("roles", []),
         "tables": [t for t in raw.get("tables", []) if t["source_id"] in SEEDED_SOURCE_IDS],
     }
-    for key in ("relationships", "data_products", "rls_rules", "tag_assignments", "glossary_terms"):
-        seeded.pop(key, None)
     async with plane.acquire() as conn:
         await apply_config(parse_config_dict(seeded), conn)
 
@@ -1041,13 +1045,49 @@ async def _seed_like_the_boot(plane: Database, raw: dict) -> None:
 # --- a named demo's whole config ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "config_file", ["config/provisa-install.yaml", "demo/named/perf/config.yaml"]
+#: Every model the product ships: found on disk, so a new demo is covered by being added (REQ-2222).
+_SHIPPED_MODELS = sorted(
+    str(path.relative_to(_REPO))
+    for pattern in ("config/provisa*.yaml", "demo/named/*/config.yaml")
+    for path in _REPO.glob(pattern)
 )
+
+
+def test_the_round_trip_finds_the_shipped_models():
+    assert "config/provisa-install.yaml" in _SHIPPED_MODELS
+    named = {p.parent.name for p in (_REPO / "demo" / "named").glob("*/config.yaml")}
+    assert named == {Path(m).parent.name for m in _SHIPPED_MODELS if m.startswith("demo/named/")}
+
+
+def _losses(declared: Any, exported: Any, at: str = "") -> list[str]:
+    """Where ``exported`` says other than ``declared``: lists of named things are paired by name."""
+    if isinstance(declared, dict) and isinstance(exported, dict):
+        out: list[str] = []
+        for key in sorted(set(declared) | set(exported)):
+            out += _losses(declared.get(key), exported.get(key), f"{at}.{key}")
+        return out
+    if isinstance(declared, list) and isinstance(exported, list):
+        names = [_name_of(item) for item in [*declared, *exported]]
+        if all(n is not None for n in names) and names:
+            return _losses(
+                {_name_of(i): i for i in declared}, {_name_of(i): i for i in exported}, at
+            )
+    return [] if declared == exported else [f"{at}: {declared!r} -> {exported!r}"]
+
+
+def _name_of(item: Any) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    if "table" in item and "source_id" in item:
+        return f"{item['source_id']}.{item.get('schema')}.{item['table']}"
+    return next((str(item[k]) for k in ("id", "name") if item.get(k) is not None), None)
+
+
+@pytest.mark.parametrize("config_file", _SHIPPED_MODELS)
 async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_file, new_plane):
-    """A demo's whole config (the standard one, and a named one such as perf) seeds an empty
-    store once, a demo rebuild from it gives the same model, and its export applied to an empty
-    store builds that model again."""
+    """REQ-2222: every shipped model seeds an empty store once, a demo rebuild from it gives the
+    same model, its export applied to an empty store builds that model again, and nothing the
+    file declares is missing from the export."""
     from provisa.core.config_loader import rebuild_from_config
 
     raw = config_loader.read_config_with_includes(_REPO / config_file)
@@ -1065,4 +1105,9 @@ async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_fil
     await _seed_like_the_boot(fresh, raw)
     async with fresh.acquire() as conn:
         await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
-    assert _given(await _model(fresh)) == _given(first)
+    assert _losses(_given(first), _given(await _model(fresh))) == []
+    declared = parse_config_dict(copy.deepcopy(raw)).model_dump(mode="json", by_alias=True)
+    written = parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))).model_dump(
+        mode="json", by_alias=True
+    )
+    assert _losses(declared, written) == []
