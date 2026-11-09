@@ -26770,7 +26770,7 @@ Maintainer 2026-11-09. The start scripts compare the checkout's virtual environm
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included. Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout. Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh. Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table does without the freshness guarantee ([REQ-860](#REQ-860)). This requirement is the read wait alone: a read with nothing landed waits up to that long, in place of the request timeout.
+Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included. Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout. Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh. Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table does without the freshness guarantee ([REQ-860](#REQ-860)). This requirement is the read wait alone: a read with nothing landed waits up to that long, in place of the request timeout. (Amended 2026-11-09, THE FIRST READ CAN ANSWER NO ROWS:) Maintainer 2026-11-09: if configured, a read with nothing landed answers zero rows with the table's columns and triggers the landing.
 
 **Code:** —
 

@@ -94003,7 +94003,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - app-developer
 - id: REQ-2224
-  value: A table can say how long a read waits for its first landing.
+  value: 'A table can say what a read does when nothing has landed yet: wait up to a time of its own, or
+    answer no rows.'
   status: proposed
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
@@ -94017,7 +94018,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS
     GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table
     does without the freshness guarantee (REQ-860). This requirement is the read wait alone: a read with
-    nothing landed waits up to that long, in place of the request timeout.'
+    nothing landed waits up to that long, in place of the request timeout. (Amended 2026-11-09, THE FIRST
+    READ CAN ANSWER NO ROWS:) Maintainer 2026-11-09: if configured, a read with nothing landed answers zero
+    rows with the table''s columns and triggers the landing.'
   scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
     read waits for the rows
   stakeholders:
