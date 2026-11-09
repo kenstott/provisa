@@ -281,7 +281,7 @@ roles:
 # and observability — and role_repo.upsert refuses to overwrite either row. A block here loads AFTER
 # apply_tenancy_role_grants and overwrites capabilities wholesale, which is how org_admin lost both
 # org-scoped rights and its Admin tab.
-- capabilities: [data_product_read, glossary_read, query_development, usage]
+- capabilities: [command_execution, data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter

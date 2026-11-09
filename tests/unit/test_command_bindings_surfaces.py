@@ -56,7 +56,13 @@ _ENRICH = {
 
 def _state() -> SimpleNamespace:
     return SimpleNamespace(
-        roles={"seller": {"id": "seller", "capabilities": ["usage"], "domain_access": ["sales"]}},
+        roles={
+            "seller": {
+                "id": "seller",
+                "capabilities": ["usage", "command_execution"],
+                "domain_access": ["sales"],
+            }
+        },
         tracked_functions={"meta_schema": _SCHEMA, "enrich": _ENRICH},
         tracked_webhooks={},
     )
@@ -103,7 +109,11 @@ def _schema_input(functions: list[dict]) -> SchemaInput:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "seller", "capabilities": ["usage"], "domain_access": ["sales"]},
+        role={
+            "id": "seller",
+            "capabilities": ["usage", "command_execution"],
+            "domain_access": ["sales"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         domain_prefix=False,
         functions=functions,

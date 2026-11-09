@@ -54,6 +54,9 @@ def _make_state(role_id: str = "admin") -> SimpleNamespace:
         schemas={role_id: schema},
         table_path_maps={role_id: path_map},
     )
+    state.roles = {  # REQ-870: a command's path is offered by the one command rule
+        role_id: {"id": role_id, "capabilities": ["command_execution"], "domain_access": ["*"]}
+    }
     return state
 
 
