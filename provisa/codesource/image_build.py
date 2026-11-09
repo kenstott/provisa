@@ -306,6 +306,9 @@ FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgc
 #: Provisa's own modules the front end runs with, copied beside its programs: each image path's
 #: source, relative to the provisa package. Every DuckDB the front end opens is capped (REQ-2006).
 FRONT_MODULES = {"engine_memory.py": "core/engine_memory.py"}
+#: Provisa's own modules the PostgreSQL protocol (buenavista) imports, relative to the provisa
+#: package: placed in the front end's ``provisa`` package, under the names it imports them by.
+PROTOCOL_MODULES = ("pgwire/catalog_pg17.py", "transpiler/pg_literals.py")
 #: REQ-2194: where the Linux provisa wheels are (PROVISA_WHEELHOUSE, else the build cache's
 #: ``wheels``): the front end writes its DataRows and binary COPY with the encoders
 #: (provisa._encoders) compiled into the wheel for the image's architecture.
@@ -331,8 +334,9 @@ def _same_version(wheel: Path, version: str) -> bool:
 def _encoders(plan: Plan, arch: str) -> list[oci.Entry]:
     """provisa._encoders for ``arch`` as a package of its own in the front end's library: its
     compiled module, from the Linux provisa wheel of this Provisa's version, and an empty
-    ``provisa/__init__.py`` (the front end runs no other part of provisa). A build for an
-    architecture whose wheel is not there is refused by name; there is no other DataRow writer."""
+    ``provisa/__init__.py`` (the rest of provisa the front end runs is PROTOCOL_MODULES). A build
+    for an architecture whose wheel is not there is refused by name; there is no other DataRow
+    writer."""
     house = wheelhouse(plan)
     tag = f"manylinux_2_28_{_WHEEL_ARCH[arch]}"
     found = sorted(house.glob(f"provisa-*-{tag}.whl")) if house.is_dir() else []
@@ -361,6 +365,19 @@ def _encoders(plan: Plan, arch: str) -> list[oci.Entry]:
         oci.Entry(lib, directory=True, mode=0o755),
         oci.Entry(f"{lib}/__init__.py", data=b""),
         oci.Entry(f"{lib}/{module.rsplit('/', 1)[1]}", data=compiled, mode=0o755),
+    ]
+
+
+def _protocol_modules(package: Path) -> list[oci.Entry]:
+    """The provisa modules the PostgreSQL protocol imports, in the front end's ``provisa`` package.
+    Each subpackage's ``__init__.py`` is empty, as the package's own is: provisa's would import
+    what the image does not hold."""
+    lib = f"{ROOT}/frontlib/provisa"
+    packages = sorted({Path(module).parent.as_posix() for module in PROTOCOL_MODULES})
+    return [
+        *(oci.Entry(f"{lib}/{name}", directory=True, mode=0o755) for name in packages),
+        *(oci.Entry(f"{lib}/{name}/__init__.py", data=b"") for name in packages),
+        *(oci.Entry(f"{lib}/{module}", source=package / module) for module in PROTOCOL_MODULES),
     ]
 
 
@@ -401,6 +418,7 @@ def _front(
         *([front_python] if front_python is not None else []),
         oci.tree(lib, f"{ROOT}/frontlib"),
         _encoders(plan, arch),
+        _protocol_modules(here.parent),
         # The PostgreSQL protocol, as provisa/pgwire serves it (REQ-2100, pgfront.py): its
         # modules, never what an interpreter cached beside them.
         files(

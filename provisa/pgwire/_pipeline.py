@@ -1753,6 +1753,18 @@ def governed_statement_is_current(
     )
 
 
+async def _entitlement_statement(sql: str, tree: Any, gov_ctx: Any, state: Any) -> Any:
+    """``tree`` with its views replaced by their definitions, for the entitlement rule (REQ-2219);
+    ``tree`` itself when no mask narrows this reader or there are no views."""
+    view_map = getattr(state, "view_sql_map", None)
+    if gov_ctx.entitlement_mask is None or not view_map:
+        return tree
+    from provisa.mv.view_read import statement_as_read
+
+    expanded = statement_as_read(sql, view_map, state)
+    return await _off_loop(lambda: sqlglot.parse_one(expanded, read="postgres"))
+
+
 async def _guard_complexity(
     sql: str, role_id: str, tree: Any, gov_ctx: Any, ctx: Any, state: Any
 ) -> None:  # REQ-1174
@@ -1902,6 +1914,20 @@ async def govern_statement(
     await _reject_unbound_writes(_parsed_input, state)
 
     gov_ctx = _governance()
+    # REQ-2219: the first governance rule. Every object the statement touches is in the person's
+    # mask, before any other rule reads the statement or any view is read for this reader.
+    from provisa.compiler.entitlement_rule import entitlement_violations
+
+    _outside = entitlement_violations(
+        _parsed_input,
+        await _entitlement_statement(normalized_sql, _parsed_input, gov_ctx, state),
+        gov_ctx,
+    )
+    if _outside:
+        from provisa.compiler.sql_validator import GovernanceRefused
+
+        await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+        raise GovernanceRefused(_outside)
     # ONE semantic statement: every view the statement reads is replaced by its SQL before
     # governance, so governance judges it whole for this reader (provisa.mv.view_read).
     _validated_sql = normalized_sql
@@ -4155,9 +4181,12 @@ def _raw_cache_key(
     as_of: str | None = None,
     zone: str | None = None,
 ) -> str | None:
-    """The raw-SQL namespace key for governed ``sql``, its bound values, the request's as-of and
-    the zone it is answered in (REQ-2171), or None when the text depends on unresolved session state (REQ-866)."""
+    """The raw-SQL namespace key for governed ``sql``, its bound values, the request's as-of, the
+    reader's entitlement mask (REQ-2219) and the zone it is answered in (REQ-2171), or None when
+    the text depends on unresolved session state (REQ-866)."""
+    from provisa.api.app import state
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
+    from provisa.entitlements.runtime import current_mask_hash
 
     cacheable, _ = is_cacheable(sql)
     if not cacheable:
@@ -4174,6 +4203,7 @@ def _raw_cache_key(
         wire_formats=wire_formats,
         as_of=as_of,
         session=temp_tables.slot_key(),
+        mask_hash=current_mask_hash(state, role_id),  # REQ-2219
         zone=zone,
     )
 
@@ -5538,6 +5568,21 @@ async def _govern_compiled(
     if _lifted != sql:
         sql = _lifted
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    # REQ-2219: the first governance rule (see govern_statement).
+    from provisa.compiler.entitlement_rule import entitlement_violations
+
+    _outside = entitlement_violations(
+        _compiled_tree,
+        await _entitlement_statement(sql, _compiled_tree, gov_ctx, state),
+        gov_ctx,
+    )
+    if _outside:
+        from provisa.audit.pipeline import write_denial
+
+        from provisa.compiler.sql_validator import GovernanceRefused
+
+        await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)
+        raise GovernanceRefused(_outside)
     # ONE semantic statement, as on the raw-SQL stage: every view is replaced by its SQL before
     # governance (provisa.mv.view_read).
     _validated_sql = sql

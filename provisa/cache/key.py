@@ -79,6 +79,7 @@ def raw_sql_cache_key(  # REQ-1897
     wire_formats: list[int] | None,
     as_of: str | None = None,
     session: list[tuple[str, str]] | None = None,
+    mask_hash: str = "",
     zone: str | None = None,
 ) -> str:
     """The key of a plan's cached result — the one response cache's key, whichever surface sent
@@ -94,9 +95,10 @@ def raw_sql_cache_key(  # REQ-1897
     is not in the governed text, yet a statement over a bitemporal view reads different rows at
     each one, so a read at one as-of (or at none) never shares an entry with another. ``session``
     is the temporary-table session the statement read and its generation
-    (``temp_tables.slot_key``, REQ-2176): none for a statement that read none. ``zone`` is the
-    TimeZone it is answered in (REQ-2171), which the governed text does not show either: None on
-    UTC. Callers MUST gate on ``is_cacheable`` first (REQ-866)."""
+    (``temp_tables.slot_key``, REQ-2176): none for a statement that read none. ``mask_hash`` is
+    the reader's entitlement mask (REQ-2219), empty when it narrows nothing: no answer reaches a
+    narrower mask. ``zone`` is the TimeZone it is answered in (REQ-2171), which the governed text
+    does not show either: None on UTC. Callers MUST gate on ``is_cacheable`` first (REQ-866)."""
     parts = {
         "namespace": "raw_sql_rows",
         "sql": _normalize_sql(sql),
@@ -107,6 +109,8 @@ def raw_sql_cache_key(  # REQ-1897
     }
     if session:
         parts["session"] = session
+    if mask_hash:
+        parts["mask"] = mask_hash
     if zone:
         parts["zone"] = zone
     return _digest(parts)

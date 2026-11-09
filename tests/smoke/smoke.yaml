@@ -1,0 +1,53 @@
+# The smoke check's configuration (REQ-1989, tests/smoke/test_main_is_startable.py): the default
+# demo as it ships, plus what the maintainer wants read that the demo does not have. The demo's own
+# file is included, never edited (config/provisa-install.yaml).
+includes:
+  - ../../config/provisa-install.yaml
+
+# The same block the demo's file has: the first-run check (/setup/status) reads this file's own
+# auth and does not follow includes, so without it the app opens on the setup wizard.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+
+sources:
+  - id: smoke-parquet
+    type: parquet
+    path: ${env:PROVISA_DEMO_DIR:-./demo/files}/products.parquet
+    description: "The demo's product list as a Parquet file."
+  - id: smoke-pg
+    type: postgresql
+    host: ${env:SMOKE_PG_HOST}
+    port: ${env:SMOKE_PG_PORT}
+    database: provisa
+    username: provisa
+    password: ${env:SMOKE_PG_PASSWORD}
+    description: "An embedded PostgreSQL server the smoke run seeds."
+
+tables:
+  - source_id: smoke-parquet
+    domain_id: pet-store
+    schema: default
+    table: products
+    governance: pre-approved
+    columns:
+      - {name: id, data_type: integer, visible_to: [data_steward, pet_analyst]}
+      - {name: sku, data_type: varchar, visible_to: [data_steward, pet_analyst]}
+      - {name: name, data_type: varchar, visible_to: [data_steward, pet_analyst]}
+  - source_id: smoke-pg
+    domain_id: pet-store
+    schema: public
+    table: smoke_accounts
+    governance: pre-approved
+    columns:
+      - {name: id, data_type: integer, visible_to: [data_steward, pet_analyst]}
+      - {name: owner, data_type: varchar, visible_to: [data_steward, pet_analyst]}
+
+rls_rules:
+  - table_id: pets
+    role_id: pet_analyst
+    description: "The smoke check's restricted role reads only the pets on sale."
+    filter: "available = 1"
