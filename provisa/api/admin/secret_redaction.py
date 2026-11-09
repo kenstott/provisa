@@ -27,6 +27,7 @@ The value is absent or it is not there at all.
 
 from __future__ import annotations
 
+import re
 from typing import Iterable, Mapping
 
 
@@ -63,7 +64,9 @@ def redact_per_provider(
 #: removed: a DSN can carry one there as it carries a password in its netloc, as MotherDuck's
 #: ``?motherduck_token=`` does (REQ-1999). Matching the ending keeps ``keyspace``, ``token_type``
 #: and ``access_key_id`` out. ``sslkey`` is out too: libpq defines it as a path to the key file.
+#: ``odbc_connect`` holds a whole ODBC connection string, UID and PWD included, so all of it goes.
 _CREDENTIAL_NAME_ENDINGS = (
+    "odbcconnect",
     "password",
     "passwd",
     "pwd",
@@ -89,16 +92,35 @@ def _is_credential(segment: str) -> bool:
     return name == "key" or name.endswith(_CREDENTIAL_NAME_ENDINGS)
 
 
-def _secret_query(query: str) -> tuple[list[str], list[str]]:
-    """A DSN's query segments, as written, split into (the rest, the credentials)."""
-    segments = [s for s in query.split("&") if s]
+#: One ``name=value`` of a query, with the separator written before it (empty for the first).
+_Segment = tuple[str, str]
+
+
+def _query_segments(query: str) -> list[_Segment]:
+    """A DSN's query segments as written. ``;`` separates them as ``&`` does, except that a piece
+    with no ``=`` after a credential is the rest of that credential's value."""
+    pieces = re.split(r"([&;]+)", query)
+    segments: list[_Segment] = []
+    for separator, piece in zip(["", *pieces[1::2]], pieces[0::2]):
+        continues = "&" not in separator and separator and "=" not in piece
+        if continues and segments and _is_credential(segments[-1][1]):
+            before, credential = segments[-1]
+            segments[-1] = (before, f"{credential}{separator}{piece}")
+        elif piece:
+            segments.append((separator, piece))
+    return segments
+
+
+def _secret_query(query: str) -> tuple[list[_Segment], list[_Segment]]:
+    """A DSN's query segments split into (the rest, the credentials)."""
+    segments = _query_segments(query)
     return (
-        [s for s in segments if not _is_credential(s)],
-        [s for s in segments if _is_credential(s)],
+        [s for s in segments if not _is_credential(s[1])],
+        [s for s in segments if _is_credential(s[1])],
     )
 
 
-def _with_query(url: str, segments: list[str]) -> str:
+def _with_query(url: str, segments: list[_Segment]) -> str:
     """``url`` with its query replaced by ``segments``, the rest of it as written: urlunsplit would
     drop the empty authority of ``motherduck:///db``."""
     head, _, rest = url.partition("?")
@@ -106,7 +128,8 @@ def _with_query(url: str, segments: list[str]) -> str:
         head, hash_, fragment = head.partition("#")
     else:
         _, hash_, fragment = rest.partition("#")
-    query = f"?{'&'.join(segments)}" if segments else ""
+    joined = "".join(f"{(sep or '&') if i else ''}{s}" for i, (sep, s) in enumerate(segments))
+    query = f"?{joined}" if joined else ""
     return f"{head}{query}{hash_}{fragment}"
 
 
@@ -114,7 +137,8 @@ def redact_url_password(url: str | None) -> str | None:
     """Strip the password out of a DSN, keeping everything an operator reads it for.
 
     A URL field looks like an address and carries a credential: ``trino://user:pw@host:443/cat``,
-    ``postgresql://host/db?password=...`` or ``motherduck:///db?motherduck_token=...``. The host,
+    ``postgresql://host/db?a=1;password=...``, ``mssql+pyodbc:///?odbc_connect=...`` or
+    ``motherduck:///db?motherduck_token=...``. The host,
     port, path and user are what tell an operator what they are pointed at, so those stay and only
     the password -- or the credential query parameter -- goes. Anything that does not parse as a
     URL is returned untouched -- there is no password to find in it, and rewriting it would corrupt
@@ -150,6 +174,8 @@ def restore_url_password(submitted: str | None, stored: str | None) -> str | Non
     """
     if not submitted or not stored:
         return submitted
+    if submitted == redact_url_password(stored):
+        return stored
     from urllib.parse import urlsplit
 
     new, old = urlsplit(submitted), urlsplit(stored)
@@ -167,8 +193,8 @@ def restore_url_password(submitted: str | None, stored: str | None) -> str | Non
         restored = new._replace(netloc=old.netloc).geturl()
     kept, secret = _secret_query(new.query)
     _, stored_secret = _secret_query(old.query)
-    given = {_param_name(s) for s in secret}
-    missing = [s for s in stored_secret if _param_name(s) not in given]
+    given = {_param_name(s) for _, s in secret}
+    missing = [s for s in stored_secret if _param_name(s[1]) not in given]
     if not missing:
         return restored
     return _with_query(restored, kept + secret + missing)
