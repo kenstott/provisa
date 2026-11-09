@@ -179,6 +179,22 @@ def _stored_subtype(
     return data_type, None
 
 
+def _stored_column_type(
+    table: Table, col: Any, resolved: str, existing: tuple[str, str] | None
+) -> tuple[str, str | None]:
+    """``(data_type, subtype)`` a column is stored with, from the type it resolved to (REQ-1426):
+    a subtype as its base (REQ-2171), a numeric in its one spelling (REQ-1961). The save's
+    contract snapshots this and the column row stores it, so the two never differ (REQ-2158)."""
+    try:
+        data_type, subtype = _stored_subtype(resolved, getattr(col, "subtype", None), existing)
+    except _NotASubtype as refused:
+        raise SubtypeRefused(table.table_name, col.name, str(refused), resolved) from None
+    try:
+        return stored_type_of(data_type), subtype
+    except ReportedNumericMalformed as malformed:
+        raise NumericSizeRefused(table.table_name, col.name, data_type) from malformed
+
+
 async def stored_column_types(
     conn: "Connection", source_id: str, schema_name: str, table_name: str
 ) -> dict[str, str]:
@@ -546,7 +562,22 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 "resolve the type at registration — an untyped column cannot be persisted"
             )
         _resolved_types[col.name] = _resolved
-    contract = await _contract_for_save(conn, table, _resolved_types)  # REQ-2158
+    # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
+    # restates the stored base keeps it.
+    _existing_subtypes = {
+        r.column_name: (r.data_type, r.subtype) for r in _existing_rows if r.subtype
+    }
+    # REQ-1961, REQ-2171: the stored form, settled once: the contract snapshots it and the column
+    # rows write it.
+    _stored = {
+        col.name: _stored_column_type(
+            table, col, _resolved_types[col.name], _existing_subtypes.get(col.name)
+        )
+        for col in table.columns
+    }
+    contract = await _contract_for_save(
+        conn, table, {name: stored[0] for name, stored in _stored.items()}
+    )  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -699,11 +730,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         update_columns=_update_columns,
     )
 
-    # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
-    # restates the stored base keeps it.
-    _existing_subtypes = {
-        r.column_name: (r.data_type, r.subtype) for r in _existing_rows if r.subtype
-    }
     # REQ-1965: the hidden attributes of a natively nested column are recorded from the source at
     # registration and persist with the type they describe: a re-registration that restates the
     # same type without them (a configuration apply, an admin's edit of another field) keeps them.
@@ -833,20 +859,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         object_fields = [
             f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
         ]
-        _data_type = _resolved_types[col.name]
-        # REQ-1961: a numeric's precision and scale are stored in one spelling, whoever writes
-        # the registration and however they spelled it; a size no numeric can have is refused
-        # here, the one place a column's type is written.
-        try:
-            _data_type, _subtype = _stored_subtype(
-                _data_type, getattr(col, "subtype", None), _existing_subtypes.get(col.name)
-            )
-        except _NotASubtype as refused:
-            raise SubtypeRefused(table.table_name, col.name, str(refused), _data_type) from None
-        try:
-            _data_type = stored_type_of(_data_type)
-        except ReportedNumericMalformed as malformed:
-            raise NumericSizeRefused(table.table_name, col.name, _data_type) from malformed
+        _data_type, _subtype = _stored[col.name]
         await conn.execute_core(
             table_columns.insert().values(
                 table_id=table_id,

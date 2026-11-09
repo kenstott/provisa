@@ -97,6 +97,7 @@ from provisa.core.config_loader import (
     parse_store_raw,
     rebuild_from_config,
     seed_config,
+    set_product_members,
     store_config,
     store_raw,
     parse_config_dict,
@@ -1894,6 +1895,9 @@ async def _load_and_build(
                         await _rel_repo.upsert(_retry_conn, _rel)
                     except ValueError as exc:
                         raise ValueError(f"seeded relationship {_rel.id!r}: {exc}") from exc
+                # The products' members naming those tables, held until now (REQ-1634): a name
+                # still unregistered fails the boot, naming the product.
+                await set_product_members(_retry_conn, _seed_file)
 
     _mark("source-pools+ingest+remote")
 
