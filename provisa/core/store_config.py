@@ -337,19 +337,14 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import tag as tag_repo
     from provisa.core.repositories import table as table_repo
 
+    # A seeded table is not the model's, so the file does not hold it and its columns are never
+    # read (the meta domain's SQL catalog views alone are hundreds); a data product's member and a
+    # relationship that name it are the model's, and keep its name (REQ-1634): the import holds
+    # that name until the seeded table exists.
     # REQ-2222: a row rule or a tag on the demo's seeded tables is the model's, as a member or a
     # relationship naming one is; the built-in catalog tables' are the deployment's.
-    # REQ-1634 EXPORT KEEPS SEEDED MEMBERS: a data product may list a demo-seeded table (e.g.
-    # graphql-demo's assignments) as a member. The model export must include that table with its
-    # columns so product_memberships can resolve it; built-in system tables (provisa-admin,
-    # provisa-otel) and meta/ops domain tables are still excluded (the meta catalog alone is
-    # hundreds of rows).
     demo_seeded = SEEDED_SOURCE_IDS - BUILT_IN_SOURCE_IDS
-    # Parts: include columns for demo-seeded tables too — they are model tables whose columns
-    # live in the DB (auto-registered from the graphql-remote introspection at startup).
-    tables = await table_repo.list_all(
-        conn, parts_of=lambda t: not _internal_table(t) or t["source_id"] in demo_seeded
-    )
+    tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
     by_id = {int(t["id"]): t for t in tables}
     internal = {int(t["id"]) for t in tables if _internal_table(t)}
     system = {i for i in internal if by_id[i]["source_id"] not in demo_seeded}
@@ -433,11 +428,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         "tables": [
             _named_by_member(_table(t, class_terms.get(int(t["id"]))), t, by_id)
             for t in tables
-            # REQ-1634: demo-seeded tables (graphql-demo) ARE model tables — they appear in
-            # config.tables with their columns so product_memberships can resolve their members.
-            # Only the truly built-in system tables (provisa-admin, provisa-otel) and
-            # meta/ops/ontology domain tables are excluded.
-            if int(t["id"]) not in system
+            if int(t["id"]) not in internal
         ],
         "relationships": relationships,
         "metrics": [

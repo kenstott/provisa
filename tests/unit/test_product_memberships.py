@@ -8,21 +8,21 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""product_memberships scoping: a product_id parameter limits validation to one product's
-members, so a bad reference in another product does not break the requested one.
+"""product_memberships scoping and seeded-member handling (REQ-1634).
 
-Root Cause #1: a data product listing a table from a seeded source (graphql-demo) must
-resolve — the store model must include demo-seeded tables in config.tables.
+product_memberships resolves member names against config.tables. Seeded tables (e.g. graphql-
+demo's assignments) exist in the store but are not part of the export model (config.tables).
+Rather than raising, product_memberships silently skips any member name it cannot find in
+config.tables — validation of member names against the store is done by set_product_members at
+load time (config_loader), not by this runtime export helper.
 
-Root Cause #2: product_memberships(config) validates ALL products; a bad reference in
-workforce_ops must not raise when only pet_health's memberships are needed.
+Root Cause #2: product_memberships(config) iterates ALL products; product_id=... limits output
+to that one product, so an unresolvable reference in another product does not interfere.
 """
 
 # Requirements: REQ-1634
 
 from __future__ import annotations
-
-import pytest
 
 from provisa.api.metadata_export.builder import product_memberships
 from provisa.core.models import (
@@ -99,7 +99,10 @@ def test_product_memberships_resolves_member_by_fully_qualified_name():
     assert ("wh", "public", "pets") in result
 
 
-def test_product_memberships_raises_for_unknown_member():
+def test_product_memberships_skips_member_absent_from_config_tables():
+    """A member name no config table answers is silently skipped: it names a seeded table that
+    exists in the store but is not in the export model. Store-level validation (set_product_members)
+    catches genuinely bad references at load time, so the runtime helper returns a partial map."""
     cfg = _config(
         tables=[],
         products=[
@@ -108,52 +111,56 @@ def test_product_memberships_raises_for_unknown_member():
             )
         ],
     )
-    with pytest.raises(ValueError, match="data product 'workforce_ops' lists table 'assignments'"):
-        product_memberships(cfg)
+    result = product_memberships(cfg)
+    assert result == {}  # "assignments" not in config.tables → skipped, no raise
 
 
-# ── Root Cause #2: scoping ────────────────────────────────────────────────────
+# ── product_id scoping ────────────────────────────────────────────────────────
 
 
 def test_product_memberships_scoped_to_product_id_ignores_other_products():
-    """Root Cause #2: product_id=... limits validation to that one product's members.
-    A bad reference in workforce_ops must not raise when only pet_health is requested."""
+    """product_id=... limits output to that one product's members.
+    An unresolvable member in workforce_ops is silently skipped regardless of scope; scoping to
+    pet_health further avoids even processing workforce_ops's entries."""
     pets = _table(source_id="wh", schema="public", name="pets", domain_id="sales")
-    # workforce_ops lists "assignments" which is NOT in config.tables — broken product
+    # workforce_ops lists "assignments" which is NOT in config.tables (seeded member)
     cfg = _config(
         tables=[pets],
         products=[
             DataProduct(id="pet_health", domain_id="sales", name="Pet Health", tables=["pets"]),
             DataProduct(
                 id="workforce_ops", domain_id="sales", name="Workforce Ops", tables=["assignments"]
-            ),  # broken: "assignments" not in config.tables
+            ),  # seeded member: not in config.tables, silently skipped
         ],
     )
 
-    # Unscoped call raises because workforce_ops has a bad reference
-    with pytest.raises(ValueError, match="workforce_ops.*assignments"):
-        product_memberships(cfg)
+    # Unscoped: "assignments" skipped, only pet_health's resolvable member appears
+    result_all = product_memberships(cfg)
+    assert ("wh", "public", "pets") in result_all
+    assert result_all[("wh", "public", "pets")] == ("pet_health",)
+    assert all("assignments" not in str(k) for k in result_all)
 
-    # Scoped to pet_health: must NOT raise, and must resolve pet_health's member
+    # Scoped to pet_health: same result, only pet_health's members processed
     result = product_memberships(cfg, product_id="pet_health")
     assert ("wh", "public", "pets") in result
     assert result[("wh", "public", "pets")] == ("pet_health",)
-    # workforce_ops's broken member is not in the result
     assert all("assignments" not in str(k) for k in result)
 
 
-def test_product_memberships_scoped_still_raises_for_requested_products_own_bad_member():
-    """Scoping to a product with a bad reference must still raise — no silent drops."""
+def test_product_memberships_scoped_skips_own_unresolvable_member():
+    """A member of the requested product that is not in config.tables is silently skipped.
+    This covers seeded members (graphql-demo tables) that live in the store but not the export
+    model; the returned mapping is partial (empty when every member is seeded)."""
     cfg = _config(
         tables=[],
         products=[
             DataProduct(
                 id="workforce_ops", domain_id="sales", name="Workforce Ops", tables=["assignments"]
-            ),  # broken
+            ),
         ],
     )
-    with pytest.raises(ValueError, match="workforce_ops.*assignments.*no table"):
-        product_memberships(cfg, product_id="workforce_ops")
+    result = product_memberships(cfg, product_id="workforce_ops")
+    assert result == {}  # "assignments" not in config.tables → skipped, no raise
 
 
 def test_product_memberships_scoped_to_absent_product_returns_empty():

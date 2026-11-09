@@ -1059,9 +1059,10 @@ async def test_the_export_keeps_a_seeded_member_and_a_relationship_to_a_seeded_t
     exported = with_store_model(_raw(), await _model(db))
     assert exported["data_products"][0]["tables"] == ["assignments", "orders"]
     assert [r["id"] for r in exported["relationships"]] == ["orders-to-assignments"]
-    # REQ-1634 EXPORT KEEPS SEEDED MEMBERS: a demo-seeded table (graphql-demo.assignments) is now
-    # included in config.tables so product_memberships can resolve it.
-    assert "assignments" in [t["table"] for t in exported["tables"]]
+    # REQ-1634 EXPORT KEEPS SEEDED MEMBERS: the product lists the seeded member by name and the
+    # relationship to it is exported; but the seeded table itself is NOT in config.tables (the
+    # import holds the name until the seeded table exists, then set_product_members resolves it).
+    assert "assignments" not in [t["table"] for t in exported["tables"]]
 
     fresh = await new_plane()
     await _a_seeded_table(fresh)
