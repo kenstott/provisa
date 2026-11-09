@@ -180,7 +180,7 @@ def test_duckdb_attach_loads_iceberg_issues_the_vended_secret_and_points_the_vie
     phys = '"dbx"."itest"."people"'
     rt._attach_databricks(_pg_source({"reach": "scan"}), ", allow_moved_paths := true", phys)
     sql = rt._con.sql
-    assert "INSTALL iceberg" in sql and "LOAD iceberg" in sql and "LOAD httpfs" in sql
+    assert "INSTALL" not in sql and "LOAD iceberg" in sql and "LOAD httpfs" in sql  # REQ-294
     secret = next(s for s in sql if s.startswith("CREATE OR REPLACE SECRET"))
     assert secret == (
         "CREATE OR REPLACE SECRET \"_dbx_dbx_0\" (TYPE s3, KEY_ID 'ASIAKEY', SECRET 'sec''ret', "

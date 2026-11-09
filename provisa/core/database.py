@@ -1828,6 +1828,15 @@ def _pool_kwargs_for(url: str) -> dict[str, Any]:
     return {"pool_pre_ping": True}
 
 
+def _duckdb_connect_args() -> dict[str, Any]:
+    """REQ-294: connect_args of a ``duckdb:///`` engine. Without them DuckDB opens with auto-install
+    on and fetches a known extension from extensions.duckdb.org the first time a query names it;
+    the engine only loads what is staged, from the extension directory the runtime names."""
+    from provisa.core.engine_memory import load_only_config
+
+    return {"config": dict(load_only_config())}
+
+
 def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
     """A **sync** SQLAlchemy engine for single-writer sync callers (e.g. otlp2sql, whose
     inserts run on a worker of its own single-loop process) — applies
@@ -1835,6 +1844,10 @@ def sync_engine_from_url(url: str, *, pool_pre_ping: bool = True) -> Engine:
     kwargs: dict[str, Any] = {"future": True, **_pool_kwargs_for(url)}
     if "pool_pre_ping" in kwargs:
         kwargs["pool_pre_ping"] = pool_pre_ping
+    from sqlalchemy import make_url
+
+    if make_url(url).get_backend_name() == "duckdb":
+        kwargs["connect_args"] = _duckdb_connect_args()
     return sa.create_engine(url, **kwargs)
 
 
@@ -1868,6 +1881,8 @@ def create_engine_from_url(
         import provisa.core.duckdb_store  # noqa: F401
 
     kwargs: dict[str, Any] = {"pool_pre_ping": True}
+    if backend == "duckdb":
+        kwargs["connect_args"] = _duckdb_connect_args()
     if backend == "sqlite":
         # The pooled sqlite3 connection is handed between request threads (one at a time).
         kwargs["connect_args"] = {"check_same_thread": False}

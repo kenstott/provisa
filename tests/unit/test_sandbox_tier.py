@@ -353,10 +353,10 @@ async def test_an_undeclared_naming_block_is_cleared(monkeypatch):
     assert written[0]["naming"] is None
 
 
-def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch, tmp_path):
-    """The sandbox tier fetches the bundle of every connector a published demo reads through (the
-    files demo's file connector) into the runtime-deps cache at startup, so no visitor's request
-    waits for hundreds of megabytes."""
+def test_the_demos_connector_bundles_are_located_outside_any_request(monkeypatch, tmp_path):
+    """The sandbox tier locates the staged bundle of every connector a published demo reads through
+    (the files demo's file connector) in the runtime-deps cache at startup, and fetches none
+    (REQ-294): a bundle not staged is logged by name, and nothing reaches the network."""
     from provisa.api import demo_templates
     from provisa.core import request_deadline
     from provisa.runtime_deps import pgwire_bundles as rd
@@ -373,14 +373,12 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
         monkeypatch.setenv(
             f"PROVISA_DEMO_{region}_PG_URL", f"postgresql://{region.lower()}/provisa"
         )
-    fetched: list[tuple[str, float | None]] = []
+    import httpx
 
-    def _download(spec, dest):
-        fetched.append((spec.artifact_name, request_deadline.remaining()))
-        (dest / "bin").mkdir(parents=True)
-        (dest / "bin" / spec.artifact_name).write_text("")
+    def _refuse(*_a, **_k):
+        raise AssertionError("a runtime reached for the network")
 
-    monkeypatch.setattr(rd, "download_release_asset", _download)
+    monkeypatch.setattr(httpx, "stream", _refuse)
     # files reads through the file connector, vulnerabilities and agriculture through govdata,
     # hasuramigration's CRM source through salesforce (its bundle build lands the copy), and
     # cloudpolicy's inventory and incidents through cloudops and servicenow.
@@ -392,9 +390,15 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
         "pgwire-servicenow",
     ]
     assert [s.artifact_name for s in demo_templates.connector_bundles()] == bundles
+    resolver = rd.BundleResolver()
+    demo_templates.prefetch_connector_bundles()  # none staged: logged by name, nothing fetched
+    assert not resolver.is_cached(rd.bundle_spec_for("files"))
+    for spec in demo_templates.connector_bundles():
+        (resolver.cached_path(spec) / "bin").mkdir(parents=True)
+        (resolver.launcher_path(spec)).write_text("")
     demo_templates.prefetch_connector_bundles()
-    assert fetched == [(name, None) for name in bundles]
-    assert rd.BundleResolver().is_cached(rd.bundle_spec_for("files"))
+    assert request_deadline.remaining() is None
+    assert resolver.is_cached(rd.bundle_spec_for("files"))
 
 
 def test_the_demos_embedding_models_are_loaded_outside_any_request(monkeypatch):

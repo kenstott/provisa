@@ -95,14 +95,12 @@ jobs:
             "dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256" \
             --clobber
 
-  # One provisa-duckdb-ext wheel per mirrored platform (maintainer decision 2026-11-06), each tagged
-  # for its platform (py3-none-<platform tag>) and holding only that platform's blobs: one universal
-  # wheel of every platform's DuckDB 2.0 extensions (crypto included) passed PyPI's 100 MB per-file
-  # limit. collect.py fills each in priority order (crypto, mssql, snowflake, bigquery, mongo,
-  # gsheets, airport, firebird) and prints, by name, any it leaves out to stay under the limit.
-  # pip/uv pick the running platform's wheel; the runtime
-  # (provisa.federation.duckdb_extensions.stage_bundled_extensions) copies its blobs out on first run,
-  # so `provisa[embedded]` gets the extensions through PyPI/Artifactory, never extensions.duckdb.org.
+  # provisa-duckdb-ext is one PyPI project split across version parts <release>.<part> (REQ-294): one
+  # wheel per mirrored platform of each part, tagged for it and holding only that part of that
+  # platform's blobs, every wheel under PyPI's 100 MB per-file limit. collect.py's PARTS names each
+  # part's extensions and stops the build by name when one passes the limit. The stage command
+  # (python -m provisa.runtime_deps.stage_assets) fetches every part from the machine's package
+  # index, so installs get the extensions through PyPI/Artifactory, never extensions.duckdb.org.
   # No sdist: it would carry every platform's blobs again. The label -> tag map is
   # packaging/duckdb-ext/collect.py's PLATFORMS, whose labels are this workflow's mirror matrix.
   wheel:
@@ -134,16 +132,19 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade build wheel
           mkdir -p dist-ext
-          for label in $(python packaging/duckdb-ext/collect.py labels); do
-            python packaging/duckdb-ext/collect.py collect mirror-extracted "$label"
-            # setuptools reuses build/ and *.egg-info between builds: the previous platform's blobs
-            # would ride along in this one's wheel.
-            rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info "wheel-build/$label"
-            python -m build --wheel --outdir "wheel-build/$label" packaging/duckdb-ext
-            python -m wheel tags --remove \
-              --platform-tag "$(python packaging/duckdb-ext/collect.py wheel-tag "$label")" \
-              "wheel-build/$label"/provisa_duckdb_ext-*-py3-none-any.whl
-            mv "wheel-build/$label"/*.whl dist-ext/
+          for part in $(python packaging/duckdb-ext/collect.py parts); do
+            python packaging/duckdb-ext/collect.py set-version "$part"
+            for label in $(python packaging/duckdb-ext/collect.py labels); do
+              python packaging/duckdb-ext/collect.py collect mirror-extracted "$label" "$part"
+              # setuptools reuses build/ and *.egg-info between builds: the previous platform's blobs
+              # would ride along in this one's wheel.
+              rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info "wheel-build/$label"
+              python -m build --wheel --outdir "wheel-build/$label" packaging/duckdb-ext
+              python -m wheel tags --remove \
+                --platform-tag "$(python packaging/duckdb-ext/collect.py wheel-tag "$label")" \
+                "wheel-build/$label"/provisa_duckdb_ext-*-py3-none-any.whl
+              mv "wheel-build/$label"/*.whl dist-ext/
+            done
           done
           ls -l dist-ext
 

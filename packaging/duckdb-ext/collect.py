@@ -4,22 +4,23 @@
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
-"""Fill provisa_duckdb_ext/_ext with ONE platform's DuckDB mirror, for that platform's wheel.
+"""Fill provisa_duckdb_ext/_ext with ONE version part of ONE platform's DuckDB mirror (REQ-294).
 
-provisa-duckdb-ext is published as one wheel per platform (maintainer decision 2026-11-06: a single
-wheel of every platform's DuckDB 2.0 extensions passes PyPI's 100 MB limit), each tagged for its
-platform and holding only that platform's extensions. Since DuckDB 2.0 it carries only what the
-third-party core-extension wheels lack (REQ-1142 amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0):
-crypto and the community extensions, filled in PRIORITY order while the wheel stays under PyPI's
-100 MB limit; any extension that does not fit is left out, by name, in the output. CI runs scripts/ci/mirror_duckdb_extensions.py
-on each platform of the matrix; each mirror is extracted as ``<label>/<version>/<duckdb_platform>/``
-(a named repository's extension, crypto's or airport's, under ``repositories/<repo>/`` with its ``.info``).
+provisa-duckdb-ext stays one PyPI project, split across version parts ``<release>.<part>``, each
+published as one wheel per platform and every wheel under PyPI's 100 MB per-file limit. PARTS names
+which extensions each part holds, the same on every platform, so every part exists for every platform
+and pip finds it. It carries what the duckdb-extension-* wheels lack: crypto and the community
+extensions. CI runs scripts/ci/mirror_duckdb_extensions.py on each platform of the matrix; each mirror
+is extracted as ``<label>/<version>/<duckdb_platform>/`` (a named repository's extension, crypto's or
+airport's, under ``repositories/<repo>/`` with its ``.info``).
 
 Usage:
-  python collect.py collect <artifacts_root> <label>   # _ext := that label's mirror, nothing else
-  python collect.py labels                             # the platform labels, one per line
-  python collect.py wheel-tag <label>                  # the wheel platform tag of a label
-  python collect.py check-wheels <dist_dir>            # one wheel per platform, each < 100 MB
+  python collect.py collect <artifacts_root> <label> <part>  # _ext := that part of that label's mirror
+  python collect.py labels                                   # the platform labels, one per line
+  python collect.py parts                                    # the part numbers, one per line
+  python collect.py wheel-tag <label>                        # the wheel platform tag of a label
+  python collect.py set-version <part>                       # pyproject's version := <release>.<part>
+  python collect.py check-wheels <dist_dir>                  # one wheel per platform and part, < 100 MB
 """
 
 from __future__ import annotations
@@ -52,20 +53,17 @@ MAX_WHEEL_BYTES = 100 * 1000 * 1000
 #: the gap between this estimate and the wheel builder's own compression. check-wheels is the gate.
 HEADROOM_BYTES = 2 * 1000 * 1000
 
-#: The order a platform's wheel is filled in (maintainer decision 2026-11-06; gsheets and airport
-#: placed by the lead, firebird last): crypto and every community extension the DuckDB engine's
-#: connectors declare (tests/unit/test_mirror_duckdb_extensions.py holds the two lists equal). A
-#: mirrored extension not named here would come after these, by name.
-PRIORITY = (
-    "crypto",
-    "mssql",
-    "snowflake",
-    "bigquery",
-    "mongo",
-    "gsheets",
-    "airport",
-    "firebird",
+#: The extensions of each version part, part 1 first (provisa.federation.duckdb_extensions.
+#: EXT_PACKAGE_PARTS is their count; tests/unit/test_duckdb_ext_collect.py holds the two equal, and
+#: tests/unit/test_mirror_duckdb_extensions.py that every community extension the connectors declare
+#: is here). Measured for DuckDB 2.0 (compressed, largest platform linux_amd64): part 1 is 77.1 MB and
+#: part 2 68.6 MB. A part that passes its budget stops the build, by name, as does a mirrored extension
+#: no part names.
+PARTS: tuple[tuple[str, ...], ...] = (
+    ("crypto", "mssql", "snowflake", "bigquery"),
+    ("mongo", "gsheets", "airport", "firebird"),
 )
+PRIORITY = tuple(name for part in PARTS for name in part)
 
 
 def _pinned_duckdb_version() -> str:
@@ -90,14 +88,14 @@ def _deflated_size(path: Path) -> int:
     return size + len(deflate.flush())
 
 
-def _fill_order(names: set[str]) -> list[str]:
-    return [n for n in PRIORITY if n in names] + sorted(names - set(PRIORITY))
-
-
-def main(src_root: Path, label: str, budget: int = MAX_WHEEL_BYTES - HEADROOM_BYTES) -> int:
-    """Replace _ext with ``<src_root>/<label>``'s extensions, in the layout DuckDB loads from:
-    ``<raw_version>/<duckdb_platform>/[repositories/<repo>/]<name>.duckdb_extension[.info]``,
-    filled in PRIORITY order while their compressed size stays within ``budget``."""
+def main(
+    src_root: Path, label: str, part: int, budget: int = MAX_WHEEL_BYTES - HEADROOM_BYTES
+) -> int:
+    """Replace _ext with part ``part`` of ``<src_root>/<label>``'s extensions, in the layout DuckDB
+    loads from: ``<raw_version>/<duckdb_platform>/[repositories/<repo>/]<name>.duckdb_extension[.info]``.
+    Over ``budget``, or with a mirrored extension no part names, the build stops by name."""
+    if not 1 <= part <= len(PARTS):
+        return _err(f"no part {part}: {len(PARTS)} parts")
     if label not in PLATFORMS:
         return _err(f"unknown platform label {label!r}; known: {', '.join(PLATFORMS)}")
     duckdb_platform = PLATFORMS[label][0]
@@ -143,44 +141,58 @@ def main(src_root: Path, label: str, budget: int = MAX_WHEEL_BYTES - HEADROOM_BY
             files.append(anchor)
     if not extensions:
         return _err(f"no extension binaries found for {label} — nothing to package")
+    unassigned = sorted(set(extensions) - set(PRIORITY))
+    if unassigned:
+        return _err(f"{', '.join(unassigned)}: in no part; add to PARTS in collect.py")
     packed: list[str] = []
-    left_out: list[str] = []
     used = 0
-    for name in _fill_order(set(extensions)):
-        size = sum(_deflated_size(f) for f, _rel in extensions[name])
-        if used + size > budget:
-            left_out.append(name)
-            print(
-                f"[collect] {label}: LEFT OUT {name} ({size / 1e6:.1f} MB compressed; "
-                f"{used / 1e6:.1f} of {budget / 1e6:.1f} MB already used)"
-            )
+    for name in PARTS[part - 1]:
+        if name not in extensions:
             continue
-        used += size
+        used += sum(_deflated_size(f) for f, _rel in extensions[name])
         packed.append(name)
         for ext_file, rel in extensions[name]:
             dst = _DEST / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ext_file, dst)
-    unmirrored = [n for n in PRIORITY if n not in extensions]
+    unmirrored = [n for n in PARTS[part - 1] if n not in extensions]
     print(
-        f"[collect] {label}: packed {', '.join(packed) or 'nothing'} "
+        f"[collect] {label} part {part}: packed {', '.join(packed) or 'nothing'} "
         f"({used / 1e6:.1f} MB compressed) into {_DEST}"
     )
-    print(f"[collect] {label}: left out (over the size limit): {', '.join(left_out) or 'none'}")
-    print(f"[collect] {label}: left out (not mirrored): {', '.join(unmirrored) or 'none'}")
-    if not packed:
-        return _err(f"no extension of {label} fits under {budget / 1e6:.1f} MB")
+    print(f"[collect] {label} part {part}: not mirrored: {', '.join(unmirrored) or 'none'}")
+    if used > budget:
+        return _err(
+            f"{label} part {part} is {used / 1e6:.1f} MB compressed, past the "
+            f"{budget / 1e6:.1f} MB budget; move an extension to another part in PARTS"
+        )
+    return 0
+
+
+def set_version(part: int) -> int:
+    """Write ``<release>.<part>`` as this project's version, for the wheel build that follows."""
+    path = _HERE / "pyproject.toml"
+    text = path.read_text()
+    release = re.search(r'^version = "(\d+\.\d+\.\d+)(?:\.\d+)?"', text, re.M)
+    if release is None:
+        return _err("no version line in pyproject.toml")
+    path.write_text(
+        text[: release.start()] + f'version = "{release.group(1)}.{part}"' + text[release.end() :]
+    )
     return 0
 
 
 def check_wheels(dist: Path) -> int:
-    """Exactly one wheel per platform, each tagged ``py3-none-<its tag>`` and under PyPI's limit."""
+    """Exactly one wheel per platform and part, each tagged ``py3-none-<its tag>`` and under PyPI's
+    limit."""
     wheels = sorted(dist.glob("*.whl"))
     failures: list[str] = []
     for label, (_plat, tag) in PLATFORMS.items():
-        mine = [w for w in wheels if w.name.endswith(f"-py3-none-{tag}.whl")]
-        if len(mine) != 1:
-            failures.append(f"{label}: expected one *-py3-none-{tag}.whl, found {len(mine)}")
+        for part in range(1, len(PARTS) + 1):
+            suffix = f".{part}-py3-none-{tag}.whl"
+            mine = [w for w in wheels if w.name.endswith(suffix)]
+            if len(mine) != 1:
+                failures.append(f"{label} part {part}: expected one *{suffix}, found {len(mine)}")
     known = {f"-py3-none-{tag}.whl" for _plat, tag in PLATFORMS.values()}
     failures += [
         f"{w.name}: not a platform wheel"
@@ -199,8 +211,13 @@ def check_wheels(dist: Path) -> int:
 
 def _cli(argv: list[str]) -> int:
     match argv:
-        case ["collect", root, label]:
-            return main(Path(root).resolve(), label)
+        case ["collect", root, label, part]:
+            return main(Path(root).resolve(), label, int(part))
+        case ["parts"]:
+            print("\n".join(str(p) for p in range(1, len(PARTS) + 1)))
+            return 0
+        case ["set-version", part]:
+            return set_version(int(part))
         case ["labels"]:
             print("\n".join(PLATFORMS))
             return 0

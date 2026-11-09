@@ -1526,6 +1526,18 @@ setup_native_venv() {
   ok "Native environment ready."
 }
 
+# ── REQ-294: the connector bundles and DuckDB extensions, from the package index ────
+# Under PROVISA_HOME, where scripts/provisa points the runtime at them (PROVISA_DUCKDB_EXT_DIR,
+# PROVISA_RUNTIME_DEPS_CACHE). The one stage command runs once; a directory already filled, as a
+# devops step does for an air-gapped site, is used without fetching.
+stage_native_assets() {
+  info "Staging connector bundles and DuckDB extensions..."
+  "${PROVISA_HOME}/venv/bin/python3" -I -m provisa.runtime_deps.stage_assets "$PROVISA_HOME" || {
+    err "The connector bundles and DuckDB extensions did not stage (see above)."
+    exit 1
+  }
+}
+
 # ── Write config ───────────────────────────────────────────────────────────────
 write_config() {
   mkdir -p "$PROVISA_HOME"
@@ -1782,6 +1794,7 @@ main() {
     info "Setting up Provisa (native — no Docker)..."
     ROLE=primary
     setup_native_venv
+    stage_native_assets
     write_config          # runtime=native
     install_cli
 

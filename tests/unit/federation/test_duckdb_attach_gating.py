@@ -23,8 +23,9 @@ reader, and names it while the deployment lacks it."""
 from __future__ import annotations
 
 import json
-import sys
 import types
+import zipfile
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -34,7 +35,7 @@ from provisa.federation.duckdb_extensions import (
     CORE_EXTENSION_WHEELS,
     MANIFEST,
     StagedManifestMissing,
-    stage_bundled_extensions,
+    stage_wheels,
     staged_extensions,
 )
 from provisa.federation.engine import UnreachableSource, build_engine
@@ -79,38 +80,39 @@ def _source(source_type: str, **fields):
 # --- the manifest ---------------------------------------------------------------------------
 
 
-def _fake_bundle(tmp_path, monkeypatch, names) -> None:
+def _fake_bundle(tmp_path, names) -> list[Path]:
+    """The wheels the package index serves: a part with ``names``, and the core wheels."""
     ver, plat = _version_platform()
-    pkg = tmp_path / "pkg" / ver / plat
-    pkg.mkdir(parents=True)
-    for name in names:
-        (pkg / f"{name}.duckdb_extension").write_bytes(b"X")
-        (pkg / f"{name}.duckdb_extension.info").write_bytes(b"I")
-    (pkg / "repositories" / "query_farm").mkdir(parents=True)
-    (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension").write_bytes(b"X")
-    (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension.info").write_bytes(b"I")
-    (pkg / "repositories" / "query_farm" / "query_farm.duckdb_extension.repo.json").write_text("{}")
-    mod = types.ModuleType("provisa_duckdb_ext")
-    mod.ext_root = lambda: tmp_path / "pkg"  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "provisa_duckdb_ext", mod)
-    site = tmp_path / "site"
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    prefix = f"provisa_duckdb_ext/_ext/{ver}/{plat}"
+    qf = f"{prefix}/repositories/query_farm"
+    part = wheels / "provisa_duckdb_ext-0.3.0.1-py3-none-any.whl"
+    with zipfile.ZipFile(part, "w") as wheel:
+        for name in names:
+            wheel.writestr(f"{prefix}/{name}.duckdb_extension", "X")
+            wheel.writestr(f"{prefix}/{name}.duckdb_extension.info", "I")
+        for name in ("crypto", "airport"):
+            wheel.writestr(f"{qf}/{name}.duckdb_extension", "X")
+            wheel.writestr(f"{qf}/{name}.duckdb_extension.info", "I")
+        wheel.writestr(f"{qf}/query_farm.duckdb_extension.repo.json", "{}")
+    found = [part]
     for extension, package in CORE_EXTENSION_WHEELS.items():
-        (site / package / "extensions" / ver).mkdir(parents=True)
-        (site / package / "__init__.py").write_text("")
-        (site / package / "extensions" / ver / f"{extension}.duckdb_extension").write_bytes(b"X")
-        monkeypatch.delitem(sys.modules, package, raising=False)
-    monkeypatch.syspath_prepend(str(site))
+        path = wheels / f"{package}-2.0.0-py3-none-any.whl"
+        with zipfile.ZipFile(path, "w") as wheel:
+            wheel.writestr(f"{package}/extensions/{ver}/{extension}.duckdb_extension", "X")
+        found.append(path)
+    return found
 
 
-def test_staging_writes_the_manifest_of_what_it_staged(tmp_path, monkeypatch):
-    _fake_bundle(tmp_path, monkeypatch, ("mssql", "mongo"))
-    target = stage_bundled_extensions(tmp_path / "staged")
+def test_staging_writes_the_manifest_of_what_it_staged(tmp_path):
+    target = stage_wheels(_fake_bundle(tmp_path, ("mssql", "mongo")), tmp_path / "staged")
     ver, plat = _version_platform()
     manifest = json.loads((target / ver / plat / MANIFEST).read_text())
     assert manifest == {
         "duckdb": ver,
         "platform": plat,
-        "extensions": sorted({*CORE_EXTENSION_WHEELS, "mssql", "mongo", "crypto"}),
+        "extensions": sorted({*CORE_EXTENSION_WHEELS, "mssql", "mongo", "crypto", "airport"}),
     }
 
 
@@ -297,9 +299,7 @@ def test_motherduck_attaches_where_its_extension_loads_on_the_engines_duckdb(mon
 def test_the_motherduck_extension_is_never_installed_on_duckdb_2(monkeypatch):
     # Unreachable before anything is attached: no INSTALL motherduck reaches DuckDB.
     loaded: list[str] = []
-    monkeypatch.setattr(
-        duckdb_extensions, "install_and_load", lambda con, ext, **_: loaded.append(ext)
-    )
+    monkeypatch.setattr(duckdb_extensions, "load_extension", lambda con, ext: loaded.append(ext))
     monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
     engine = build_engine("duckdb")
     with pytest.raises(UnreachableSource):

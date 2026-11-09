@@ -6,18 +6,18 @@
 # them from extensions.duckdb.org at runtime. Behind an enterprise firewall where only PyPI/Maven/npm/
 # NuGet are proxied (Artifactory), that host is unreachable and the embedded tier breaks. This package
 # embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so acquisition
-# flows through PyPI instead. One wheel per platform (py3-none-<platform tag>), each holding that
-# platform's blobs alone: a universal wheel of every platform's DuckDB 2.0 extensions passed PyPI's
-# 100 MB per-file limit. CI (build-duckdb-extensions.yml) fills _ext with one platform's mirror
-# (collect.py), builds, and retags the wheel; `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
-# running platform's blobs into a writable dir on first run and points PROVISA_DUCKDB_EXT_DIR at it.
+# flows through PyPI instead. One project, split across version parts <release>.<part> (REQ-294), one
+# wheel per platform of each part (py3-none-<platform tag>), every one under PyPI's 100 MB per-file
+# limit. CI (build-duckdb-extensions.yml) fills _ext with one part of one platform's mirror
+# (collect.py), builds, and retags the wheel; the stage command fetches every part with pip download
+# (`provisa.federation.duckdb_extensions.stage_wheels`), so the parts are never installed side by side.
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "provisa-duckdb-ext"
-version = "0.2.2"
+version = "0.3.0"  # the release; a build sets <release>.<part> for each version part (collect.py)
 description = "Pinned, per-platform DuckDB extension binaries for the Provisa embedded tier (PyPI-delivered, offline)."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -64,6 +64,10 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 RUN cp /encoders/* ./provisa/ && rm -rf /encoders && python -c "import provisa._encoders.pgwire"
+# REQ-294: the image is built with its assets inside it (Dockerfile does the same).
+ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+RUN python -m provisa.runtime_deps.stage_assets
 # REQ-2194: the wheel, for the code images this server builds (codesource/image_build.py).
 COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
 ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels

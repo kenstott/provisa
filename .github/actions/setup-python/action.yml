@@ -44,3 +44,16 @@ runs:
         if [ "$CLIENT" = "true" ]; then
           uv pip install -e "provisa-client/[dev]" -q
         fi
+
+    # REQ-294: the runtime never installs a DuckDB extension, so a checkout stages them first.
+    - name: Cache DuckDB extensions
+      if: inputs.sync == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.duckdb/extensions
+        key: duckdb-ext-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
+
+    - name: Stage DuckDB extensions
+      if: inputs.sync == 'true'
+      shell: bash
+      run: uv run --no-sync python scripts/stage_duckdb_extensions.py

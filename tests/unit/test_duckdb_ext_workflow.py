@@ -60,7 +60,10 @@ def test_a_wheel_per_mirrored_platform_each_tagged_for_it():
 def test_the_wheel_job_builds_each_platform_alone_and_retags_it():
     run = _steps("wheel")["Build one wheel per platform"]["run"]
     assert "for label in $(python packaging/duckdb-ext/collect.py labels)" in run
-    assert 'collect.py collect mirror-extracted "$label"' in run
+    assert 'collect.py collect mirror-extracted "$label" "$part"' in run
+    # One project, split across version parts: each part builds a wheel per platform (REQ-294).
+    assert "for part in $(python packaging/duckdb-ext/collect.py parts)" in run
+    assert 'collect.py set-version "$part"' in run
     # A previous platform's blobs in setuptools' build dir would ride along in the next wheel.
     assert "rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info" in run
     assert "python -m build --wheel --outdir" in run
@@ -99,15 +102,16 @@ def test_the_mirror_carries_crypto_and_community_only():
     assert _collect().PRIORITY[0] == "crypto" and _collect().PRIORITY[-1] == "firebird"
 
 
-def test_provisa_duckdb_ext_0_2_2_carries_airport_and_is_the_floor():
-    # 0.2.2 is the first build with Query.Farm's airport (maintainer decision 2026-11-07): the
-    # package, its locator and the embedded extra's floor name the same release.
+def test_the_release_and_its_locator_name_the_same_version_and_nothing_pins_a_part():
+    # REQ-294: the stage command fetches every part with pip download; no install depends on one.
     import re
     import tomllib
 
+    from provisa.federation.duckdb_extensions import EXT_PACKAGE_RELEASE
+
     package = tomllib.loads((REPO / "packaging/duckdb-ext/pyproject.toml").read_text())
-    assert package["project"]["version"] == "0.2.2"
+    assert package["project"]["version"] == EXT_PACKAGE_RELEASE
     init = (REPO / "packaging/duckdb-ext/provisa_duckdb_ext/__init__.py").read_text()
-    assert re.search(r'^__version__ = "0\.2\.2"$', init, re.MULTILINE)
+    assert re.search(rf'^__version__ = "{re.escape(EXT_PACKAGE_RELEASE)}"$', init, re.MULTILINE)
     root = (REPO / "pyproject.toml").read_text()
-    assert '"provisa-duckdb-ext>=0.2.2",' in root
+    assert '"provisa-duckdb-ext' not in root

@@ -82,7 +82,9 @@ def test_concurrent_fetches_of_one_bundle_download_it_once_and_each_finds_it_who
 
     def _resolve() -> None:
         try:
-            root = BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+            root = BundleResolver(
+                cache_root=tmp_path, downloader=pgwire_bundles.download_release_asset
+            ).resolve(_SPEC)
             # What the connector server reads as it starts: the launcher, the model, its packages.
             assert (root / "bin" / _SPEC.artifact_name).is_file()
             assert (root / "model" / "model.json").read_bytes() == b'{"schemas": []}'

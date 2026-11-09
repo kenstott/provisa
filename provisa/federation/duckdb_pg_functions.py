@@ -17,9 +17,8 @@ abbrev are.
 
 sha224, sha384 and sha512 are the crypto extension's ``crypto_hash`` (REQ-2171, EXTENSIONS AND TOTAL
 LANDING). :func:`register` only loads it, from the extension directory: staging it is an install's
-step (provisa-duckdb-ext, which mirrors it from Query.Farm's repository, or
-``INSTALL crypto FROM query_farm``), so a connection never reaches the network. Where it is not
-staged the call is refused by name."""
+step (provisa-duckdb-ext, or scripts/stage_duckdb_extensions.py), so a connection never reaches the
+network. Where it is not staged the call is refused by name."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -78,6 +77,7 @@ def register(con: Any) -> None:
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )
+    load_staged(con, "inet")  # DuckDB's own error names it where a statement needs it (REQ-294)
     if not load_staged(con, "crypto"):  # refused by name at the call (REQ-2171)
         con.create_function(
             "crypto_hash", _refuse_digest, ["VARCHAR", "BLOB"], "BLOB", side_effects=False

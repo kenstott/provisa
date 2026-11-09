@@ -487,6 +487,9 @@ native_env_pairs() {
     [ -n "$TRINO_HOST" ]      && e+=("TRINO_HOST=${TRINO_HOST}")
     [ -n "$TRINO_PORT" ]      && e+=("TRINO_PORT=${TRINO_PORT}")
     [ -n "$OTLP_ENDPOINT" ]   && e+=("OTEL_EXPORTER_OTLP_ENDPOINT=${OTLP_ENDPOINT}")
+    # REQ-294: what the stage command filled at first launch (provisa.runtime_deps.stage_assets).
+    [ -d "${PROVISA_HOME}/duckdb-ext" ]   && e+=("PROVISA_DUCKDB_EXT_DIR=${PROVISA_HOME}/duckdb-ext")
+    [ -d "${PROVISA_HOME}/runtime-deps" ] && e+=("PROVISA_RUNTIME_DEPS_CACHE=${PROVISA_HOME}/runtime-deps")
     if [ "$DEMO" = "true" ]; then
         # Demo tier: point the runtime at the bundled native demo config (engine: duckdb,
         # auth: none -> no setup wizard) and mark the run a demo so the UI auto-starts the

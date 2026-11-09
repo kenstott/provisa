@@ -100,6 +100,11 @@ function Stage-Runtime {
     Write-Info 'Reset the native control plane for the new schema.'
   }
   if ($bundleVer -ne '') { Set-Content -Path $stagedVerF -Value $bundleVer -Encoding ASCII }
+  # REQ-294: the one stage command fills these from the machine's configured package index, once;
+  # a directory already filled is used without fetching. provisa-native.ps1 points the runtime at
+  # them (PROVISA_DUCKDB_EXT_DIR, PROVISA_RUNTIME_DEPS_CACHE).
+  & $dstPy -I -m provisa.runtime_deps.stage_assets $ProvisaHome
+  if ($LASTEXITCODE -ne 0) { Write-Err "The connector bundles and DuckDB extensions did not stage (see above)."; exit 1 }
   Write-Ok 'Native runtime staged.'
 }
 

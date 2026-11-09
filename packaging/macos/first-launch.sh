@@ -508,6 +508,15 @@ stage_native_runtime() {
   codesign --force --sign - "${venv}/bin/python3" 2>/dev/null || true
   printf '%s' "$bundle_ver" > "${venv}/.runtime-version"
 
+  # REQ-294: the one stage command fills these from the machine's configured package index, once;
+  # a directory already filled is used without fetching. scripts/provisa points the runtime at them
+  # (PROVISA_DUCKDB_EXT_DIR, PROVISA_RUNTIME_DEPS_CACHE).
+  info "Staging connector bundles and DuckDB extensions..."
+  "${venv}/bin/python3" -I -m provisa.runtime_deps.stage_assets "$PROVISA_HOME" || {
+    err "The connector bundles and DuckDB extensions did not stage (see above)."
+    exit 1
+  }
+
   install_dq_checker
   ok "Native runtime ready."
 }

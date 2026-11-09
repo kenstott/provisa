@@ -8,31 +8,33 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Stage + probe the DuckDB community extensions that back federation connectors (REQ-899, REQ-904).
+"""Load + probe the DuckDB extensions that back federation connectors (REQ-899, REQ-904, REQ-294).
 
-Each DuckDB connector that needs an extension declares it (``Connector.extension``). Before the engine
-can attach such a source, the extension binary must be present in DuckDB's extension directory
-(``INSTALL ... FROM community`` — the STAGE step, run once at startup / packaging so it is reachable
-offline) and must actually load (``LOAD`` — the PROBE step). ``probe`` is deliberately LOAD-ONLY: it
-verifies the extension loads and registers its scanner/attach symbol; it never opens a live connection
-to a source. That answers "is this connector's engine capability installed and reachable?", which is
-distinct from "can we reach a live source?" (live reachability is a per-source concern, not a probe).
+Each DuckDB connector that needs an extension declares it (``Connector.extension``). The binary is put
+in the extension directory once, at install or first launch, by the stage command
+(``python -m provisa.runtime_deps.stage_assets``), from the machine's configured package index: the
+core extensions from the ``duckdb-extension-*`` projects on PyPI, the rest from the version parts of
+``provisa-duckdb-ext``. At runtime an extension is only LOADed (:func:`load_extension`), and one that
+isn't staged is refused by name. ``probe`` is LOAD-ONLY too: it verifies the extension loads and
+registers its scanner/attach symbol; it never opens a live connection to a source.
 
-Set ``PROVISA_DUCKDB_EXT_DIR`` to stage into (and load from) a bundled directory instead of the default
-per-user cache; the federation runtime reads the same variable so what is staged here is reachable there.
+Set ``PROVISA_DUCKDB_EXT_DIR`` to load from a staged directory instead of DuckDB's per-user directory;
+every connection reads the same variable. ``python -m provisa.federation.duckdb_extensions`` is the
+install-time check: it exits non-zero, naming what is missing, unless the directory holds every
+required extension for this DuckDB version and platform.
 """
 
 from __future__ import annotations
 
 import functools
-import importlib.util
 import json
 import logging
 import os
-import shutil
-from collections.abc import Callable
+import sys
+import zipfile
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import duckdb
 
@@ -40,11 +42,11 @@ from provisa.core import engine_memory
 from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
-from provisa.federation.engine import build_duckdb_engine, duckdb_engine_connectors
+from provisa.federation.engine import build_duckdb_engine
 
 _log = logging.getLogger(__name__)
 
-_EXT_DIR_ENV = "PROVISA_DUCKDB_EXT_DIR"
+_EXT_DIR_ENV = engine_memory.EXT_DIR_ENV
 
 #: Extensions DuckDB 2.0's own repositories do not carry, by name: (the named repository they are
 #: published in, its prefix as the publisher documents it). provisa-duckdb-ext mirrors them; DuckDB
@@ -96,13 +98,12 @@ def extension_directory() -> str | None:
     return os.environ.get(_EXT_DIR_ENV) or None
 
 
-#: The core extensions installed from the third-party per-extension, per-platform PyPI wheels, by the
-#: extension's file name -> the importable package of its wheel. TEMPORARY (REQ-1142 amendment,
-#: "TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0", 2026-11-06): duckdb-extension-<name>==<duckdb version>
-#: from https://github.com/santosh-d3vpl3x/duckdb_extensions (MIT), until Provisa's own per-extension
-#: PyPI projects exist. Each wheel holds the official, signed binary at
-#: ``<package>/extensions/<raw_duckdb_version>/<name>.duckdb_extension`` (its ``__init__.py`` is
-#: empty: the package is located, never imported), and DuckDB loads it with its signature check on.
+#: The core extensions fetched from the existing per-extension, per-platform PyPI wheels, by the
+#: extension's file name -> the importable package of its wheel (REQ-294, ASSETS COME FROM PACKAGE
+#: REPOSITORIES): duckdb-extension-<name>==<duckdb version> from
+#: https://github.com/santosh-d3vpl3x/duckdb_extensions (MIT). Each wheel holds the official, signed
+#: binary at ``<package>/extensions/<raw_duckdb_version>/<name>.duckdb_extension``, and DuckDB loads
+#: it with its signature check on.
 CORE_EXTENSION_WHEELS: dict[str, str] = {
     "postgres_scanner": "duckdb_extension_postgres_scanner",
     "httpfs": "duckdb_extension_httpfs",
@@ -113,134 +114,166 @@ CORE_EXTENSION_WHEELS: dict[str, str] = {
     # iceberg's init loads avro ("The iceberg extension requires the avro extension"): staged
     # beside it from the same source (lead's ruling 2026-11-06, under the maintainer's decision).
     "avro": "duckdb_extension_avro",
+    # What a connection needs that no connector declares: the catalog index, PostgreSQL's inet type.
+    "vss": "duckdb_extension_vss",
+    "inet": "duckdb_extension_inet",
 }
+
+#: The release of ``provisa-duckdb-ext`` this Provisa stages, and how many version parts it is split
+#: across (REQ-294): ``<release>.<part>`` for part 1..N, one project, each part one wheel per
+#: platform under PyPI's per-file limit. packaging/duckdb-ext/collect.py's PARTS is the assignment;
+#: tests/unit/test_duckdb_ext_collect.py holds the two equal.
+EXT_PACKAGE = "provisa-duckdb-ext"
+EXT_PACKAGE_RELEASE = "0.3.0"
+EXT_PACKAGE_PARTS = 2
+
+#: The extensions a staged directory must hold on every platform: the core wheels' and the two
+#: the mirror refuses to release without. Other community extensions depend on what their publisher
+#: built for this DuckDB and platform, so they are recorded by the manifest, not required.
+_REQUIRED_MIRRORED = ("crypto", "airport")
 
 
 class BundledExtensionsMissing(RuntimeError):
-    """The embedded extra is installed but an extension package lacks blobs for this DuckDB
-    version/platform, or one of its packages is absent.
+    """A package fetched for this DuckDB version/platform lacks an extension it must carry, or the
+    staged directory does not hold every required one.
 
-    This is a packaging defect (a wheel built against a different DuckDB build, or a partial install),
-    NOT a runtime condition to paper over: an air-gapped/enterprise install must get every extension
-    through PyPI, so we fail loud with a precise remediation rather than silently reaching
-    extensions.duckdb.org.
+    This is a packaging defect (a wheel built against a different DuckDB build, or a partial fetch),
+    NOT a runtime condition to paper over: we fail loud with a precise remediation rather than
+    silently reaching extensions.duckdb.org.
     """
 
 
-def _core_wheel_blob(package: str, extension: str, raw_version: str) -> Path | None:
-    """Where ``package``'s wheel keeps ``extension`` for DuckDB ``raw_version``, or None when the
-    package is not installed. ``find_spec`` of a top-level package locates it without running it."""
-    spec = importlib.util.find_spec(package)
-    if spec is None or not spec.submodule_search_locations:
-        return None
-    (root,) = spec.submodule_search_locations
-    return Path(root) / "extensions" / raw_version / f"{extension}.duckdb_extension"
+def wheel_requirements(duckdb_version: str | None = None) -> list[str]:
+    """The pinned requirements the stage command fetches for this DuckDB: each core extension's own
+    project, and every version part of ``provisa-duckdb-ext``."""
+    version = duckdb_version or duckdb.__version__
+    return [
+        *(f"{package.replace('_', '-')}=={version}" for package in CORE_EXTENSION_WHEELS.values()),
+        *(f"{EXT_PACKAGE}=={EXT_PACKAGE_RELEASE}.{p}" for p in range(1, EXT_PACKAGE_PARTS + 1)),
+    ]
 
 
-def _copy_missing(files: list[Path], src: Path, dst: Path) -> None:
-    for blob in files:
-        out = dst / blob.relative_to(src)
-        if not out.exists():
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(blob, out)
+def _write(wheel: zipfile.ZipFile, member: str, out: Path) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(wheel.read(member))
 
 
-def stage_bundled_extensions(target: str | Path) -> Path:
-    """Copy the running platform's DuckDB extension blobs from the PyPI packages of the embedded extra
-    into ``target/<version>/<platform>/`` (idempotent) and return ``target``: the core extensions
-    (CORE_EXTENSION_WHEELS) from their third-party per-extension wheels, every other one from
-    ``provisa-duckdb-ext``. Each package is one wheel per platform, so the installer's own wheel
-    choice brings this platform's binaries -- the offline, firewall-safe alternative to DuckDB's
-    network ``INSTALL``. Point ``PROVISA_DUCKDB_EXT_DIR`` at the returned dir so every ``LOAD``
-    resolves locally, signature-checked, and ``extensions.duckdb.org`` is never contacted.
+def _stage_core_wheel(
+    wheel: zipfile.ZipFile, package: str, extension: str, raw_version: str, dst: Path
+) -> bool:
+    """Lay the core extension of ``wheel`` under ``dst``; False where the wheel does not hold it."""
+    member = f"{package}/extensions/{raw_version}/{extension}.duckdb_extension"
+    if member not in wheel.namelist():
+        return False
+    _write(wheel, member, dst / f"{extension}.duckdb_extension")
+    return True
 
-    Raises ``ModuleNotFoundError`` when ``provisa-duckdb-ext`` isn't installed (a dev checkout without
-    the embedded extra; the caller decides), and ``BundledExtensionsMissing`` naming every package
-    that is absent or has no blobs for this exact DuckDB version + platform.
-    """
-    from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
 
-    raw_version, platform = running_version_platform()
-
-    src = ext_root() / raw_version / platform
-    # Every file below the platform dir: a named repository's extension (EXTENSION_REPOSITORIES)
-    # sits under repositories/<repository>/ beside the .info DuckDB loads it by.
-    files = sorted(p for p in src.rglob("*") if p.is_file()) if src.is_dir() else []
+def _stage_part_wheel(
+    wheel: zipfile.ZipFile, raw_version: str, platform: str, dst: Path
+) -> list[str]:
+    """Lay a ``provisa-duckdb-ext`` part's files under ``dst``; return what is wrong with it. A
+    named repository's extension (EXTENSION_REPOSITORIES) sits under repositories/<repository>/
+    beside the .info DuckDB loads it by, and its trust anchor is gathered for the connection."""
+    prefix = f"provisa_duckdb_ext/_ext/{raw_version}/{platform}/"
+    members = [m for m in wheel.namelist() if m.startswith(prefix) and not m.endswith("/")]
+    names = set(members)
     problems: list[str] = []
-    if not any(p.suffix == ".duckdb_extension" for p in files):
-        problems.append(f"provisa-duckdb-ext has none (looked in {src})")
-    # DuckDB 2.0 trusts an extension's signature by the repository its .info names, so one shipped
-    # without it does not load (provisa-duckdb-ext 0.2.0's community extensions).
+    for member in members:
+        rel = PurePosixPath(member.removeprefix(prefix))
+        if rel.name.endswith(".duckdb_extension") and f"{member}.info" not in names:
+            # DuckDB 2.0 trusts an extension's signature by the repository its .info names.
+            problems.append(
+                f"{rel.name.removesuffix('.duckdb_extension')}: no .info beside it in "
+                f"{EXT_PACKAGE}, so DuckDB does not trust its signature"
+            )
+        if (
+            rel.name.endswith(".duckdb_extension")
+            and rel.parts[0] == "repositories"
+            and f"{prefix}{rel.parent}/{rel.parts[1]}.duckdb_extension.repo.json" not in names
+        ):
+            problems.append(
+                f"{rel.parts[1]}: no trust anchor ({rel.parts[1]}.duckdb_extension.repo.json) "
+                f"beside its extensions in {EXT_PACKAGE}, so DuckDB does not know the repository"
+            )
+        _write(wheel, member, dst.joinpath(*rel.parts))
+        if rel.name.endswith(".duckdb_extension.repo.json"):
+            _write(wheel, member, dst / REPOSITORY_ANCHORS / rel.name)
+    return sorted(set(problems))
+
+
+def stage_wheels(wheels: Iterable[Path], target: str | Path) -> Path:
+    """Lay the running platform's extensions out of the fetched ``wheels`` under
+    ``target/<version>/<platform>/`` and record them, or raise ``BundledExtensionsMissing`` naming
+    every one absent or malformed. A core wheel's project name says which it is; every other wheel
+    is a ``provisa-duckdb-ext`` part. Return ``target``."""
+    raw_version, platform = running_version_platform()
+    dst = Path(target) / raw_version / platform
+    by_project = {p.replace("_", "-"): (e, p) for e, p in CORE_EXTENSION_WHEELS.items()}
+    problems: list[str] = []
+    staged: set[str] = set()
+    for path in sorted(wheels):
+        project = path.name.split("-", 1)[0].replace("_", "-")
+        with zipfile.ZipFile(path) as wheel:
+            if project in by_project:
+                extension, package = by_project[project]
+                if _stage_core_wheel(wheel, package, extension, raw_version, dst):
+                    staged.add(extension)
+            else:
+                problems += _stage_part_wheel(wheel, raw_version, platform, dst)
     problems += [
-        f"{p.name.removesuffix('.duckdb_extension')}: no .info beside it in provisa-duckdb-ext, "
-        "so DuckDB does not trust its signature"
-        for p in files
-        if p.suffix == ".duckdb_extension" and not p.with_name(f"{p.name}.info").is_file()
+        f"{extension}: {package.replace('_', '-')} has no build for {raw_version}"
+        for extension, package in CORE_EXTENSION_WHEELS.items()
+        if extension not in staged
     ]
-    # A named repository's extensions load only where DuckDB knows the repository and its keys.
-    anchors = _repository_anchors(src, files)
     problems += [
-        f"{repo}: no trust anchor ({repo}.duckdb_extension.repo.json) beside its extensions in "
-        "provisa-duckdb-ext, so DuckDB does not know the repository"
-        for repo, anchor in anchors.items()
-        if anchor is None
+        f"{name}: not in any {EXT_PACKAGE} {EXT_PACKAGE_RELEASE} part for {platform}"
+        for name in _REQUIRED_MIRRORED
+        if not any(dst.rglob(f"{name}.duckdb_extension"))
     ]
-    core: list[Path] = []
-    for extension, package in CORE_EXTENSION_WHEELS.items():
-        wheel = package.replace("_", "-")
-        blob = _core_wheel_blob(package, extension, raw_version)
-        if blob is None:
-            problems.append(f"{extension}: {wheel} is not installed")
-        elif not blob.is_file():
-            problems.append(f"{extension}: {wheel} has none (looked for {blob})")
-        else:
-            core.append(blob)
     if problems:
         raise BundledExtensionsMissing(
-            f"DuckDB extensions missing for {platform} @ {raw_version}: "
-            + "; ".join(problems)
-            + f". Install provisa[embedded] for this platform, built against duckdb {raw_version}."
+            f"DuckDB extensions missing for {platform} @ {raw_version}: " + "; ".join(problems)
         )
-
-    dst = Path(target) / raw_version / platform
-    _copy_missing(files, src, dst)
-    for blob in core:
-        _copy_missing([blob], blob.parent, dst)
-    for anchor in anchors.values():
-        if anchor is not None:
-            _copy_missing([anchor], anchor.parent, dst / REPOSITORY_ANCHORS)
     write_manifest(dst, raw_version, platform)
     return Path(target)
 
 
-def _repository_anchors(src: Path, files: list[Path]) -> dict[str, Path | None]:
-    """Each named repository the package carries extensions of (``repositories/<repo>/``), with
-    its trust anchor beside them, or None where it has none."""
-    out: dict[str, Path | None] = {}
-    for p in files:
-        rel = p.relative_to(src).parts
-        if p.suffix == ".duckdb_extension" and len(rel) == 3 and rel[0] == "repositories":
-            anchor = p.parent / f"{rel[1]}.duckdb_extension.repo.json"
-            out[rel[1]] = anchor if anchor.is_file() else None
-    return out
+def required_extensions() -> tuple[str, ...]:
+    """Every extension a staged directory must hold, by file name: the one list staging and the
+    install-time check read."""
+    return tuple(sorted({*CORE_EXTENSION_WHEELS, *_REQUIRED_MIRRORED}))
 
 
-def extension_config() -> dict[str, str | bool]:
+def missing_extensions(directory: str | Path) -> list[str]:
+    """The required extensions with no file in ``directory`` for the running DuckDB and platform."""
+    raw_version, platform = running_version_platform()
+    src = Path(directory) / raw_version / platform
+    return [n for n in required_extensions() if not any(src.rglob(f"{n}.duckdb_extension"))]
+
+
+def is_staged(directory: str | Path) -> bool:
+    """Whether ``directory`` is already filled for this DuckDB and platform: a manifest and every
+    required extension. Such a directory is used without fetching anything (REQ-294)."""
+    raw_version, platform = running_version_platform()
+    manifest = Path(directory) / raw_version / platform / MANIFEST
+    return manifest.is_file() and not missing_extensions(directory)
+
+
+def extension_config() -> dict[str, str | bool | int | float | list[str]]:
     """The configuration a DuckDB connection is opened with to load from the staged extension
     directory: the directory, the named repositories' trust anchors staged in it (DuckDB 2.0 reads
-    them only at startup), and no network autoinstall. Empty where nothing is staged: DuckDB's own
-    directory and repositories (a server or a dev checkout, REQ-1142)."""
+    them only at startup), and no network autoinstall anywhere (REQ-294). Where no directory is
+    named, DuckDB's per-user one is read, which a source checkout fills once."""
     directory = extension_directory()
+    settings = dict(engine_memory.load_only_config(directory))
     if directory is None:
-        return {}
+        return settings
     raw_version, platform = running_version_platform()
-    return {
-        "extension_directory": directory,
-        "extension_repository_directory": str(
-            Path(directory) / raw_version / platform / REPOSITORY_ANCHORS
-        ),
-        "autoinstall_known_extensions": False,
-    }
+    settings["extension_repository_directory"] = str(
+        Path(directory) / raw_version / platform / REPOSITORY_ANCHORS
+    )
+    return settings
 
 
 def write_manifest(dst: Path, raw_version: str, platform: str) -> None:
@@ -259,26 +292,21 @@ class StagedManifestMissing(RuntimeError):
     it was not staged by this Provisa for this DuckDB, so what it can attach is unknown."""
 
 
-#: What this server process installed from DuckDB's repositories when it started; None until it
-#: has (REQ-1142, THE SERVER TIER STAGES AT START).
-_installed_at_start: frozenset[str] | None = None
-
-
 def staged_extensions() -> frozenset[str] | None:
     """The extensions a connector may count on for the running DuckDB version and platform: those
     in the staged directory's manifest (REQ-1142, ATTACHABLE MEANS STAGED), each by its file name
-    and by the name a connector gives it (postgres for postgres_scanner), or with no staged
-    directory those the server installed when it started (THE SERVER TIER STAGES AT START). None
-    where neither has happened: a process that is not a server, DuckDB installing on first use."""
+    and by the name a connector gives it (postgres for postgres_scanner). None where no directory
+    is named (a source checkout on DuckDB's per-user directory): what it holds is learned when an
+    extension loads, and one that is not there is refused by name."""
     directory = extension_directory()
     if directory is None:
-        return _installed_at_start
+        return None
     raw_version, platform = running_version_platform()
     path = Path(directory) / raw_version / platform / MANIFEST
     if not path.is_file():
         raise StagedManifestMissing(
             f"{_EXT_DIR_ENV}={directory} has no {MANIFEST} for DuckDB {raw_version} on {platform} "
-            f"(looked for {path}); stage it with stage_bundled_extensions (provisa[embedded])."
+            f"(looked for {path}); {engine_memory.STAGE_FIX}."
         )
     names = frozenset(json.loads(path.read_text())["extensions"])
     return names | {_SHORT_NAMES[n] for n in names if n in _SHORT_NAMES}
@@ -377,75 +405,21 @@ def _snowflake_driver() -> dict[str, str]:
 _EXTENSION_ENV: dict[str, Callable[[], dict[str, str]]] = {"snowflake": _snowflake_driver}
 
 
-def install_statements(extension: str, *, from_community: bool) -> list[str]:
-    """The statements that INSTALL ``extension``: from its named repository for an extension of
-    EXTENSION_REPOSITORIES (created where the connection does not know it), else from community or
-    the core registry."""
+def load_statement(extension: str) -> str:
+    """The statement that loads ``extension``: DuckDB 2.0 keeps a named repository's extension
+    under ``repositories/<repository>/`` and finds it only with ``LOAD <name> FROM <repository>``."""
     if extension in EXTENSION_REPOSITORIES:
-        repository, prefix = EXTENSION_REPOSITORIES[extension]
-        return [
-            "SET allow_extension_repositories = 'allowed'",
-            f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'",
-            f"INSTALL {extension} FROM {repository}",
-        ]
-    return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]
+        return f"LOAD {extension} FROM {EXTENSION_REPOSITORIES[extension][0]}"
+    return f"LOAD {extension}"
 
 
-def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
-    """The INSTALL and LOAD statements that bring ``extension`` up."""
-    load = f"LOAD {extension}"
-    if extension in EXTENSION_REPOSITORIES:
-        load += f" FROM {EXTENSION_REPOSITORIES[extension][0]}"
-    return [*install_statements(extension, from_community=from_community), load]
-
-
-def install_extension_set() -> frozenset[str] | None:
-    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
-    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
-    the engine counts a connector as attachable only when its extensions did. An extension that
-    does not install (no build for the running DuckDB) is named in the log and left out, so the
-    source shows it when added. None where a staged directory holds the set: nothing to install."""
-    global _installed_at_start
-    if extension_directory() is not None:
-        return None
-    wanted: dict[str, bool] = {}
-    for connector in duckdb_engine_connectors():
-        for need in _needs(connector):
-            community = bool(connector.install_from_community) and need == connector.extension
-            wanted[need] = wanted.get(need, False) or community
-    installed: set[str] = set()
-    for extension, from_community in sorted(wanted.items()):
-        con = connect()
-        try:
-            for statement in install_statements(extension, from_community=from_community):
-                con.execute(statement)
-        except duckdb.Error as error:
-            _log.warning("DuckDB extension %s did not install: %s", extension, error)
-        else:
-            installed.add(extension)
-        finally:
-            con.close()
-    _installed_at_start = frozenset(installed)
-    return _installed_at_start
-
-
-def install_and_load(
-    con: duckdb.DuckDBPyConnection, extension: str, *, from_community: bool = True
-) -> None:
-    """INSTALL then LOAD ``extension`` on ``con`` — the one place that spells the two-step DuckDB
-    extension bring-up, so callers never write a bare ``INSTALL``/``LOAD`` string themselves —
-    with the environment (``_EXTENSION_ENV``) and settings (``_EXTENSION_SETTINGS``) the extension
-    is always loaded with.
-
-    An extension of EXTENSION_REPOSITORIES comes from its named repository whatever
-    ``from_community`` says: DuckDB 2.0 keeps it under ``repositories/<repository>/`` and finds it
-    only with ``LOAD <name> FROM <repository>``. The repository is created where the connection
-    does not know it (a server or a dev checkout); a staged directory's trust anchor already names
-    it."""
+def load_extension(con: duckdb.DuckDBPyConnection, extension: str) -> None:
+    """LOAD ``extension`` on ``con``, or refuse naming it and the fix — the one place that spells an
+    extension's bring-up, with the environment (``_EXTENSION_ENV``) and settings
+    (``_EXTENSION_SETTINGS``) it is always loaded with. It is never installed here (REQ-294)."""
     if extension in _EXTENSION_ENV:
         os.environ.update(_EXTENSION_ENV[extension]())
-    for statement in bring_up_statements(extension, from_community=from_community):
-        con.execute(statement)
+    engine_memory.load(con, extension, load_statement(extension))
     for statement in _EXTENSION_SETTINGS.get(extension, ()):
         con.execute(statement)
 
@@ -511,8 +485,37 @@ def duckdb_extension_connectors() -> list[Connector]:
     return [c for c in engine.connectors.values() if c.extension is not None]
 
 
-async def stage_and_probe() -> list[ExtensionProbe]:
-    """Stage (INSTALL) then probe (LOAD + symbol) each extension-backed DuckDB connector.
+def verify_staged_extensions(directory: str | Path | None = None) -> int:
+    """REQ-294, the install-time check: ``directory`` (default the staged one) holds every required
+    extension for this DuckDB and platform, and each loads with nothing fetched. Return how many;
+    raise ``BundledExtensionsMissing`` naming what isn't."""
+    named = directory if directory is not None else extension_directory()
+    if named is None:
+        raise BundledExtensionsMissing(f"{_EXT_DIR_ENV} is not set: {engine_memory.STAGE_FIX}")
+    raw_version, platform = running_version_platform()
+    missing = missing_extensions(named)
+    if missing:
+        raise BundledExtensionsMissing(
+            f"{named} lacks DuckDB extensions for {platform} @ {raw_version}: "
+            f"{', '.join(missing)}. To fix it: {engine_memory.STAGE_FIX}."
+        )
+    os.environ[_EXT_DIR_ENV] = str(named)
+    failed: list[str] = []
+    for name in required_extensions():
+        con = connect()
+        try:
+            engine_memory.load(con, name, load_statement(name))
+        except engine_memory.ExtensionNotStaged as refused:
+            failed.append(f"{name}: {refused}")
+        finally:
+            con.close()
+    if failed:
+        raise BundledExtensionsMissing("; ".join(failed))
+    return len(required_extensions())
+
+
+async def probe_extensions() -> list[ExtensionProbe]:
+    """Probe (LOAD + symbol) each extension-backed DuckDB connector.
 
     A fresh connection per connector isolates a failed load from the others. No live source is opened.
     """
@@ -534,3 +537,11 @@ async def stage_and_probe() -> list[ExtensionProbe]:
             )
         )
     return probes
+
+
+if __name__ == "__main__":
+    try:
+        count = verify_staged_extensions()
+    except BundledExtensionsMissing as refused:
+        sys.exit(f"DuckDB extension check failed: {refused}")
+    print(f"{count} DuckDB extensions staged")

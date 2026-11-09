@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import attach_catalog, engine_attach_name
+from provisa.core import engine_memory
 from provisa.federation.connector_base import (
     Capability,
     Connector,
@@ -34,8 +35,8 @@ from provisa.federation.connector_base import (
     RuntimeDep,
     probe_pg_extension,
 )
-from provisa.federation.duckdb_extensions import bring_up_statements
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
+from provisa.federation.duckdb_extensions import load_statement
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -347,9 +348,9 @@ class DuckDBDuckdbConnector(Connector):
 # --- DuckDB extensions: external DB / warehouse / lake / SaaS reach in place (REQ-899) ---
 #
 # Each connector declares the extension that gives DuckDB the source (Connector.extension), staged into
-# DuckDB's extension directory at startup — from the community registry (install_from_community=True) or
-# the core registry (False). The probe is LOAD-ONLY (REQ-904): it installs + loads the extension and
-# asserts the scanner/attach symbol is registered — it NEVER opens a live connection. details() emits the
+# DuckDB's extension directory at build or packaging time (REQ-294) — from the community registry
+# (install_from_community=True) or the core registry (False). The probe is LOAD-ONLY (REQ-904): it loads
+# the extension and asserts the scanner/attach symbol is registered — it NEVER opens a live connection. details() emits the
 # in-place DDL a live EngineRuntime issues; credentials arrive via a DuckDB SECRET / federation_hints at
 # attach time, out of scope for the probe.
 
@@ -369,20 +370,19 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
 
-    def _bring_up(self) -> list[str]:
+    def _load_statement(self) -> str:
         if self.extension is None:  # every extension connector names its extension
             raise TypeError(f"{type(self).__name__} names no extension")
-        return bring_up_statements(self.extension, from_community=self.install_from_community)
+        return load_statement(self.extension)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904 / REQ-899 — load-only, no live source
         try:
-            for statement in self._bring_up():
-                await fetch(statement)
+            await fetch(self._load_statement())
         except Exception as e:
             return ProbeResult(
                 False,
                 f"{self.extension} did not load: {type(e).__name__}",
-                f"stage it: {'; '.join(self._bring_up())}",
+                f"stage DuckDB extension '{self.extension}': {engine_memory.STAGE_FIX}",
             )
         rows = await fetch(self._registered_query())
         if rows and rows[0]["n"]:
@@ -419,9 +419,9 @@ class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
     served_by_bundle = True
 
     mechanism = Mechanism.ATTACH_R
-    extension = "postgres"  # core extension — the runtime INSTALL/LOADs it before the attach
+    extension = "postgres"  # core extension — the runtime LOADs it before the attach
     install_from_community = False
-    probe_symbol = "postgres_scan"
+    probe_symbol = "postgres_query"  # postgres_scanner 2.0 registers no postgres_scan
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
@@ -824,7 +824,7 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
 
 class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
     """Delta Lake table, referenced in place via a delta_scan scanner view. Like iceberg, delta is a
-    CORE extension (install_from_community=False) — INSTALL delta / LOAD delta registers delta_scan,
+    CORE extension (install_from_community=False) — LOAD delta registers delta_scan,
     which reads the table's current version from its ``_delta_log`` (zero copy). The table location is
     the source's path (a warehouse/object-store URI); object-store access needs httpfs + a DuckDB
     SECRET, provisioned at attach time and out of scope for the load-only probe."""
@@ -832,7 +832,7 @@ class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
     source_type = "delta_lake"
     key = "duckdb_delta"
     extension = "delta"
-    install_from_community = False  # core registry — INSTALL delta (no FROM community)
+    install_from_community = False  # core registry
     probe_symbol = "delta_scan"
     mechanism = Mechanism.SCAN  # delta_scan scanner view — read in place, no attach (REQ-951)
 
@@ -887,7 +887,7 @@ class DuckDBClickHouseConnector(_DuckDBExtensionConnector):  # REQ-899
     source_type = "clickhouse"
     key = "duckdb_clickhouse"
     extension = "httpfs"
-    install_from_community = False  # core registry — INSTALL httpfs
+    install_from_community = False  # core registry
     probe_symbol = "read_parquet"
     mechanism = Mechanism.SCAN  # a query-time read_parquet scan — read in place, never landed
 

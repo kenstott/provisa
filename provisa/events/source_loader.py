@@ -631,7 +631,7 @@ def make_sqlite_loader() -> AdapterLoader:
         if location_kind(source.path) is None:
             return None
         details = DuckDBSqliteConnector().details(source)
-        return {**details, "extension": "sqlite", "install_from_community": False}
+        return {**details, "extension": "sqlite"}
 
     def _path(source: Any) -> str:
         from provisa.core.org_files import resolve_path
@@ -686,16 +686,12 @@ def _scratch_attach(conn: Any, connector_details: dict) -> None:
     location needs (REQ-1997: the extension reaching a remote file, and its secret). A file DuckDB
     reads with a core function (a csv or parquet file, :func:`make_file_loader`) names no
     extension and has nothing to attach: only its location's needs are met."""
-    from provisa.federation.duckdb_extensions import install_and_load
+    from provisa.federation.duckdb_extensions import load_extension
 
     if "extension" in connector_details:
-        install_and_load(
-            conn,
-            connector_details["extension"],
-            from_community=connector_details.get("install_from_community", True),
-        )
+        load_extension(conn, connector_details["extension"])
     for ext in connector_details.get("extensions", ()):
-        install_and_load(conn, ext, from_community=False)
+        load_extension(conn, ext)
     if connector_details.get("secret_ddl"):
         conn.execute(connector_details["secret_ddl"])
     if "attach" in connector_details:

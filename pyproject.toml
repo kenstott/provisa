@@ -210,25 +210,13 @@ provisa = "provisa.cli:main"
 # omitted (PyPI carries no JVM server); full multi-engine query stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
 # already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
-# The offline DuckDB extension blobs (REQ-1142) are hard deps here: pip install provisa[embedded]
-# stages the extensions offline (no extensions.duckdb.org reach on first LOAD), matching
-# _stage_duckdb_extensions in cli.py. TEMPORARY for DuckDB 2.0 (REQ-1142 amendment, TEMPORARY
-# EXTENSION SOURCES FOR DUCKDB 2.0, maintainer decision 2026-11-06): the core extensions come from the
-# third-party per-extension, per-platform wheels duckdb-extension-* (santosh-d3vpl3x/duckdb_extensions,
-# MIT; each holds the official signed binary, DuckDB loads it signature-checked), pinned to the DuckDB
-# version (avro too: iceberg loads it); provisa-duckdb-ext carries the rest (crypto and airport from Query.Farm, community). Dropped for Provisa's own
-# per-extension projects once PyPI is available again.
+# REQ-294: the DuckDB extensions are not dependencies of the install: the one stage command
+# (provisa.runtime_deps.stage_assets) fetches them at install or first launch with pip, so pip is
+# one. provisa.federation.duckdb_extensions.wheel_requirements names what it fetches.
 embedded = [
     "duckdb",
     "fakeredis",
-    "duckdb-extension-postgres-scanner==2.0.0",
-    "duckdb-extension-httpfs==2.0.0",
-    "duckdb-extension-sqlite-scanner==2.0.0",
-    "duckdb-extension-iceberg==2.0.0",
-    "duckdb-extension-azure==2.0.0",
-    "duckdb-extension-delta==2.0.0",
-    "duckdb-extension-avro==2.0.0",  # iceberg loads it
-    "provisa-duckdb-ext>=0.2.2",  # 0.2.2: Query.Farm's airport
+    "pip",
 ]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the

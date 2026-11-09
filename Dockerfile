@@ -141,6 +141,13 @@ COPY provisa/ ./provisa/
 # REQ-2194: provisa's compiled encoders and their notices, from provisa's wheel (stage 2).
 COPY --from=installer /encoders/ ./provisa/
 RUN python -c "import provisa._encoders.pgwire"
+# REQ-294: the image is built with its assets inside it: every DuckDB extension and connector bundle
+# for this image's DuckDB and architecture, from the build's package index and Maven repository. The
+# runtime only LOADs and refuses by name what is missing; the build stops if anything is. The image
+# is the one source of provisa here (/app, not site-packages), so this runs without -I.
+ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+RUN python -m provisa.runtime_deps.stage_assets
 # REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
 # front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
 # them from the wheel for the image's architecture, and refuses a build it has no wheel for).
