@@ -26807,3 +26807,15 @@ Maintainer 2026-11-09. A Rust code source is a further language for code sources
 **Code:** —
 
 **Tests:** —
+
+## 12. Migration & Compatibility (Hasura)
+
+### REQ-2228 · Hasura Migration {#REQ-2228}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-09. dbt survives: a team keeps its dbt project and goes on running it. The dbt manifest comes in through the Import page, with a preview before anything is applied, as the Hasura import does ([REQ-1483](#REQ-1483)); it brings definitions, never data. The tables dbt builds become governed tables, with the descriptions the manifest holds. Each model joins lineage, its columns traced from its compiled SQL ([REQ-1160](#REQ-1160)), through dbt's models and on to what consumes them. Freshness comes from dbt's run results ([REQ-858](#REQ-858)), and dbt test results are data quality observations ([REQ-1443](#REQ-1443)). A model whose materialization is incremental is identified from the manifest and recorded as a command that runs dbt for that model ([REQ-885](#REQ-885) script): a mutation, so it is never composed in a view or a materialized view, and Provisa can schedule it. Its lineage still comes from its compiled SQL.
+
+**Code:** —
+
+**Tests:** —
