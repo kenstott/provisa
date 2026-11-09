@@ -120,7 +120,9 @@ def test_duckdb_attaches_a_postgres_store_by_the_url_libpq_reads(monkeypatch, ds
     monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._region_stores = set()
-    runtime._con = SimpleNamespace(execute=executed.append)  # type: ignore[assignment]
+    con = SimpleNamespace(execute=executed.append, close=lambda: None)
+    con.cursor = lambda: con  # the runtime runs each statement on a cursor of its own
+    runtime._con = con  # type: ignore[assignment]
     runtime.attach_region_store("eu", dsn)
     assert executed == [f"ATTACH '{attached}' AS \"eu\" (TYPE postgres, READ_ONLY)"]
 

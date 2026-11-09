@@ -14,12 +14,19 @@ standard report listing every name, its problems, and the clashes the last build
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import threading
+import time
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select, text
+from sqlalchemy import Insert, insert, select, text
 
 from provisa.api._meta_views import _META_TABLE_VIEWS, _OPS_REPORT_VIEWS
+from provisa.api.admin.lineage_router import store_lineage_edges
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
 from provisa.compiler import naming
 from provisa.compiler.names_table import (
@@ -34,6 +41,7 @@ from provisa.core.repositories.model_names import (
     write_names_table,
     write_refused_clashes,
 )
+from provisa.dq.registration import write_checker_targets
 from provisa.security.rights import DEFAULT_TIER_META_TABLES, META_ROW_SCOPED_VIEWS
 
 
@@ -189,11 +197,37 @@ def _many_clashes(count: int) -> list[NameClash]:
     return [NameClash("sql", f"c{i}", f"holder{i}", f"newcomer{i}") for i in range(count)]
 
 
+def _many_checker_targets(count: int) -> dict[int, int]:
+    return {i: i + 1000 for i in range(count)}
+
+
+def _many_lineage_edges(count: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_relation": "sales.orders",
+            "source_column": f"c{i}",
+            "target_relation": "sales.top",
+            "target_column": f"c{i}",
+            "via": "sales.top",
+            "via_kind": "view",
+            "source_table_id": None,
+            "source_column_name": None,
+            "target_table_id": None,
+            "target_column_name": None,
+        }
+        for i in range(count)
+    ]
+
+
 class _RecordingConn:
     """Keeps the statements a writer sends the model store, and the rows sent beside each."""
 
     def __init__(self) -> None:
         self.statements: list[Any] = []
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[None]:
+        yield
 
     async def execute_core(self, stmt: Any) -> None:
         self.statements.append(stmt)
@@ -241,6 +275,106 @@ async def test_what_a_build_sends_does_not_grow_with_its_names(write, many):
         return [len(s.compile().params) for s in conn.statements]
 
     assert await sent(2) == await sent(500)
+
+
+class _OtherWorkerWritesBeforeTheInsert:
+    """A worker's connection on which another worker's whole build runs between this worker's
+    clearing of the table and its INSERT: the interleaving of two workers reloading one change."""
+
+    def __init__(self, conn: Any, other_worker: Any) -> None:
+        self._conn = conn
+        self._other_worker = other_worker
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    async def _before_the_insert(self) -> None:
+        other_worker, self._other_worker = self._other_worker, None
+        if other_worker is not None:
+            await other_worker()
+
+    async def execute_core(self, stmt: Any) -> Any:
+        if isinstance(stmt, Insert):
+            await self._before_the_insert()
+        return await self._conn.execute_core(stmt)
+
+    async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
+        await self._before_the_insert()
+        await self._conn.execute_core_many(stmt, rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("write", "many", "table"),
+    [
+        (write_names_table, _many_names, "model_names"),
+        (write_refused_clashes, _many_clashes, "model_name_clashes"),
+        (write_checker_targets, _many_checker_targets, "checker_targets"),
+        (store_lineage_edges, _many_lineage_edges, "lineage_edges"),
+    ],
+    ids=["names", "clashes", "checker_targets", "lineage_edges"],
+)
+async def test_two_workers_replacing_the_table_at_once_do_not_collide(
+    control_plane, write, many, table
+):
+    """REQ-1914, REQ-194, REQ-2125, REQ-2129: every worker of an org rebuilds on a model change and
+    each build replaces these tables, so two replace one at once. Each replacement is whole: the second begins from what
+    the first committed, and neither finds the other's rows when it inserts."""
+    first, second = control_plane.org(), control_plane.org()
+    finished = threading.Event()
+    failed: list[BaseException] = []
+
+    async def second_worker() -> None:
+        try:
+            async with second.acquire() as conn:
+                await write(conn, many(1))
+        except BaseException as err:  # noqa: BLE001 - asserted on below
+            failed.append(err)
+        finally:
+            finished.set()
+
+    thread: threading.Thread | None = None
+
+    async def start_second_and_let_it_finish_or_block() -> None:
+        nonlocal thread
+        context = contextvars.copy_context()
+        thread = threading.Thread(target=context.run, args=(asyncio.run, second_worker()))
+        thread.start()
+        deadline = time.monotonic() + 30
+        while not finished.is_set():
+            async with first.acquire() as probe:
+                blocked = (
+                    await probe.execute_core(
+                        text(
+                            "SELECT count(*) FROM pg_stat_activity "
+                            "WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                        )
+                    )
+                ).scalar_one()
+            if blocked:
+                return
+            assert time.monotonic() < deadline, "the second worker neither finished nor waited"
+            await asyncio.sleep(0.02)
+
+    try:
+        async with first.acquire() as conn:
+            await write(
+                _OtherWorkerWritesBeforeTheInsert(conn, start_second_and_let_it_finish_or_block),
+                many(3),
+            )
+        assert thread is not None
+        thread.join(30)
+        assert not thread.is_alive()
+        assert failed == []
+        async with first.acquire() as conn:
+            stored = (await conn.execute_core(text(f"SELECT count(*) FROM {table}"))).scalar_one()
+    finally:
+        if thread is not None:
+            thread.join(30)
+        await first.close()
+        await second.close()
+    # The second worker's replacement, whole: it cleared what the first committed.
+    assert stored == 1
 
 
 @pytest.mark.asyncio

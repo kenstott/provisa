@@ -1638,9 +1638,11 @@ class Query:  # REQ-021, REQ-042
         from a different source.
         """
         require_capability(info, "table_registration")
-        from provisa.compiler.naming import apply_convention
+        from provisa.compiler.naming import apply_convention, source_to_catalog
 
         pool = await _get_pool()
+        # The source's catalog name, not its id: a hyphen is no SQL identifier character.
+        source = source_to_catalog(source_id)
 
         def _conflict_stmt(name: str):
             return (
@@ -1660,23 +1662,23 @@ class Query:  # REQ-021, REQ-042
             # a camelCase convention) — the exact GraphQL-vs-SQL-plane mixup register_table's own
             # auto-gen deliberately avoids (see its comment: "deriving the alias from a source's
             # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet").
-            # The alias is a SQL-plane identifier; the deployment's global_sql_naming_convention
-            # is its authority, matching register_table exactly, not a per-source GraphQL setting.
-            from provisa.api.app import state as _naming_state
+            # The alias is a SQL-plane identifier; the acting org's SQL convention is its authority,
+            # matching register_table exactly, not a per-source GraphQL setting.
+            from provisa.compiler.naming import active_sql_convention
 
-            convention = getattr(_naming_state, "global_sql_naming_convention", "snake")
+            convention = active_sql_convention()
             candidate: str = apply_convention(table_name, convention)
             conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
             if not conflict:
                 return candidate
-            # Prefix with source_id to disambiguate
-            prefixed: str = apply_convention(f"{source_id}_{table_name}", convention)
+            # Prefix with the source to disambiguate
+            prefixed: str = apply_convention(f"{source}_{table_name}", convention)
             conflict2 = (await conn.execute_core(_conflict_stmt(prefixed))).fetchone()
             if not conflict2:
                 return prefixed
             # Last resort: add numeric suffix
             for i in range(1, 100):
-                suffixed: str = apply_convention(f"{source_id}_{table_name}_{i}", convention)
+                suffixed: str = apply_convention(f"{source}_{table_name}_{i}", convention)
                 taken = (await conn.execute_core(_conflict_stmt(suffixed))).fetchone()
                 if not taken:
                     return suffixed

@@ -120,3 +120,21 @@ def test_values_equal_under_equality_but_of_other_types_have_other_fingerprints(
     marks = {fingerprint(v) for v in (1, 1.0, True, "1", [1], (1,), {"a": 1})}
     assert len(marks) == 7
     assert fingerprint({"b": 1, "a": [2]}) == fingerprint({"a": [2], "b": 1})
+
+
+def test_a_fingerprint_is_order_free_at_every_depth() -> None:
+    """Ordered by key text, not by every pair's whole text (the model commit wrote each nested
+    subtree out once per level it was nested in): order-free all the same, at any depth."""
+    one = {"t": {"columns": [{"name": "a", "masks": {"y": 1, "x": [2, {"q": 3, "p": 4}]}}]}}
+    two = {"t": {"columns": [{"masks": {"x": [2, {"p": 4, "q": 3}], "y": 1}, "name": "a"}]}}
+    assert fingerprint(one) == fingerprint(two)
+    two["t"]["columns"][0]["masks"]["x"][1]["p"] = 5
+    assert fingerprint(one) != fingerprint(two)
+
+
+def test_keys_whose_fingerprints_read_alike_are_ordered_by_the_whole_pair() -> None:
+    """Two distinct keys can render alike (two NaN floats): the pairs are then ordered by their
+    whole text, so the fingerprint is still order-free."""
+    first, second = float("nan"), float("nan")
+    assert fingerprint({first: 1, second: 2}) == fingerprint({second: 2, first: 1})
+    assert fingerprint({first: 1, second: 2}) != fingerprint({first: 1, second: 3})

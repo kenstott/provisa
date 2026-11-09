@@ -34,6 +34,7 @@ to zero at a bucket boundary nor needs a per-statement list.
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 import threading
 from collections.abc import Callable, Iterable, Mapping
@@ -552,10 +553,10 @@ async def evaluate(state: Any, *, workers: int) -> Evaluation:
 
 
 async def evaluation_loop(state: Any, *, should_run: Callable[[], bool], workers: int) -> None:
-    """Evaluate every org environment this process serves, every ``replication.hot_interval``
-    seconds, while ``should_run()`` — the server passes its scheduler holder's ``holds``, so of
-    the processes of a deployment one decides. The interval is read at every pass: a change to
-    the setting applies to the next one."""
+    """Evaluate each org environment this process serves on that org's own
+    ``replication.hot_interval`` (REQ-1327), while ``should_run()`` — the server passes its
+    scheduler holder's ``holds``, so of the processes of a deployment one decides. Each interval
+    is read at every pass: a change to the setting applies to the next one."""
     from provisa.core import settings_registry
     from provisa.core.environments import PROD
     from provisa.core.request_context import (
@@ -565,14 +566,38 @@ async def evaluation_loop(state: Any, *, should_run: Callable[[], bool], workers
         set_current_org,
     )
 
+    def interval_of(rt: Any) -> float:
+        org_token = set_current_org(rt.org_id)
+        env_token = set_current_env(None if rt.env == PROD else rt.env)
+        try:
+            return settings_registry.value("replication.hot_interval")
+        finally:
+            reset_current_env(env_token)
+            reset_current_org(org_token)
+
+    def built() -> dict[str, Any]:
+        found = {key: state.org_registry.get(key) for key in state.org_registry.all_org_ids()}
+        # None: dropped since listed; no tenant_db: registered and still being built
+        return {key: rt for key, rt in found.items() if rt is not None and rt.tenant_db is not None}
+
+    last_run: dict[str, float] = {}
     while True:
-        await asyncio.sleep(settings_registry.value("replication.hot_interval"))
+        started = time.monotonic()
+        running = built()
+        for key in running:
+            last_run.setdefault(key, started)
+        await asyncio.sleep(
+            min(
+                (interval_of(rt) for rt in running.values()),
+                default=settings_registry.value("replication.hot_interval"),
+            )
+        )
         if not should_run():
             continue
-        for key in state.org_registry.all_org_ids():
-            rt = state.org_registry.get(key)
-            if rt is None or rt.tenant_db is None:
-                continue  # dropped since listed, or registered and still being built
+        for key, rt in built().items():
+            if time.monotonic() - last_run.get(key, started) < interval_of(rt):
+                continue
+            last_run[key] = time.monotonic()
             org_token = set_current_org(rt.org_id)
             env_token = set_current_env(None if rt.env == PROD else rt.env)
             try:

@@ -34,6 +34,7 @@ from provisa.federation.connector_base import (
     RuntimeDep,
     probe_pg_extension,
 )
+from provisa.federation.duckdb_extensions import bring_up_statements
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
 
 if TYPE_CHECKING:
@@ -98,6 +99,9 @@ class DuckDBPostgresConnector(Connector):
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH_RW
+    # REQ-1142 (ATTACHABLE MEANS STAGED): what the attach needs staged. Not ``extension``, which
+    # names the extensions provisa-duckdb-ext mirrors (postgres is a core wheel's).
+    staged_needs = ("postgres",)
 
     def capability(self) -> Capability:
         # REQ-1934: no key_range. Measured: a BETWEEN on the key is pushed to Postgres and read
@@ -299,6 +303,7 @@ class DuckDBSqliteConnector(Connector):
     engine = "duckdb"
     source_type = "sqlite"
     mechanism = Mechanism.ATTACH_RW  # the sqlite extension attaches the file in place
+    staged_needs = ("sqlite",)  # REQ-1142: a core wheel's, as postgres
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -363,22 +368,20 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
 
-    def _install_sql(self) -> str:
-        return (
-            f"INSTALL {self.extension} FROM community"
-            if self.install_from_community
-            else f"INSTALL {self.extension}"
-        )
+    def _bring_up(self) -> list[str]:
+        if self.extension is None:  # every extension connector names its extension
+            raise TypeError(f"{type(self).__name__} names no extension")
+        return bring_up_statements(self.extension, from_community=self.install_from_community)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904 / REQ-899 — load-only, no live source
         try:
-            await fetch(self._install_sql())
-            await fetch(f"LOAD {self.extension}")
+            for statement in self._bring_up():
+                await fetch(statement)
         except Exception as e:
             return ProbeResult(
                 False,
                 f"{self.extension} did not load: {type(e).__name__}",
-                f"stage it: {self._install_sql()}",
+                f"stage it: {'; '.join(self._bring_up())}",
             )
         rows = await fetch(self._registered_query())
         if rows and rows[0]["n"]:
@@ -540,6 +543,8 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
         self.source_type = source_type
         # Unique per instance: the probe report and the disabled-connector list key on it.
         self.key = "duckdb_mssql" if source_type == "sqlserver" else f"duckdb_mssql_{source_type}"
+        # REQ-1142: an Entra sign-in is an azure secret, so it needs azure staged as well.
+        self.staged_needs = ("mssql", "azure") if source_type in self.ENTRA_TYPES else ("mssql",)
 
     def details(self, source: Source) -> dict:
         alias = f"_src_{source.id}"
@@ -548,6 +553,11 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
                 f"Server={source.host},{source.port};Database={source.database};"
                 f"User Id={source.username};Password={source.password}"
             )
+            # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate: a
+            # self-signed one is accepted only where the source pins it (federation_hints), as
+            # Source.jdbc_url does for Trino -- never a default.
+            if source.federation_hints.get("trust_server_certificate"):
+                dsn += ";TrustServerCertificate=yes"
             return {"attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE mssql)", "raw_alias": alias}
         from provisa.compiler.sql_literals import sql_literal
         from provisa.core.secrets import resolve_secrets
@@ -796,6 +806,7 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
     source_type = "iceberg"
     key = "duckdb_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no attach (REQ-951)
@@ -850,6 +861,7 @@ class DuckDBDatabricksIcebergConnector(_DuckDBExtensionConnector):  # REQ-1867
     source_type = "databricks"
     key = "duckdb_databricks_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no copy (REQ-951)

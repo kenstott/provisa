@@ -196,8 +196,9 @@ class _Dialect:
         pos = "_pos"
         if self.name == "duckdb":
             draw = f"hash(concat_ws(':', {salt_seed}, {key}, {pos}))"
+            # DuckDB 2.0 binds a lambda only in its keyword form; this SQL reaches DuckDB as written.
             return (
-                f"array_to_string(list_transform(range(length({_lit(shape)})), {pos} -> "
+                f"array_to_string(list_transform(range(length({_lit(shape)})), LAMBDA {pos} : "
                 f"CASE substr({_lit(shape)}, {pos} + 1, 1) "
                 f"WHEN 'A' THEN chr(65 + CAST({draw} % 26 AS INTEGER)) "
                 f"WHEN 'a' THEN chr(97 + CAST({draw} % 26 AS INTEGER)) "

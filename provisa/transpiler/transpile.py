@@ -32,6 +32,7 @@ from provisa.transpiler import (
     pg_held_types,
     pg_money,
     pg_syntax,
+    zoned_instants,
 )
 from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
@@ -454,6 +455,40 @@ def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino") if changed else sql
 
 
+def _utc_wall_outputs(
+    select: exp.Select, utc_wall: dict[tuple[str, str, str], set[str]]
+) -> dict[str, set[str]]:
+    """Each FROM or JOIN item of ``select`` that holds a UTC-wall instant, by its alias, with the
+    names it exposes them under: a table's declared columns, or the bare columns a derived table
+    passes on from one -- a governed read (REQ-039) is a table inside its relation. A derived
+    table's computed or masked output is no longer the column, and is not one of them."""
+    outputs: dict[str, set[str]] = {}
+    for source in [select.args.get("from_"), *(select.args.get("joins") or [])]:
+        item = source.this if source is not None else None
+        if isinstance(item, exp.Table) and item.args.get("catalog") is not None:
+            key = (item.catalog, item.db.lower(), item.name.lower())
+            if key in utc_wall:
+                outputs[item.alias_or_name] = utc_wall[key]
+        elif isinstance(item, exp.Subquery) and isinstance(item.this, exp.Select):
+            inner = item.this
+            below = _utc_wall_outputs(inner, utc_wall)
+            only = next(iter(below)) if len(below) == 1 else ""
+            passed = {
+                expression.alias_or_name
+                for expression in inner.expressions
+                if isinstance(
+                    column := (
+                        expression.this if isinstance(expression, exp.Alias) else expression
+                    ),
+                    exp.Column,
+                )
+                and column.name in below.get(column.table or only, ())
+            }
+            if passed:
+                outputs[item.alias_or_name] = passed
+    return outputs
+
+
 def rewrite_instants_for_trino(
     sql: str, utc_wall: dict[tuple[str, str, str], set[str]]
 ) -> str:  # REQ-2050
@@ -463,8 +498,9 @@ def rewrite_instants_for_trino(
 
     ``utc_wall`` maps ``(catalog, schema, table)`` to such a table's declared-timestamptz columns
     (trino_connectors.trino_utc_wall_columns). Only the statement's outputs -- the outermost
-    SELECT's items, each UNION branch's -- that are a bare column of such a table: a predicate, a
-    join or an inner query reads the column as the connector gives it, so its pushdown stands."""
+    SELECT's items, each UNION branch's -- that are a bare column of such a table, directly or
+    through a derived table that passes it on: a predicate, a join or an inner query reads the
+    column as the connector gives it, so its pushdown stands."""
     if not utc_wall:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -473,15 +509,8 @@ def rewrite_instants_for_trino(
         selects = [s for s in tree.find_all(exp.Select) if s.find_ancestor(exp.Select) is None]
     changed = False
     for select in selects:
-        tables: dict[str, set[str]] = {}
         sources = [select.args.get("from_")] + list(select.args.get("joins") or [])
-        for source in sources:
-            table = source.this if source is not None else None
-            if not isinstance(table, exp.Table) or table.args.get("catalog") is None:
-                continue
-            key = (table.catalog, table.db.lower(), table.name.lower())
-            if key in utc_wall:
-                tables[table.alias_or_name] = utc_wall[key]
+        tables = _utc_wall_outputs(select, utc_wall)
         if not tables:
             continue
         only = next(iter(tables)) if len(sources) == 1 else None
@@ -836,12 +865,16 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
 _INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql", "trino", "presto", "athena"})
+# The engines whose session is the client's zone (REQ-2171): the wall time is written naming UTC,
+# which they read as that instant in every session.
+_INSTANT_NAMES_UTC = frozenset({"trino", "presto", "athena"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
     the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
-    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
+    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050). On Trino, Presto and Athena,
+    whose session is the client's zone, the text names UTC."""
     said = pg_sql.upper()
     zoned = "TIMESTAMPTZ" in said or "TIMESTAMP WITH TIME ZONE" in said
     if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or not zoned:
@@ -861,8 +894,10 @@ def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
             continue  # not a date and time (the source refuses it as it is)
         if instant.tzinfo is None:
             continue  # no offset: read in the session's zone, UTC, as written
-        utc = instant.astimezone(timezone.utc).replace(tzinfo=None)
-        literal.replace(exp.Literal.string(utc.isoformat(sep=" ")))
+        utc = instant.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+        if target_dialect in _INSTANT_NAMES_UTC:
+            utc = f"{utc} UTC"
+        literal.replace(exp.Literal.string(utc))
     return tree.sql(dialect="postgres")
 
 
@@ -1774,7 +1809,7 @@ _OWN_TRY_CASTS = {
 
 
 def transpile(
-    pg_sql: str, target_dialect: str, *, pgvector: bool = False
+    pg_sql: str, target_dialect: str, *, pgvector: bool = False, quote_identifiers: bool = False
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -1783,6 +1818,8 @@ def transpile(
         target_dialect: SQLGlot dialect name (e.g. "trino", "postgres", "mysql").
         pgvector: the statement runs on a PostgreSQL source with the pgvector extension, whose
             own operator a similarity search is then written with (REQ-423).
+        quote_identifiers: send every identifier quoted, for a source written in another
+            dialect's text whose database folds an unquoted name to upper case (REQ-1671).
 
     Returns:
         SQL string in target dialect.
@@ -1813,7 +1850,7 @@ def transpile(
     # UNQUOTED (verified live: `CreateTable` compiled `product_id` bare) — fixed at the DDL side
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
-    identify = target_dialect in ("snowflake", "oracle")
+    identify = quote_identifiers or target_dialect in ("snowflake", "oracle")
     if target_dialect in ("trino", "athena") and pg_sql.lstrip().upper().startswith(
         ("INSERT", "UPDATE")
     ):
@@ -1876,6 +1913,9 @@ def transpile(
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
+    # functions, so what they write of their own text is not read as a statement's.
+    lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(
@@ -2216,19 +2256,39 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         | {t.alias_or_name for t in tree.find_all(exp.Table) if t.name in ctes}
     )
 
-    def _reads_only_derived(column: exp.Column) -> bool:
+    def _sources(column: exp.Column) -> list[exp.Expr]:
         select = column.find_ancestor(exp.Select)
         if select is None:
-            return False
-        sources = [
+            return []
+        return [
             src.this if isinstance(src, (exp.From, exp.Join)) else src
             for src in [select.args.get("from_"), *select.args.get("joins", [])]
             if src is not None
         ]
+
+    def _reads_only_derived(column: exp.Column) -> bool:
+        sources = _sources(column)
         return bool(sources) and all(
             isinstance(src, exp.Subquery) or (isinstance(src, exp.Table) and src.name in ctes)
             for src in sources
         )
+
+    cte_bodies = {c.alias: c.this for c in tree.find_all(exp.CTE)}
+
+    def _quoted_outputs(column: exp.Column) -> set[str]:
+        """The names the derived relations ``column`` reads output in quotes, as written."""
+        outputs: set[str] = set()
+        for src in _sources(column):
+            if column.table and src.alias_or_name != column.table:
+                continue
+            body = src.this if isinstance(src, exp.Subquery) else cte_bodies.get(src.name)
+            if not isinstance(body, exp.Query):
+                continue
+            for projection in body.selects:
+                name = projection.args.get("alias" if isinstance(projection, exp.Alias) else "this")
+                if isinstance(name, exp.Identifier) and name.quoted:
+                    outputs.add(name.this)
+        return outputs
 
     def _stored(ident: exp.Expr | None, own: set[str]) -> None:
         if isinstance(ident, exp.Identifier) and ident.this == ident.this.lower():
@@ -2253,7 +2313,12 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         _stored(column.args.get("table"), table_aliases | ctes)
         qualifier = column.table
         if (qualifier and qualifier in derived) or (not qualifier and _reads_only_derived(column)):
-            continue  # a derived relation's column is the statement's own output name
+            # A derived relation's column is the statement's own output name. Unquoted, Exasol
+            # reads it in upper case, which a quoted lowercase output does not answer to.
+            name = column.this
+            if isinstance(name, exp.Identifier) and name.this in _quoted_outputs(column):
+                name.set("quoted", True)
+            continue
         # An ORDER BY of an output alias names the alias, not a stored column.
         in_order = column.find_ancestor(exp.Order) is not None
         _stored(column.args.get("this"), output_aliases if in_order else set())

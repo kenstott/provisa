@@ -262,7 +262,7 @@ def test_a_read_as_a_value_is_the_form_it_lands_in_except_where_it_is_its_own_ty
 )
 def test_duckdb_reads_a_timetz_as_postgresqls_text(value, canonical):
     expression = landing_form("timetz", "duckdb").format(col=value)
-    assert duckdb.sql(f"SELECT {expression}").fetchone() == (canonical,)
+    assert duckdb.sql(f"SELECT {expression}").fetchall() == [(canonical,)]
 
 
 _TABLES = {("public", "hosts"): {"ip": "inet", "lsn": "pg_lsn"}}

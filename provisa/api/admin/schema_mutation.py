@@ -144,6 +144,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_table_input,
     _resolve_admin_context,
     _register_source_on_engine,
+    engine_unreachable,
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
@@ -2595,6 +2596,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+        from provisa.api.app import state as _app_state
+
+        # REQ-1142, REQ-1998: no reader in this deployment: shown when it is added, never at
+        # its first query, naming what is missing.
+        _unreachable = engine_unreachable(_app_state, input.id, input.type)
+        if _unreachable is not None:
+            return _unreachable
 
         from provisa.security.residency import CREATED
 
@@ -3006,6 +3014,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+        from provisa.api.app import state as _app_state
+
+        # REQ-1142, REQ-1998: no reader in this deployment: shown when it is added, never at
+        # its first query, naming what is missing.
+        _unreachable = engine_unreachable(_app_state, input.id, input.type)
+        if _unreachable is not None:
+            return _unreachable
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
@@ -5959,7 +5974,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def update_gql_naming_convention(
         self, info: StrawberryInfo, convention: str
     ) -> MutationResult:  # REQ-253, REQ-416
-        """Set the global naming convention and rebuild schemas for all roles."""
+        """Set the acting org's GraphQL naming convention (REQ-1327) and rebuild its schemas."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
 
@@ -5971,8 +5986,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=err)
 
         convention = _naming.normalize_convention(convention)  # REQ-195: kept as its preset
-        state.global_gql_naming_convention = convention
-        _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
+        from provisa.core.org_settings import read_org_overrides, write_org_overrides
+
+        assert state.model_db is not None, "an org's convention is stored in its model"
+        overrides = await read_org_overrides(state.model_db)
+        await write_org_overrides(
+            state.model_db,
+            {"naming": {**(overrides.get("naming") or {}), "convention": convention}},
+            updated_by=getattr(
+                getattr(info.context["request"].state, "identity", None), "user_id", "anonymous"
+            ),
+        )
+        state.settings_overrides = await read_org_overrides(state.model_db)
         await _rebuild_schemas()
         return MutationResult(
             success=True,

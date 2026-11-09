@@ -31,11 +31,21 @@ def _source(**kw: Any):
     return SimpleNamespace(**{**base, **kw})
 
 
-def test_the_duckdb_engine_reaches_motherduck_in_place():
+def test_on_duckdb_2_a_motherduck_source_needs_its_postgres_endpoint_reader():
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): MotherDuck's extension does not load on DuckDB 2.0.
     from provisa.federation.engine import build_duckdb_engine
 
-    connector = build_duckdb_engine().connectors["motherduck"]
-    assert isinstance(connector, DuckDBMotherDuckConnector)
+    engine = build_duckdb_engine()
+    assert "motherduck" not in engine.connectors
+    assert "MotherDuck's Postgres-endpoint reader" in (
+        engine.unreachable_reason("motherduck") or ""
+    )
+
+
+def test_the_motherduck_connector_attaches_where_its_extension_loads():
+    # What the engine attaches with on a DuckDB MotherDuck supports.
+    connector = DuckDBMotherDuckConnector()
     assert connector.extension == "motherduck" and connector.install_from_community is False
     assert connector.capability().write  # writes through the engine, as on the pg engine
 
@@ -64,6 +74,8 @@ class _Connection:
 
 def _runtime() -> Any:
     runtime: Any = SimpleNamespace(_con=_Connection(), _motherduck_account=None)
+    # The runtime's statements on the instance (each on a cursor of its own), recorded here.
+    runtime._on_instance = lambda sql, params=None: runtime._con.execute(sql, params)
     runtime._sign_in = lambda src: DuckDBFederationRuntime._sign_in_motherduck(runtime, src)
     runtime._sign_in_motherduck_as = lambda token, who: (
         DuckDBFederationRuntime._sign_in_motherduck_as(runtime, token, who)
@@ -105,6 +117,7 @@ def test_the_engine_signs_in_before_it_attaches():
         _file_holders={},
         _motherduck_account=None,
     )
+    runtime._on_instance = lambda sql, params=None: ran.append((sql, params))
     runtime._reach_location = lambda d: DuckDBFederationRuntime._reach_location(runtime, d)
     runtime._hold_file = lambda s, a: DuckDBFederationRuntime._hold_file(runtime, s, a)
     runtime._sign_in_motherduck = lambda s: DuckDBFederationRuntime._sign_in_motherduck(runtime, s)

@@ -192,6 +192,27 @@ def test_a_spill_that_reaches_the_end_of_its_volume_is_refused_naming_the_cap():
     assert residual._named(other) is other  # noqa: SLF001
 
 
+def test_a_spill_that_reaches_the_end_of_its_volume_as_the_answer_streams_is_refused_naming_the_cap():
+    """DuckDB 2.0 streams the answer through Arrow's reader, which raises the engine's error as an
+    OSError carrying only its message: the end of the spill volume, met there, is still refused
+    naming the cap."""
+    residual.configure(
+        **duckdb_bounds(), spill_dir=str(Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill")
+    )
+    rows = pa.table({"n": list(range(200_000))})
+    answer = residual.answer(
+        "SELECT CASE WHEN n = 150000 "
+        "THEN error('IO Error: Could not write file \"spill/x.tmp\": No space left on device') "
+        "ELSE n END AS n FROM t",
+        "duckdb",
+        "t",
+        rows,
+    )
+    with pytest.raises(residual.SpillCapped, match="codesource.duckdb_spill_cap_mb"):
+        for _ in answer:
+            pass
+
+
 _FAILS_MIDWAY = """
 import sys, threading, time
 sys.path.insert(0, sys.argv[1])

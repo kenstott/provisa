@@ -77,6 +77,7 @@ import {
   DomainModeCard,
   NameClashPolicyCard,
   NamingConventionsCard,
+  OrgProcessingCards,
 } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
@@ -383,6 +384,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <OrgProcessingCards />
                   <NameClashPolicyCard />
                   <ApolloSubgraphCard />
                 </SimpleGrid>

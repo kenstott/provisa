@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from provisa.core import deployment_settings
+from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -117,6 +118,8 @@ class Setting:
     # The Helm chart value that sets this setting where the chart renders the engine's config
     # (``PROVISA_ENGINE_CONFIG_SOURCE=chart``): there it is shown read-only, naming the value.
     chart_value: str | None = None
+    # REQ-1327: the acting org's own value, from its settings rows, is read before anything else.
+    org_owned: bool = False
 
 
 class Resolved(NamedTuple):
@@ -379,6 +382,14 @@ def _stored_raw(s: Setting) -> Any | None:
     return raw
 
 
+def _org_raw(s: Setting) -> Any | None:
+    """The acting org's stored value for an org-owned setting, unparsed (REQ-1327)."""
+    if not s.org_owned:
+        return None
+    block, _, field_name = s.key.partition(".")
+    return (acting_org_overrides().get(block) or {}).get(field_name)
+
+
 def _env_raw(s: Setting) -> str | None:
     if s.env is None:
         return None
@@ -514,8 +525,12 @@ def adopt_created(key: str) -> None:
 
 
 def value(key: str) -> Any:
-    """The value in force in this process: the reader's one door."""
+    """The value in force in this process: the reader's one door. An org-owned setting (REQ-1327)
+    reads the acting org's own value first; the rest of the order is what that org inherits."""
     s = setting(key)
+    own = _org_raw(s)
+    if own is not None:
+        return parse(s, own, "org")
     if s.effect == "restart" and _frozen is not None:
         if key not in _frozen:
             raise RuntimeError(f"setting {key} was declared after this process booted")

@@ -63,6 +63,7 @@ def _update_patches(p, rebuild: AsyncMock, monkeypatch):
 
     engine: Any = MagicMock()
     engine.reconcile_landed_tables = AsyncMock()
+    engine.engine.unreachable_reason.return_value = None  # the engine reads the source
     monkeypatch.setattr(state, "federation_engine", engine, raising=False)
     with (
         p,

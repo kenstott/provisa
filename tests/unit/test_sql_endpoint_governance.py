@@ -908,3 +908,37 @@ async def test_statements_are_split_as_data_sql_splits_them(sql_client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"statements": ["SELECT 'a;b'", "SELECT 1 /* c;d */"]}
+
+
+class TestSqlPageIsNotCountedAgainstTheThreshold:
+    """REQ-029 (amended 2026-11-08): a viewer page is capped by its own LIMIT, so it is not a
+    buffered result measured against the large-result threshold. A viewer asking pageSize+1 rows
+    to learn whether another page exists would otherwise cross a threshold equal to its page."""
+
+    async def _buffered_flag(self, sql_client, monkeypatch, body: dict):
+        seen: dict = {}
+
+        async def _batch(sql, role, state, **kw):
+            seen.update(kw)
+            return _make_query_result(rows=[(1,)], column_names=["id"])
+
+        monkeypatch.setattr("provisa.pgwire._pipeline.execute_sql_batch", _batch)
+        resp = await sql_client.post("/data/sql", json=body)
+        assert resp.status_code == 200, resp.text
+        return seen["buffered"]
+
+    async def test_a_page_runs_unbuffered(self, sql_client, monkeypatch):
+        buffered = await self._buffered_flag(
+            sql_client,
+            monkeypatch,
+            {"sql": "SELECT id FROM orders LIMIT 1001", "role": "org_admin", "paged": True},
+        )
+        assert buffered is False
+
+    async def test_a_statement_that_is_not_a_page_stays_buffered(self, sql_client, monkeypatch):
+        buffered = await self._buffered_flag(
+            sql_client,
+            monkeypatch,
+            {"sql": "SELECT id FROM orders", "role": "org_admin"},
+        )
+        assert buffered is True
