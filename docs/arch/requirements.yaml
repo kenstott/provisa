@@ -48213,9 +48213,13 @@
     alongside isolated_available so the tab disables the lane the org cannot buy rather than failing the
     save. The shared and external lanes are ungated: shared is where every org starts, and an external engine
     is the org''s own compute. A deployment with no commercial plugin, and an org with no billing row, gate
-    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) Maintainer 2026-11-09 (REQ-1327): saving
-    an org''s engine lane is the platform''s, on the deployment check, naming the org. org_settings keeps
-    the page read-only, with its report.'
+    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) [SUPERSEDED by REQ-1412, 2026-11-09 -- on
+    SaaS an org admin changes its own engine lane. Kept here for history; do not implement against it.]
+    Maintainer 2026-11-09 (REQ-1327): saving an org''s engine lane is the platform''s, on the deployment
+    check, naming the org. org_settings keeps the page read-only, with its report. [END SUPERSEDED BLOCK]
+    (Amended 2026-11-09, THE ORG ADMIN CHANGES ITS LANE:) Maintainer 2026-11-09: on SaaS an org admin changes
+    its own org''s engine lane, on org_settings, on the org page. The platform''s route stays, on the deployment
+    check, so an operator can set it for a named org.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
