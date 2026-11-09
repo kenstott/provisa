@@ -154,9 +154,10 @@
         </p>
         <p>
           When a team does need one, it usually comes down to three things: managing load on the
-          source, keeping history, or decoupling runtimes. Each of those is declared in the model.
-          A replica is read instead of the source, which takes the load off it and separates the
-          two runtimes. A bitemporal view keeps both when something happened and when it was
+          source, keeping history, or decoupling runtimes. All of it is declared on the table. A
+          replica carries the load. You can say queries never read the source live, which protects
+          the source and separates the two runtimes. You can keep the copy in a region closer to
+          you for performance. A bitemporal view keeps both when something happened and when it was
           recorded. Either way it stays governed, and everyone can see it.
         </p>
 
