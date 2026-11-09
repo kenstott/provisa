@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1922: the Platform page, a platform administrator's. Three sections: the platform's regions
+// REQ-1922: the Platform page, a platform administrator's. Four sections: the platform's regions
 // (each an id, a description, the purposes it serves and its data addresses), the grant every new
-// org receives, and each org's grant (the regions it is granted and its stores in each). A node
+// org receives, each org's grant (the regions it is granted and its stores in each), and the
+// deployment's Redis and materialize-store connections (REQ-1327). A node
 // reads the platform's regions before it opens any store, and binds an org's region lane when it
 // builds the org, so every change here applies when the nodes restart; the page says so. Removing
 // a region or a grant orgs hold lists the orgs it affects and is done only once confirmed.
@@ -60,6 +61,7 @@ import { PanelDelete } from "../list/PanelDelete";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
+import { HotCacheStoreSettingsPanel, MaterializedSettingsPanel } from "./CacheStorageTab";
 import { GrantEditor } from "./GrantEditor";
 import { PurposeBadges, PurposesLegend } from "./RegionPurposes";
 
@@ -133,6 +135,9 @@ export function PlatformRegionsTab() {
           <Tabs.Tab value="orgs" data-testid="platform-section-orgs">
             {t("platformRegions.sectionOrgs")}
           </Tabs.Tab>
+          <Tabs.Tab value="stores" data-testid="platform-section-stores">
+            {t("platformRegions.sectionStores")}
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="regions">
           <RegionsSection data={data} onSaved={saved} />
@@ -159,6 +164,12 @@ export function PlatformRegionsTab() {
         </Tabs.Panel>
         <Tabs.Panel value="orgs">
           <OrgsSection onSaved={() => setChanged(true)} />
+        </Tabs.Panel>
+        <Tabs.Panel value="stores">
+          <Stack gap="sm">
+            <HotCacheStoreSettingsPanel />
+            <MaterializedSettingsPanel />
+          </Stack>
         </Tabs.Panel>
       </Tabs>
     </Stack>
