@@ -98,3 +98,24 @@ def test_an_instant_under_nested_maps_reads_as_postgresql_writes_it(level, expec
     answer = con.execute(transpile_to_duckdb(_statement(level, 2))).fetchone()
     assert answer is not None
     assert answer[0] == expected
+
+
+def _to_json_of_to_json(depth: int) -> str:
+    inner = "x.t"
+    for _ in range(depth):
+        inner = f"TO_JSON({inner})"
+    return f"SELECT {inner} AS v FROM x"
+
+
+def test_a_to_json_of_a_to_json_grows_by_a_constant_per_level():
+    sizes = [len(transpile_to_duckdb(_to_json_of_to_json(depth))) for depth in range(2, 8)]
+    steps = [b - a for a, b in zip(sizes, sizes[1:], strict=False)]
+    assert max(steps) == min(steps), sizes
+
+
+def test_an_instant_under_a_to_json_of_a_to_json_reads_as_postgresql_writes_it():
+    con = duckdb.connect()
+    con.execute("CREATE TABLE x AS SELECT TIMESTAMP '2026-07-01 08:00:00' AS t")
+    answer = con.execute(transpile_to_duckdb(_to_json_of_to_json(3))).fetchone()
+    assert answer is not None
+    assert answer[0] == '"2026-07-01T08:00:00"'
