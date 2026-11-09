@@ -44,6 +44,7 @@ RESERVED_KIND_KEYWORDS = (
     "sources",
     "api-sources",
     "kafka-sources",
+    "connectors",  # REQ-2221: the connectors an org offers
     "tags",
     "roles",
     "commands",

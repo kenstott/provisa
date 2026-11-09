@@ -1,0 +1,14 @@
+{
+  "connectorSetup": {
+    "identity": "Connecteur {{name}}, suit {{ref}}.",
+    "missing": "Renseignez l'hôte, le port, le code d'appairage du connecteur et toutes les valeurs requises.",
+    "image": "Image",
+    "imageHint": "L'image exécutée par votre déploiement. Provisa vérifie l'hôte par rapport à celle-ci lors de la connexion.",
+    "host": "Hôte",
+    "hostHint": "L'hôte qui exécute l'image, tel que Provisa l'atteint.",
+    "port": "Port",
+    "pairing": "Code d'appairage",
+    "pairingHint": "La ligne affichée par le conteneur lors de son premier démarrage, après \"pairing code:\". Elle est utilisée une seule fois et n'est pas conservée.",
+    "secretHint": "Le secret de l'organisation à utiliser. Sa valeur n'est jamais saisie ici."
+  }
+}

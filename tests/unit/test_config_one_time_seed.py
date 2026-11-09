@@ -944,6 +944,65 @@ async def test_kafka_sources_round_trip_through_the_export(db, new_plane):
     assert await _model(fresh) == await _model(db)
 
 
+# --- the connectors block (REQ-2221) ---------------------------------------------------------------
+
+
+def _connector() -> dict:
+    return {
+        "name": "crm",
+        "git": "https://git.example/crm.git",
+        "ref": "main",
+        "commit": "a" * 40,
+        "path": "connectors/crm",
+        "build_command": "make dist",
+        "language": "python",
+        "image": "registry.example/data/crm",
+        "digest": "sha256:" + "b" * 64,
+        "code_hash": "c" * 64,
+        "arch": "amd64",
+        "requires": [{"name": "db_uri", "secret": True}],
+    }
+
+
+async def test_connectors_are_seeded_once_and_read_from_the_store(db):  # REQ-2221
+    raw = _raw(connectors=[_connector()])
+    seeded, config = await _boot(db, raw)
+    assert seeded is True
+    assert [c.name for c in config.connectors] == ["crm"]
+    assert await _rows(db, "connectors", "name", "digest") == [("crm", "sha256:" + "b" * 64)]
+
+    changed = {**_connector(), "digest": "sha256:" + "d" * 64}
+    _seeded, config = await _boot(db, _raw(connectors=[changed]))
+    assert config.connectors[0].digest == "sha256:" + "b" * 64
+
+
+async def test_connectors_round_trip_through_the_export_whole(db, new_plane):  # REQ-2221
+    raw = _raw(connectors=[_connector()])
+    await _boot(db, raw)
+    exported = with_store_model(raw, await _model(db))
+    assert exported["connectors"] == [_connector()]
+    fresh = await new_plane()
+    async with fresh.acquire() as conn:
+        await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
+    assert await _model(fresh) == await _model(db)
+
+
+async def test_sources_lists_a_connector_without_its_build_settings(db):  # REQ-2221
+    from provisa.core.repositories import connector as connector_repo
+
+    await _boot(db, _raw(connectors=[_connector()]))
+    async with db.acquire() as conn:
+        (offered,) = await connector_repo.offered(conn)
+        whole = await connector_repo.get(conn, "crm")
+    assert "path" not in offered and "build_command" not in offered
+    assert (offered["digest"], offered["requires"]) == (
+        "sha256:" + "b" * 64,
+        [{"name": "db_uri", "secret": True}],
+    )
+    # The build settings are kept, so a promoted block reads back whole.
+    assert whole is not None and whole["build_command"] == "make dist"
+
+
 # --- a seeded table's names survive the export (REQ-1634) -----------------------------------------
 
 

@@ -38,6 +38,7 @@ import sqlglot
 
 from provisa.codesource import image_build, oci
 from provisa.codesource.bundle import content_hash
+from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.worker import PROTOCOL
 from provisa.runtime_deps.code_runtimes import RUNTIMES, LINUX_ARM64, LINUX_X64
 
@@ -124,6 +125,7 @@ def base(tmp_path: Path) -> oci.Registry:
 
 
 NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
+MANIFEST = {"exports": [{"name": "rates"}], "types": {}, "requires": []}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",
@@ -143,6 +145,7 @@ def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | Non
         entry=entry,
         exports=["rates"],
         names=NAMES,
+        manifest=MANIFEST,
         registries=[],
         cache_root=cache,
         version=VERSION,
@@ -219,9 +222,13 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "dev.provisa.code_hash": content_hash(code),
         "dev.provisa.exports": "rates",
         "dev.provisa.names": json.dumps(NAMES, sort_keys=True, separators=(",", ":")),
+        # REQ-2221: what a host's handshake is checked by, against the image at its digest.
+        "dev.provisa.manifest_hash": manifest_hash(MANIFEST),
     }
     assert "PROVISA_CODE_HASH=" + content_hash(code) in config["Env"]
+    assert "PROVISA_MANIFEST_FILE=/opt/provisa/front/manifest.json" in config["Env"]
     paths = _layers_paths(built)
+    assert "opt/provisa/front/manifest.json" in paths
     assert {
         "usr/lib/libc.so.6",
         "opt/provisa/runtime/python/bin/python3.12",
