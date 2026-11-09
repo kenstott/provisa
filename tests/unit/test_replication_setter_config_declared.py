@@ -33,6 +33,7 @@ from tests.unit.gate_identity import serve_every_column
 # The stored row the setters read before judging the save: a change-fed table of a source the
 # control plane owns, so neither the replication-clock rule nor the load_protected rule refuses.
 _STORED = SimpleNamespace(
+    mapping={},
     source_id="from-api",
     schema_name="public",
     table_name="customers",

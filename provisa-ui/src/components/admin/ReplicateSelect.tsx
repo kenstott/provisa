@@ -37,6 +37,7 @@ export function ReplicateSelect({
   loadProtected,
   onScheduledChange,
   testId,
+  disabled,
 }: {
   /** The stored setting: null = Default. */
   value: number | null;
@@ -57,6 +58,8 @@ export function ReplicateSelect({
    */
   onScheduledChange?: (value: number | null, loadProtected: boolean | null) => void;
   testId: string;
+  /** Shown, not changeable: a value its connector fixes. */
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const read = useFormRead();
@@ -107,6 +110,7 @@ export function ReplicateSelect({
       }
       comboboxProps={{ withinPortal: true }}
       allowDeselect={false}
+      disabled={disabled}
       data-testid={testId}
     />
   );

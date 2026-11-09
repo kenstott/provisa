@@ -19,10 +19,18 @@ vi.mock("../../../api/secrets", () => ({
 }));
 
 import type { Connector } from "../../../api/connectors";
-import { ConnectorSetupFields } from "../ConnectorSetupFields";
+import { ConnectorSetupFields, ConnectorSourceValues } from "../ConnectorSetupFields";
+import type { SourceFormState } from "../SourceFormFields";
+import { codeFieldsFromMapping, codeMappingJson } from "../codeSource";
 import {
+  connectorChose,
+  connectorFields,
+  connectorFormValues,
   connectorMappingJson,
   connectorPick,
+  fixedFormKeys,
+  fixedFormValues,
+  heldFields,
   missingConnectorFields,
   pickedConnector,
   requiredField,
@@ -39,7 +47,126 @@ const CRM: Connector = {
   code_hash: "c".repeat(64),
   arch: "amd64",
   requires: [{ name: "db_uri", secret: true }, { name: "region" }],
+  description: "",
+  icon: "",
+  settings: [],
 };
+
+const FILED: Connector = {
+  ...CRM,
+  description: "Our CRM",
+  icon: "data:image/png;base64,AAAA",
+  requires: [
+    { name: "db_uri", secret: true },
+    { name: "region", default_value: "eu-west-1" },
+    { name: "script", multiline: true, fixed_value: "print(1)" },
+  ],
+  settings: [
+    { name: "replicate", default_value: 0 },
+    { name: "cache_ttl", fixed_value: 300 },
+    { name: "cache_enabled", default_value: false },
+  ],
+};
+
+const FORM = { replicate: 0, cacheTtl: "300", cacheEnabled: false } as SourceFormState;
+
+describe("what a connector's standard file sets", () => {
+  it("starts the form at its defaults and its fixed values", () => {
+    expect(connectorFormValues(FILED)).toEqual({
+      replicate: 0,
+      cacheTtl: "300",
+      cacheEnabled: false,
+    });
+    expect(connectorFields(FILED)).toEqual({
+      [requiredField("region")]: "eu-west-1",
+      [requiredField("script")]: "print(1)",
+    });
+  });
+
+  it("names only the settings changed from their defaults", () => {
+    expect(connectorChose(FORM, FILED)).toEqual([]);
+    expect(connectorChose({ ...FORM, replicate: -1 }, FILED)).toEqual(["replicate"]);
+  });
+
+  it("reports the settings it fixes", () => {
+    expect([...fixedFormKeys(FILED)]).toEqual(["cacheTtl"]);
+    expect(fixedFormValues(FILED)).toEqual({ cacheTtl: "300" });
+    expect([...fixedFormKeys(null)]).toEqual([]);
+  });
+
+  it("sends a fixed value as the connector says, whatever the form holds", () => {
+    const sent = JSON.parse(
+      connectorMappingJson({ [requiredField("script")]: "changed" }, FILED, ["replicate"]),
+    );
+    expect(sent.settings.script).toBe("print(1)");
+    expect(sent.connector_join.chose).toEqual(["replicate"]);
+  });
+
+  it("holds a saved source's fixed values to what the connector says now", () => {
+    const held = heldFields({ code_connector_settings: '{"script":"old","region":"ap"}' }, FILED);
+    expect(JSON.parse(held.code_connector_settings)).toEqual({ script: "print(1)", region: "ap" });
+  });
+
+  it("shows a fixed value read-only, and multi-line text as a text area", () => {
+    renderInForm(
+      <ConnectorSetupFields
+        connector={FILED}
+        fields={connectorFields(FILED)}
+        setFields={() => undefined}
+      />,
+    );
+    const script = screen.getByTestId("connector-require-script") as HTMLTextAreaElement;
+    expect(script.tagName).toBe("TEXTAREA");
+    expect(script.readOnly).toBe(true);
+    expect(script.value).toBe("print(1)");
+    const region = screen.getByTestId("connector-require-region") as HTMLInputElement;
+    expect(region.readOnly).toBe(false);
+    expect(region.value).toBe("eu-west-1");
+  });
+
+  it("keeps a saved source's values whole and its connector named", () => {
+    const fields = codeFieldsFromMapping(
+      JSON.stringify({
+        runtime: "python",
+        code: { kind: "git", repository: "r", commit: "c" },
+        mode: "built",
+        remote: {},
+        content_hash: "h",
+        connector: "crm",
+        settings: { script: "line one\nline two" },
+      }),
+    );
+    expect(fields.code_settings).toBe("");
+    const saved = JSON.parse(codeMappingJson("python", fields));
+    expect(saved.connector).toBe("crm");
+    expect(saved.settings).toEqual({ script: "line one\nline two" });
+  });
+
+  it("edits a saved source's values, a fixed one read-only", () => {
+    function Saved() {
+      const [fields, setFields] = useState<Record<string, string>>({
+        code_connector_settings: '{"script":"print(1)","region":"ap"}',
+      });
+      return (
+        <>
+          <ConnectorSourceValues connector={FILED} fields={fields} setFields={setFields} />
+          <output data-testid="saved">{fields.code_connector_settings}</output>
+        </>
+      );
+    }
+    renderInForm(<Saved />);
+    expect((screen.getByTestId("connector-require-script") as HTMLTextAreaElement).readOnly).toBe(
+      true,
+    );
+    fireEvent.change(screen.getByTestId("connector-require-region"), {
+      target: { value: "us" },
+    });
+    expect(JSON.parse(screen.getByTestId("saved").textContent ?? "")).toEqual({
+      script: "print(1)",
+      region: "us",
+    });
+  });
+});
 
 function Form({ initial = {} }: { initial?: Record<string, string> }) {
   const [fields, setFields] = useState<Record<string, string>>(initial);

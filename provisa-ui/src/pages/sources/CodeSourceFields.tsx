@@ -439,21 +439,24 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
             />
           </FormField>
         </FieldGroup>
-        <FieldGroup>
-          <FormField size="long" help={t("codeSourceFields.settingsHint")}>
-            <Textarea
-              label={t("codeSourceFields.settings")}
-              placeholder={"region = eu-west\nthreshold = 0.8"}
-              value={fields.code_settings ?? ""}
-              onChange={(e) => set({ code_settings: e.currentTarget.value })}
-              autosize
-              minRows={2}
-              maxRows={10}
-              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
-              data-testid="code-settings"
-            />
-          </FormField>
-        </FieldGroup>
+        {/* A connector's source shows each value its code requires instead. */}
+        {!fields.code_connector && (
+          <FieldGroup>
+            <FormField size="long" help={t("codeSourceFields.settingsHint")}>
+              <Textarea
+                label={t("codeSourceFields.settings")}
+                placeholder={"region = eu-west\nthreshold = 0.8"}
+                value={fields.code_settings ?? ""}
+                onChange={(e) => set({ code_settings: e.currentTarget.value })}
+                autosize
+                minRows={2}
+                maxRows={10}
+                styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                data-testid="code-settings"
+              />
+            </FormField>
+          </FieldGroup>
+        )}
 
         {NAMED_ENTRY.has(type) && (
           <FieldGroup>

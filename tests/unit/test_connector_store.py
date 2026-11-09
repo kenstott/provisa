@@ -79,3 +79,39 @@ async def test_a_new_version_replaces_the_row(control_plane):
         await connector_repo.upsert(conn, updated)
         whole = await connector_repo.list_all(conn)
     assert [r["digest"] for r in whole] == ["sha256:" + "d" * 64]
+
+
+async def test_the_standard_files_values_are_kept_and_offered(control_plane):
+    from provisa.core.models import ConnectorSetting
+
+    db = control_plane.org()
+    connector = _connector().model_copy(
+        update={
+            "description": "Our CRM",
+            "icon": "data:image/png;base64,AAAA",
+            "settings": [ConnectorSetting(name="replicate", default_value=0)],
+            "requires": [
+                ConnectorRequirement(name="db_uri", secret=True),
+                ConnectorRequirement(name="script", multiline=True, fixed_value="print(1)"),
+            ],
+        }
+    )
+    async with db.acquire() as conn:
+        await connector_repo.upsert(conn, connector)
+        (row,) = await connector_repo.offered(conn)
+    assert row["description"] == "Our CRM" and row["icon"] == "data:image/png;base64,AAAA"
+    assert row["settings"] == [{"name": "replicate", "default_value": 0}]
+    assert (
+        row["requires"][1]["multiline"] is True and row["requires"][1]["fixed_value"] == "print(1)"
+    )
+    assert "path" not in row and "build_command" not in row
+
+
+def test_the_new_columns_reach_a_database_made_before_them():
+    from pathlib import Path
+
+    import provisa.core
+
+    schema = (Path(provisa.core.__file__).parent / "schema.sql").read_text()
+    for column in ("description", "icon", "settings"):
+        assert f"ALTER TABLE connectors ADD COLUMN IF NOT EXISTS {column} " in schema

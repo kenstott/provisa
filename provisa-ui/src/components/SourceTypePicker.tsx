@@ -26,6 +26,10 @@ export interface PickerItem {
   /** The plain name, shown with ``reach`` as an icon; ``label`` carries the select's text suffix. */
   name?: string;
   reach?: { tag: "live" | "replica" | "unreachable"; liveEngines: string[] };
+  /** A connector's own image (a data: URI), shown in place of the type's logo. */
+  icon?: string;
+  /** A connector's own line saying what it is. */
+  description?: string;
 }
 
 export interface PickerGroup {
@@ -83,7 +87,8 @@ function writeRecent(value: string): void {
 
 function matches(item: PickerItem, query: string): boolean {
   if (!query) return true;
-  const hay = `${item.label} ${item.value} ${ALIASES[item.value] ?? ""}`.toLowerCase();
+  const hay =
+    `${item.label} ${item.value} ${ALIASES[item.value] ?? ""} ${item.description ?? ""}`.toLowerCase();
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -178,7 +183,9 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
   const row = (item: PickerItem, group: string) => (
     <Tip
       key={`${group}:${item.value}`}
-      text={`${item.name ?? item.label}${item.reach ? ` — ${reachText(item.reach)}` : ""}`}
+      text={`${item.name ?? item.label}${
+        item.reach ? ` — ${reachText(item.reach)}` : item.description ? ` — ${item.description}` : ""
+      }`}
     >
       <UnstyledButton
         data-picker-row
@@ -199,14 +206,33 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
         }}
         className="source-type-picker-row"
       >
-        <SourceLogo
-          type={item.value}
-          label={item.name ?? item.label}
-          category={categoryOf[item.value] ?? group}
-        />
-        <Text size="sm" truncate style={{ flex: 1 }}>
-          {item.name ?? item.label}
-        </Text>
+        {item.icon ? (
+          <img
+            src={item.icon}
+            alt=""
+            aria-hidden="true"
+            width={20}
+            height={20}
+            data-testid={`source-icon-${item.value}`}
+            style={{ flexShrink: 0 }}
+          />
+        ) : (
+          <SourceLogo
+            type={item.value}
+            label={item.name ?? item.label}
+            category={categoryOf[item.value] ?? group}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text size="sm" truncate>
+            {item.name ?? item.label}
+          </Text>
+          {item.description && (
+            <Text size="xs" c="dimmed" truncate data-testid={`source-description-${item.value}`}>
+              {item.description}
+            </Text>
+          )}
+        </div>
         {item.reach && <ReachIcon reach={item.reach} label={reachText(item.reach)} />}
       </UnstyledButton>
     </Tip>
