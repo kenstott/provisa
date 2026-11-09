@@ -31,6 +31,16 @@ on:
       - ".github/**"
       - "scripts/ci/**"
   workflow_dispatch:
+    # The orchestrator's two inputs, because the release's control flow below reads them.
+    inputs:
+      version:
+        description: The release's version; empty reads as the ref's name.
+        type: string
+        default: ""
+      publish:
+        description: Read as the orchestrator reads it; only ever true on the tag it names.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -528,7 +538,7 @@ jobs:
     uses: ./.github/workflows/ci-leaf-stub-leg.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      # The manual half of the orchestrator's expression (a tag push is its other half): false here.
+      # The orchestrator's expression: false here.
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   # Its own condition, on the leg it reads: with none, GitHub's implicit success() skips it,

@@ -54,7 +54,7 @@ data_products:
     email) keeps the link the hub gives it
   sla: Rebuilt each time the customer master syncs from the four systems
   support_contact: kennethstott@gmail.com
-  tables: [master, hub_findings, hub_match_rate, renewal_risk_checked]
+  tables: [view_master, view_hub_findings, view_hub_match_rate, view_renewal_risk_checked]
 domains:
 - id: customer360
   description: Halyard Software's customers across Salesforce, ServiceNow, Jira and Stripe, and the

@@ -27005,9 +27005,12 @@
   feature: replicas-and-freshness-freshness-gate
   priority: SHOULD
   type: behavioral
-  description: Freshness gating is now available at the Source level (provisa/core/models.py), not just
+  description: 'Freshness gating is now available at the Source level (provisa/core/models.py), not just
     on MV. A source can declare a freshness predicate; queries reading from that source are gated by freshness
-    before execution.
+    before execution. (Amended 2026-11-09, WITHOUT THE GUARANTEE A READER GETS THE CURRENT COPY:) Maintainer
+    2026-11-09: without the freshness guarantee a reader gets the current copy, and if it is past its freshness
+    the read triggers a background refresh; the reader does not wait for it. With the guarantee a reader
+    never gets a copy past its freshness and waits for the refresh.'
   use_case: Prevents serving stale data from pull-through sources. Stewards can enforce freshness without
     materializing into an MV, reducing latency and compute overhead.
   related_reqs:
@@ -81436,7 +81439,9 @@
     failed before it. (Maintainer 2026-11-08.) (Amended 2026-11-08, ALPHA IS THE LATEST FOR NOW:) For now
     no release moves to beta or production. A release converges, is packaged, and is published as an alpha
     marked latest, and latest needs a successful set of release assets, so a release whose packaging fails
-    is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.)'
+    is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.) (Amended 2026-11-09, ONE
+    ALPHA AT A TIME:) Maintainer 2026-11-09: the nightly cuts no new alpha while an earlier alpha is open.
+    An alpha is open until it ships or is abandoned, and the night is skipped.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -93902,7 +93907,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     where the CLI runs is the operator''s choice. (Amended 2026-11-08, THE OPERATOR RUNS THE CONTAINER:)
     The operator runs an organization''s connector container, as in built mode (REQ-2098): the connectors
     block names the image and its digest, the operator''s own deployment runs it, and Provisa pairs with
-    it. Provisa does not start connector containers. (Maintainer 2026-11-08.)'
+    it. Provisa does not start connector containers. (Maintainer 2026-11-08.) (Amended 2026-11-09, HOW AN
+    OPERATOR-RUN CONNECTOR JOINS:) Maintainer 2026-11-09: a connector known only by its image becomes a
+    source through a connect path in which the paired host sends its manifest in the handshake, and Provisa
+    checks it against the digest and code hash; the server never builds a connector or reads its build settings.
+    The connectors block lives in a control-plane table that promotes with the model, so the model''s branches
+    decide where a version runs. provisa connector build takes --package-registries FILE to name the indexes
+    for private dependencies; credentials stay with the operator.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -93989,3 +94000,23 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the start stops, the environment is unchanged, and the sync command is printed'
   stakeholders:
   - app-developer
+- id: REQ-2224
+  value: A table can say how long a read waits for its first landing.
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Table Registration
+  feature: replicas-and-freshness-freshness-gate
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Two settings of a table, for any slow source, a code table included.
+    Its own read wait: a read with nothing landed waits up to that long, in place of the request timeout.
+    Lazy refresh: a read past the TTL answers what is held, with its landing time, and starts a refresh.
+    Both are set on the table, and every setting has its UI. (Amended 2026-11-09, LAZY REFRESH IS THE FRESHNESS
+    GUARANTEE OFF:) Maintainer 2026-11-09: lazy refresh is not a setting of its own. It is what a table
+    does without the freshness guarantee (REQ-860). This requirement is the read wait alone: a read with
+    nothing landed waits up to that long, in place of the request timeout.'
+  scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
+    read waits for the rows
+  stakeholders:
+  - data-engineer

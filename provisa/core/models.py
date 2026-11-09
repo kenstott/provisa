@@ -2068,7 +2068,7 @@ class Table(
 
     @model_validator(mode="before")
     @classmethod
-    def _pending_profile_result_name(cls, data: Any) -> Any:
+    def _pending_profile_result_name(cls, data: Any, info: ValidationInfo) -> Any:
         """REQ-2052: a result table named by ``profile_of`` and ``kind`` has no table name yet;
         it takes the pending one, ``<member>_profile_<kind>``, until the seed resolves it."""
         if not isinstance(data, dict) or data.get("profile_of") is None:
@@ -2076,7 +2076,10 @@ class Table(
         kind = data.get("kind", data.get("profile_kind"))
         if kind is None:
             raise ValueError(f"table profile_of {data['profile_of']!r} names no kind")
-        if data.get("table", data.get("table_name")) is not None:
+        held = data.get("table", data.get("table_name"))
+        if held is not None:
+            if (info.context or {}).get(STORED_MODEL):
+                return data  # REQ-2222: the store's model names it by its member and its stored id
             raise ValueError(
                 f"table profile_of {data['profile_of']!r}: its name is resolved from its member; "
                 "it names no table"
