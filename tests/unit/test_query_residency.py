@@ -613,6 +613,7 @@ async def test_a_gate_off_read_past_ttl_answers_from_the_replica_and_starts_one_
     state = _state([_source("pets-db")], [pets], _Backend(), plane)
     at = datetime.now(UTC) - timedelta(seconds=600)
     await _built(plane, pets, at=at)
+    made.clear()  # the build that made the replica is not one a read asked for
     with request_deadline.within(1.0):
         results = [await _residency(state, {"pets-db"}) for _ in range(3)]
     for result in results:

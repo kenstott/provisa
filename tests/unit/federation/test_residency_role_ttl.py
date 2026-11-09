@@ -453,10 +453,12 @@ async def test_attach_capable_but_replicate_goes_through_the_replica_gate(wiring
     assert (
         await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
     ).built == []  # 200 < 360
+    assert backend.plans == 0
+    # Past the trader's floor: the replica gate asks for the build; no guarantee, no wait (REQ-860).
     assert (
         await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
-    ).built == [("s", "orders")]
-    assert backend.lands == 1
+    ).built == []
+    assert backend.plans == 1
 
 
 @pytest.mark.asyncio
