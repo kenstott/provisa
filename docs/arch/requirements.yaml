@@ -94307,7 +94307,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     steward registers it. A new manifest updates the descriptions, the lineage and the commands on offer.
     The rows live in the warehouse and are read through a warehouse source: the manifest names the adapter
     and each model''s database, schema and relation, so the warehouse source is identified from the manifest.
-    Credentials are not in the manifest and are the warehouse source''s.'
+    Credentials are not in the manifest and are the warehouse source''s. (Amended 2026-11-09, WHERE THE
+    WAREHOUSE CREDENTIAL COMES FROM:) Maintainer 2026-11-09: when a registered warehouse source matches
+    the manifest''s adapter and database, the dbt source uses it and needs no credential. Otherwise its
+    setup form offers to create one, filled in with what the manifest knows and asking for the account or
+    host and the credential, held as any source''s credential is. dbt''s profiles file is not read.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
