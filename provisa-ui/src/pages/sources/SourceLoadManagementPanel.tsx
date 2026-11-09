@@ -20,7 +20,7 @@ import { SOURCE_PROBE_SOURCE_TYPES, sourceChangeSignals } from "../../liveCapabi
 import { CHANGE_SIGNAL_LABELS } from "./constants";
 import { CollapsibleSection } from "../tables/CollapsibleSection";
 import { ReplicateSelect } from "../../components/admin/ReplicateSelect";
-import type { SourceFormFieldsProps } from "./SourceFormFields";
+import type { SourceFormFieldsProps, SourceFormState } from "./SourceFormFields";
 import {
   maxLiveConcurrencyValid,
   sentinelPathValid,
@@ -35,8 +35,13 @@ import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields"
 export function SourceLoadManagementPanel({
   form,
   setForm,
-}: Pick<SourceFormFieldsProps, "form" | "setForm">) {
+  fixed,
+}: Pick<SourceFormFieldsProps, "form" | "setForm"> & {
+  /** The settings shown read-only: those the source's connector fixes (REQ-2221). */
+  fixed?: ReadonlySet<keyof SourceFormState>;
+}) {
   const { t } = useTranslation();
+  const isFixed = (key: keyof SourceFormState) => fixed?.has(key) === true;
   const kind = useSourceKind(form.type);
   const kindLands = kind?.cache_ttl_required === true;
   // Offered unless the server says a source of this kind can have no sentinel (REQ-1148).
@@ -64,6 +69,11 @@ export function SourceLoadManagementPanel({
         <Text size="xs" c="dimmed" data-testid="source-load-management-help">
           {t("sourceFormFieldsExtended.loadManagementHelp")}
         </Text>
+        {fixed && fixed.size > 0 && (
+          <Text size="xs" c="dimmed" data-testid="source-load-management-fixed">
+            {t("connectorSetup.fixedHint")}
+          </Text>
+        )}
         <FormLayout>
           {kind?.live_only !== true && (
             <FormField size="medium">
@@ -77,6 +87,8 @@ export function SourceLoadManagementPanel({
                 }
                 scope="source"
                 loadProtected={form.loadProtected}
+                // One drop-down sets both: either being fixed holds it.
+                disabled={isFixed("replicate") || isFixed("loadProtected")}
                 testId="source-replicate-select"
               />
             </FormField>
@@ -90,6 +102,7 @@ export function SourceLoadManagementPanel({
               onChange={(v) => setForm({ ...form, cacheTtl: v === "" ? "" : String(v) })}
               placeholder={t("sourceFormFieldsExtended.cacheTtlPlaceholder")}
               required={kindLands}
+              readOnly={isFixed("cacheTtl")}
               error={
                 ttlSignalMissingCacheTtl(
                   form.changeSignal,
@@ -117,6 +130,7 @@ export function SourceLoadManagementPanel({
                   : (CHANGE_SIGNAL_LABELS[cs] ?? cs),
               }))}
               allowDeselect={false}
+              disabled={isFixed("changeSignal")}
               data-testid="change-signal-select"
             />
           </FormField>
@@ -127,6 +141,7 @@ export function SourceLoadManagementPanel({
                 value={form.sentinelPath}
                 onChange={(e) => setForm({ ...form, sentinelPath: e.currentTarget.value })}
                 placeholder="https://example.com/data/_SUCCESS"
+                readOnly={isFixed("sentinelPath")}
                 error={
                   sentinelPathValid(form.sentinelPath)
                     ? undefined
@@ -146,6 +161,7 @@ export function SourceLoadManagementPanel({
               value={form.maxLiveConcurrency === "" ? "" : Number(form.maxLiveConcurrency)}
               onChange={(v) => setForm({ ...form, maxLiveConcurrency: v === "" ? "" : String(v) })}
               placeholder={t("sourceFormFieldsExtended.maxLiveConcurrencyPlaceholder")}
+              readOnly={isFixed("maxLiveConcurrency")}
               error={
                 maxLiveConcurrencyValid(form.maxLiveConcurrency)
                   ? undefined
@@ -162,6 +178,8 @@ export function SourceLoadManagementPanel({
               tz={form.offPeakTz}
               onWindowChange={(offPeakWindow) => setForm({ ...form, offPeakWindow })}
               onTzChange={(offPeakTz) => setForm({ ...form, offPeakTz })}
+              windowReadOnly={isFixed("offPeakWindow")}
+              tzReadOnly={isFixed("offPeakTz")}
             />
           )}
           {/* The ticks sit together beneath the fields: caching, the freshness gate. */}
@@ -171,6 +189,7 @@ export function SourceLoadManagementPanel({
                 label={t("sourceFormFieldsExtended.cacheEnabled")}
                 checked={form.cacheEnabled}
                 onChange={(e) => setForm({ ...form, cacheEnabled: e.currentTarget.checked })}
+                disabled={isFixed("cacheEnabled")}
                 data-testid="cache-enabled-checkbox"
               />
             </FormField>
@@ -179,6 +198,7 @@ export function SourceLoadManagementPanel({
                 label={t("sourceFormFieldsExtended.freshnessGate")}
                 checked={form.freshnessGate}
                 onChange={(e) => setForm({ ...form, freshnessGate: e.currentTarget.checked })}
+                disabled={isFixed("freshnessGate")}
                 data-testid="freshness-gate-checkbox"
               />
             </FormField>

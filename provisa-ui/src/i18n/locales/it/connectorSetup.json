@@ -9,6 +9,7 @@
     "port": "Porta",
     "pairing": "Codice di abbinamento",
     "pairingHint": "La riga stampata dal container al primo avvio, dopo \"pairing code:\". Viene usata una sola volta e non viene conservata.",
-    "secretHint": "Il segreto dell'organizzazione da usare. Il suo valore non viene mai inserito qui."
+    "secretHint": "Il segreto dell'organizzazione da usare. Il suo valore non viene mai inserito qui.",
+    "fixedHint": "Impostato da questo connettore. Non può essere modificato."
   }
 }

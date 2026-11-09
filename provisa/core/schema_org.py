@@ -1105,6 +1105,9 @@ connectors = Table(
     Column("code_hash", Text, nullable=False),
     Column("arch", Text, nullable=False),
     Column("requires", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("icon", Text, nullable=False, server_default=""),
+    Column("settings", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
     CheckConstraint("language IN ('node', 'python', 'go')", name="connectors_language_check"),
     CheckConstraint("arch IN ('amd64', 'arm64')", name="connectors_arch_check"),
 )
