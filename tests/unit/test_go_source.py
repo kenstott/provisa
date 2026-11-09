@@ -33,13 +33,18 @@ from provisa.codesource.manifest import (
     read_manifest,
 )
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
+from provisa.golang.build import build_module
+from provisa.golang.install import check_lockfile
 from provisa.golang.reader import (
     READER,
+    SERVICES,
+    SERVICES_MODULE,
     check_go_line,
     ensure_reader,
     go_environment,
     read_code,
     reader_key,
+    services_go_mod,
 )
 
 pytestmark = pytest.mark.unit
@@ -524,6 +529,90 @@ def test_a_go_command_reaches_no_network_and_inherits_nothing(tmp_path, monkeypa
         "GOENV": "off",
         "CGO_ENABLED": "0",
     }
+
+
+def _services_lines(go_mod: Path) -> list[str]:
+    return [line.strip() for line in go_mod.read_text().splitlines() if SERVICES_MODULE in line]
+
+
+def test_the_module_is_provided_whatever_the_codes_go_mod_says(tmp_path):
+    """REQ-2106: a go.mod silent about provisa_services gets it; one that names it, for the
+    author's own stub outside Provisa, gets Provisa's in place of the stub."""
+    shipped = f"{SERVICES_MODULE} => {SERVICES}"
+    for text in (
+        "module example.com/rows\n\ngo 1.23\n",
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n\n"
+        "replace provisa_services => ./mock\n",
+        "module example.com/rows\n\ngo 1.23\n\nrequire (\n\tprovisa_services v0.0.0\n)\n\n"
+        "replace (\n\tprovisa_services v0.0.0 => ./mock\n)\n",
+    ):
+        code = tmp_path / "code"
+        code.mkdir(exist_ok=True)
+        (code / "go.mod").write_text(text)
+        (code / "go.sum").write_text("example.com/x v1.0.0 h1:abc=\n")
+        made = services_go_mod(code, tmp_path / "scratch")
+        assert (code / "go.mod").read_text() == text  # the code's own is never changed
+        assert made.with_suffix(".sum").read_text() == "example.com/x v1.0.0 h1:abc=\n"
+        assert sorted(_services_lines(made)) == sorted(
+            [f"replace {shipped}", f"require {SERVICES_MODULE} v0.0.0"]
+        )
+        assert "module example.com/rows" in made.read_text()
+
+
+def test_the_module_needs_no_go_sum_and_any_other_requirement_still_does(tmp_path):
+    """REQ-2106: requiring only provisa_services is not requiring something to check."""
+    (tmp_path / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n"
+    )
+    check_lockfile(tmp_path)
+    (tmp_path / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire (\n\tprovisa_services v0.0.0\n"
+        "\texample.com/other v1.2.3\n)\n"
+    )
+    with pytest.raises(BundleRefused, match="carries no go.sum"):
+        check_lockfile(tmp_path)
+
+
+def test_the_host_build_replaces_the_module_with_provisas_not_the_codes(tmp_path):
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n\n"
+        "replace provisa_services => ./mock\n"
+    )
+    into = tmp_path / "into"
+    into.mkdir()
+    build_module(code, ".", ["Rows"], into)
+    assert sorted(_services_lines(into / "go.mod")) == sorted(
+        [f"{SERVICES_MODULE} => {SERVICES}", f"{SERVICES_MODULE} v0.0.0"]
+    )
+
+
+def test_code_importing_the_module_is_read(reader, go, tmp_path):
+    """REQ-2106: its go.mod says nothing of provisa_services, and the reader type-checks it."""
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import (
+            "context"
+
+            ps "provisa_services"
+        )
+
+        type Row struct {
+            Key string `json:"key"`
+        }
+
+        // @table
+        func Rows(ctx context.Context) ([]Row, error) {
+            key, err := ps.Secrets.Get(ctx, "key")
+            return []Row{{key}}, err
+        }
+        """,
+    )
+    assert [e.name for e in _read(reader, go, code, tmp_path).exports] == ["Rows"]
 
 
 def test_a_failing_go_command_is_refused_with_its_error(tmp_path):

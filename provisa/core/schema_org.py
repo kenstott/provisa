@@ -987,6 +987,34 @@ lineage_edges = Table(
     CheckConstraint("via_kind IN ('view', 'command')", name="lineage_edges_via_kind_check"),
 )
 
+# REQ-2229: what OpenLineage events reported: one row per dataset of a job's latest run. Kept apart
+# from lineage_edges, which each model build replaces whole.
+openlineage_run_datasets = Table(
+    "openlineage_run_datasets",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("job_namespace", Text, nullable=False),
+    Column("job_name", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("dataset_namespace", Text, nullable=False),
+    Column("dataset_name", Text, nullable=False),
+    Column("column_lineage", JSON, nullable=False, default=dict, server_default="{}"),
+    CheckConstraint(
+        "direction IN ('input', 'output')", name="openlineage_run_datasets_direction_check"
+    ),
+    UniqueConstraint(
+        "job_namespace",
+        "job_name",
+        "run_id",
+        "direction",
+        "dataset_namespace",
+        "dataset_name",
+        name="openlineage_run_datasets_key",
+    ),
+)
+
 # REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
 # (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
 checker_targets = Table(
@@ -2238,6 +2266,21 @@ reference_documents = Table(
     Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("refreshed_at", DateTime(timezone=True), nullable=True),
     Column("replaced_at", DateTime(timezone=True), nullable=True),
+    # REQ-2185 (ADD NOW, INDEX IN THE BACKGROUND): the document's index status. A document exists
+    # from the moment it is added; extraction and indexing run in a background job and report here.
+    # The default is ready because a document written any other way has its passages already.
+    Column("index_status", Text, nullable=False, server_default="ready"),  # indexing|ready|failed
+    Column("index_error", Text, nullable=True),
+    Column("index_step", Text, nullable=True),  # reading | indexing
+    Column("index_done", Integer, nullable=True),
+    Column("index_total", Integer, nullable=True),
+    Column("index_launch", Text, nullable=True),
+    Column("index_progress_at", DateTime(timezone=True), nullable=True),
+    # The uploaded bytes, kept only until the document is ready, so a failed one can be retried:
+    # the library keeps a document's passages, not its file.
+    Column("pending_content", LargeBinary, nullable=True),
+    # Why terms were not looked for once it was ready (no term-finding model), else null.
+    Column("terms_note", Text, nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint("source_kind IN ('file', 'url')", name="reference_documents_kind_check"),
     CheckConstraint("status IN ('proposed', 'kept')", name="reference_documents_status_check"),

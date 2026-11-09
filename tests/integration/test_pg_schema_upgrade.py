@@ -29,6 +29,7 @@ import pytest
 import pytest_asyncio
 import sqlalchemy as sa
 
+from provisa.core import model_change
 from provisa.core.db import add_missing_columns, init_schema
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
@@ -100,6 +101,65 @@ async def test_metadata_reconciliation_restores_a_column_schema_sql_never_alters
         assert rows[0]["data_type"] == "text"
         assert rows[0]["column_default"] == "''::text"
         assert {"body_encoding", "query_template"} <= await _columns(conn, "api_endpoints")
+
+
+# --- reference_documents: schema.sql upgrades it on its own ------------------------------------
+#
+# REQ-2185's index-job columns. init_schema's reconciliation would add them too, but without
+# index_status's NOT NULL, so this applies the script alone: schema.sql is what has to carry them.
+
+_REFERENCE_DOCUMENT_INDEX_COLUMNS = {
+    "index_status": ("text", "NO", "'ready'::text"),
+    "index_error": ("text", "YES", None),
+    "index_step": ("text", "YES", None),
+    "index_done": ("integer", "YES", None),
+    "index_total": ("integer", "YES", None),
+    "index_launch": ("text", "YES", None),
+    "index_progress_at": ("timestamp with time zone", "YES", None),
+    "pending_content": ("bytea", "YES", None),
+    "terms_note": ("text", "YES", None),
+}
+
+
+@pytest_asyncio.fixture
+async def old_reference_documents(tenant_db):
+    """An org schema whose reference_documents predates the index job, holding one document."""
+    await init_schema(tenant_db, _SCHEMA_SQL, org_id=_ORG)
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_SCHEMA}")
+        for column in _REFERENCE_DOCUMENT_INDEX_COLUMNS:
+            await conn.execute(f"ALTER TABLE reference_documents DROP COLUMN {column}")
+        await conn.execute(
+            "INSERT INTO reference_documents "
+            "(title, source_kind, source, media_type, content_sha256, status, embedding_model) "
+            "VALUES ('Old', 'file', 'old.pdf', 'application/pdf', 'abc', 'kept', 'model')"
+        )
+    yield tenant_db
+    async with tenant_db.acquire() as conn:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA}_mv_cache CASCADE")
+
+
+async def test_schema_sql_adds_the_index_columns_to_an_older_reference_documents(
+    old_reference_documents,
+):
+    async with old_reference_documents.acquire() as conn:
+        await conn.execute(f"SET search_path TO {_SCHEMA}")
+        async with model_change.layout():
+            await conn.execute(_SCHEMA_SQL)
+        rows = await conn.fetch(
+            "SELECT column_name, data_type, is_nullable, column_default "
+            "FROM information_schema.columns "
+            f"WHERE table_schema = '{_SCHEMA}' AND table_name = 'reference_documents'"
+        )
+        live = {
+            r["column_name"]: (r["data_type"], r["is_nullable"], r["column_default"]) for r in rows
+        }
+        added = {name: live.get(name) for name in _REFERENCE_DOCUMENT_INDEX_COLUMNS}
+        assert added == _REFERENCE_DOCUMENT_INDEX_COLUMNS
+        # the document that was already there is ready: its passages exist
+        existing = await conn.fetch("SELECT index_status FROM reference_documents")
+        assert [r["index_status"] for r in existing] == ["ready"]
 
 
 # --- a metadata table schema.sql does not create ---------------------------------------------
@@ -316,3 +376,284 @@ async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_da
     other.join(30)
     assert second == ["done"], second
     assert _tables_by_schema(db, ["provisa_sources"]) == {(_SCHEMA, "provisa_sources")}
+
+
+# --- a column added to a table that already exists -------------------------------------------
+#
+# CREATE TABLE IF NOT EXISTS does nothing on a table that is already there, so a column declared
+# only in a CREATE never reaches a control plane created before it (cloud outage 2026-11-07,
+# glossary_term_scans.source_table). The rule: the new column goes in the CREATE and gets its own
+# ALTER TABLE ... ADD COLUMN IF NOT EXISTS beside it.
+#
+# _CREATE_ONLY freezes the columns each table may declare with no ALTER: the ones it was first
+# created with. It holds what history shows and grows only by a new table's first columns; a column
+# added to an existing table does NOT go here, it gets an ALTER.
+_CREATE_ONLY = {
+    "admin_audit_log": "id action actor_id subject_id detail created_at",
+    "api_endpoints": "id source_id path method table_name columns ttl created_at",
+    "api_sources": "id type base_url spec_url auth created_at",
+    "calendars": (
+        "name version base_system tz fiscal_anchor_month fiscal_anchor_day retail_anchor "
+        "week_start holidays weekend created_at"
+    ),
+    "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
+    "checker_latest_runs": "table_id scan_id scan_time outcome",
+    "checker_targets": "table_id checked_table_id",
+    "code_source_builds": (
+        "id source_id code_hash arch registry_id status image_ref digest archive_path node error "
+        "started_by started_at finished_at"
+    ),
+    "code_source_cache": "source_id key value expires_at",
+    "code_source_llm_usage": (
+        "id source_id month model input_tokens output_tokens cache_read_tokens cache_write_tokens "
+        "cost_usd created_at"
+    ),
+    "code_source_vectors": "source_id item_id vector text item_metadata",
+    "config_stamp": "kind stamp",
+    "creation_requests": (
+        "id request_type capability payload requested_by status rejection_reason resolved_by "
+        "created_at resolved_at"
+    ),
+    "data_product_commands": "product_id command_name",
+    "data_product_tables": "product_id table_id",
+    "data_products": "id domain_id name",
+    "domains": "id description",
+    "email_send_authority_audit": (
+        "id email_address user_id granted_by org_id action reason created_at"
+    ),
+    "entitlement_expiries": (
+        "id rule_key principal role_id ends_at ends removed reason set_by valid_from recorded_at"
+    ),
+    "entitlements": (
+        "id source principal role_id kind capability identifiers removed reason set_by valid_from "
+        "recorded_at"
+    ),
+    "erd_layout_domains": "layout_name domain_id selected collapsed x y w h",
+    "erd_layout_tables": "layout_name table_id selected x y",
+    "erd_layouts": "name options updated_by updated_at",
+    "event_status": (
+        "event_id dependent_table claim_status processor_name heartbeat_at deadline completed_at"
+    ),
+    "events": "id source_table event_type payload created_at",
+    "fake_adequacy_checks": "table_id column_name check_name checked_at status measure detail",
+    "file_source_mtimes": "table_id source_mtime synced_at",
+    "glossary_term_domains": "id term_id domain_id tenant_id",
+    "glossary_term_drafts": (
+        "id scan_id ordinal name category sense definition definition_kind proposal match_term_id "
+        "match_kind payload status term_id decided_by decided_at tenant_id"
+    ),
+    "glossary_term_edges": "id from_term_id to_term_id rel_type tenant_id",
+    "glossary_term_experts": "id term_id user_id kind tenant_id",
+    "glossary_term_refs": "id term_id table_id column_name tenant_id",
+    "glossary_term_scans": (
+        "id document_id document_title document_source domains status error summary started_by "
+        "started_at finished_at tenant_id"
+    ),
+    "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
+    "glossary_terms": "id name definition deprecated tenant_id",
+    "graph_sessions": "user_id generation stored tables graph roles assigned rights used_at",
+    "idempotent_calls": "scope actor call_key response created_at",
+    "judgment_bases": "id name description owner changed_at changed_by change_note",
+    "judgment_findings": (
+        "id object_type object_key judgment category finding observed first_seen last_seen "
+        "resolved_at resolved_by resolution"
+    ),
+    "kafka_sources": "id bootstrap_servers schema_registry_url auth_type created_at",
+    "kafka_topics": "id source_id topic table_name schema_source value_format columns created_at",
+    "lineage_edges": (
+        "id source_relation source_column target_relation target_column via via_kind "
+        "source_table_id source_column_name target_table_id target_column_name"
+    ),
+    "live_query_state": "",
+    "mail_sync_state": "source_id account scope kind token updated_at",
+    "materialized_views": (
+        "id source_tables target_catalog target_schema target_table refresh_interval enabled "
+        "join_pattern custom_sql expose_in_sdl sdl_config created_at"
+    ),
+    "metrics": "name expression datatype description ai_context visible_to from_fact",
+    "model_name_clashes": "surface name holder newcomer message",
+    "model_names": (
+        "object_kind object_id surface name physical_name label domain_id table_id is_alias "
+        "warnings"
+    ),
+    "model_seed": "id seeded_at",
+    "mv_build_state": (
+        "mv_id region status last_refresh_at row_count last_error writer lease_until "
+        "materialized_definition_version materialized_input_version snapshot_id"
+    ),
+    "mv_delta_ledger": (
+        "id mv_id refresh_version definition_version trace_id change_type row_key old_hash "
+        "new_hash old_values new_values created_at"
+    ),
+    "mv_refresh_log": "id mv_id status row_count duration_ms error created_at",
+    "naming_rules": "id pattern replacement",
+    "node_freshness_state": "node content_hash probe_token updated_at",
+    "node_ids": "id composite_id label properties",
+    "org_regions": "id engine replicas views cache state record",
+    "org_secrets": "key value_enc updated_at updated_by",
+    "org_settings": "key value updated_at updated_by",
+    "preserved_snapshots": "name reason location content_hash window_id sealed_at",
+    "profiler_classifications": (
+        "table_id physical_column kind status evidence run_id decided_by decided_at"
+    ),
+    "profiler_constraints": (
+        "id table_id signature kind column_name other_column definition evidence share sampled "
+        "status run_id decided_at"
+    ),
+    "profiler_sensitive_hints": (
+        "table_id physical_column kind scan_id values_tested values_matched share evidence"
+    ),
+    "profiler_sensitive_scans": (
+        "scan_id table_id status started_at finished_at sampled_rows scanned_columns requested_by "
+        "error"
+    ),
+    "reference_document_domains": "id document_id domain_id tenant_id",
+    "reference_document_tags": (
+        "id tag_id base_tag_id object_type document_id section_heading section_page object_key "
+        "reason expires_on purpose bases review_on decided_by decided_at evidence tenant_id"
+    ),
+    "reference_documents": (
+        "id title source_kind source media_type content_sha256 status embedding_model added_by "
+        "added_at refreshed_at replaced_at tenant_id"
+    ),
+    "reference_passages": "id document_id ordinal section page text vector tenant_id",
+    "registered_tables": "id source_id domain_id schema_name table_name",
+    "rel_ids": "id composite_id rel_type properties",
+    "relationship_candidates": (
+        "id source_table_id target_table_id source_column target_column cardinality confidence "
+        "reasoning status scope rejection_reason created_at"
+    ),
+    "relationships": "id source_table_id target_table_id source_column target_column cardinality",
+    "replica_build_log": (
+        "id source_id schema_name table_name started_at finished_at outcome method rows_copied "
+        "error_code error_message"
+    ),
+    "replica_state": "source_id schema_name table_name promoted promoted_at",
+    "rls_rules": "id table_id role_id filter_expr",
+    "role_llm_usage": "role_id grain bucket tokens usd",
+    "roles": "id capabilities domain_access",
+    "scheduled_triggers": (
+        "id name cron kind url webhook_name args sql role enabled created_at updated_at"
+    ),
+    "schema_layout": "id digest",
+    "session_temp_schemas": "store_schema session_id beat_at",
+    "sources": "id type host port database username dialect",
+    "stores": "id url",
+    "synthetic_dataset_tables": "dataset_id table_id profile_env run_id scale",
+    "synthetic_datasets": "id seed scale status store_schema error generated_at created_at",
+    "synthetic_generations": "finished_at generated_rows seconds",
+    "synthetic_report": (
+        "id dataset_id table_name column_name measure source_value synthetic_value delta note"
+    ),
+    "synthetic_source_bindings": "source_id previous",
+    "table_columns": "id table_id column_name visible_to",
+    "table_meta_links": "source_table_id target_table_id",
+    "table_write_grants": (
+        "id table_id role_id operation columns rows_expr check_expr presets tenant_id"
+    ),
+    "tag_assignments": (
+        "id tag_id object_type source_id table_id column_name relationship_id object_key"
+    ),
+    "tag_param_values": "tag_id value description",
+    "tags": "id description applies_to is_system",
+    "tracked_functions": (
+        "id name source_id schema_name function_name returns arguments visible_to domain_id "
+        "description created_at updated_at"
+    ),
+    "tracked_webhooks": (
+        "id name url method timeout_ms returns inline_return_type arguments visible_to domain_id "
+        "description created_at updated_at"
+    ),
+    "trigger_runs": "trigger_id ran_at outcome error fired_by",
+    "user_attributes": "id user_id name value updated_at",
+    "user_directory": "user_id display_name email updated_at",
+    "user_idp_attributes": "user_id name value seen_at",
+    "user_role_assignments": "id user_id role_id domain_id created_at",
+}
+_NOT_A_COLUMN = {"PRIMARY", "UNIQUE", "CONSTRAINT", "FOREIGN", "CHECK", "EXCLUDE", "LIKE"}
+
+
+def _schema_text() -> str:
+    """schema.sql without comments and with every string literal emptied, so it can be scanned."""
+    bare = re.sub(r"('(?:[^']|'')*')|--[^\n]*", lambda m: m.group(1) or "", _SCHEMA_SQL)
+    return re.sub(r"'(?:[^']|'')*'", "''", bare)
+
+
+def _created_columns() -> dict[str, list[str]]:
+    """Every CREATE TABLE of schema.sql: the columns it declares, in order."""
+    text = _schema_text()
+    created: dict[str, list[str]] = {}
+    for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+) \(", text):
+        depth, start, parts = 1, match.end(), []
+        position = match.end()
+        while depth:
+            char = text[position]
+            depth += {"(": 1, ")": -1}.get(char, 0)
+            if depth == 0 or (char == "," and depth == 1):
+                parts.append(text[start:position])
+                start = position + 1
+            position += 1
+        firsts = [part.split()[0] for part in parts if part.strip()]
+        created[match.group(1)] = [f for f in firsts if f.upper() not in _NOT_A_COLUMN]
+    return created
+
+
+def _altered_columns() -> set[tuple[str, str]]:
+    """(table, column) of every ADD COLUMN IF NOT EXISTS in schema.sql."""
+    return {
+        (table, column)
+        for table, actions in re.findall(r"ALTER TABLE (\w+)([^;]*);", _schema_text())
+        for column in re.findall(r"ADD COLUMN IF NOT EXISTS (\w+)", actions)
+    }
+
+
+def _columns_added_later() -> dict[str, list[str]]:
+    """Per table, the columns the CREATE declares beyond the ones it was first created with."""
+    return {
+        table: added
+        for table, columns in _created_columns().items()
+        if (added := [c for c in columns if c not in _CREATE_ONLY[table].split()])
+    }
+
+
+async def test_every_column_added_to_an_existing_table_has_its_add_column():
+    created = _created_columns()
+    new_tables = sorted(set(created) - set(_CREATE_ONLY))
+    assert not new_tables, f"add each new table's columns to _CREATE_ONLY: {new_tables}"
+    altered = _altered_columns()
+    missing = [
+        f"{table}.{column}"
+        for table, columns in _columns_added_later().items()
+        for column in columns
+        if (table, column) not in altered
+    ]
+    assert not missing, f"needs ALTER TABLE ... ADD COLUMN IF NOT EXISTS: {missing}"
+
+
+async def test_schema_sql_alone_restores_every_column_added_to_an_existing_table(own_database):
+    """A control plane created before these columns: the script by itself brings them back, with
+    no metadata reconciliation behind it."""
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+    added = _columns_added_later()
+    assert ("source_table" in added["glossary_term_scans"]) and len(added) >= 30
+
+    with db.engine.begin() as conn:
+        for table, columns in added.items():
+            drops = ", ".join(f'DROP COLUMN "{column}" CASCADE' for column in columns)
+            conn.exec_driver_sql(f'ALTER TABLE "{_SCHEMA}"."{table}" {drops}')
+    regressed = {table: {c[0] for c in _column_shapes(db, _SCHEMA, table)} for table in added}
+    assert not any(set(added[table]) & regressed[table] for table in added)
+
+    async with db.acquire() as conn:
+        await conn.execute(f'SET search_path TO "{_SCHEMA}"')
+        await conn.execute(_SCHEMA_SQL)
+
+    restored = {table: {c[0] for c in _column_shapes(db, _SCHEMA, table)} for table in added}
+    still_missing = [
+        f"{table}.{column}"
+        for table, columns in added.items()
+        for column in columns
+        if column not in restored[table]
+    ]
+    assert not still_missing, still_missing

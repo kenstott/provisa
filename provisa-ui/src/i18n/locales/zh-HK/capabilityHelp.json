@@ -29,6 +29,7 @@
     "org_glossary_rw": "編輯組織詞彙表中的任何術語。",
     "data_product_read": "查看資料產品。",
     "data_product_rw": "建立、編輯及刪除資料產品。",
+    "lineage_report": "從 Airflow、Spark、dbt 和 Flink 等工具傳送 OpenLineage 執行事件。",
     "dq_read": "讀取資料品質檢查及其結果。",
     "dq_rw": "管理資料品質檢查、期望及承諾。",
     "ignore_relationships": "聯結沒有已批准關係的資料表。",

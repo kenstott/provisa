@@ -80,7 +80,7 @@
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
     "itemSparql": "SPARQL",
     "itemCatalogs": "कैटलॉग",
-    "itemReferenceLibrary": "संदर्भ लाइब्रेरी",
+    "itemLibrary": "लाइब्रेरी",
     "itemPlatformObservability": "प्लेटफ़ॉर्म ऑब्ज़र्वेबिलिटी"
   }
 }

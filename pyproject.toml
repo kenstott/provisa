@@ -420,7 +420,7 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
-"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go"]
+"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go", "services/go.mod", "services/*.go"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
 "provisa.sparql" = ["reasoner/Reasoner.java"]
 

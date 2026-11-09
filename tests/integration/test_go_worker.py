@@ -17,13 +17,18 @@ from __future__ import annotations
 
 import socket
 import threading
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
 
 from provisa.codesource import worker as w
 from provisa.codesource.arrow_rows import row_schema, schema_text
 from provisa.codesource.manifest import Manifest
+from provisa.codesource.service_ops import CODE_AUDIT
+from provisa.codesource.services import ServiceGrant
 from provisa.golang.build import build_host
 from provisa.golang.reader import ensure_reader, read_code
 from provisa.golang.source import host_command
@@ -92,6 +97,78 @@ def test_the_code_reads_nothing_outside_it(built):
             _rows(started, manifest, "Outside", [])
     finally:
         started.stop()
+
+
+SERVICES_FIXTURE = Path(__file__).parent.parent / "fixtures" / "go_source_services"
+
+
+@pytest.fixture
+def trail(monkeypatch) -> list[dict]:
+    """The rows the real trail writer inserts, in an org with no database behind it."""
+    rows: list[dict] = []
+
+    class Conn:
+        async def execute_core(self, stmt):
+            rows.append(dict(stmt.compile().params))
+
+    class Db:
+        @asynccontextmanager
+        async def acquire(self):
+            yield Conn()
+
+    @asynccontextmanager
+    async def bound(grant):
+        yield Db(), {}
+
+    monkeypatch.setattr("provisa.codesource.llm_service.org_bound", bound)
+    return rows
+
+
+def test_an_audit_event_is_written_to_the_trail_tied_to_its_request(tmp_path_factory, trail):
+    """REQ-2106: code importing provisa_services, its go.mod silent about it, compiled and run in
+    the sandbox; its audit goes through the egress proxy and names the call, so the trail's row
+    carries the trace of the request that called the code."""
+    cache = tmp_path_factory.mktemp("cache")
+    go = CodeRuntimeResolver(cache_root=cache).resolve("go")
+    reader = ensure_reader(go, RUNTIMES["go"].version, cache, PROXY)
+    manifest = read_code(
+        reader=reader,
+        go=go,
+        code=SERVICES_FIXTURE,
+        package=".",
+        gomodcache=cache / "mod",
+        scratch=cache,
+    )
+    binary = build_host(
+        go=go,
+        code=SERVICES_FIXTURE,
+        package=".",
+        exports=[e.name for e in manifest.exports],
+        gomodcache=cache / "mod",
+        proxy=PROXY,
+        dest=tmp_path_factory.mktemp("bin") / "host",
+    )
+    command = replace(
+        host_command(binary=binary, egress=[]),
+        services=ServiceGrant(org_id="org", source_id="go-src"),
+    )
+    started = w.Worker("go-src", "h", command)
+    started.start()
+    tracer = TracerProvider().get_tracer("test")
+    try:
+        with tracer.start_as_current_span("the request") as span:
+            [[row]] = _rows(started, manifest, "Recorded", ["a"])
+    finally:
+        started.stop()
+    assert row == {"name": "a"}
+    (written,) = trail
+    assert written["action"] == CODE_AUDIT
+    assert written["actor_id"] == "source:go-src" and written["subject_id"] == "go.read"
+    assert written["detail"] == {
+        "source": "go-src",
+        "trace_id": format(span.get_span_context().trace_id, "032x"),
+        "fields": {"name": "a"},
+    }
 
 
 def _outward_address() -> str:

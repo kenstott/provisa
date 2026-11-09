@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Integration: a sandboxed worker uses Provisa's services through the module always present in it
-(REQ-2106): provisa_services in Python, @provisa/services in Node.
+(REQ-2106): provisa_services in Python and Go, @provisa/services in Node.
 
 The ``test`` instance, as the code sources e2e runs it. The source declares a setting; its table's
 function reads it, caches it, reads it back from the cache, writes a log line, a metric point and
@@ -101,12 +101,67 @@ export declare function services_read(inputs: UsedInputs): Promise<Used[]>;
 }
 
 
+_GO = {
+    "uses/go.mod": "module example.com/uses\n\ngo 1.23\n",
+    "uses/uses.go": """
+package uses
+
+import (
+	"context"
+
+	ps "provisa_services"
+)
+
+type Used struct {
+	Name    string `json:"name"`
+	Setting string `json:"setting"`
+	Cached  string `json:"cached"`
+}
+
+type UsedInputs struct {
+	Name string `json:"name"`
+}
+
+// What the services answer, read through the module.
+//
+// @table
+func Services_read(ctx context.Context, in UsedInputs) ([]Used, error) {
+	region, err := ps.Settings.Get(ctx, "region")
+	if err != nil {
+		return nil, err
+	}
+	if err := ps.Cache.Set(ctx, "region-"+in.Name, region, 60); err != nil {
+		return nil, err
+	}
+	cached, err := ps.Cache.Get(ctx, "region-"+in.Name)
+	if err != nil {
+		return nil, err
+	}
+	if err := ps.Log(ctx, "read the region", "info", map[string]any{"name": in.Name}); err != nil {
+		return nil, err
+	}
+	if err := ps.Metric(ctx, "reads", 1, "counter", map[string]any{"source_name": in.Name}); err != nil {
+		return nil, err
+	}
+	if err := ps.Audit(ctx, "read.region", map[string]any{"name": in.Name, "region": region}); err != nil {
+		return nil, err
+	}
+	return []Used{{in.Name, region.(string), cached.(string)}}, nil
+}
+""",
+}
+
+_CODE = {"python": _PYTHON, "node": _NODE, "go": _GO}
+#: A table is named for its function, and a Go function that is exported starts with a capital.
+_TABLE = {"python": "services_read", "node": "services_read", "go": "Services_read"}
+
+
 @pytest.fixture(scope="module")
 def runtime_cache(tmp_path_factory):
     return tmp_path_factory.mktemp("runtime-deps")
 
 
-@pytest.fixture(scope="module", params=["python", "node"])
+@pytest.fixture(scope="module", params=["python", "node", "go"])
 def server(tmp_path_factory, runtime_cache, request):
     from tests.integration.isolated_server import IsolatedServer
 
@@ -136,13 +191,13 @@ def uses(server):
     upload = httpx.post(
         f"{server.base_url}/admin/orgs/{server.org_id}/code-uploads/archive",
         params={"filename": "uses.zip"},
-        content=_archive(_PYTHON if language == "python" else _NODE),
+        content=_archive(_CODE[language]),
         headers={"X-Provisa-Role": _ROLE, "Content-Type": "application/octet-stream"},
         timeout=server.request_timeout + 30,
     )
     assert upload.status_code == 200, upload.text
     mapping = {
-        "runtime": "python" if language == "python" else "node",
+        "runtime": language,
         "code": {"kind": "upload", "upload": upload.json()["content_hash"]},
         "settings": {"region": "eu-west"},
     }
@@ -154,7 +209,7 @@ def uses(server):
     registered = _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
-        f'schemaName: "default", tableName: "services_read", cacheTtl: 0, '
+        f'schemaName: "default", tableName: "{_TABLE[language]}", cacheTtl: 0, '
         f"columns: [{_column('name', 'text')}, {_column('setting', 'text')}, "
         f"{_column('cached', 'text')}, {_parameter('name', 'text', required=True)}]}})",
     )

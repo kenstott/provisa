@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2185: the org's reference library, as the Admin Reference library page reads and changes it.
-// A file travels as base64 in the JSON body, as every admin upload does.
+// REQ-2185: the org's reference library, as the Library page reads and changes it. A file travels
+// as base64 in the JSON body, as every admin upload does.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
@@ -18,6 +18,8 @@ const BASE = `${API_BASE}/admin/reference-library/documents`;
 
 export type DocumentStatus = "proposed" | "kept";
 export type SourceKind = "file" | "url";
+/** Where a document's background job has got to. Citations and assistants use a ready one. */
+export type IndexStatus = "indexing" | "ready" | "failed";
 
 /** A library document as the server reports it. `domains` is `["*"]` for the whole org. */
 export interface LibraryDocument {
@@ -27,6 +29,15 @@ export interface LibraryDocument {
   source: string;
   media_type: string;
   status: DocumentStatus;
+  index_status: IndexStatus;
+  /** Why it failed; a retry runs the job again. */
+  index_error: string | null;
+  /** While indexing: `reading`, then `indexing` with the passages done of the total. */
+  index_step: string | null;
+  index_done: number | null;
+  index_total: number | null;
+  /** Why its terms were not looked for once it was ready. */
+  terms_note: string | null;
   domains: string[];
   embedding_model: string;
   /** True when the document was embedded by a model other than the org's current one. */
@@ -99,6 +110,30 @@ export async function addLibraryDocument(doc: NewDocument): Promise<LibraryDocum
     await fetch(BASE, send("POST", { ...source, ...title, domains: doc.domains })),
     "Add document",
   );
+}
+
+/** A term's citation of a document: where the words are, and whether they still are. */
+export interface LibraryCitation {
+  term_id: number;
+  term: string;
+  ordinal: number;
+  section: string | null;
+  page: number | null;
+  quote: string;
+  state: "current" | "drifted";
+}
+
+export interface LibraryCitedBy {
+  terms: LibraryCitation[];
+  drifted: number;
+}
+
+export async function fetchCitedBy(id: number): Promise<LibraryCitedBy> {
+  return ok(await fetch(`${BASE}/${id}/cited-by`), "Document citations");
+}
+
+export async function retryLibraryDocument(id: number): Promise<LibraryDocument> {
+  return ok(await fetch(`${BASE}/${id}/retry`, send("POST")), "Retry document");
 }
 
 export async function setLibraryDomains(id: number, domains: string[]): Promise<LibraryDocument> {
