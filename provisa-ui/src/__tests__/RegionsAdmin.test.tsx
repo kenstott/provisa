@@ -30,6 +30,10 @@ const choices = vi.hoisted(() => ({
   value: { regions: [] as string[], connected: null as string | null },
 }));
 vi.mock("../hooks/useRegionQueries", () => ({ useRegionChoices: () => choices.value }));
+vi.mock("../components/admin/CacheStorageTab", () => ({
+  HotCacheStoreSettingsPanel: () => <div data-testid="platform-redis-panel" />,
+  MaterializedSettingsPanel: () => <div data-testid="platform-materialize-panel" />,
+}));
 vi.mock("../api/regions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/regions")>();
   return {
@@ -290,6 +294,14 @@ describe("the Platform page", () => {
     expect(item?.capability).toBe("platform_settings");
   });
 
+  it("holds the deployment's Redis and materialize-store panels", async () => {
+    // REQ-1327: one page, one layer. The Cache page is the org's; these are the platform's.
+    render(<PlatformRegionsTab />);
+    fireEvent.click(await screen.findByTestId("platform-section-stores"));
+    expect(await screen.findByTestId("platform-redis-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("platform-materialize-panel")).toBeInTheDocument();
+  });
+
   it("lists the regions with their purposes explained and says changes apply on restart", async () => {
     render(<PlatformRegionsTab />);
     const row = await screen.findByTestId("platform-region-row-eu");
@@ -466,6 +478,7 @@ describe("the Platform page in a demo sandbox", () => {
     expect(screen.queryByTestId("platform-regions-add")).toBeNull();
     expect(screen.queryByTestId("platform-section-orgs")).toBeNull();
     expect(screen.queryByTestId("platform-section-default")).toBeNull();
+    expect(screen.queryByTestId("platform-section-stores")).toBeNull();
     fireEvent.click(screen.getByTestId("platform-region-row-eu"));
     expect(await screen.findByTestId("platform-region-read-eu")).toBeInTheDocument();
     expect(screen.queryByTestId("platform-region-edit")).toBeNull();

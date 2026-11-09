@@ -655,7 +655,6 @@ function App() {
                                               // REQ-1560: a person's own vault is not a grant — `usage` is the
                                               // right every seeded role carries, so every member reaches it.
                                               ["/admin/my-secrets", "usage"],
-                                              ["/admin/cache", "org_settings"],
                                               ["/admin/scheduled-tasks", "org_settings"],
                                               ["/admin/org-engine", "org_settings"], // REQ-1412
                                               ["/admin/encryption", "platform_settings"],
@@ -776,16 +775,32 @@ function App() {
                                               </CapabilityGate>
                                             }
                                           />
+                                          {/* REQ-1327: the org's cache settings are org_settings, the
+                                    operations on its materialized views table_registration. Each
+                                    tab shows only to a holder of its own right. */}
+                                          <Route
+                                            path="/admin/cache"
+                                            element={
+                                              <CapabilityGate
+                                                capability="org_settings"
+                                                orCapability="table_registration"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <AdminPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
                                           {/* REQ-1576, REQ-1923: the mail Provisa sends is the platform's
-                                    (platform_settings); the mail platforms sources sign in to are
-                                    the organisation's (org_settings). Either opens the page; each
-                                    half shows only to a holder of its own right. */}
+                                    (the deployment check, platform_settings and cross_org); the
+                                    mail platforms sources sign in to are the organisation's
+                                    (org_settings). Either opens the page; each half shows only to a
+                                    holder of its own right. */}
                                           <Route
                                             path="/admin/email"
                                             element={
                                               <CapabilityGate
-                                                capability="platform_settings"
-                                                orCapability="org_settings"
+                                                capability="org_settings"
+                                                orAllOf={["platform_settings", "cross_org"]}
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <AdminPage />

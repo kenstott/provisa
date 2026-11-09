@@ -20,6 +20,7 @@
     "sectionDefaultGrant": "Standardfreigabe",
     "sectionOrgs": "Organisationen",
     "sectionEngines": "Engines",
+    "sectionStores": "Cache-Speicher",
     "defaultGrantIntro": "Die Regionen, die jede neue Organisation erhält, mit dem Speicher, in dem sie dort jede Art von Daten hält, damit eine neue Organisation mit einer funktionierenden Region beginnt.",
     "orgsIntro": "Welche Regionen eine Organisation nutzt, wird hier entschieden: Gewähren Sie ihr Regionen und weisen Sie den Speicher zu, in dem sie dort jede Art von Daten hält.",
     "colDescription": "Beschreibung",

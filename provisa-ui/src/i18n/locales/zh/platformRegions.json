@@ -20,6 +20,7 @@
     "sectionDefaultGrant": "默认授予",
     "sectionOrgs": "组织",
     "sectionEngines": "引擎",
+    "sectionStores": "缓存存储",
     "defaultGrantIntro": "每个新组织都会被授予的区域,以及其在其中保存各类数据的存储,使新组织一开始就有可用的区域。",
     "orgsIntro": "组织使用哪些区域在这里决定:为其授予区域,并分配其在其中保存各类数据的存储。",
     "colDescription": "描述",

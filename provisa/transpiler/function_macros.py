@@ -3074,4 +3074,4 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             return exp.alias_(written, called)  # named for the function
         return written
 
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

@@ -34020,13 +34020,17 @@
   priority: SHOULD
   type: structural
   target: 2026-Q4
-  description: 'Bring-your-own storage (BYO): an org may register its own materialization store (their
-    cloud account, their bill), configured per org and stored encrypted at rest. Once registered it outranks
-    the deployment''s configured store for every MV output and landed table the org writes. That is a precedence, not a fallback. Their bytes never count against platform storage and are neither metered (REQ-1049)
-    nor capped (REQ-1046). The org''s store credentials are scoped to that org only and are never returned
-    by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy of a source table that this text calls
-    landed or materialized is a replica, and making one is replication (REQ-826, REQ-1915). A materialized
-    view keeps its name.'
+  description: 'Bring-your-own storage (BYO): [SUPERSEDED by REQ-1048, 2026-11-09 -- the platform administrator
+    registers it. Kept here for history; do not implement against it.] an org may register its own materialization
+    store (their cloud account, their bill), [END SUPERSEDED BLOCK] configured per org and stored encrypted
+    at rest. Once registered it outranks the deployment''s configured store for every MV output and landed
+    table the org writes. That is a precedence, not a fallback. Their bytes never count against platform
+    storage and are neither metered (REQ-1049) nor capped (REQ-1046). The org''s store credentials are scoped
+    to that org only and are never returned by any read surface. (Amended 2026-10-03, TERMINOLOGY:) A copy
+    of a source table that this text calls landed or materialized is a replica, and making one is replication
+    (REQ-826, REQ-1915). A materialized view keeps its name. (Amended 2026-11-09, THE PLATFORM REGISTERS
+    THE STORE:) Maintainer 2026-11-09: the platform administrator registers an org''s own materialization
+    store (the org''s cloud account, the org''s bill), naming the org; the org reads what is assigned.'
   use_case: Enables premium customers with large or unpredictable storage needs to avoid platform quota
     limits by supplying their own cloud storage. Isolates security/compliance (customer controls bucket
     permissions, encryption, audit logging) and cost (customer's infrastructure bill, not platform cost).
@@ -36378,11 +36382,16 @@
     cannot read in place is a replica: it lands into the materialization store and is read from there, shown
     and refreshed as any replica is. A source is unreachable only when no reader in the deployment can read
     it at all; that is shown on the source when it is added, naming what is missing, never left to its first
-    query. (Amended 2026-11-06, THE SERVER TIER STAGES AT START:) A deployment that installs extensions
-    from DuckDB''s repositories (no bundled set) installs its extension set when the server starts and applies
-    the same rule to what actually installed: a connector is attachable only when its extensions installed,
+    query. (Amended 2026-11-06, THE SERVER TIER STAGES AT START:) [SUPERSEDED by REQ-294, 2026-11-09 --
+    extensions are staged at install or image build; a running server only loads them. Kept here for history;
+    do not implement against it.] A deployment that installs extensions from DuckDB''s repositories (no
+    bundled set) installs its extension set when the server starts [END SUPERSEDED BLOCK] and applies the
+    same rule to what actually installed: a connector is attachable only when its extensions installed,
     so an extension with no build for the running DuckDB shows when a source is added, never at its first
-    query.'
+    query. (Amended 2026-11-09, A RUNNING SERVER ONLY LOADS:) Maintainer 2026-11-09 (REQ-294): extensions
+    are staged at install or image build, and a running server only loads them. A connector is attachable
+    only when its extensions are there, so an extension with no build for the running DuckDB shows when
+    a source is added, never at its first query.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
     delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
@@ -44913,7 +44922,13 @@
     MENU:) Admin and Docs leave the top navigation for the user menu, below a divider after Profile, Settings
     and What''s new; Admin is shown only to a caller with an admin right (maintainer 2026-11-08). (Amended
     2026-11-08, NO SETTINGS ENTRY IN THE USER MENU:) The user menu has no Settings entry: Admin is the one
-    way into administration. (Maintainer 2026-11-08.)'
+    way into administration. (Maintainer 2026-11-08.) (Amended 2026-11-09, EACH PAGE ONE LAYER:) Maintainer
+    2026-11-09: the Redis and materialize-store panels are on a platform page; the Cache page opens to org_settings
+    or table_registration and shows each panel only to the right that holds it. The default lifetime of
+    a materialized view (materialized_views.default_ttl) is the platform''s. (Amended 2026-11-09, TABLE
+    REGISTRATION READS THE MATERIALIZED LIST:) Maintainer 2026-11-09: a role holding table_registration
+    reads the materialized view list and the materialize store information, limited as that list already
+    is to views over tables the caller can read, so the Cache page''s Materialized tab works for it.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -48178,19 +48193,24 @@
   type: behavioral
   description: 'An org administrator moves the acting org between three federation-engine lanes from an
     "Org Engine" admin tab: shared (the pooled coordinator, REQ-1243), isolated (a coordinator SaaS operates
-    for that org alone, REQ-1043), and external (a coordinator the org itself operates, named by host
-    and port). The mode is derived from the orgs row -- external_engine_host set means external, else
-    isolated_engine decides -- never stored twice. An external endpoint outranks both the deployment''s
-    shared endpoint and the isolated-host template. The surface is gated on org_settings, not platform_settings:
-    the engine KIND stays deployment-wide. Isolated is refused with 503 where the deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE,
-    since routing to the shared coordinator would void the isolation the org was promised. Changing the
-    lane rebuilds the org runtime under the registry lock so the change reaches queries immediately. The
-    isolated lane is also entitled, not merely available: a dedicated coordinator is compute the platform
-    stands up and pays for, so on a commercial deployment it belongs to the Pro plan and a move onto it
-    from a lesser plan is refused 402 org_engine.lane_not_entitled before anything is written or provisioned.
-    The GET reports isolated_entitled alongside isolated_available so the tab disables the lane the org
-    cannot buy rather than failing the save. The shared and external lanes are ungated: shared is where every org starts, and an external engine is the org''s own compute. A deployment with no commercial
-    plugin, and an org with no billing row, gate no lane.'
+    for that org alone, REQ-1043), and external (a coordinator the org itself operates, named by host and
+    port). The mode is derived from the orgs row -- external_engine_host set means external, else isolated_engine
+    decides -- never stored twice. An external endpoint outranks both the deployment''s shared endpoint
+    and the isolated-host template. [SUPERSEDED by REQ-1412, 2026-11-09 -- the platform saves an org''s
+    engine lane. Kept here for history; do not implement against it.] The surface is gated on org_settings,
+    not platform_settings: [END SUPERSEDED BLOCK] the engine KIND stays deployment-wide. Isolated is refused
+    with 503 where the deployment has no PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE, since routing to the shared
+    coordinator would void the isolation the org was promised. Changing the lane rebuilds the org runtime
+    under the registry lock so the change reaches queries immediately. The isolated lane is also entitled,
+    not merely available: a dedicated coordinator is compute the platform stands up and pays for, so on
+    a commercial deployment it belongs to the Pro plan and a move onto it from a lesser plan is refused
+    402 org_engine.lane_not_entitled before anything is written or provisioned. The GET reports isolated_entitled
+    alongside isolated_available so the tab disables the lane the org cannot buy rather than failing the
+    save. The shared and external lanes are ungated: shared is where every org starts, and an external engine
+    is the org''s own compute. A deployment with no commercial plugin, and an org with no billing row, gate
+    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) Maintainer 2026-11-09 (REQ-1327): saving
+    an org''s engine lane is the platform''s, on the deployment check, naming the org. org_settings keeps
+    the page read-only, with its report.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
@@ -81075,7 +81095,50 @@
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: 'Node is a source type. A source holds a Node bundle (TypeScript, or JavaScript with JSDoc types); each exported function tagged with the JSDoc tag @table is offered as a table and each tagged @command as a command; untagged exports are ignored. A table''s rows are its function''s return value; the function''s parameters are the table''s parameters (a non-optional parameter is required by the source, an optional one can be made required by a steward); its columns come from the function''s TypeScript return type, or, when the element type is loose (any, unknown or a Record), from a preview; every other type that cannot be mapped is refused by name. The JSDoc text is the description. No Provisa package is imported by the bundle. An unknown tag, or a tagged function whose types cannot be mapped, is reported by name when the bundle is loaded. Each exported async generator function tagged @stream is offered as a live table: each row it yields is delivered as it arrives, on the surfaces that serve subscriptions, and its parameters and columns follow the same rules as @table. The types a tagged function refers to (its parameters, its return type and every type they reference) become types on every surface; a type that cannot be mapped is refused by name when the bundle is loaded. A function tagged @table returns a collection (an array or an iterable, synchronous or asynchronous) whose elements are the table''s rows; one that returns a single object is reported by name when the bundle is loaded. The source names its runtime: Node, Bun or Deno; a bundle''s tables, commands and streams are the same on each. A bundle is JavaScript plus TypeScript declarations carrying the tags; any language that compiles to them can be used, TypeScript being the one tested and documented. A source names its code in one of three ways: an npm package at an exact version, from a public or private registry; a Git repository at a commit or tag, with a subdirectory; or an archive uploaded to Provisa. The reference is pinned, and the content''s hash is recorded with the source. The bundle carries a lockfile (or is a single pre-bundled file); its dependencies are installed with the runtime''s frozen-lockfile mode when the bundle is loaded, not per call, and cached by content hash. Package registries are an organization setting with its own admin page: npm registries, each with a URL, an optional scope and a credential, one of which may be marked the mirror every install goes through; and Git hosts, each with a host and a credential. Every Node install uses them, for the source''s own code and for its dependencies, through configuration written into that install''s isolated directory and removed after it; credentials never reach the bundle or its cache. The public npm registry needs no setup, and a single pre-bundled file needs no install. Every field of a registry or Git host, its URL and credential included, holds what was entered and is resolved at use with the standard resolution, so any of them can be a secret reference. Installs run with install scripts disabled. The worker is sandboxed: it has no file access beyond its bundle, and its network reaches only the egress allow-list, through Deno''s permissions on Deno and an OS-level sandbox on Node and Bun. Runtimes are fetched on demand, pinned and hashed, and cached as the pgwire bundles are. Each subscription to a @stream table starts its own generator with that subscriber''s arguments; its rows go only to that subscriber, governed by the subscriber''s role, and no key is required. The types become named types as REQ-1987 states. A Git host''s credential is an HTTPS token. An uploaded archive is kept in the platform plane by its content hash. A TypeScript number is a double, and any or unknown is json. Each Provisa process runs one worker per bundle. A command is a mutation unless a steward sets it as a query.'
+  description: 'Node is a source type. A source holds a Node bundle (TypeScript, or JavaScript with JSDoc
+    types); each exported function tagged with the JSDoc tag @table is offered as a table and each tagged
+    @command as a command; untagged exports are ignored. A table''s rows are its function''s return value;
+    the function''s parameters are the table''s parameters (a non-optional parameter is required by the
+    source, an optional one can be made required by a steward); its columns come from the function''s TypeScript
+    return type[SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types are dropped; the author returns a
+    typed array. Kept here for history; do not implement against it.] , or, when the element type is loose
+    (any, unknown or a Record), from a preview [END SUPERSEDED BLOCK]; every other type that cannot be mapped
+    is refused by name. The JSDoc text is the description. No Provisa package is imported by the bundle.
+    An unknown tag, or a tagged function whose types cannot be mapped, is reported by name when the bundle
+    is loaded. Each exported async generator function tagged @stream is offered as a live table: each row
+    it yields is delivered as it arrives, on the surfaces that serve subscriptions, and its parameters and
+    columns follow the same rules as @table. The types a tagged function refers to (its parameters, its
+    return type and every type they reference) become types on every surface; a type that cannot be mapped
+    is refused by name when the bundle is loaded. A function tagged @table returns a collection (an array
+    or an iterable, synchronous or asynchronous) whose elements are the table''s rows; one that returns
+    a single object is reported by name when the bundle is loaded. The source names its runtime: Node, Bun
+    or Deno; a bundle''s tables, commands and streams are the same on each. A bundle is JavaScript plus
+    TypeScript declarations carrying the tags; any language that compiles to them can be used, TypeScript
+    being the one tested and documented. A source names its code in one of three ways: an npm package at
+    an exact version, from a public or private registry; a Git repository at a commit or tag, with a subdirectory;
+    or an archive uploaded to Provisa. The reference is pinned, and the content''s hash is recorded with
+    the source. The bundle carries a lockfile (or is a single pre-bundled file); its dependencies are installed
+    with the runtime''s frozen-lockfile mode when the bundle is loaded, not per call, and cached by content
+    hash. Package registries are an organization setting with its own admin page: npm registries, each with
+    a URL, an optional scope and a credential, one of which may be marked the mirror every install goes
+    through; and Git hosts, each with a host and a credential. Every Node install uses them, for the source''s
+    own code and for its dependencies, through configuration written into that install''s isolated directory
+    and removed after it; credentials never reach the bundle or its cache. The public npm registry needs
+    no setup, and a single pre-bundled file needs no install. Every field of a registry or Git host, its
+    URL and credential included, holds what was entered and is resolved at use with the standard resolution,
+    so any of them can be a secret reference. Installs run with install scripts disabled. The worker is
+    sandboxed: it has no file access beyond its bundle, and its network reaches only the egress allow-list,
+    through Deno''s permissions on Deno and an OS-level sandbox on Node and Bun. Runtimes are fetched on
+    demand, pinned and hashed, and cached as the pgwire bundles are. Each subscription to a @stream table
+    starts its own generator with that subscriber''s arguments; its rows go only to that subscriber, governed
+    by the subscriber''s role, and no key is required. The types become named types as REQ-1987 states.
+    A Git host''s credential is an HTTPS token. An uploaded archive is kept in the platform plane by its
+    content hash. A TypeScript number is a double, and any or unknown is json. Each Provisa process runs
+    one worker per bundle. A command is a mutation unless a steward sets it as a query. (Amended 2026-11-09,
+    NO LOOSE ROW TYPES:) Maintainer 2026-11-09: in every language (REQ-1993, REQ-2200) a table''s row type
+    is declared. A function whose row type is loose (any, unknown, a Record, a dict) is refused by name
+    when the code is loaded: its author converts to a typed array. There is no preview. A single field of
+    a typed row may still be loose, as a json column.'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -86784,7 +86847,28 @@ And its prod source reads the shop's database with it, while the stored source k
   feature: connector-catalog-streams-logs-and-public-data
   priority: MUST
   type: behavioral
-  description: "Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get (REQ-2104), settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as REQ-2105 routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm (REQ-2105) and log and metric (attached to the request the call serves). The host puts the module on the path of every local worker and of every built image; it is not distributed, and outside Provisa it is absent, so authors test by mocking it. With no $PROVISA_SERVICES every call raises, naming the service. Each services request names the call it serves, so its work reports into that request. Telemetry: every call to the code is a stage of the triggering request (REQ-1910: its facts on the request span at normal detail, a child span at debug detail) -- function, kind, argument count (no values), rows, batches, duration, the worker's CPU, local or remote, code hash -- and every services call is a stage too (cache hit or miss, model and tokens, HTTP host and status, secret name, never a value). The request's traceparent goes to the worker, so the code's own OpenTelemetry joins the same trace. Remote hosts' services wait for remote wiring."
+  description: 'Provisa''s services to a code source''s code are a module always present where the code
+    runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls --
+    secrets.get (REQ-2104), settings.get (the source''s declared non-secret settings, mapping settings,
+    edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers,
+    JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source''s own vector collection,
+    embedded through the org''s vector models as REQ-2105 routes them; never a governed table''s data, which
+    reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress
+    allow-list the worker''s own egress is, through the deployment''s outbound proxy and CA bundle, recorded
+    in the org''s trail), llm (REQ-2105) and log and metric (attached to the request the call serves). The
+    host puts the module on the path of every local worker and of every built image; it is not distributed,
+    and outside Provisa it is absent, so authors test by mocking it. With no $PROVISA_SERVICES every call
+    raises, naming the service. Each services request names the call it serves, so its work reports into
+    that request. Telemetry: every call to the code is a stage of the triggering request (REQ-1910: its
+    facts on the request span at normal detail, a child span at debug detail) -- function, kind, argument
+    count (no values), rows, batches, duration, the worker''s CPU, local or remote, code hash -- and every
+    services call is a stage too (cache hit or miss, model and tokens, HTTP host and status, secret name,
+    never a value). The request''s traceparent goes to the worker, so the code''s own OpenTelemetry joins
+    the same trace. Remote hosts'' services wait for remote wiring. (Amended 2026-11-09, THE CODE CAN WRITE
+    TO THE TRAIL:) Maintainer 2026-11-09: provisa_services gains an audit call beside log and metric: a
+    structured event the code writes to the org''s trail, attached to the request the call serves. A Spark
+    script can record its application id, a link to its UI, its input paths and its row counts, so the trail
+    shows what Provisa called and points to what Spark ran.'
   use_case: "A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them."
   scenario: "Given a python source scorer with settings {threshold: 0.8} whose code calls ps.settings.get('threshold') and ps.cache.set('rates', r, ttl=3600)
 
@@ -93922,7 +94006,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Maintainer 2026-11-09: a container cannot know its own digest, so Provisa reads the labels of the image
     at the block''s digest from the registry; if Provisa cannot reach the registry the join is refused.
     Pairing spends the one-time code: after a later refusal the host stays paired and the operator resets
-    its state to retry.'
+    its state to retry. (Amended 2026-11-09, A STANDARD FILE SAYS WHAT THE STORE SHOWS:) Maintainer 2026-11-09:
+    a connector project may hold a standard file, connector.yaml with its icon beside it, that provisa connector
+    build reads into the connector''s block: the icon and description for the connector store, defaults
+    for its @requires values and for standard source settings, and fixed values. A default is applied when
+    the source is created and a steward can change it; a fixed value is shown read-only and a save that
+    changes it is refused. Tables and commands stay in the code''s tags. A project with no file builds as
+    before. (Amended 2026-11-09, LIFECYCLE TAGS:) Maintainer 2026-11-09: a connector''s code can tag a function
+    @on-start, @on-stop or @health, once each. @on-start runs once when the host has its setup values: at
+    join, and again on each later restart of a joined host. @on-stop runs when the host shuts down. @health
+    returns a status; Provisa calls it periodically and shows the result on the source in Sources. There
+    are no per-statement or error tags: a function''s own code covers those. (Amended 2026-11-09, WHEN ON-START
+    FAILS:) Maintainer 2026-11-09: when @on-start fails at a first join, the join is refused by name. When
+    it fails on a later restart of a joined host, the source stays and shows as unhealthy.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94030,5 +94126,143 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     rows with the table''s columns and triggers the landing.'
   scenario: Given a code table with a read wait longer than its run\n\nWhen it is first read\n\nThen the
     read waits for the rows
+  stakeholders:
+  - data-engineer
+- id: REQ-2225
+  value: Provisa offers a Spark connector whose tables and commands come from one annotated Spark script
+    given at setup.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. Provisa offers a Spark connector: one image with Spark in it, shown
+    in Sources. A required value of the connector (REQ-2221) is a single annotated Spark script, multi-line
+    text in the setup form, and its cluster is another. The script carries the same @table and @command
+    tags as a code source, and those tags are the source''s tables and commands, so a new job needs no build.
+    The host reads the tags and sends that manifest in the handshake; the image''s digest and code hash
+    prove the image, and the script is checked by its own hash, recorded in the source''s config. Each tagged
+    function runs against the configured cluster. [SUPERSEDED by REQ-1984, 2026-11-09 -- loose row types
+    are dropped. Kept here for history; do not implement against it.] A table''s columns come from its tags,
+    or from the DataFrame''s schema when the script does not declare them. [END SUPERSEDED BLOCK] (Amended
+    2026-11-09, A CONNECTOR SETS DEFAULTS AND FIXED VALUES:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2221,
+    2026-11-09 -- the standard file states this for every connector. Kept here for history; do not implement
+    against it.] a connector can declare values for the source it creates: a default, applied when the source
+    is created and changeable by a steward, or a fixed value, shown read-only, a save that changes it refused.
+    [END SUPERSEDED BLOCK] The Spark connector defaults replication on, so a long job is built and refreshed
+    without a query. A steward with a fast script can turn replication off; queries then run the script
+    live, held to the request timeout. (Amended 2026-11-09, THE DOCS SAY WHICH TO CHOOSE:) Maintainer 2026-11-09:
+    the Spark connector''s documentation covers small jobs, big jobs, replication and caching, and what
+    each means for performance and timeliness. (Amended 2026-11-09, THE SCRIPT DECLARES ITS COLUMNS:) Maintainer
+    2026-11-09: the script declares each table''s row type, as any code source does (REQ-1984), so a table''s
+    shape changes only when the script does. (Amended 2026-11-09, ITS DEFAULTS ARE IN THE STANDARD FILE:)
+    Maintainer 2026-11-09: the Spark connector states replication on by default in the standard file of
+    REQ-2221. (Amended 2026-11-09, A COMMAND CAN TAKE A TABLE:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2226,
+    2026-11-09 -- moved to its own requirement, since it holds for every code source. Kept here for history;
+    do not implement against it.] a code source''s @command, in any language and so in the Spark script,
+    can take a table as an argument, as a registered function does (REQ-885 table_ref): a reference to a
+    governed Provisa table, read over a scoped pgwire session as the calling role. A materialized view can
+    then have table inputs, a command that runs Spark, and a table output. [END SUPERSEDED BLOCK] (Amended
+    2026-11-09, BUILT BY THE STANDARD CONNECTOR BUILD:) Maintainer 2026-11-09: the Spark connector is an
+    ordinary connector project built by the standard connector build (REQ-2221), with its standard file
+    and icon. What differs is that Provisa offers it to every organization, and that its tables and commands
+    come from the script given at setup rather than from the image: the host reads the script''s tags at
+    join. The standard file marks the script as multi-line text and states replication on by default. A
+    @table in the script is the frontier, like any connector''s table: it brings data from outside and lineage
+    starts there. A @command with table inputs is inside the boundary (REQ-2226). On a live read a function
+    is given the statement''s read context (REQ-2100), which the script may apply to its DataFrame. (Amended
+    2026-11-09, THE STREAMING RECIPE:) Maintainer 2026-11-09: the documentation recommends this for streaming
+    from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
+    reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
+    job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
+    which needs a cluster sized for the subscribers.'
+  scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
+    a command
+
+
+    When the source is created
+
+
+    Then the two tables and the command are the source''s, with no image built for them
+
+
+    When a read of one table runs
+
+
+    Then its function runs on the configured cluster and the rows are answered
+
+
+    When the host''s script does not match the hash in the source''s config
+
+
+    Then the join is refused by name'
+  stakeholders:
+  - data-engineer
+- id: REQ-2226
+  value: A code source's command can take a governed table as an argument, so a materialized view can
+    be table inputs, code, and a table output.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A @command of a code source, in any language (REQ-1984, REQ-1993,
+    REQ-2200), can take a table as an argument, as a registered function does (REQ-885 table_ref, REQ-1159):
+    a reference to a governed Provisa table, which the code reads over a scoped pgwire session as the
+    calling role, so what the role cannot see the code cannot read. It composes inline in SQL like any
+    command (REQ-1159), so a materialized view can have table inputs, a command that runs code such as
+    Spark, and a table output. As for any command, one that writes is never composed in a view or a materialized
+    view (REQ-1924, REQ-1928). The command declares its input and output columns, so it is a lineage node
+    like any command (REQ-1160).'
+  scenario: 'Given a code source command that takes a table and declares its input and output columns
+
+
+    And a materialized view over that command with a governed table as its input
+
+
+    When the view is built as a role that cannot see a column of the input
+
+
+    Then the code reads the table as that role and the column is not available to it
+
+
+    And the view''s lineage runs from the input table through the command to its output columns'
+  stakeholders:
+  - data-engineer
+- id: REQ-2227
+  value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
+    or Go code source.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
+    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
+    the same manifest from the code's exported functions and types, a host program that speaks the worker
+    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
+    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
+    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
+    detects it from the project's standard files.
+  scenario: 'Given a Rust code source whose exported functions return rows
+
+
+    When it is registered
+
+
+    Then its exports are offered as tables, commands and streams with columns from their Rust types
+
+
+    When a query reads one of its tables
+
+
+    Then the function runs in the sandbox and its rows are returned'
   stakeholders:
   - data-engineer

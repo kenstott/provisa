@@ -90,7 +90,7 @@ def call_webhook(
             ROLE: {
                 "description": "Test role.",
                 "id": ROLE,
-                "capabilities": ["write"],
+                "capabilities": ["command_execution"],
                 "domain_access": ["*"],
             },
         },

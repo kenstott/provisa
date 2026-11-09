@@ -20,6 +20,7 @@
     "sectionDefaultGrant": "Attribution par défaut",
     "sectionOrgs": "Organisations",
     "sectionEngines": "Moteurs",
+    "sectionStores": "Magasins de cache",
     "defaultGrantIntro": "Les régions accordées à chaque nouvelle organisation, avec le stockage où elle conserve chaque type de données, pour qu'une nouvelle organisation démarre avec une région opérationnelle.",
     "orgsIntro": "C'est ici que l'on décide des régions qu'utilise une organisation : accordez-lui des régions et attribuez le stockage où elle conserve chaque type de données.",
     "colDescription": "Description",

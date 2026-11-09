@@ -563,7 +563,7 @@ def test_its_arguments_and_answer_are_json_on_the_graphql_surface():
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "dev", "capabilities": [], "domain_access": ["*"]},
+        role={"id": "dev", "capabilities": ["command_execution"], "domain_access": ["*"]},
         domains=[],
         functions=[fn],
     )
@@ -593,7 +593,9 @@ def _registered(state, **over) -> None:
     # The role may write and is granted this command: approval is the one gate left to pass.
     fn = _command(requires_approval=True, writable_by=["dev"], visible_to=["dev"], **over)
     state.tracked_functions = {fn["name"]: fn}
-    state.roles = {"dev": {"id": "dev", "capabilities": ["write"], "domain_access": ["*"]}}
+    state.roles = {
+        "dev": {"id": "dev", "capabilities": ["write", "command_execution"], "domain_access": ["*"]}
+    }
 
 
 async def test_a_call_that_needs_approval_is_refused_with_no_hook_to_give_it(state):

@@ -20,6 +20,7 @@
     "sectionDefaultGrant": "デフォルト付与",
     "sectionOrgs": "組織",
     "sectionEngines": "エンジン",
+    "sectionStores": "キャッシュストア",
     "defaultGrantIntro": "新しい組織すべてに付与されるリージョンと、そこで各種データを保持するストアです。新しい組織は動作するリージョンを持った状態で始まります。",
     "orgsIntro": "組織が使うリージョンはここで決めます: リージョンを付与し、そこで各種データを保持するストアを割り当てます。",
     "colDescription": "説明",

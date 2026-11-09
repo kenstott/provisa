@@ -33,6 +33,7 @@
     "dq_rw": "Gerenciar verificações de qualidade de dados, expectativas e promessas.",
     "ignore_relationships": "Unir tabelas que nenhum relacionamento aprovado cobre.",
     "write": "Gravar dados, onde o papel tem uma permissão de gravação.",
+    "command_execution": "Executar os comandos atribuídos a este papel, nos domínios que ele indica.",
     "no_aggregations": "Retirar deste papel as consultas de agregação.",
     "data_residency": "Definir onde ficam os dados de uma tabela, fonte ou view materializada, para as regiões listadas.",
     "notHeldByParent": "Nenhum pai deste papel detém esta capacidade.",

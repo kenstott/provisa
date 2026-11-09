@@ -393,7 +393,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 # reaches no model domain, so a session's graph is its own alone.
                 "id": "tck_empty",
                 "description": "Reaches no model domain: the openCypher TCK's empty graph",
-                "capabilities": ["query_development", "full_results"],
+                "capabilities": ["query_development", "full_results", "command_execution"],
                 # A domain of its own, which holds no table.
                 "domain_access": ["tck_empty"],
             }

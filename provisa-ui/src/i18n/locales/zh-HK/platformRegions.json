@@ -20,6 +20,7 @@
     "sectionDefaultGrant": "預設授予",
     "sectionOrgs": "組織",
     "sectionEngines": "引擎",
+    "sectionStores": "快取存放區",
     "defaultGrantIntro": "每個新組織都會獲授予的區域,以及其在其中保存各類資料的儲存,讓新組織一開始就有可用的區域。",
     "orgsIntro": "組織使用哪些區域在這裡決定:為其授予區域,並分配其在其中保存各類資料的儲存。",
     "colDescription": "描述",
