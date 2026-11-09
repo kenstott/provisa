@@ -818,6 +818,25 @@ async def _cache_prometheus_label_columns(pool, state, model) -> None:  # REQ-17
     state.prometheus_label_columns = cache
 
 
+def engine_unreachable(state, source_id: str, source_type: str) -> MutationResult | None:
+    """A source no reader in this deployment can read, shown when it is added, never at its first
+    query, naming what is missing (REQ-1142, NOT ATTACHABLE MEANS REPLICA; REQ-1998). A source the
+    engine cannot read in place but Provisa lands is a replica and is added."""
+    runtime = getattr(state, "federation_engine", None)
+    engine = getattr(runtime, "engine", None)
+    if engine is None:
+        return None
+    why = engine.unreachable_reason(source_type)
+    if why is None:
+        return None
+    return MutationResult(
+        success=False,
+        message=f"Source {source_id!r} is unreachable on the {engine.name!r} engine: {why}",
+        code="schema.source_unreachable",
+        params={"source": source_id, "type": source_type, "missing": why},
+    )
+
+
 def _register_source_on_engine(state, model, input: SourceInput) -> None:
     """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets

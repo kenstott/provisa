@@ -21,7 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.governed_relation import keep_read
+from provisa.compiler.governed_relation import keep_each_read
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import extracts_paths, stored_path
@@ -56,6 +56,10 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     table_map: dict[str, int] = field(default_factory=dict)
     # table_id → [(col_name, data_type)]
     all_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
+    # table_id → its parameter columns (``_nf_<name>``), [(col_name, data_type)]: an argument of
+    # the read and no column of its rows, so in a governed relation only where a statement names
+    # it (REQ-039, REQ-2099, REQ-2100).
+    parameter_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # Role-level row ceiling (REQ-005) — applies to the whole query regardless of tables.
     limit_ceiling: int | None = None
     # Per-table row ceiling (REQ-005) — applied only when that table is referenced.
@@ -371,6 +375,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             and not c.get("native_filter_type")
             # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
             and c["column_name"] != SCOPE_COLUMN
+        ]
+        gov.parameter_columns[table_id] = [
+            (c["column_name"], c.get("data_type", "varchar"))
+            for c in cols
+            if c.get("native_filter_type")
         ]
         # A table the compilation does not hold is read by no statement it compiles.
         paths = {c["column_name"]: c["path"] for c in cols if c.get("path")}
@@ -892,6 +901,26 @@ def _served(gov_ctx: GovernanceContext, tid: int, physical: str) -> bool:
     return vis is None or physical in vis
 
 
+def _parameters_named(
+    tbl: exp.Table, alias: str, tid: int, gov_ctx: GovernanceContext
+) -> list[str]:  # REQ-039, REQ-2099, REQ-2100
+    """The parameter columns of table ``tid`` the statement holding ``tbl`` names, under ``alias``
+    or unqualified, and the role is served. A parameter is no column of the rows, so a statement
+    that does not name one never has it from ``*``; one it names outside its WHERE conjuncts (a
+    join on the words a search ran for, a read of an attached code table) is read through the
+    relation, and one that is extracted is taken back out (``nf_extractor``)."""
+    parameters = gov_ctx.parameter_columns.get(tid)
+    if not parameters:
+        return []
+    alias_folded = alias.lower()
+    named = {
+        c.name.lower()
+        for c in tbl.root().find_all(exp.Column)
+        if not c.table or c.table.lower() == alias_folded
+    }
+    return [name for name, _ in parameters if name.lower() in named and _served(gov_ctx, tid, name)]
+
+
 def _governed_relation(
     tbl: exp.Table,
     tid: int,
@@ -976,6 +1005,11 @@ def _governed_relation(
         # Nothing of the table is served to the role: refused as a named hidden column is (V003),
         # never a relation with no columns.
         raise PermissionError(f"no column of {alias} is visible to this role")
+    for name in _parameters_named(tbl, alias, tid, gov_ctx):
+        projections.append(
+            exp.alias_(exp.column(name, table=alias, quoted=True), name, quoted=True)
+        )
+        columns.append((name, name))
     carried_keys: dict[str, str] = {}
     for physical in sorted(keys):
         sql_name = apply_sql_name(physical)
@@ -2665,8 +2699,10 @@ def govern(
         # Last, once every pass that reads a relation's columns has: a read's governed relations
         # serve only the outputs it reads, so an engine, and a live source asked through it,
         # reads no other column (a path column it does not read is not extracted at all).
-        for relation in [s for s in tree.find_all(exp.Subquery) if _relation(s) is not None]:
-            keep_read(tree, relation, _relation(relation).alias)  # pyright: ignore[reportOptionalMemberAccess]
+        keep_each_read(
+            tree,
+            [(s, r.alias) for s in tree.find_all(exp.Subquery) if (r := _relation(s)) is not None],
+        )
     return tree
 
 

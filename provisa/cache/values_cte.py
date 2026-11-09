@@ -18,7 +18,8 @@ pure rewrite, and the manager module pulls the file-source and DuckDB connector 
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from provisa.compiler.sql_literals import literal_expr
@@ -42,14 +43,31 @@ class InlineRows:
 
     rows: list[dict]
     column_names: list[str]
+    #: Each column's IR type, where the read declares it (a registered table's live read). A NULL
+    #: in such a column is cast to it: an untyped NULL is the engine's NULL type, and a statement
+    #: built over the rows -- a view's store table, created from its probe -- takes that type
+    #: (text on DuckDB 2.0, INTEGER on 1.4).
+    column_types: Mapping[str, str] = field(default_factory=dict)
 
 
-def _cte_literal(value: Any) -> Any:  # noqa: ANN401 — any value a hot row holds
-    """A hot row's value as a PostgreSQL literal expression. A float is typed DOUBLE PRECISION: a
-    bare ``2.0`` is a numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is
-    written as the string of its digits (REQ-1867) -- a float column would answer as text."""
+def _typed_null(ir_type: str) -> Any:  # noqa: ANN401 — a sqlglot expression
+    """A NULL of the IR type ``ir_type``, as a PostgreSQL expression."""
     import sqlglot.expressions as exp
 
+    from provisa.core.ir_types import to_physical
+
+    return exp.cast(exp.Null(), to_physical(ir_type, "postgresql"))
+
+
+def _cte_literal(value: Any, ir_type: str | None = None) -> Any:  # noqa: ANN401 — any value a hot row holds
+    """A hot row's value as a PostgreSQL literal expression. A float is typed DOUBLE PRECISION: a
+    bare ``2.0`` is a numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is
+    written as the string of its digits (REQ-1867) -- a float column would answer as text. A NULL
+    of a column whose IR type is given is cast to it (:attr:`InlineRows.column_types`)."""
+    import sqlglot.expressions as exp
+
+    if value is None and ir_type is not None:
+        return _typed_null(ir_type)
     literal = literal_expr(value)
     if isinstance(value, float):
         return exp.cast(literal, "DOUBLE PRECISION")
@@ -62,10 +80,13 @@ def _values_cte(cte_name: str, entry: HotRows) -> Any:  # noqa: ANN401 — a sql
     import sqlglot.expressions as exp
 
     columns = [exp.to_identifier(c, quoted=True) for c in entry.column_names]
+    types = entry.column_types if isinstance(entry, InlineRows) else {}
     if entry.rows:
         values = exp.Values(
             expressions=[
-                exp.Tuple(expressions=[_cte_literal(row.get(c)) for c in entry.column_names])
+                exp.Tuple(
+                    expressions=[_cte_literal(row.get(c), types.get(c)) for c in entry.column_names]
+                )
                 for row in entry.rows
             ],
             alias=exp.TableAlias(this=exp.to_identifier("_values")),
@@ -73,9 +94,9 @@ def _values_cte(cte_name: str, entry: HotRows) -> Any:  # noqa: ANN401 — a sql
         # The form the engines have been given: rows read from a derived VALUES table.
         body: exp.Expression = exp.select("*").from_(values)
     else:
-        body = exp.select(*(exp.Null() for _ in entry.column_names)).where(
-            exp.EQ(this=exp.Literal.number(1), expression=exp.Literal.number(0))
-        )
+        body = exp.select(
+            *(_typed_null(types[c]) if c in types else exp.Null() for c in entry.column_names)
+        ).where(exp.EQ(this=exp.Literal.number(1), expression=exp.Literal.number(0)))
     return exp.CTE(
         this=body,
         alias=exp.TableAlias(this=exp.to_identifier(cte_name, quoted=True), columns=columns),

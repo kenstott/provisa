@@ -69,18 +69,23 @@ class _ArrowCursor:
 
     def __init__(self, conn: Any) -> None:  # noqa: ANN401 — a DuckDB connection
         self._cursor = conn.cursor()
+        self._description: Any = None
         self._reader: Iterator[Any] | None = None
         self._pending: list[tuple] = []
 
     @property
     def description(self) -> Any:  # noqa: ANN401 — DuckDB's description
-        return self._cursor.description
+        return self._description
 
     def execute(self, sql: str, params: list | None) -> None:
         self._cursor.execute(LOSSLESS_ARROW)
-        self._cursor.execute(sql, params) if params else self._cursor.execute(sql)
-        if self._cursor.description:
-            self._reader = answered_batches(self._cursor.to_arrow_reader(FETCH_CHUNK_ROWS))
+        # The statement as a relation: DuckDB 2.0's DB-API result hands its Arrow reader over only
+        # once it has computed the whole result, so a later batch's error would be raised here,
+        # not as that batch is read.
+        rel = self._cursor.sql(sql, params=params) if params else self._cursor.sql(sql)
+        self._description = rel.description
+        if self._description:
+            self._reader = answered_batches(rel.to_arrow_reader(FETCH_CHUNK_ROWS))
 
     def fetchmany(self, size: int) -> list[tuple]:
         while len(self._pending) < size and self._reader is not None:

@@ -38,7 +38,7 @@ export const READ_ATTEMPTS = 3;
 const CACHED_CATALOG = { fetchPolicy: "cache-first" } as const;
 
 /** Apollo's AbortError: a DOMException where there is one, which is not an Error everywhere. */
-function isAbort(e: unknown): boolean {
+export function isAbort(e: unknown): boolean {
   return typeof e === "object" && e !== null && "name" in e && e.name === "AbortError";
 }
 

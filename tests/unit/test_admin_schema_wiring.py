@@ -112,21 +112,39 @@ async def test_suggest_table_alias_defaults_to_snake_case(monkeypatch):  # REQ-1
 
 
 @pytest.mark.asyncio
-async def test_suggest_table_alias_honors_global_sql_naming_convention(monkeypatch):  # REQ-1831
-    # It IS still configurable — just from the deployment's own SQL-plane setting
-    # (matching register_table's own auto-gen), never a per-source GraphQL convention.
-    fake_state = SimpleNamespace(global_sql_naming_convention="apollo_graphql")
+async def test_suggest_table_alias_honors_the_orgs_sql_naming_convention(
+    monkeypatch,
+):  # REQ-1831, REQ-1327
+    # It IS still configurable -- from the acting org's own SQL-plane convention (matching
+    # register_table's own auto-gen), never a per-source GraphQL convention and never a
+    # process-wide value: REQ-1327 makes naming the org's, read from the org the call is bound to.
+    from provisa.core import request_context
+
+    fake_state = SimpleNamespace()
     fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_FakeConn()))
 
     from tests.unit.gate_identity import grant
 
     info, _ = grant(monkeypatch, "table_registration", state=fake_state)
-    with (
-        patch("provisa.api.app.state", fake_state),
-        patch("provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)),
-    ):
-        result = await Query().suggest_table_alias(
-            info, table_name="iris_species", domain_id="shelter", source_id="kaggle-iris-dataset"
-        )
+    request_context.register_org_overrides_provider(
+        lambda: {"naming": {"sql_convention": "apollo_graphql"}}
+    )
+    token = request_context.current_org.set("alpha")
+    try:
+        with (
+            patch("provisa.api.app.state", fake_state),
+            patch(
+                "provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)
+            ),
+        ):
+            result = await Query().suggest_table_alias(
+                info,
+                table_name="iris_species",
+                domain_id="shelter",
+                source_id="kaggle-iris-dataset",
+            )
+    finally:
+        request_context.reset_current_org(token)
+        request_context.register_org_overrides_provider(None)
 
     assert result == "irisSpecies"

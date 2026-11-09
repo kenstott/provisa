@@ -87,7 +87,7 @@ from provisa.api.app_startup import (
     _warmup_readiness,
 )
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
-from provisa.compiler.naming import source_to_catalog
+from provisa.compiler.naming import active_sql_convention, source_to_catalog
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
@@ -97,6 +97,7 @@ from provisa.core.config_loader import (
     parse_store_raw,
     rebuild_from_config,
     seed_config,
+    set_product_members,
     store_config,
     store_raw,
     parse_config_dict,
@@ -1349,6 +1350,7 @@ retire_hooks.append(_stop_retired_runtime_listeners)
 from provisa.core import model_row_rules  # noqa: E402
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
+    register_org_overrides_provider,
     register_org_store_provider,
     register_platform_config_provider,
 )
@@ -1386,6 +1388,18 @@ def _org_store_of(side: str) -> Database:
     return db
 
 
+_process_state = state  # the process's own, whatever a handler's module global is rebound to
+
+
+def _acting_org_overrides() -> dict:
+    """The settings rows of the org and environment this work is bound to (REQ-1327), from the
+    runtime that holds them. A runtime not built in this process holds none, and nothing this
+    process does for that org compiles until it is built."""
+    rt = _process_state.org_registry.get(runtime_key(require_current_org(), current_env.get()))
+    return rt.settings_overrides if rt is not None else {}
+
+
+register_org_overrides_provider(_acting_org_overrides)
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
 
@@ -1904,6 +1918,9 @@ async def _load_and_build(
                         await _rel_repo.upsert(_retry_conn, _rel)
                     except ValueError as exc:
                         raise ValueError(f"seeded relationship {_rel.id!r}: {exc}") from exc
+                # The products' members naming those tables, held until now (REQ-1634): a name
+                # still unregistered fails the boot, naming the product.
+                await set_product_members(_retry_conn, _seed_file)
 
     _mark("source-pools+ingest+remote")
 
@@ -3761,7 +3778,7 @@ async def _rebuild_schemas_impl(
         "naming_rules": naming_rules,
         "domains": domains,
         "domain_prefix": domain_prefix,
-        "sql_naming_convention": state.global_sql_naming_convention,
+        "sql_naming_convention": active_sql_convention(),
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,

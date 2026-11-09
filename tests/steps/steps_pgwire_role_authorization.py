@@ -39,6 +39,7 @@ def _state_for_role(visible_tables: dict) -> Any:
     # A single-tenant deployment: its catalog serves the one database, provisa.
     state.multitenancy = False
     state.contexts = {"analyst": ctx}
+    state.roles = {}
     state.schema_build_cache = {"column_types": {tm.table_id: [] for tm in visible_tables.values()}}
     return state
 
@@ -46,6 +47,20 @@ def _state_for_role(visible_tables: dict) -> Any:
 @pytest.fixture
 def shared_data():
     return {}
+
+
+@pytest.fixture
+def catalog_reads_the_plane(monkeypatch):
+    """``answer``'s read of the meta domain on a real control plane holding the role's model, as
+    a connection's statement reads it (REQ-2190)."""
+    from provisa.pgwire import catalog
+    from tests.pg_control_plane import fresh_control_plane
+    from tests.unit.pgwire.catalog_plane import Plane, plane_engine
+
+    held = fresh_control_plane()
+    monkeypatch.setattr(catalog, "_read_meta", Plane(plane_engine(held)).read)
+    yield
+    held.close()
 
 
 @given("an authenticated role whose grant excludes table 'secret'")
@@ -62,7 +77,7 @@ def given_role_grant_excludes_secret(shared_data):
 
 
 @when("the role queries information_schema/pg_catalog through the catalog intercept")
-def when_role_queries_catalog(shared_data):
+def when_role_queries_catalog(shared_data, catalog_reads_the_plane):
     result = answer("SELECT * FROM information_schema.tables", "analyst", shared_data["state"])
     shared_data["visible"] = {r[2] for r in result.rows}
 

@@ -455,3 +455,41 @@ def test_trino_defines_only_the_routines_a_statement_calls():
 def test_no_other_engine_calls_a_routine(dialect: str):
     written = transpile(_CLOSE_SB, dialect)
     assert "pg_geo_" not in written.lower() and "FUNCTION" not in written
+
+
+def _duckdb_lambda_depth(written: str) -> int:
+    """How many lambdas the deepest one of a DuckDB statement is inside, itself counted."""
+
+    def held(node: exp.Expr | None) -> int:
+        return 0 if node is None else isinstance(node, exp.Lambda) + held(node.parent)
+
+    tree = sqlglot.parse_one(written, read="duckdb")
+    return max((held(lam) for lam in tree.find_all(exp.Lambda)), default=0)
+
+
+def test_duckdb_writes_a_run_of_names_as_one_pipeline():
+    """DuckDB 2.0 keeps each list lambda's body twice (the bound argument and its bind data's copy),
+    so a body nested n lambdas deep is held 2^n times: point_add's form, ten deep as one name inside
+    the next, bound in 884MB, poly_contain's in 3.7GB. A run of names is a pipeline of stages, each
+    stage's lambda beside the next, not inside it."""
+    written = transpile("SELECT point_add('(1,2)'::point, '(3,4)'::point) AS v", "duckdb")
+    assert _duckdb_lambda_depth(written) <= 4, written[:300]
+
+
+def test_no_duckdb_form_holds_a_lambda_more_than_ten_deep():
+    """Thirteen deep before (poly_contain, close_lseg): the deepest, poly_distance, is ten now, and
+    binds in 1.5GB where it took 4.4GB."""
+    deep = {
+        name: depth
+        for name, sqls in BY_FUNCTION.items()
+        if (depth := _duckdb_lambda_depth(transpile(sqls[0], "duckdb"))) > 10
+    }
+    assert not deep, deep
+
+
+def test_a_pipeline_reads_a_column_named_as_a_name_of_the_form():
+    """A name of the form is read from its stage; a column of the same name is the column's."""
+    connection = duckdb.connect()
+    connection.execute("CREATE TABLE t AS SELECT '(1,2)' AS _a, '(3,4)' AS _b")
+    written = transpile("SELECT point_add(t._a::point, t._b::point) AS v FROM t", "duckdb")
+    assert connection.execute(written).fetchall() == [("(4,6)",)]

@@ -44,7 +44,7 @@ def _tier(block: str, model: type[BaseModel], field: str, type_: str, **more: An
 
 
 def _hot(field: str, type_: str, **more: Any) -> Setting:
-    return _tier("hot_tables", HotTablesConfig, field, type_, **more)
+    return _tier("hot_tables", HotTablesConfig, field, type_, org_owned=True, **more)
 
 
 def _replication_hot(field: str, unit: str) -> Setting:
@@ -58,6 +58,7 @@ def _replication_hot(field: str, unit: str) -> Setting:
         req="REQ-826",
         env=f"PROVISA_REPLICATION_{field.upper()}",
         config_path=("replication", field),
+        org_owned=True,
         default=ReplicationConfig.model_fields[field].default,
         min=1,
         unit=unit,

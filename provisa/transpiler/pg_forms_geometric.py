@@ -40,10 +40,13 @@ refused by name, as is a value of more digits than that integer holds."""
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+import sqlglot
+from sqlglot import exp
 from sqlglot.dialects.trino import Trino
 from sqlglot.tokens import TokenType
 
@@ -2062,15 +2065,211 @@ def around(sql: str, wrap: Callable[[str], str]) -> str:
     return head + wrap(statement)
 
 
+#: What DuckDB evaluates whenever it evaluates the node holding it (a list function's list, not its
+#: lambda): a name reached from a run's body through these alone is computed whenever the body is.
+_EVALUATED = (
+    exp.Paren,
+    exp.Bracket,
+    exp.Add,
+    exp.Sub,
+    exp.Mul,
+    exp.Div,
+    exp.IntDiv,
+    exp.Mod,
+    exp.Neg,
+    exp.Abs,
+    exp.Sqrt,
+    exp.Greatest,
+    exp.Least,
+    exp.DPipe,
+    exp.Array,
+    exp.Struct,
+    exp.PropertyEQ,
+    exp.EQ,
+    exp.NEQ,
+    exp.LT,
+    exp.LTE,
+    exp.GT,
+    exp.GTE,
+    exp.Cast,
+    exp.TryCast,
+    exp.Length,
+    exp.Typeof,
+    exp.StructExtract,
+    exp.Like,
+    exp.Not,
+    exp.Transform,
+    exp.ArrayFilter,
+)
+
+
+def _named(node: exp.Expr) -> tuple[str, exp.Expr, exp.Expr] | None:
+    """(name, value, body) of DuckDB's let, ``list_transform([value], name -> body)[1]``."""
+    if not isinstance(node, exp.Bracket) or len(node.expressions) != 1:
+        return None
+    at, call = node.expressions[0], node.this
+    if not (isinstance(at, exp.Literal) and not at.is_string and at.this == "0"):
+        return None  # sqlglot holds DuckDB's [1] as offset 0
+    if not isinstance(call, exp.Transform):
+        return None
+    items, fn = call.this, call.expression
+    if not (isinstance(items, exp.Array) and len(items.expressions) == 1):
+        return None
+    if not (isinstance(fn, exp.Lambda) and len(fn.expressions) == 1):
+        return None
+    return fn.expressions[0].name, items.expressions[0], fn.this
+
+
+def _raises(node: exp.Expr) -> bool:
+    return any(isinstance(n, exp.Anonymous) and n.name.lower() == "error" for n in node.walk())
+
+
+def _evaluated_name(
+    body: exp.Expr, taken: set[str]
+) -> tuple[exp.Expr, str, exp.Expr, exp.Expr] | None:
+    """The first let DuckDB evaluates whenever it evaluates ``body`` (:data:`_EVALUATED`), not
+    inside a lambda of its own: (the let, its name, value, body). One whose value raises is left in
+    place, so a refusal is raised in the order the form wrote it."""
+    named = _named(body)
+    if named is not None:
+        name, value, _ = named
+        return None if name in taken or _raises(value) else (body, *named)
+    if not isinstance(body, _EVALUATED):
+        return None
+    for key, held in body.args.items():
+        if isinstance(body, (exp.Transform, exp.ArrayFilter)) and key != "this":
+            continue  # the lambda: evaluated once for each item, if any
+        for child in held if isinstance(held, list) else [held]:
+            if isinstance(child, exp.Expr):
+                found = _evaluated_name(child, taken)
+                if found is not None:
+                    return found
+    return None
+
+
+def _read_from(node: exp.Expr, fields: dict[str, exp.Expr]) -> exp.Expr:
+    """``node`` with each name of ``fields`` it reads replaced by its field: a lambda's parameter is
+    a bare identifier, a column is not; a lambda binding the name again keeps it."""
+    if isinstance(node, exp.Lambda):
+        bound = {p.name for p in node.expressions}
+        node.set("this", _read_from(node.this, {k: v for k, v in fields.items() if k not in bound}))
+        return node
+    if (
+        isinstance(node, exp.Identifier)
+        and node.name in fields
+        and type(node.parent) is not exp.Column
+    ):
+        return fields[node.name].copy()
+    for key, held in list(node.args.items()):
+        if isinstance(held, exp.Expr):
+            node.set(key, _read_from(held, fields))
+        elif isinstance(held, list):
+            node.set(key, [_read_from(c, fields) if isinstance(c, exp.Expr) else c for c in held])
+    return node
+
+
+def _pipelined(sql: str) -> str:
+    """A DuckDB statement with each run of names a pipeline. DuckDB 2.0 keeps a list lambda's body
+    twice, the bound argument and its bind data's copy (1.5 moved it), so a body nested n lambdas
+    deep is held 2^n times: poly_contain's form, a name inside a name thirteen deep, bound in 3.7GB
+    where 1.5.5 took 106MB. A run -- a name whose body is the next name, or holds one it always
+    evaluates -- is one stage to a name, each stage's lambda over the list the stage before
+    answered, beside it rather than inside: the names so far ride in a struct, read by field. Each
+    value is computed once, in the run's order, where it was before."""
+    tree = sqlglot.parse_one(sql, read="duckdb")
+    prefix = "_run"
+    while prefix in sql:
+        prefix += "_"
+    stages = itertools.count(1)
+
+    def lam(body: exp.Expr, name: str) -> exp.Lambda:
+        return exp.Lambda(this=body, expressions=[exp.to_identifier(name)], colon=True)
+
+    def struct(fields: list[tuple[str, exp.Expr]]) -> exp.Struct:
+        return exp.Struct(
+            expressions=[
+                exp.PropertyEQ(this=exp.Literal.string(k), expression=v) for k, v in fields
+            ]
+        )
+
+    def rewritten(node: exp.Expr) -> exp.Expr:
+        named = _named(node)
+        if named is None:
+            for key, held in list(node.args.items()):
+                if isinstance(held, exp.Expr):
+                    node.set(key, rewritten(held))
+                elif isinstance(held, list):
+                    node.set(key, [rewritten(c) if isinstance(c, exp.Expr) else c for c in held])
+            return node
+        run: list[tuple[str, exp.Expr]] = []
+        body: exp.Expr = node
+        while named is not None and named[0] not in {n for n, _ in run}:
+            run.append((named[0], named[1]))
+            body = named[2]
+            named = _named(body)
+        while (found := _evaluated_name(body, {n for n, _ in run})) is not None:
+            let, name, value, rest = found
+            run.append((name, value))
+            if let is body:
+                body = rest
+            else:
+                let.replace(rest)
+        run = [(n, rewritten(v)) for n, v in run]
+        body = rewritten(body)
+        if len(run) == 1:
+            ((name, value),) = run
+            return exp.Bracket(
+                this=exp.Transform(this=exp.Array(expressions=[value]), expression=lam(body, name)),
+                expressions=[exp.Literal.number(0)],
+            )
+        names = [n for n, _ in run]
+        (first, first_value), (second, second_value) = run[0], run[1]
+        stage: exp.Expr = exp.Transform(
+            this=exp.Array(expressions=[first_value]),
+            expression=lam(
+                struct([(first, exp.to_identifier(first)), (second, second_value)]), first
+            ),
+        )
+
+        def fields(row: str, upto: int) -> dict[str, exp.Expr]:
+            return {
+                n: exp.func("struct_extract", exp.to_identifier(row), exp.Literal.string(n))
+                for n in names[:upto]
+            }
+
+        for at in range(2, len(run)):
+            row = f"{prefix}{next(stages)}"
+            held = fields(row, at)
+            name, value = run[at]
+            kept = [(n, held[n].copy()) for n in names[:at]]
+            stage = exp.Transform(
+                this=stage, expression=lam(struct([*kept, (name, _read_from(value, held))]), row)
+            )
+        row = f"{prefix}{next(stages)}"
+        return exp.Bracket(
+            this=exp.Transform(
+                this=stage, expression=lam(_read_from(body, fields(row, len(run))), row)
+            ),
+            expressions=[exp.Literal.number(0)],
+        )
+
+    return rewritten(tree).sql(dialect="duckdb")
+
+
 def planned(sql: str, dialect: str) -> str:
     """A statement holding a shape's form, as its engine plans it in seconds. Trino's analysis of a
     lambda grows with how deep it is nested, minutes for a helper inside a helper: each helper is a
     routine the statement defines. A ClickHouse one is planned by its old analyzer: the new one takes
     most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
-    1.3s), with the same answers. A form is known by its check of a shape's letters."""
+    1.3s), with the same answers. A DuckDB one has each run of names a pipeline (:func:`_pipelined`):
+    its deepest forms bound in gigabytes. A form is known by its check of a shape's letters."""
     if dialect == "trino":
         return _defined(sql)
-    if dialect != "clickhouse" or f"'{_NOT_FINITE}'" not in sql or "SETTINGS" in sql.upper():
+    if f"'{_NOT_FINITE}'" not in sql:
+        return sql
+    if dialect == "duckdb":
+        return _pipelined(sql)
+    if dialect != "clickhouse" or "SETTINGS" in sql.upper():
         return sql
     return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
 

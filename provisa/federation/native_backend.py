@@ -694,7 +694,8 @@ class NativeEngineBackend(EngineBackend):
 
         # Native DuckDB path: attach the control plane (REQ-2014: PostgreSQL) as the provisa_admin
         # catalog so meta/ops entities resolve (parity with Trino, where provisa_admin is a real
-        # catalog). The attach is live, so once is enough.
+        # catalog). Attached once; each walk after clears its catalog cache, so a schema made since
+        # (an org's) resolves.
         tdb = getattr(state, "model_db", None)
         if tdb is not None and hasattr(self._runtime, "attach_control_plane"):
             self._runtime.attach_control_plane(libpq_dsn(tdb.engine.url))

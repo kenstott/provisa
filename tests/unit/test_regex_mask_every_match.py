@@ -46,7 +46,7 @@ def test_the_in_process_mask_masks_every_match():
 
 def test_duckdb_masks_every_match():
     sql = transpile(_governed(), "duckdb").replace('"s"."t"', f"(SELECT '{_PHONE}' AS phone) AS t")
-    assert duckdb.sql(sql).fetchone() == (_MASKED,)
+    assert duckdb.sql(sql).fetchall() == [(_MASKED,)]
 
 
 @pytest.mark.parametrize(

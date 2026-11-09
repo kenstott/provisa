@@ -54,7 +54,7 @@ The admin UI does not show the index record. Read the server log, or the `index_
 An index only helps a join that runs where the index is. Two engines read their store without using its indexes for joins:
 
 - **DuckDB with its embedded file.** The engine never attaches the file. Each statement reads its own local copy of every store table it names, made again whenever the store has changed. Joins run as hash joins over that copy, so join indexes do not speed them up; the file's indexes enforce the key and serve whatever reads the file in place.
-- **DuckDB with a PostgreSQL store.** DuckDB reads the store through its `postgres` extension with filter pushdown switched off (upstream bug duckdb/duckdb-postgres#564), so it scans the replica and filters and joins in DuckDB. The store's indexes are built but these reads do not use them.
+- **DuckDB with a PostgreSQL store.** DuckDB reads the store through its `postgres` extension, which pushes the read's filters down to PostgreSQL, so the store's indexes serve them; joins run in DuckDB.
 
 A MotherDuck store is attached and read in place.
 

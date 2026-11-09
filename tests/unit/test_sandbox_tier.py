@@ -331,7 +331,26 @@ async def test_every_carried_setting_is_written_and_an_undeclared_one_cleared(mo
     updates = await _declared_settings(monkeypatch, "retail")
     assert set(updates) == _carried_settings()
     assert updates["vector_models"] is None
-    assert updates["naming"] is None  # retail declares no naming key an org owns
+    # REQ-1327: naming conventions are the org's, so the one key retail declares (domain_prefix)
+    # is carried to its sandboxes; the rest of the naming block is not written.
+    assert updates["naming"] == {"domain_prefix": True}
+
+
+async def test_an_undeclared_naming_block_is_cleared(monkeypatch):
+    """REQ-1327: a configuration that declares no naming key leaves the template org with none."""
+    from provisa.api.demo_templates import write_declared_settings
+    from provisa.core import org_settings
+    from provisa.core.models import ProvisaConfig
+
+    written = []
+
+    async def write(model_db, updates, *, updated_by):
+        written.append(updates)
+        return list(updates)
+
+    monkeypatch.setattr(org_settings, "write_org_overrides", write)
+    await write_declared_settings(object(), ProvisaConfig.model_construct())
+    assert written[0]["naming"] is None
 
 
 def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch, tmp_path):

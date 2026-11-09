@@ -78,7 +78,7 @@ describe("Admin › Email", () => {
   });
 
   it("shows a platform administrator the mail Provisa sends and not an organisation's platforms", () => {
-    auth.capabilities = ["platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
     render(<EmailTab />);
     expect(screen.getByTestId("email-outgoing")).toBeInTheDocument();
     expect(screen.getByText(en.mailPlatforms.sentTitle)).toBeInTheDocument();
@@ -86,8 +86,17 @@ describe("Admin › Email", () => {
     expect(list).not.toHaveBeenCalled();
   });
 
+  it("does not show the mail Provisa sends to a holder of platform_settings without cross_org", () => {
+    // The API asks the deployment check (platform_settings AND cross_org); a single-tenant org
+    // administrator holds the first alone and would see a section that answers 403.
+    auth.capabilities = ["platform_settings"];
+    render(<EmailTab />);
+    expect(screen.queryByTestId("email-outgoing")).toBeNull();
+    expect(screen.queryByTestId("outgoing-mail-form")).toBeNull();
+  });
+
   it("shows both, each under its own heading and description, to a holder of both rights", async () => {
-    auth.capabilities = ["platform_settings", "org_settings"];
+    auth.capabilities = ["platform_settings", "cross_org", "org_settings"];
     render(<EmailTab />);
     await screen.findByTestId(tid(""));
     expect(screen.getByText(en.mailPlatforms.sentTitle)).toBeInTheDocument();
