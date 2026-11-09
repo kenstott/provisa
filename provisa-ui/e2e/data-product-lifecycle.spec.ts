@@ -20,6 +20,17 @@ import { test, expect, type Page } from "./coverage";
 
 const PRODUCT = `e2e_lifecycle_${Date.now().toString(36)}`;
 
+// In this alpha a status change rebuilds the schema through the config watcher (REQ-1914), and the
+// list's refetch waits behind that rebuild. Measured (J1108): after publish the rebuild ran 9.6 s
+// and the five refetches slowed about tenfold, landing about when the default 5 s expect ran out;
+// rebuilds ran 14-29 s on busier runs. 60 s is twice the slowest rebuild measured, so one rebuild
+// under load fits with the refetch behind it. J1116 on main removes the rebuild for a status change.
+const STATUS_CHANGE_WAIT = 60_000;
+const STATUS_CHANGES = 5;
+// The first load's 90 s, every status change at its full wait, and 30 s for everything else: the
+// test's own limit has to clear the waits above or it would cut them short.
+const TEST_LIMIT = 90_000 + STATUS_CHANGES * STATUS_CHANGE_WAIT + 30_000;
+
 async function admin(page: Page, query: string, variables: Record<string, unknown>) {
   const res = await page.request.post("/admin/graphql", { data: { query, variables } });
   expect(res.ok(), await res.text()).toBeTruthy();
@@ -29,8 +40,8 @@ async function admin(page: Page, query: string, variables: Record<string, unknow
 }
 
 test.describe("a data product's lifecycle", () => {
-  // The first navigation compiles the page's chunks.
-  test.setTimeout(180_000);
+  // The first navigation compiles the page's chunks; each status change waits out a rebuild.
+  test.setTimeout(TEST_LIMIT);
 
   test.beforeEach(async ({ page }) => {
     const made = await admin(
@@ -71,18 +82,18 @@ test.describe("a data product's lifecycle", () => {
     await page.getByTestId("data-products-to-review-only").uncheck();
 
     await page.getByTestId(`data-product-publish-${PRODUCT}`).click();
-    await expect(badge).toHaveText("Live");
+    await expect(badge).toHaveText("Live", { timeout: STATUS_CHANGE_WAIT });
 
     await page.getByTestId(`data-product-deprecate-${PRODUCT}`).click();
     await page.getByTestId("data-product-deprecate-reason").fill("Replaced next quarter.");
     await page.getByTestId("data-product-deprecate-submit").click();
-    await expect(badge).toHaveText("Deprecated");
+    await expect(badge).toHaveText("Deprecated", { timeout: STATUS_CHANGE_WAIT });
     await expect(page.getByTestId(`data-product-read-${PRODUCT}`)).toContainText(
       "Replaced next quarter.",
     );
 
     await page.getByTestId(`data-product-restore-${PRODUCT}`).click();
-    await expect(badge).toHaveText("Live");
+    await expect(badge).toHaveText("Live", { timeout: STATUS_CHANGE_WAIT });
 
     // No members: retiring it needs no successor.
     await page.getByTestId(`data-product-retire-${PRODUCT}`).click();
@@ -91,11 +102,11 @@ test.describe("a data product's lifecycle", () => {
     );
     await page.getByTestId("data-product-retire-reason").fill("No longer offered.");
     await page.getByTestId("data-product-retire-submit").click();
-    await expect(badge).toHaveText("Retired");
+    await expect(badge).toHaveText("Retired", { timeout: STATUS_CHANGE_WAIT });
 
     // A retired product comes back a draft.
     await page.getByTestId(`data-product-restore-${PRODUCT}`).click();
-    await expect(badge).toHaveText("Draft");
+    await expect(badge).toHaveText("Draft", { timeout: STATUS_CHANGE_WAIT });
     await expect(page.getByTestId(`data-product-publish-${PRODUCT}`)).toBeVisible();
   });
 });
