@@ -10,5 +10,6 @@
 
 """The Go source type (REQ-2200): a Go package whose exported functions, tagged ``@table``,
 ``@command``, ``@stream`` or ``@columns`` in their doc comments, are tables, commands, live
-tables and batch column transforms, typed by their signatures. No SDK: the code imports nothing
-of Provisa's. See docs/arch/code-sources.md."""
+tables and batch column transforms, typed by their signatures. No SDK: the code needs nothing of
+Provisa's but the provisa_services module (``services/``, REQ-2106), which it imports only to use
+Provisa's services and which is always present in its build. See docs/arch/code-sources.md."""

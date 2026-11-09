@@ -59,7 +59,13 @@ from provisa.codesource.install import (
 from provisa.codesource.manifest import Manifest
 from provisa.core.package_registries import GOPROXY, Resolved
 from provisa.golang import build, reader
-from provisa.golang.reader import GoRunner, check_go_line, go_environment, run_go
+from provisa.golang.reader import (
+    GoRunner,
+    check_go_line,
+    go_environment,
+    run_go,
+    services_go_mod,
+)
 
 #: The proxy a module comes from when the organisation names no default Go module proxy.
 PUBLIC_PROXY = "https://proxy.golang.org"
@@ -68,7 +74,6 @@ LOCKFILES = ("go.sum",)
 MODULES = ".gomod"
 HOST_DIR = ".provisa-host"
 _VERSION = re.compile(r"^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$")
-_REQUIRE = re.compile(r"^\s*require\b", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -161,9 +166,12 @@ def fetch(code: Code, registries: Sequence[Resolved], http: Http, dest: Path) ->
 
 
 def check_lockfile(root: Path) -> None:
-    """Code that requires other modules carries the go.sum they are checked against."""
+    """Code that requires other modules carries the go.sum they are checked against. Provisa's
+    services are not one of them: they come from Provisa, and nothing checks them."""
     check_go_line(root)
-    if _REQUIRE.search((root / "go.mod").read_text()) and not (root / "go.sum").is_file():
+    required = build.directives((root / "go.mod").read_text(), "require")
+    others = any(words[0] != reader.SERVICES_MODULE for words in required)
+    if others and not (root / "go.sum").is_file():
         raise BundleRefused(
             "lockfile_missing",
             "the code's go.mod requires other modules and it carries no go.sum: add one beside "
@@ -175,7 +183,8 @@ def install_environment(
     go: Path, root: Path, registries: Sequence[Resolved], scratch: Path, gocache: Path
 ) -> dict[str, str]:
     """The go command's environment for an install: the organisation's proxy, its credentials in
-    a ``.netrc`` and its certificate authorities in a file, both in ``scratch``."""
+    a ``.netrc`` and its certificate authorities in a file, both in ``scratch``, and the code's
+    go.mod with Provisa's services added, there too."""
     (scratch / ".netrc").write_text(netrc(registries))
     (scratch / ".netrc").chmod(0o600)
     ca_file = shared.install_trust(registries, scratch)
@@ -184,7 +193,7 @@ def install_environment(
         gocache=gocache,
         gomodcache=root / MODULES,
         GOPROXY=proxy_address(registries),
-        GOFLAGS="-mod=readonly -modcacherw",
+        GOFLAGS=f"-mod=readonly -modcacherw -modfile={services_go_mod(root, scratch)}",
         NETRC=str(scratch / ".netrc"),
         **({"SSL_CERT_FILE": str(ca_file)} if ca_file is not None else {}),
     )

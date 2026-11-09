@@ -380,7 +380,9 @@ async def _mat_pipeline_table(
     kept under those arguments for the table's TTL (REQ-1980): two argument sets are two
     answers, never one."""
     source_type = state.source_types[table["source_id"]]
-    if source_type in ("node", "python"):
+    from provisa.codesource.languages import CODE_SOURCE_TYPES
+
+    if source_type in CODE_SOURCE_TYPES:
         # REQ-2100, REQ-1756: a code table is called by its source's proxy, which plans the
         # read -- its declared predicates a pre-filter -- and its rows are kept under every
         # argument the call was given.

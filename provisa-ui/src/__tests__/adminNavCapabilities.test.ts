@@ -63,8 +63,6 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/tags": "table_registration",
   // REQ-2147, REQ-1327: classification is the steward's, on the decisions' own right.
   "/admin/classification-kinds": "sensitive_data",
-  // REQ-2185, REQ-1327: curated with the glossary, which adds its documents.
-  "/admin/reference-library": "glossary_rw",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
   // understand a column is not administering the org, so every seeded role reaches the surface;
