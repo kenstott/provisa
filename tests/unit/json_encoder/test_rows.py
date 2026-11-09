@@ -101,7 +101,7 @@ def test_a_zoned_time_row_is_its_time_of_day_with_no_date():
     Arrow form ``row_batch`` holds it as (ir_arrow._clocks) is no part of the value."""
     value = dt.time(3, 4, 5, tzinfo=dt.timezone(dt.timedelta(hours=2)))
     answer = je.rest(encoders.RowBatches([[(value,)]], ["timetz"]), _columns("convert"))
-    assert json.loads(answer)[0]["v"] == "03:04:05+02:00"
+    assert json.loads(answer[0])["data"][0]["v"] == "03:04:05+02:00"
 
 
 def test_an_int_past_arrows_is_a_number():

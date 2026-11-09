@@ -250,7 +250,7 @@ def test_an_instant_read_through_its_governed_relation_is_read_with_its_zone():
         '"orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" AS "orders") AS "orders"'
     )
     assert rewrite_instants_for_trino(sql, columns) == (
-        'SELECT "id", WITH_TIMEZONE("placed_at", \'UTC\') AS "placed_at" FROM (SELECT '
+        'SELECT "id", WITH_TIMEZONE("placed_at", \'UTC\') AS placed_at FROM (SELECT '
         '"orders"."id" AS "id", "orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" '
         'AS "orders") AS "orders"'
     )
