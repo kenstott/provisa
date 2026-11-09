@@ -276,6 +276,7 @@ class TestGroupByIncludeNodes:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
 
