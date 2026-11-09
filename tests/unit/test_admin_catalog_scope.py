@@ -35,6 +35,7 @@ import provisa.api.app as appmod
 from provisa.api.admin import schema_query
 from provisa.api.admin.catalog_scope import catalog_scope
 from provisa.api.admin.schema_query import Query
+from tests.unit.gate_identity import serve_every_column
 
 _TABLES = [
     {"id": 1, "domain_id": "sales", "source_id": "pg", "table_name": "orders"},
@@ -609,6 +610,24 @@ async def test_a_registrar_lists_only_the_materialized_views_over_tables_it_read
     REQ-2152 row limit holds for it (the sales registrar reads orders, not staff)."""
     _install_two_mvs(monkeypatch)
     assert [m.id for m in await Query().mv_list(_caller("registrar"))] == ["mv_orders"]
+
+
+async def test_the_store_count_excludes_views_over_tables_the_caller_cannot_read(monkeypatch):
+    """REQ-1327 (2026-11-09): the store tile's count agrees with the list beside it (the sales
+    registrar reads orders, not staff); a caller served the whole catalog counts both."""
+    _install_two_mvs(monkeypatch)
+    monkeypatch.setattr(
+        appmod.state,
+        "federation_engine",
+        types.SimpleNamespace(
+            name="duckdb", materialize_store_dsn=lambda: "postgresql://store-host/provisa"
+        ),
+        raising=False,
+    )
+    assert (await Query().materialize_store_info(_caller("registrar"))).mv_count == 1
+
+    serve_every_column(monkeypatch)
+    assert (await Query().materialize_store_info(_caller("registrar"))).mv_count == 2
 
 
 async def test_observability_lists_only_the_tables_its_caller_reads(monkeypatch):
