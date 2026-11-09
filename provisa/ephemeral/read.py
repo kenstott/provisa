@@ -115,6 +115,7 @@ def overlay(model: Any, session: TempSession) -> Any:
         JunctionMapping,
         NodeMapping,
         RelationshipMapping,
+        Selectivity,
         SessionWalk,
     )
 
@@ -212,6 +213,11 @@ def overlay(model: Any, session: TempSession) -> Any:
     # REQ-348: every session relationship in one relation, which a path function with an
     # unlabelled end walks.
     out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
+    # The session's counts, which a read starts a path from its more selective end by: a label
+    # the model also has counts model rows the session cannot, so only the session's own count.
+    out.selectivity = Selectivity(
+        {k: n for k, n in graph.label_counts.items() if k and k not in model.nodes}
+    )
     return out
 
 
