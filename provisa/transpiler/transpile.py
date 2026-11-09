@@ -2236,13 +2236,6 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
     ctes = {c.alias for c in tree.find_all(exp.CTE)}
     table_aliases = {a.name for a in tree.find_all(exp.TableAlias)}
     output_aliases = {a.alias for a in tree.find_all(exp.Alias)}
-    # Relations the statement derives (a CTE, a subquery): their columns are the statement's own
-    # output names, never a stored object's.
-    derived = (
-        ctes
-        | {s.alias for s in tree.find_all(exp.Subquery) if s.alias}
-        | {t.alias_or_name for t in tree.find_all(exp.Table) if t.name in ctes}
-    )
 
     def _sources(column: exp.Column) -> list[exp.Expr]:
         select = column.find_ancestor(exp.Select)
@@ -2253,6 +2246,23 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
             for src in [select.args.get("from_"), *select.args.get("joins", [])]
             if src is not None
         ]
+
+    def _qualifies_derived(column: exp.Column) -> bool:
+        """True when the column's table qualifier names a subquery or CTE in its SELECT's FROM.
+
+        Uses the column's immediate SELECT context rather than the full tree, so a subquery alias
+        present in an outer SELECT does not incorrectly mask a same-named real table in an inner
+        SELECT (REQ-1731 scope fix: global ``derived`` set caused the inner column to be treated as
+        derived, suppressing the required uppercase conversion)."""
+        qualifier = column.table
+        if not qualifier:
+            return False
+        for src in _sources(column):
+            if isinstance(src, exp.Subquery) and src.alias == qualifier:
+                return True
+            if isinstance(src, exp.Table) and src.name in ctes and src.alias_or_name == qualifier:
+                return True
+        return False
 
     def _reads_only_derived(column: exp.Column) -> bool:
         sources = _sources(column)
@@ -2300,7 +2310,7 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         _stored(column.args.get("db"), set())
         _stored(column.args.get("table"), table_aliases | ctes)
         qualifier = column.table
-        if (qualifier and qualifier in derived) or (not qualifier and _reads_only_derived(column)):
+        if _qualifies_derived(column) or (not qualifier and _reads_only_derived(column)):
             # A derived relation's column is the statement's own output name. Unquoted, Exasol
             # reads it in upper case, which a quoted lowercase output does not answer to.
             name = column.this
