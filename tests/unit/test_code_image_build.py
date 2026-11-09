@@ -178,7 +178,9 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     code = tmp_path / "src"
     code.mkdir()
     (code / "rates.py").write_text(
-        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
     )
     (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
     cache = tmp_path / "cache"
@@ -255,7 +257,9 @@ def test_the_front_end_imports_its_postgres_protocol_from_the_image_alone(
     code = tmp_path / "src"
     code.mkdir()
     (code / "rates.py").write_text(
-        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
     )
     (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
     cache = tmp_path / "cache"
@@ -369,7 +373,9 @@ def test_a_go_source_is_its_host_compiled_for_the_images_platform(
     code.mkdir()
     (code / "go.mod").write_text("module example.com/rates\n\ngo 1.23\n")
     (code / "rates.go").write_text(
-        "package rates\n\n// @table\nfunc Rates() []map[string]any { return nil }\n"
+        "package rates\n\n"
+        'type Rate struct {\n\tCode string `json:"code"`\n}\n\n'
+        "// @table\nfunc Rates() []Rate { return nil }\n"
     )
     cache = tmp_path / "cache"
     _cache(cache, LINUX_ARM64)
