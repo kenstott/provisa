@@ -85,11 +85,12 @@ def _launched(
         f"_bind_args=( --host 127.0.0.1 --port {port} )\n"
         f"exec {_launch_command()}\n"
     )
+    log = (app_dir / "server.log").open("wb")
     process = subprocess.Popen(
         ["bash", "-c", program],
         cwd=app_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
         start_new_session=True,
     )
     try:
@@ -100,6 +101,7 @@ def _launched(
         except ProcessLookupError:
             pass  # it has already ended, the outcome most of these tests expect
         process.wait()
+        log.close()
 
 
 def _healthy(port: int) -> bool:
@@ -142,11 +144,13 @@ def test_a_bad_edit_after_a_good_start_keeps_the_reloader_waiting(tmp_path: Path
     with _launched(tmp_path, f'--reload --reload-dir "{tmp_path}"', port) as process:
         _wait_healthy(port, process)
 
-        main.write_text(_FAILS_IN_LIFESPAN)
         deadline = time.monotonic() + 30
         while _healthy(port):
             assert time.monotonic() < deadline, "the reloader never picked up the bad edit"
-            time.sleep(0.2)
+            # Repeated: StatReload's first scan takes a file's mtime as its baseline, so an edit
+            # landing before that scan is never seen.
+            main.write_text(_FAILS_IN_LIFESPAN)
+            time.sleep(0.5)
         time.sleep(3)  # longer than the reloader's poll: it would have stopped by now
         assert process.poll() is None
 

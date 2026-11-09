@@ -11,8 +11,9 @@
 """Run uvicorn so that a backend which cannot start ends the launch.
 
 ``uvicorn --reload`` never looks at its child: when the app fails to import or its lifespan
-fails, the child exits with uvicorn's startup-failure code and the reloader goes on watching
-files with nothing running. ``--workers`` already stops on that code.
+fails, the child exits non-zero (1 for an exception raised while importing, uvicorn's
+startup-failure code 3 for a lifespan failure) and the reloader goes on watching files with
+nothing running. ``--workers`` already stops on code 3.
 
 The first server only: once a reload has happened, a failed start is a bad edit, and the reloader
 keeps waiting for the next one.
@@ -24,11 +25,11 @@ find a backend to stop.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import sys
 from pathlib import Path
 
-import uvicorn.main
 from uvicorn.config import STARTUP_FAILURE
 from uvicorn.supervisors import ChangeReload
 
@@ -36,7 +37,7 @@ logger = logging.getLogger("uvicorn.error")
 
 
 class EndOnFailedFirstStart(ChangeReload):
-    """The reloader, stopping when the first server exits with the startup-failure code."""
+    """The reloader, stopping when the first server exits non-zero on its own."""
 
     reloaded = False
     first_start_failed = False
@@ -46,7 +47,8 @@ class EndOnFailedFirstStart(ChangeReload):
         super().restart()
 
     def should_restart(self) -> list[Path] | None:
-        if not self.reloaded and self.process.exitcode == STARTUP_FAILURE:
+        exitcode = self.process.exitcode  # None while it runs, negative if a signal ended it
+        if not self.reloaded and exitcode is not None and exitcode > 0:
             logger.error("The backend failed to start; stopping the reloader.")
             self.first_start_failed = True
             raise StopIteration
@@ -61,8 +63,10 @@ class EndOnFailedFirstStart(ChangeReload):
 def main() -> None:
     if sys.argv[1:2] != ["uvicorn"]:
         raise SystemExit("usage: serve_backend.py uvicorn main:app [uvicorn options]")
-    uvicorn.main.ChangeReload = EndOnFailedFirstStart  # pyright: ignore[reportAttributeAccessIssue]
-    uvicorn.main.main(args=sys.argv[2:])
+    # By module path: the package attribute ``uvicorn.main`` is the click command, not this module.
+    cli = importlib.import_module("uvicorn.main")
+    cli.ChangeReload = EndOnFailedFirstStart
+    cli.main(args=sys.argv[2:])
 
 
 if __name__ == "__main__":
