@@ -443,6 +443,8 @@ _TO_JSON = (
 )
 #: What already is JSON, or holds a value that was written on its way in.
 _JSON_NODES = (exp.JSONObject, exp.JSONArray, exp.JSONArrayAgg)
+#: What _TO_JSON's typeof test can never find to be a timestamp.
+_NEVER_AN_INSTANT = (exp.Map, exp.Array)
 _JSON_CALLS = frozenset(
     {
         "json_group_array",
@@ -464,7 +466,11 @@ def _is_json_call(node: exp.Expr) -> bool:
 
 def json_encoded(value: exp.Expr) -> exp.Expr:
     """``value`` as its JSON value on DuckDB, whatever its type: one form for every JSON a
-    statement builds, so a timestamp reads alike at any depth."""
+    statement builds, so a timestamp reads alike at any depth. A map or a list is never an
+    instant, so it takes the form's ELSE alone: the form names its value three times, and around
+    each level of a nested statement that multiplied the text."""
+    if isinstance(value.unnest(), _NEVER_AN_INSTANT):
+        return exp.Anonymous(this="to_json", expressions=[value])
     return _duckdb(_TO_JSON, _v=value)
 
 
@@ -803,7 +809,7 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     if name in _POPULATE or name == "jsonb_populate_record_valid":
         return _populated(name, args)
     if name in ("to_json", "to_jsonb") and len(args) == 1:
-        return _duckdb(_TO_JSON, _v=args[0].transform(inner))
+        return json_encoded(args[0].transform(inner))
     if name in ("row_to_json", "array_to_json") and len(args) == 2:
         if _is_null(args[0]):
             return exp.cast(exp.Null(), "JSON")
