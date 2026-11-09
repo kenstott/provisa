@@ -2046,6 +2046,15 @@ CREATE TABLE IF NOT EXISTS reference_documents (
     added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     refreshed_at    TIMESTAMPTZ,
     replaced_at     TIMESTAMPTZ,
+    index_status    TEXT NOT NULL DEFAULT 'ready',
+    index_error     TEXT,
+    index_step      TEXT,
+    index_done      INTEGER,
+    index_total     INTEGER,
+    index_launch    TEXT,
+    index_progress_at TIMESTAMPTZ,
+    pending_content BYTEA,
+    terms_note      TEXT,
     tenant_id       UUID
 );
 
