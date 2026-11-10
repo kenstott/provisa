@@ -60,6 +60,10 @@ on:
         type: string
         required: false
         default: ""
+      include_microsoft_365:
+        type: boolean
+        required: false
+        default: false
     # Every secret a job of this workflow reads, by name: the caller passes each one, and
     # nothing is inherited. The matrix lanes read only the first three; the rest are the
     # warehouse and salesforce jobs' live credentials.
@@ -95,6 +99,16 @@ on:
       AZURE_CLIENT_SECRET:
         required: false
       AZURE_TENANT_ID:
+        required: false
+      M365_TENANT_ID:
+        required: false
+      M365_CLIENT_ID:
+        required: false
+      M365_CLIENT_SECRET:
+        required: false
+      M365_TEST_MAILBOXES:
+        required: false
+      M365_TEST_MAILBOX_OUTSIDE:
         required: false
       BIGQUERY_LOCATION:
         required: false
@@ -256,6 +270,7 @@ jobs:
       salesforce: ${{ steps.plan.outputs.salesforce }}
       athena: ${{ steps.plan.outputs.athena }}
       servicenow: ${{ steps.plan.outputs.servicenow }}
+      microsoft_365: ${{ steps.plan.outputs.microsoft_365 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -269,7 +284,7 @@ jobs:
           # them only when the dispatch includes it; one naming a test no such lane selects fails
           # here, naming the test and the lane it needs (run_lane.py routes).
           PROVISA_INCLUDE_LIVE: >-
-            ${{ inputs.include_warehouse && 'warehouse' || '' }},${{ inputs.include_salesforce && 'salesforce' || '' }},${{ inputs.include_athena && 'athena' || '' }},${{ inputs.include_servicenow && 'servicenow' || '' }}
+            ${{ inputs.include_warehouse && 'warehouse' || '' }},${{ inputs.include_salesforce && 'salesforce' || '' }},${{ inputs.include_athena && 'athena' || '' }},${{ inputs.include_servicenow && 'servicenow' || '' }},${{ inputs.include_microsoft_365 && 'microsoft_365' || '' }}
         run: |
           matrix=$(python3 scripts/ci/run_lane.py --matrix "$LANES")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
@@ -281,7 +296,7 @@ jobs:
             case ",${LANES// /}," in *,all,*|*,cluster,*) c=true;; *) c=false;; esac
           fi
           echo "cluster=$c" >> "$GITHUB_OUTPUT"
-          for lane in warehouse salesforce athena servicenow; do
+          for lane in warehouse salesforce athena servicenow microsoft_365; do
             echo "$lane=$(python3 scripts/ci/run_lane.py --has-targets "$lane")" >> "$GITHUB_OUTPUT"
           done
 
@@ -951,9 +966,62 @@ jobs:
           path: results/
           if-no-files-found: error
 
+  # The live Microsoft 365 tenant (REQ-1923, REQ-1994): the maintainer's own, so a dispatch asks
+  # for it (include_microsoft_365; maintainer 2026-11-10). The tests read the mailboxes and write
+  # only a calendar and a To Do list of their own, which they remove. They drive the loader
+  # directly, so no stack is brought up (PYTEST_NO_DOCKER) and no Trino plugin is fetched.
+  microsoft_365:
+    name: microsoft_365 (live tenant)
+    needs: plan
+    if: (github.event_name == 'workflow_dispatch' && inputs.include_microsoft_365) && needs.plan.outputs.microsoft_365 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
+      PROVISA_LANE_TESTS: ${{ inputs.tests }}
+      PYTEST_NO_DOCKER: "1"
+      M365_TENANT_ID: ${{ secrets.M365_TENANT_ID }}
+      M365_CLIENT_ID: ${{ secrets.M365_CLIENT_ID }}
+      M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
+      M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
+      # Optional: the test of a mailbox the client may not read runs only when it is set.
+      M365_TEST_MAILBOX_OUTSIDE: ${{ secrets.M365_TEST_MAILBOX_OUTSIDE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+          client: "true"
+
+      # A missing credential fails the lane by name rather than surfacing as a skipped test.
+      - name: Credentials present
+        run: |
+          missing=""
+          for v in M365_TENANT_ID M365_CLIENT_ID M365_CLIENT_SECRET M365_TEST_MAILBOXES; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::microsoft_365 lane cannot run; repo secrets not set:$missing"
+            exit 1
+          fi
+
+      - name: Run lane
+        run: uv run python scripts/ci/run_lane.py microsoft_365 --junitxml results/microsoft_365/junit.xml
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-microsoft_365
+          path: results/
+          if-no-files-found: error
+
   report:
     name: results by lane
-    needs: [plan, suite, cluster, warehouse, salesforce, athena, servicenow]
+    needs: [plan, suite, cluster, warehouse, salesforce, athena, servicenow, microsoft_365]
     if: always()
     runs-on: ubuntu-latest
     steps:

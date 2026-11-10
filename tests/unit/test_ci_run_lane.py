@@ -86,16 +86,15 @@ def test_a_shard_runs_only_its_files():
     assert "--durations=50" in cmd
 
 
-def test_all_is_every_suite_lane_with_its_shards():
-    include = _runner().matrix("all")["include"]
+def test_all_is_every_suite_lane_with_its_shards(monkeypatch):
+    runner = _runner()
+    # The matrix's shape only; whether every test has a lane is the coverage rule's own test.
+    monkeypatch.setattr(runner, "unselected", lambda: [])
+    include = runner.matrix("all")["include"]
     assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
     assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
     assert {"lane": "kafka", "shard": "", "timeout": 90} in include
-    assert not [
-        m
-        for m in include
-        if m["lane"] in ("cluster", "warehouse", "salesforce", "athena", "servicenow")
-    ]
+    assert not [m for m in include if m["lane"] in ("cluster", *_runner().LIVE)]
 
 
 def test_a_selection_runs_only_those_lanes():
@@ -244,7 +243,7 @@ def _plugin_cache_steps(steps: list[dict]) -> tuple[int, int]:
 
 @pytest.mark.parametrize(
     "job", ["suite", "cluster", "warehouse", "salesforce", "athena", "servicenow"]
-)
+)  # not microsoft_365: it runs with PYTEST_NO_DOCKER, so conftest fetches no plugin
 def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(job):
     """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
     a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
@@ -348,7 +347,7 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
     # Every other lane excludes the live tests through the base exclusion or its own marker.
     for name, lane in run_lane.LANES.items():
-        if name in ("warehouse", "salesforce", "athena", "servicenow", "polly_bakeoff"):
+        if name in (*run_lane.LIVE, "polly_bakeoff"):
             continue
         assert "not requires_warehouse" in lane.marker or name in ("isolated", "e2e", "cluster")
     for test in ("test_salesforce_source_e2e.py", "test_cloudops_source_e2e.py"):
@@ -451,6 +450,87 @@ def test_the_servicenow_lane_builds_its_server_from_the_calcite_ref_it_is_given(
     )
 
 
+_M365_TESTS = (
+    "tests/integration/test_microsoft365_live_e2e.py",
+    "tests/integration/test_microsoft365_calendar_live_e2e.py",
+)
+_M365_SECRETS = ("M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_TEST_MAILBOXES")
+
+
+def test_the_microsoft_365_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secrets():
+    """REQ-1923, REQ-1994: the maintainer's tenant is used only when a dispatch asks for it
+    (maintainer 2026-11-10), and a missing credential fails the lane by name."""
+    run_lane = _runner()
+    assert run_lane.LANES["microsoft_365"].marker == "requires_microsoft_365"
+    assert "microsoft_365" in run_lane.LIVE and "microsoft_365" not in run_lane.SUITE
+    job = _lanes_workflow()["jobs"]["microsoft_365"]
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_microsoft_365) "
+        "&& needs.plan.outputs.microsoft_365 == 'true'"
+    )
+    names = (*_M365_SECRETS, "M365_TEST_MAILBOX_OUTSIDE")
+    assert {k: job["env"][k] for k in names} == {k: f"${{{{ secrets.{k} }}}}" for k in names}
+    # The tests drive the loader directly: no stack is brought up for them.
+    assert job["env"]["PYTEST_NO_DOCKER"] == "1"
+    assert "microsoft_365 --junitxml results/microsoft_365/junit.xml" in str(
+        [s.get("run") for s in _job_steps("microsoft_365")]
+    )
+    import yaml
+
+    caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
+    assert caller[True]["workflow_dispatch"]["inputs"]["include_microsoft_365"]["default"] is False
+    assert caller["jobs"]["lanes"]["with"]["include_microsoft_365"] == (
+        "${{ inputs.include_microsoft_365 || false }}"
+    )
+    for name in names:
+        assert caller["jobs"]["lanes"]["secrets"][name] == f"${{{{ secrets.{name} }}}}"
+    assert "microsoft_365" in _lanes_workflow()["jobs"]["report"]["needs"]
+
+
+def test_the_microsoft_365_lane_selects_every_live_m365_test_and_the_warehouse_lane_none():
+    """Both live M365 modules carry requires_warehouse (a skip fails them by name) and
+    requires_microsoft_365: only the microsoft_365 lane selects them. The warehouse lane's
+    exclusion still holds -- its nightly job is handed no M365 secret."""
+    run_lane = _runner()
+    for path in _M365_TESTS:
+        tests = run_lane.test_markers(path)
+        assert tests
+        for test, variants in tests.items():
+            for marks in variants:
+                assert {"requires_warehouse", "requires_microsoft_365"} <= marks, test
+                lanes = [
+                    lane
+                    for lane in run_lane.LANES
+                    if run_lane._in_lane(lane, path) and run_lane.selects(lane, marks)
+                ]
+                assert lanes == ["microsoft_365"], (test, lanes)
+    assert not set(_M365_SECRETS) & set(_lanes_workflow()["jobs"]["warehouse"]["env"])
+
+
+def test_a_targeted_m365_run_is_routed_to_its_lane_only_when_the_dispatch_includes_it(
+    monkeypatch, capsys
+):
+    run_lane = _runner()
+    monkeypatch.setenv("PROVISA_LANE_TESTS", " ".join(_M365_TESTS))
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,")
+    with pytest.raises(ValueError) as refused:
+        run_lane.matrix("all")
+    assert "needs microsoft_365" in str(refused.value)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,microsoft_365")
+    assert run_lane.matrix("all")["include"] == []
+    assert run_lane.routes(run_lane.runnable_lanes()) == {"microsoft_365": list(_M365_TESTS)}
+    run_lane.main(["--has-targets", "microsoft_365"])
+    assert capsys.readouterr().out.strip() == "true"
+    run_lane.main(["--has-targets", "warehouse"])
+    assert capsys.readouterr().out.strip() == "false"
+    monkeypatch.delenv("PROVISA_INCLUDE_LIVE")
+    assert run_lane.targets("microsoft_365", None) == list(_M365_TESTS)
+    cmd = run_lane.command("microsoft_365", None, [])
+    at = cmd.index("-m", 3)  # after `python -m pytest`
+    assert cmd[3:at] == list(_M365_TESTS)
+    assert cmd[at + 1 : at + 4] == ["requires_microsoft_365", "-o", "addopts="]
+
+
 def test_the_salesforce_lane_keeps_its_describe_caches_between_runs_by_org():
     steps = {s.get("name"): s for s in _job_steps("salesforce")}
     names = list(steps)
@@ -498,6 +578,7 @@ _SALESFORCE_SECRETS = [
     [
         ("warehouse", [*_CLOUDOPS_SECRETS, "CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64"]),
         ("salesforce", _SALESFORCE_SECRETS),
+        ("microsoft_365", list(_M365_SECRETS)),
     ],
 )
 def test_a_live_lane_declares_its_secrets_and_fails_by_name_when_one_is_missing(job, secrets):
@@ -552,7 +633,7 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
     for a jar that exists): it was the one job that collected those tests without the suite's
     cache. Every such job restores and saves through the one plugin-cache action -- as a call of
     the lane workflow with `trino-plugins: true`, or with the action's two steps of its own."""
-    collecting, in_a_guest = [], []
+    collecting, in_a_guest, no_stack = [], [], []
     for workflow, job, body in _workflow_jobs():
         if body.get("uses") == LANE:
             if _collects_the_container_suite(str(body["with"]["run"])):
@@ -565,6 +646,10 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         runs = [(i, s.get("run") or "") for i, s in enumerate(steps)]
         tests_at = [i for i, run in runs if _collects_the_container_suite(run)]
         if not tests_at:
+            continue
+        if (body.get("env") or {}).get("PYTEST_NO_DOCKER") == "1":
+            # tests/conftest.py brings up no stack and fetches no plugin under PYTEST_NO_DOCKER.
+            no_stack.append(f"{workflow}:{job}")
             continue
         if any("packaging/nixos/vm-run" in run for _i, run in runs):
             # Runs inside a NixOS guest, which has no access to the runner's cache: it fetches
@@ -591,9 +676,12 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         "polly-bakeoff.yml:bakeoff",
     ], collecting
     assert in_a_guest == ["nixos.yml:lane"], in_a_guest
+    assert no_stack == ["integration-suite-lanes.yml:microsoft_365"], no_stack
 
 
-@pytest.mark.parametrize("lane", ["warehouse", "salesforce", "athena", "servicenow"])
+@pytest.mark.parametrize(
+    "lane", ["warehouse", "salesforce", "athena", "servicenow", "microsoft_365"]
+)
 def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     # A targeted dispatch with include_warehouse ran the whole warehouse lane (~108 tests, 35+
     # minutes): the live jobs were not handed the run's named tests.
@@ -851,7 +939,6 @@ def test_a_lane_routed_a_test_that_then_selects_none_of_it_fails(runner, monkeyp
 # Lanes no dispatch of integration-suite.yml runs: a test only they select is never routed.
 _NO_CI_LANE = {
     "packaging",
-    "requires_microsoft_365",
     "requires_google_workspace",
     "requires_quickbooks",
     "requires_shopify",
@@ -881,8 +968,9 @@ def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, 
 def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
     step = next(s for s in _lanes_workflow()["jobs"]["plan"]["steps"] if s.get("id") == "plan")
     assert "run_lane.py --has-targets cluster" in step["run"]
-    for lane in ("warehouse", "salesforce", "athena", "servicenow"):
+    for lane in ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365"):
         assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
+        assert f"outputs.{lane} }}}}" in str(_lanes_workflow()["jobs"]["plan"]["outputs"])
 
 
 def test_the_leak_lane_runs_only_when_named(monkeypatch):
@@ -890,6 +978,7 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     naming it runs it, and no other lane selects its test."""
     monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
     run_lane = _runner()
+    monkeypatch.setattr(run_lane, "unselected", lambda: [])  # the coverage rule's own test
     lanes = lambda selection: [job["lane"] for job in run_lane.matrix(selection)["include"]]  # noqa: E731
     assert "leak" not in lanes("all")
     assert lanes("leak") == ["leak"]
@@ -902,3 +991,43 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     )
     marks = addopts[addopts.index("-m") + 1]
     assert "not leak" in marks.split(" and "), marks
+
+
+# --- an untargeted "all" run: every test under the suite's paths has a lane ---------------------
+
+_NO_LANE = """
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.packaging]
+
+
+def test_installs():
+    pass
+"""
+_NO_LANE_FILE = "tests/integration/test_no_lane.py"
+
+
+def test_an_all_run_is_refused_while_a_test_is_selected_by_no_lane(runner, monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    assert runner.unselected() == []  # the fixture's modules: each has a lane, demo_walk's too
+    assert {e["lane"] for e in runner.matrix("all")["include"]} >= {"core", "kafka"}
+    (runner.REPO / _NO_LANE_FILE).write_text(_NO_LANE)
+    assert runner.unselected() == [f"{_NO_LANE_FILE}::test_installs [integration, packaging]"]
+    with pytest.raises(ValueError) as refused:
+        runner.matrix("all")
+    assert f"{_NO_LANE_FILE}::test_installs [integration, packaging]" in str(refused.value)
+    assert "selected by no lane" in str(refused.value)
+    # A selection of lanes, and a targeted run, are not "all": the rule is the untargeted run's.
+    assert [e["lane"] for e in runner.matrix("kafka")["include"]] == ["kafka"]
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::TestKafka")
+    assert [e["lane"] for e in runner.matrix("all")["include"]] == ["kafka"]
+
+
+def test_a_variant_no_lane_selects_is_named_though_its_test_has_a_lane(runner, monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _PARAMETRIZED.replace("pytest.mark.requires_neo4j", "pytest.mark.packaging")
+    )
+    assert runner.unselected() == [
+        f"{_NO_LANE_FILE}::test_through_the_server [integration, packaging]"
+    ]

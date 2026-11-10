@@ -34,9 +34,11 @@ permissions are required. Read from the environment (``.env`` through tests/env_
   M365_TEST_MAILBOX_OUTSIDE  optional: one address the client may NOT read (outside its
                              Exchange scope, or a user with no mailbox)
 
-Like the live Salesforce test it is in no CI lane (the tenant is the maintainer's own; CI holds
-no M365 secrets), and like every warehouse test a credential that is not set fails it by name
-rather than passing it over (tests/skip_is_failure.py).
+In CI it runs only in its own lane, microsoft_365 (scripts/ci/run_lane.py), when a dispatch of
+integration-suite.yml asks for it (include_microsoft_365; the tenant is the maintainer's own,
+maintainer 2026-11-10); that job is handed the M365_* repo secrets, fails by name when one of the
+four required is not set, and runs with PYTEST_NO_DOCKER=1. Like every warehouse test a credential
+that is not set fails it by name rather than passing it over (tests/skip_is_failure.py).
 
 Neither the client secret nor an access token is put in an assertion message, a log line or
 captured output; the last test asserts it.

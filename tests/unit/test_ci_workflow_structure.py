@@ -175,7 +175,14 @@ _LEAF_CHECK = "ci-leaf-check.yml"
 # credentials or cluster tooling, and the lane workflow declares only the few secrets its callers
 # pass by name instead of inheriting every one.
 _OWN_STEPS = {
-    "integration-suite-lanes.yml": {"cluster", "warehouse", "salesforce", "athena", "servicenow"},
+    "integration-suite-lanes.yml": {
+        "cluster",
+        "warehouse",
+        "salesforce",
+        "athena",
+        "servicenow",
+        "microsoft_365",
+    },
     # REQ-2012: carries the paid model keys of its own, as the live-account jobs do.
     "polly-bakeoff.yml": {"bakeoff"},
     # REQ-2006: walks the bundle it built before publishing it, with the build's live keys.

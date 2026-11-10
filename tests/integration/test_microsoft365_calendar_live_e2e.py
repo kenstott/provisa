@@ -38,7 +38,8 @@ granted these application permissions, with admin consent:
   M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the first is written
   to; a second, when named, is the attendee a meeting change is announced to).
 
-In no CI lane, like the mail test; a credential that is not set fails it by name.
+In CI it runs in the mail test's lane, microsoft_365, when a dispatch asks for it
+(include_microsoft_365); a credential that is not set fails it by name.
 """
 
 # Requirements: REQ-1994

@@ -101,9 +101,10 @@ LANES: dict[str, Lane] = {
     # test runs in CI only in a lane whose job declares its secrets and checks they are present
     # (integration-suite-lanes.yml), so what a lane runs is decided here, by marker, never by a
     # test skipping itself. The live Salesforce test is in no nightly lane: a cold run costs
-    # about 2,450 API calls of an org allowed 15,000 a day. The live Microsoft 365 test is in no
-    # CI lane at all: its tenant is the maintainer's own and no job declares M365 secrets.
-    # Nor is the live Google Workspace test: its domain is the maintainer's own too.
+    # about 2,450 API calls of an org allowed 15,000 a day. The live Microsoft 365 tests run only
+    # in their own on-demand lane (microsoft_365), against the maintainer's tenant (maintainer
+    # 2026-11-10); the warehouse lane, whose job holds no M365 secrets, leaves them out.
+    # The live Google Workspace test is in no CI lane at all: its domain is the maintainer's own.
     # Nor is the live QuickBooks test: its sandbox company is the maintainer's own too.
     # Nor is the live Shopify test: its dev store is the maintainer's own too.
     "warehouse": Lane(
@@ -122,6 +123,11 @@ LANES: dict[str, Lane] = {
     # The live ServiceNow instance (REQ-1954): on demand only (include_servicenow), its own job.
     "servicenow": Lane(
         ("tests/integration", "tests/steps"), "requires_servicenow", clear_addopts=True
+    ),
+    # The live Microsoft 365 tenant (REQ-1923, REQ-1994): on demand only (include_microsoft_365),
+    # its own job. The tests drive the loader directly, so the job runs them with no stack.
+    "microsoft_365": Lane(
+        ("tests/integration", "tests/steps"), "requires_microsoft_365", clear_addopts=True
     ),
     # REQ-2006: a visitor's walk through one published demo, served from the bundle demo-bundles.yml
     # just built (PROVISA_TEST_DEMO_BUNDLES_DIR), before it is published: that job runs it with the
@@ -165,7 +171,7 @@ ON_DEMAND = ("leak",)
 # The lanes a dispatch of integration-suite.yml can run, beside the suite matrix: each its own job.
 # A live lane runs only when the dispatch includes it (its include_<lane> input).
 OWN_JOBS = ("cluster",)
-LIVE = ("warehouse", "salesforce", "athena", "servicenow")
+LIVE = ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365")
 # Lanes another workflow runs, with what they need that no integration-suite.yml dispatch has: a
 # targeted run naming a test only they select is refused, saying where it runs.
 ELSEWHERE = {
@@ -435,6 +441,19 @@ def routes(runnable: tuple[str, ...]) -> dict[str, list[str]]:
     return planned
 
 
+def unselected() -> list[str]:
+    """Every test under the suite's paths (one variant of it) that no lane selects, with its
+    markers: such a test runs in no CI job at all. A lane another workflow runs (ELSEWHERE) is a
+    lane, so its tests are selected."""
+    found = []
+    for path in test_files(_SUITE):
+        for test, marker_sets in test_markers(path).items():
+            for marks in marker_sets:
+                if not any(_in_lane(lane, path) and selects(lane, marks) for lane in LANES):
+                    found.append(f"{test} [{', '.join(sorted(marks)) or 'no markers'}]")
+    return found
+
+
 def runnable_lanes() -> tuple[str, ...]:
     """The lanes a targeted run may route to: every suite lane and own job, whatever lanes the
     dispatch listed (it routes each named test to the lanes that select it), and each live lane
@@ -448,15 +467,23 @@ def matrix(selection: str) -> dict:
     no lane is refused, so a typo cannot dispatch an empty run that reports green. A targeted run
     (named_tests) is routed instead: each lane that selects a named test runs it, as one job (its
     few tests are not sharded), whatever lanes were listed; one naming a test no lane it can run
-    selects is refused (routes)."""
+    selects is refused (routes). An untargeted "all" is refused while a test under the suite's
+    paths is selected by no lane (unselected): it would pass by never running."""
     names = [n.strip() for n in selection.split(",") if n.strip()]
+    targeted = bool(named_tests())
     if names == ["all"]:
         names = [name for name in SUITE if name not in ON_DEMAND]
+        orphans = [] if targeted else unselected()
+        if orphans:
+            raise ValueError(
+                "these tests are selected by no lane, so no CI run runs them:\n  "
+                + "\n  ".join(orphans)
+                + "\n(give each a lane in run_lane.py LANES)"
+            )
     unknown = [n for n in names if n not in LANES]
     if unknown:
         raise ValueError(f"no such lane: {', '.join(unknown)}; lanes: {', '.join(sorted(LANES))}")
     include = []
-    targeted = bool(named_tests())
     if targeted:
         routed = routes(runnable_lanes())
         names = [name for name in SUITE if name in routed]
@@ -538,7 +565,7 @@ def main(argv: list[str]) -> int:
         print(json.dumps(matrix(argv[1] if len(argv) > 1 else "all")))
         return 0
     if argv[:1] == ["--has-targets"]:
-        # A job of its own (cluster, warehouse, salesforce, athena, servicenow) runs when the run
+        # A job of its own (cluster and each LIVE lane) runs when the run
         # names no tests (the whole lane) or names one the lane selects; otherwise it would collect
         # nothing, write no results and fail its required results upload.
         planned = not named_tests() or routes(runnable_lanes()).get(argv[1])
