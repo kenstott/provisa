@@ -94168,7 +94168,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     host serves true Arrow Flight SQL, the protocol''s own statements, prepared statements and catalog calls
     (catalogs, schemas, tables, primary keys), not only plain Flight streams, so any Flight SQL client or
     ADBC driver queries it as it would any Flight SQL server. Its answers are the host''s DuckDB pass over
-    its functions'' rows.'
+    its functions'' rows. (Amended 2026-11-10, DOC COMMENTS ARE THE DESCRIPTIONS:) Maintainer 2026-11-10:
+    a code resolver''s tables and columns are described by the language''s own documentation, with no Provisa
+    tag: the @table function''s doc comment (JSDoc or TSDoc, a Python docstring, a Go doc comment, Rust
+    ///) is its table''s description, and each row field''s documentation is its column''s. They become
+    the registered table''s and columns'' descriptions in Provisa. A code host''s own pgwire front end serves
+    them as the PostgreSQL catalog''s comments (pg_description, as obj_description and col_description read
+    them), and its Flight SQL serves them in the tables'' and columns'' metadata, so a client sees them
+    on either.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
