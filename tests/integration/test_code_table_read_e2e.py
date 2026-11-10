@@ -339,6 +339,7 @@ def ledger(server):
         f'createSource(input: {{id: "ledger", type: "python", host: "", port: 0, database: "", '
         f"cacheTtl: 300, mappingJson: {json.dumps(json.dumps(mapping))}}})",
     )
+    ids: dict[str, int] = {}
     # A view is built as the organisation's administrator (mv.governed_build), so "vault" grants
     # its secret to a role that is not that administrator's ancestor.
     # For "orders": _ROLE is the unmasked role for "tag" (analyst sees ***).
@@ -362,7 +363,8 @@ def ledger(server):
             'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
             f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
-        _admin(server, release_field(registered_id(registered["message"])))
+        ids[table] = registered_id(registered["message"])
+        _admin(server, release_field(ids[table]))
     # "clips" carries a row-level security rule: analyst may only read the row whose id = 1,
     # so the governed pipeline's RLS enforcement is covered on the minted-token listener (REQ-2226).
     clips_cols = [
@@ -390,6 +392,7 @@ def ledger(server):
         "read_qualified_secret",
     ):
         _command(server, function)
+    return ids
 
 
 @pytest.fixture(scope="module")
@@ -556,3 +559,23 @@ def test_the_listener_refuses_a_wrong_token(server, ledger, minted_port):
         sock.sendall(b"p" + struct.pack("!i", 4 + len(secret)) + secret)
         assert sock.recv(1) == b"E"
         assert b"28P01" in sock.recv(4096)
+
+
+def test_diag_direct_read_of_a_hidden_column(server, ledger):
+    """DIAGNOSTIC (J1135j): the hidden column read directly over /data/sql, not through the
+    listener, with the grant as stored and the readers as the runtime serves them."""
+    for role, table in ((_ANALYST, "orders"), (_ROLE, "vault")):
+        access = httpx.get(
+            f"{server.base_url}/admin/tables/{ledger[table]}/access",
+            headers={"X-Provisa-Role": _ROLE},
+            timeout=server.request_timeout + 120,
+        )
+        print(f"DIAG access fx.{table} -> {access.status_code} {access.text}")
+        r = httpx.post(
+            f"{server.base_url}/data/sql",
+            json={"sql": f"SELECT secret FROM fx.{table}"},
+            headers={"X-Provisa-Role": role},
+            timeout=server.request_timeout + 120,
+        )
+        print(f"DIAG direct {role} fx.{table}.secret -> {r.status_code} {r.text}")
+    print("DIAG server log tail:\n" + server.dump_stderr_debug()[-6000:])
