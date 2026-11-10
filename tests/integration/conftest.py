@@ -414,6 +414,17 @@ _PGW_ROWS = [
     (4, 5.0, None),
 ]
 
+# REQ-2190: the org schema the meta domain's catalog views live in on the control plane, and the
+# first table id they take (clear of the registered source table's).
+_PGW_CATALOG_SCHEMA = "org_default"
+_PGW_META_FIRST_ID = 1000
+_PGW_ROLE = {
+    "description": "Test role.",
+    "id": "admin",
+    "domain_access": ["*"],
+    "capabilities": ["usage"],
+}
+
 _PGW_TABLES = [
     {
         "id": 1,
@@ -497,8 +508,69 @@ def no_replica_routes(state):
     return state
 
 
-def _pgw_build_state(pool):
+def _pgw_meta_catalog(model_db, loop) -> tuple[list[dict], dict]:
+    """The meta domain's SQL catalog views (REQ-2190) as the product registers them: tables of
+    ``provisa-admin`` in domain ``meta`` of the org schema, their columns reflected off the control
+    plane (startup_seed._seed_meta_domain). A client's catalog statement is addressed to them and
+    governed as a read of them, so a model without them refuses every catalog read (V006)."""
+    import asyncio
+
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.security.default_grant import VIEWER_ROLE
+    from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
+
+    names = [*NEUTRAL_VIEW_NAMES, *CATALOG_VIEW_NAMES]
+
+    async def _reflect() -> dict[str, list[dict]]:
+        async with model_db.acquire() as conn:
+            return await conn.reflect_columns_many(names, schema=_PGW_CATALOG_SCHEMA)
+
+    reflected = asyncio.run_coroutine_threadsafe(_reflect(), loop).result(timeout=60)
+    missing = sorted(set(names) - set(reflected))
+    assert not missing, f"control plane lacks catalog views: {missing}"
+    tables: list[dict] = []
+    col_types: dict[int, list] = {}
+    for offset, name in enumerate(names):
+        table_id = _PGW_META_FIRST_ID + offset
+        cols = reflected[name]
+        tables.append(
+            {
+                "id": table_id,
+                "source_id": "provisa-admin",
+                "domain_id": "meta",
+                "schema_name": _PGW_CATALOG_SCHEMA,
+                "table_name": name,
+                "columns": [
+                    {
+                        "column_name": c["column_name"],
+                        "data_type": c["data_type"],
+                        # REQ-2154: granted to Viewer, as seeded; expand_meta_grants serves it.
+                        "visible_to": [VIEWER_ROLE],
+                    }
+                    for c in cols
+                ],
+            }
+        )
+        col_types[table_id] = [
+            ColumnMetadata(
+                column_name=c["column_name"],
+                data_type=c["data_type"],
+                is_nullable=c.get("is_nullable", True),
+            )
+            for c in cols
+        ]
+    return tables, col_types
+
+
+def _pgw_build_state(pool, meta_tables: list[dict], meta_col_types: dict):
     from unittest.mock import MagicMock
+
+    from provisa.executor.write_capability import (
+        table_write_ops,
+        table_write_refused_forms,
+        table_write_returns_rows,
+    )
+    from provisa.security.inheritance import expand_meta_grants
 
     from provisa.compiler import naming as _naming
     from tests.helpers import serve_surfaces
@@ -515,18 +587,27 @@ def _pgw_build_state(pool):
             ColumnMetadata(column_name="region", data_type="varchar", is_nullable=True),
         ]
     }
+    col_types.update(meta_col_types)
+    tables = [*_PGW_TABLES, *meta_tables]
+    # REQ-1132: the build serves meta's columns by capability (app.py's schema build).
+    expand_meta_grants(tables, [_PGW_ROLE])
+    engine = build_engine("duckdb")
+    for t in meta_tables:
+        # The writes each table's source takes, decided as the schema build decides them.
+        t["write_ops"] = sorted(table_write_ops(t, "postgresql", engine, source_path=None))
+        t["write_returns_rows"] = table_write_returns_rows(
+            t, "postgresql", engine, source_path=None
+        )
+        t["write_refused_forms"] = sorted(
+            table_write_refused_forms(t, "postgresql", engine, source_path=None)
+        )
     _naming.configure(gql="snake")
     si = SchemaInput(
-        tables=_PGW_TABLES,
+        tables=tables,
         relationships=[],
         column_types=col_types,
         naming_rules=[],
-        role={
-            "description": "Test role.",
-            "id": "admin",
-            "domain_access": ["*"],
-            "capabilities": ["usage"],
-        },
+        role=dict(_PGW_ROLE),
         domains=[{"id": _PGW_SCHEMA, "graphql_alias": None}],
     )
     ctx = build_context(si)
@@ -541,26 +622,20 @@ def _pgw_build_state(pool):
     state.contexts = {"admin": ctx}
     state.rls_contexts = {}
     serve_surfaces(state)
-    state.roles = {
-        "admin": {
-            "description": "Test role.",
-            "id": "admin",
-            "capabilities": ["usage"],
-            "domain_access": ["*"],
-        }
-    }
+    state.roles = {"admin": dict(_PGW_ROLE)}
     state.schema_build_cache = {
         "column_types": col_types,
-        "tables": _PGW_TABLES,
+        "tables": tables,
         "domains": [{"id": _PGW_SCHEMA, "graphql_alias": None}],
     }
     # Governance serves a role the columns of the registry a server loads (visible_to).
-    state.tables = _PGW_TABLES
+    state.tables = tables
     state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
     state.auth_middleware_active = False
     state.masking_rules = {}
-    state.source_types = {_PGW_SOURCE_ID: "postgresql"}
-    state.source_dialects = {_PGW_SOURCE_ID: "postgres"}
+    # provisa-admin is the control plane's own source, typed by its backend (startup_seed).
+    state.source_types = {_PGW_SOURCE_ID: "postgresql", "provisa-admin": "postgresql"}
+    state.source_dialects = {_PGW_SOURCE_ID: "postgres", "provisa-admin": "postgres"}
     state.source_pools = pool
     state.server_limits = {}
     state.engine_conn = None
@@ -586,7 +661,7 @@ def _pgw_build_state(pool):
     stub_materialization_noop(state)
     # Real federation engine — present for catalog probes; DIRECT execution goes through
     # execute_native → execute_direct on the real source pool, not the engine.
-    state.federation_engine = EngineRuntime(build_engine("duckdb"), state)
+    state.federation_engine = EngineRuntime(engine, state)
     return state
 
 
@@ -632,7 +707,23 @@ def pgwire_pg_backend(docker_postgres):
         loop,
     ).result(timeout=30)
 
-    state = _pgw_build_state(pool)
+    # REQ-883, REQ-2190: DuckDB's postgres extension opens its catalog scan with catalog queries
+    # (pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint). Each is addressed to
+    # the meta domain's catalog views, governed as a read of them, and read off state.model_db on
+    # the provisa-admin terminal. The model registers those views as meta tables, as the product's
+    # seed does; the audit-only tenant_db has no meta.* views, so a real control plane serves them.
+    from provisa.core.database import Database
+    from tests.pg_control_plane import fresh_control_plane
+    from tests.unit.pgwire.catalog_plane import plane_engine, write_model as _write_catalog_model
+
+    _cp = fresh_control_plane()
+    _cp_engine = plane_engine(_cp)
+    model_db = Database(_cp_engine, name="model")
+    meta_tables, meta_col_types = _pgw_meta_catalog(model_db, loop)
+
+    state = _pgw_build_state(pool, meta_tables, meta_col_types)
+    _write_catalog_model(_cp_engine, "admin", state)
+    state.model_db = model_db
 
     # REQ-074/REQ-1386: the executed statement writes an audit row, and that row lands in the org's
     # tenant schema — so the state serving a real query carries a real tenant database. A throwaway
@@ -640,7 +731,7 @@ def pgwire_pg_backend(docker_postgres):
     import uuid as _uuid
 
     from provisa.audit.query_log import init_audit_schema
-    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.database import create_engine_from_url
 
     audit_org = f"pgw{_uuid.uuid4().hex[:8]}"
     audit_engine = create_engine_from_url(
@@ -654,18 +745,6 @@ def pgwire_pg_backend(docker_postgres):
     )
     state.tenant_db = tenant_db
     state.record_db = state.tenant_db
-    # REQ-883: DuckDB's postgres extension opens its catalog scan with a batch that includes
-    # catalog queries (pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint).
-    # Those route to source_id="provisa-admin" and read from state.model_db via _execute_plan.
-    # The audit-only tenant_db has no meta.* views; a real control plane is required so that
-    # meta.catalog_pg_namespace and siblings resolve.
-    from tests.pg_control_plane import fresh_control_plane
-    from tests.unit.pgwire.catalog_plane import plane_engine, write_model as _write_catalog_model
-
-    _cp = fresh_control_plane()
-    _cp_engine = plane_engine(_cp)
-    _write_catalog_model(_cp_engine, "admin", state)
-    state.model_db = Database(_cp_engine, name="model")
     # The audit row's tenant_id is `current_org.get() or state.org_id`, and nothing binds the
     # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
     # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
