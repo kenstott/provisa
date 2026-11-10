@@ -954,7 +954,7 @@ The naming authority is the single source of truth for all client-facing names. 
 
 **Code:** `provisa/compiler/`
 
-**Tests:** `tests/unit/test_graphql_alias.py`, `tests/unit/test_naming.py`
+**Tests:** `tests/unit/test_graphql_alias.py`, `tests/unit/test_naming.py`, `tests/unit/test_customer360_demo_data.py`
 
 **Docs:** [configuration.md](../configuration.md), [sources.md](../sources.md)
 
@@ -24302,7 +24302,7 @@ A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce acc
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_customer360_demo_data.py`, `tests/integration/test_customer360_demo.py`
 
 ### REQ-2035 · UI {#REQ-2035}
 
