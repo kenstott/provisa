@@ -21,6 +21,11 @@ refused by name.
 
 Principals, roles and kinds travel in the body and the query string: a principal is whatever the
 sign-in token carries, and a slash in one must not change the route.
+
+The picker finds people through one search by name or email over the org's local accounts and
+known members (``/people``). A write names a principal, or an email: one that matches a person of
+the org is that person's write, and one that matches no one is a pending grant, attached when a
+sign-in token's email matches (``provisa.entitlements.pending``).
 """
 
 # Requirements: REQ-2219
@@ -34,10 +39,11 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import AwareDatetime, BaseModel
 
+from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
 from provisa.core.org_membership import record_admin_action
-from provisa.entitlements import store
+from provisa.entitlements import pending, people, store
 from provisa.entitlements.effective import access_view
 from provisa.entitlements.index import KINDS, SEMANTIC_LISTS
 from provisa.entitlements.lists import HeldEntitlements
@@ -53,7 +59,10 @@ _NOTHING_HELD = HeldEntitlements()
 
 
 class _ListKey(BaseModel):
-    principal: str
+    """Names a principal, or an email for a person who may not have been seen yet."""
+
+    principal: str | None = None
+    email: str | None = None
     role_id: str
     kind: str
     reason: str
@@ -96,14 +105,52 @@ def _require_role(state: Any, role_id: str) -> None:
         )
 
 
-def _require_write(request: Request, state: Any, body: _ListKey) -> None:
-    """Gate and check what every write shares, the identity provider's precedence last."""
+def _admin_db(state: Any) -> Any:
+    if state.admin_db is None:
+        raise ApiError(503, "entitlements.database_not_connected", "Database not connected")
+    return state.admin_db
+
+
+async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
+    """The principal a write names: its own, or the one person of the org with its email. None
+    when the email matches no one: the write is a pending grant."""
+    if (body.principal is None) == (body.email is None):
+        raise ApiError(
+            422, "entitlements.principal_or_email", "Name a principal or an email, not both"
+        )
+    if body.principal is not None:
+        if not body.principal.strip():
+            raise ApiError(422, "entitlements.principal_required", "A principal is required")
+        return body.principal
+    assert body.email is not None
+    if not body.email.strip():
+        raise ApiError(422, "entitlements.email_required", "An email is required")
+    matched = await people.with_email(
+        _admin_db(state),
+        _db(state),
+        require_active_org_id(request),
+        body.email,
+        multitenancy=state.multitenancy,
+    )
+    if len(matched) > 1:
+        raise ApiError(
+            409,
+            "entitlements.email_ambiguous",
+            f"{body.email!r} is the email of more than one person: name the principal",
+            email=body.email,
+            principals=[p.principal for p in matched],
+        )
+    return matched[0].principal if matched else None
+
+
+async def _require_write(request: Request, state: Any, body: _ListKey) -> str | None:
+    """Gate and check what every write shares, the identity provider's precedence last. Returns
+    the principal written, or None for a pending grant to ``body.email``."""
     require_capability_request(request, _ASSIGN)
     _require_role(state, body.role_id)
     if _caller(request) is not None and not reaches_role(state, body.role_id, {_ASSIGN}):
         raise _refuse_out_of_reach(body.role_id)
-    if not body.principal.strip():
-        raise ApiError(422, "entitlements.principal_required", "A principal is required")
+    principal = await _resolve(request, state, body)
     if not body.reason.strip():
         raise ApiError(422, "entitlements.reason_required", "A reason is required")
     if body.kind not in KINDS:
@@ -113,16 +160,19 @@ def _require_write(request: Request, state: Any, body: _ListKey) -> None:
             f"{body.kind!r} is not a kind of entitlement list",
             kind=body.kind,
         )
-    if body.kind in state.idp_entitlements.get(body.principal, {}).get(body.role_id, {}):
+    if principal is not None and store.idp_supersedes(
+        state.idp_entitlements, principal, body.role_id, body.kind
+    ):
         raise ApiError(
             409,
             "entitlements.idp_supersedes",
-            f"The identity provider sends {body.principal!r}'s {body.kind!r} list for role "
+            f"The identity provider sends {principal!r}'s {body.kind!r} list for role "
             f"{body.role_id!r}: that list wins, and it cannot be changed here",
-            principal=body.principal,
+            principal=principal,
             role_id=body.role_id,
             kind=body.kind,
         )
+    return principal
 
 
 def _check_set(body: SetListBody) -> None:
@@ -152,48 +202,38 @@ def _view(state: Any, principal: str, role_id: str) -> dict:
     return asdict(access_view(state, principal, role_id, datetime.now(UTC)))
 
 
-@router.put("/lists")
-async def set_list(body: SetListBody, request: Request) -> dict:
-    """Set a principal's list for a role grant and kind, replacing what they held. The expiry, if
-    any, replaces the one the list was last set with. Takes effect on the next request."""
-    from provisa.api.app import state
+def _pending_view(grant: pending.PendingGrant) -> dict:
+    return {
+        "pending": True,
+        "email": grant.email,
+        "role_id": grant.role_id,
+        "kind": grant.kind,
+        "identifiers": list(grant.identifiers),
+        "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
+        "set_by": grant.set_by,
+        "reason": grant.reason,
+    }
 
-    _require_write(request, state, body)
-    _check_set(body)
-    actor = _caller(request) or _ANONYMOUS
+
+async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
+    assert body.email is not None
     db = _db(state)
     async with db.acquire() as conn:
-        async with conn.transaction():
-            await store.withdraw_list_expiries(
-                conn, body.principal, body.role_id, body.kind, set_by=actor, reason=body.reason
-            )
-            await store.set_list(
-                conn,
-                body.principal,
-                body.role_id,
-                body.kind,
-                body.identifiers,
-                set_by=actor,
-                reason=body.reason,
-            )
-            if body.expires_at is not None:
-                await store.add_expiry(
-                    conn,
-                    body.principal,
-                    body.role_id,
-                    body.expires_at,
-                    {"*": body.identifiers},
-                    set_by=actor,
-                    reason=body.reason,
-                    list_kind=body.kind,
-                )
-        # This worker now; the write advances the org's config stamp, which reloads the others.
-        state.held_entitlements = await store.load_held(conn)
+        grant = await pending.set_pending(
+            conn,
+            body.email,
+            body.role_id,
+            body.kind,
+            body.identifiers,
+            expires_at=body.expires_at,
+            set_by=actor,
+            reason=body.reason,
+        )
     await record_admin_action(
         db,
-        action="entitlements.set",
+        action="entitlements.set_pending",
         actor_id=actor,
-        subject_id=body.principal,
+        subject_id=grant.email,
         detail={
             "role_id": body.role_id,
             "kind": body.kind,
@@ -202,7 +242,49 @@ async def set_list(body: SetListBody, request: Request) -> dict:
             "expires_at": body.expires_at.isoformat() if body.expires_at else None,
         },
     )
-    return _view(state, body.principal, body.role_id)
+    return _pending_view(grant)
+
+
+@router.put("/lists")
+async def set_list(body: SetListBody, request: Request) -> dict:
+    """Set a principal's list for a role grant and kind, replacing what they held. The expiry, if
+    any, replaces the one the list was last set with. Takes effect on the next request."""
+    from provisa.api.app import state
+
+    principal = await _require_write(request, state, body)
+    _check_set(body)
+    actor = _caller(request) or _ANONYMOUS
+    if principal is None:
+        return await _set_pending(state, body, actor)
+    db = _db(state)
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            await store.write_list(
+                conn,
+                principal,
+                body.role_id,
+                body.kind,
+                body.identifiers,
+                expires_at=body.expires_at,
+                set_by=actor,
+                reason=body.reason,
+            )
+        # This worker now; the write advances the org's config stamp, which reloads the others.
+        state.held_entitlements = await store.load_held(conn)
+    await record_admin_action(
+        db,
+        action="entitlements.set",
+        actor_id=actor,
+        subject_id=principal,
+        detail={
+            "role_id": body.role_id,
+            "kind": body.kind,
+            "identifiers": body.identifiers,
+            "reason": body.reason,
+            "expires_at": body.expires_at.isoformat() if body.expires_at else None,
+        },
+    )
+    return _view(state, principal, body.role_id)
 
 
 @router.post("/lists/end")
@@ -211,26 +293,80 @@ async def end_list(body: EndListBody, request: Request) -> dict:
     effect on the next request."""
     from provisa.api.app import state
 
-    _require_write(request, state, body)
+    principal = await _require_write(request, state, body)
     actor = _caller(request) or _ANONYMOUS
     db = _db(state)
+    if principal is None:
+        assert body.email is not None
+        async with db.acquire() as conn:
+            grant = await pending.end_pending(
+                conn, body.email, body.role_id, body.kind, set_by=actor, reason=body.reason
+            )
+        if grant is None:
+            raise ApiError(
+                404,
+                "entitlements.pending_not_found",
+                f"No grant waits on {body.email!r} for role {body.role_id!r} and {body.kind!r}",
+                email=body.email,
+                role_id=body.role_id,
+                kind=body.kind,
+            )
+        await record_admin_action(
+            db,
+            action="entitlements.end_pending",
+            actor_id=actor,
+            subject_id=grant.email,
+            detail={"role_id": body.role_id, "kind": body.kind, "reason": body.reason},
+        )
+        return {**_pending_view(grant), "pending": False}
     async with db.acquire() as conn:
         async with conn.transaction():
             await store.withdraw_list_expiries(
-                conn, body.principal, body.role_id, body.kind, set_by=actor, reason=body.reason
+                conn, principal, body.role_id, body.kind, set_by=actor, reason=body.reason
             )
             await store.remove_list(
-                conn, body.principal, body.role_id, body.kind, set_by=actor, reason=body.reason
+                conn, principal, body.role_id, body.kind, set_by=actor, reason=body.reason
             )
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
         action="entitlements.end",
         actor_id=actor,
-        subject_id=body.principal,
+        subject_id=principal,
         detail={"role_id": body.role_id, "kind": body.kind, "reason": body.reason},
     )
-    return _view(state, body.principal, body.role_id)
+    return _view(state, principal, body.role_id)
+
+
+@router.get("/people")
+async def find_people(q: str, request: Request) -> list[dict]:
+    """The picker's search: the org's local accounts and known members whose name or email
+    contains ``q``, each as the principal a sign-in token carries, with name and email for
+    display only. Gated as a write: it finds whom to grant to."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    found = await people.search(
+        _admin_db(state),
+        _db(state),
+        require_active_org_id(request),
+        q,
+        multitenancy=state.multitenancy,
+    )
+    return [asdict(person) for person in found]
+
+
+@router.get("/pending")
+async def list_pending(request: Request) -> list[dict]:
+    """The grants waiting on a typed email, within the roles the caller administers."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    async with _db(state).acquire() as conn:
+        waiting = await pending.load_pending(conn)
+    if _caller(request) is not None:
+        waiting = [g for g in waiting if reaches_role(state, g.role_id, {_ASSIGN})]
+    return [_pending_view(grant) for grant in waiting]
 
 
 def _visible_roles(request: Request, state: Any, principal: str, roles: set[str]) -> set[str]:
