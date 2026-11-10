@@ -553,7 +553,7 @@ _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
 _LEAVES_THE_RUN = re.compile(
     r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
     r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
-    r"docker push"
+    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env"
 )
 
 
@@ -561,7 +561,12 @@ _LEAVES_THE_RUN = re.compile(
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
 _RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
 #: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
+#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
+#: block names, which the orchestrator pushes itself, after every build leg.
+_RELEASE_IMAGE_PUSH = "publish-connector-image"
+_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _RELEASE_IMAGE_PUSH}}
+#: Every orchestrator job that is not a leg.
+_RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
     "${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}"
 )
@@ -572,7 +577,7 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
     legs = {}
     for job, body in jobs.items():
-        if job in _RELEASE_PYPI:
+        if job in _RELEASE_OWN:
             continue
         assert body["uses"].startswith("./.github/workflows/release-"), f"{job} is not a leg"
         name = body["uses"].rsplit("/", 1)[-1]
@@ -583,6 +588,7 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
 def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
     pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
+    image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
     first = next(iter(given.values()))
     assert set(first) == {"version", "publish"}
@@ -604,7 +610,12 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
         assert body["permissions"] == {"id-token": "write"}, job
         uses = [str(step.get("uses", "")) for step in body["steps"]]
         assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi)
+    # The connector image's push: gated the same way, after every build leg, holding only what a
+    # push to the registry needs.
+    assert image_push["if"] == _RELEASE_PUBLISH
+    assert set(image_push["needs"]) == builds
+    assert image_push["permissions"] == {"contents": "read", "packages": "write"}
+    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -626,10 +637,14 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
                     seen += 1
                     assert job_gated or push == "${{ inputs.publish }}", where
     # PyPI's uploads are the orchestrator's own jobs, gated as a whole by the publish expression.
+    # So is the connector image's push (REQ-2225).
     for job, body in yaml.safe_load(_RELEASE.read_text())["jobs"].items():
         if job in _RELEASE_PYPI:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
+        if job == _RELEASE_IMAGE_PUSH:
+            assert body["if"] == _RELEASE_PUBLISH, job
+            seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
     assert seen >= 14, f"only {seen} publishing steps found: the pattern no longer matches them"
 
 
@@ -675,7 +690,7 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
 
     uploads: dict[str, set[str]] = {}
     downloads: dict[str, set[str]] = {}
-    jobs = {job: [body] for job, body in orchestrator.items() if job in _RELEASE_PYPI}
+    jobs = {job: [body] for job, body in orchestrator.items() if job in _RELEASE_OWN}
     jobs.update({job: list(leg["jobs"].values()) for job, (_n, leg) in _release_legs().items()})
     for job, bodies in jobs.items():
         for body in bodies:
