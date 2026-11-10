@@ -58,7 +58,7 @@ class _Conn:
     async def execute_core(self, stmt):
         # REQ-2228: dbt_model_tables is now called in the loader; this test has no dbt sources.
         # Return the tracked-functions row only for that query; empty for all dbt-store queries.
-        tables = {t.name for t in stmt.froms}
+        tables = {t.name for t in stmt.get_final_froms()}
         if "tracked_functions" in tables:
             return SimpleNamespace(fetchall=lambda: [SimpleNamespace(_mapping=dict(COMMAND))])
         return SimpleNamespace(fetchall=lambda: [])
