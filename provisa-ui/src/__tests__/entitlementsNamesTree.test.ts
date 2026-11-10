@@ -13,37 +13,49 @@
 // unchecking one child of a checked parent keeps the parent's other children.
 
 import { describe, it, expect } from "vitest";
+import type { NamesNode } from "../api/entitlements";
 import {
   allIds,
-  buildNamesTree,
   checkNode,
   covers,
+  toDepth,
   uncheckNode,
 } from "../components/entitlements/namesTree";
 
-const DOMAINS = [{ id: "finance" }, { id: "sales-ops" }];
-const TABLES = [
+const leaf = (id: string): NamesNode => ({ id, label: id.split(".").pop() ?? id, children: [] });
+
+// The server's tree (GET /admin/entitlements/kinds): domains by SQL name, tables and columns by
+// the names they are queried as, each level ordered.
+const TREE: NamesNode[] = [
   {
-    domainId: "finance",
-    tableName: "revenue_raw",
-    alias: "revenue",
-    columns: [{ columnName: "amount" }, { columnName: "cust_id", alias: "customer" }],
+    id: "finance",
+    label: "finance",
+    children: [
+      { id: "finance.costs", label: "costs", children: [leaf("finance.costs.amount")] },
+      {
+        id: "finance.revenue",
+        label: "revenue",
+        children: [leaf("finance.revenue.amount"), leaf("finance.revenue.customer")],
+      },
+    ],
   },
-  { domainId: "finance", tableName: "costs", columns: [{ columnName: "amount" }] },
-  { domainId: "sales-ops", tableName: "orders", columns: [] },
+  { id: "sales_ops", label: "sales_ops", children: [leaf("sales_ops.orders")] },
 ];
 
 describe("the names tree", () => {
-  it("names domains by SQL name, tables and columns by alias, to the depth asked", () => {
-    const depth3 = buildNamesTree(DOMAINS, TABLES, 3);
-    expect(depth3.map((d) => d.id)).toEqual(["finance", "sales_ops"]);
-    expect(depth3[0].children.map((t) => t.id)).toEqual(["finance.costs", "finance.revenue"]);
+  it("is the server's tree, cut to the depth asked", () => {
+    const depth3 = toDepth(TREE, 3);
+    expect(depth3).toEqual(TREE);
     expect(depth3[0].children[1].children.map((c) => c.id)).toEqual([
       "finance.revenue.amount",
       "finance.revenue.customer",
     ]);
-    expect(buildNamesTree(DOMAINS, TABLES, 2)[0].children[1].children).toEqual([]);
-    expect(buildNamesTree(DOMAINS, TABLES, 1)[0].children).toEqual([]);
+    expect(toDepth(TREE, 2)[0].children[1].children).toEqual([]);
+    expect(toDepth(TREE, 2)[0].children.map((t) => t.id)).toEqual([
+      "finance.costs",
+      "finance.revenue",
+    ]);
+    expect(toDepth(TREE, 1)[0].children).toEqual([]);
     expect(allIds(depth3).has("finance.revenue.customer")).toBe(true);
   });
 
@@ -56,12 +68,12 @@ describe("the names tree", () => {
   });
 
   it("checking a node lists it and drops what it now covers", () => {
-    const [finance] = buildNamesTree(DOMAINS, TABLES, 2);
+    const [finance] = toDepth(TREE, 2);
     expect(checkNode(["finance.costs", "sales_ops"], finance)).toEqual(["sales_ops", "finance"]);
   });
 
   it("unchecking a child of a checked domain keeps the domain's other children", () => {
-    const roots = buildNamesTree(DOMAINS, TABLES, 3);
+    const roots = toDepth(TREE, 3);
     const revenue = roots[0].children[1];
     expect(uncheckNode(["finance", "sales_ops"], revenue, roots)).toEqual([
       "sales_ops",
@@ -74,8 +86,27 @@ describe("the names tree", () => {
     ]);
   });
 
+  it("a tree in the model's own spelling matches identifiers listed in any case", () => {
+    const spelled: NamesNode[] = [
+      {
+        id: "Finance",
+        label: "Finance",
+        children: [
+          { id: "Finance.Costs", label: "Costs", children: [] },
+          { id: "Finance.Revenue", label: "Revenue", children: [] },
+        ],
+      },
+    ];
+    expect(allIds(spelled).has("finance.revenue")).toBe(true);
+    expect(covers("finance", "Finance.Revenue")).toBe(true);
+    const [finance] = spelled;
+    expect(checkNode(["finance.costs"], finance)).toEqual(["Finance"]);
+    expect(uncheckNode(["finance"], finance.children[1], spelled)).toEqual(["Finance.Costs"]);
+    expect(uncheckNode(["finance.revenue"], finance.children[1], spelled)).toEqual([]);
+  });
+
   it("unchecking a node listed itself removes it and nothing else", () => {
-    const roots = buildNamesTree(DOMAINS, TABLES, 2);
+    const roots = toDepth(TREE, 2);
     expect(uncheckNode(["finance.costs", "sales_ops"], roots[0].children[0], roots)).toEqual([
       "sales_ops",
     ]);

@@ -53,7 +53,8 @@
       "endsOnLabel": "结束日期",
       "endsOnHint": "留空则保留该列表，直到将其结束。",
       "reasonLabel": "原因",
-      "reasonHint": "随更改一起记录，供访问审查使用。"
+      "reasonHint": "随更改一起记录，供访问审查使用。",
+      "noRoles": "此人没有您管理的角色。"
     },
     "person": {
       "help": "此人员通过每个角色分配可访问的内容，按类型逐一列出。来自身份提供方的列表优先，并在那里更改。",
@@ -79,7 +80,9 @@
       "endList": "结束 {{kind}} 列表",
       "addList": "添加列表",
       "endPrompt": "结束 {{kind}} 列表。角色默认值将重新适用。",
-      "endButton": "结束列表"
+      "endButton": "结束列表",
+      "noRoles": "此人没有您管理的角色。",
+      "roleNotHeld": "{{role}}（已不再持有；已设置列表）"
     },
     "grants": {
       "heading": "访问授予",
@@ -98,6 +101,12 @@
       "noPending": "没有等待中的授予。",
       "endPrompt": "结束角色 {{role}} 中 {{email}} 的 {{kind}} 授予。",
       "endButton": "结束"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "在 Provisa 中分配",
+      "default_assignment": "默认分配",
+      "idp": "身份提供方"
     }
   }
 }

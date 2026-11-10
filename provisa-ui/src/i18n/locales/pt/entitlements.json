@@ -53,7 +53,8 @@
       "endsOnLabel": "Termina em",
       "endsOnHint": "Deixe vazio para manter a lista até que seja encerrada.",
       "reasonLabel": "Motivo",
-      "reasonHint": "Registrado com a alteração, para quem revisar os acessos."
+      "reasonHint": "Registrado com a alteração, para quem revisar os acessos.",
+      "noRoles": "Esta pessoa não tem nenhuma função que você administre."
     },
     "person": {
       "help": "O que esta pessoa pode alcançar por cada atribuição de função, lista por tipo. Uma lista do provedor de identidade prevalece e é alterada lá.",
@@ -79,7 +80,9 @@
       "endList": "Encerrar a lista de {{kind}}",
       "addList": "Adicionar lista",
       "endPrompt": "Encerrar a lista de {{kind}}. O padrão da função volta a valer.",
-      "endButton": "Encerrar lista"
+      "endButton": "Encerrar lista",
+      "noRoles": "Esta pessoa não tem nenhuma função que você administre.",
+      "roleNotHeld": "{{role}} (não a tem mais; listas definidas)"
     },
     "grants": {
       "heading": "Concessões de acesso",
@@ -98,6 +101,12 @@
       "noPending": "Nenhuma concessão aguardando.",
       "endPrompt": "Encerrar a concessão de {{kind}} para {{email}} na função {{role}}.",
       "endButton": "Encerrar"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Atribuída no Provisa",
+      "default_assignment": "Atribuição padrão",
+      "idp": "Provedor de identidade"
     }
   }
 }

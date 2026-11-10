@@ -11,7 +11,9 @@
 // REQ-2219: a person's role grant on the Team page: each list by kind with its origin (the
 // identity provider, read-only there; set in Provisa; or the role's default), superseded lists
 // greyed, ended entries struck, and end dates; set and ended with a reason through the one write
-// API. Where every list comes from the identity provider, the view is read-only and says why.
+// API. Where every list comes from the identity provider, the view is read-only and says why. The
+// role grants offered are the roles the person holds, each with where it came from, and any role
+// Provisa still holds lists for that the person no longer holds, so those lists can be ended.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,22 +34,22 @@ import {
   endList,
   fetchEffective,
   fetchHeldLists,
+  fetchPersonRoles,
   type AccessView,
   type EntitlementListView,
   type HeldLists,
+  type HeldRole,
   type PendingGrant,
 } from "../../api/entitlements";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { EntitlementListForm } from "./EntitlementListForm";
-import { isKind, type EntitlementKind } from "./kinds";
+import { kindInfo, useEntitlementKinds } from "./kinds";
+import { roleLabel } from "./personRoles";
 
 const SHOWN_ENTRIES = 8;
 
-type Mode =
-  | { type: "add" }
-  | { type: "edit"; kind: EntitlementKind }
-  | { type: "end"; kind: string };
+type Mode = { type: "add" } | { type: "edit"; kind: string } | { type: "end"; kind: string };
 
 function isAccessView(r: AccessView | PendingGrant): r is AccessView {
   return "lists" in r;
@@ -102,14 +104,20 @@ export function PersonEntitlements({
     [principal, report],
   );
 
+  const kinds = useEntitlementKinds(report);
+  const [personRoles, setPersonRoles] = useState<HeldRole[] | null>(null);
+
   // A person's panel is mounted afresh for each person, so nothing of the last one's is kept. It
-  // opens on the first role grant with lists set in Provisa.
+  // opens on the first role held with lists set in Provisa, else the first role held.
   useEffect(() => {
-    fetchHeldLists(principal)
-      .then((held) => {
-        const roles = heldRolesOf(held);
-        setHeldRoles(roles);
-        if (roles.length > 0) selectRole(roles[0]);
+    Promise.all([fetchHeldLists(principal), fetchPersonRoles(principal)])
+      .then(([held, person]) => {
+        const withLists = heldRolesOf(held);
+        const holds = person.roles.map((r) => r.role_id);
+        setHeldRoles(withLists);
+        setPersonRoles(person.roles);
+        const first = withLists.find((r) => holds.includes(r)) ?? holds[0] ?? withLists[0];
+        if (first !== undefined) selectRole(first);
       })
       .catch(report);
   }, [principal, selectRole, report]);
@@ -135,16 +143,24 @@ export function PersonEntitlements({
     view !== null && view.lists.length > 0 && view.lists.every((l) => l.origin === "idp");
   const editable = view !== null && !allFromIdp;
   const taken = new Set((view?.lists ?? []).filter((l) => l.origin !== "role").map((l) => l.kind));
-  // Roles with lists Provisa holds come first; any role can be looked at.
+  const editableKind = (kind: string) => kindInfo(kinds, kind) !== undefined;
+  // The roles the person holds, those with lists Provisa holds first; then a role Provisa holds
+  // lists for that the person no longer holds.
+  const held = personRoles ?? [];
+  const holds = new Set(held.map((r) => r.role_id));
   const roleOptions = [
-    ...heldRoles.map((r) => ({
-      value: r,
-      label: t("entitlements.person.roleWithLists", { role: r }),
-    })),
-    ...[...roleIds]
-      .sort()
-      .filter((r) => !heldRoles.includes(r))
-      .map((r) => ({ value: r, label: r })),
+    ...held
+      .filter((r) => heldRoles.includes(r.role_id))
+      .map((r) => ({
+        value: r.role_id,
+        label: t("entitlements.person.roleWithLists", { role: roleLabel(t, r) }),
+      })),
+    ...held
+      .filter((r) => !heldRoles.includes(r.role_id))
+      .map((r) => ({ value: r.role_id, label: roleLabel(t, r) })),
+    ...heldRoles
+      .filter((r) => !holds.has(r))
+      .map((r) => ({ value: r, label: t("entitlements.person.roleNotHeld", { role: r }) })),
   ];
 
   return (
@@ -176,6 +192,11 @@ export function PersonEntitlements({
         </FormField>
       </FormLayout>
 
+      {personRoles !== null && roleOptions.length === 0 && (
+        <Text size="sm" c="dimmed" data-testid="person-entitlements-no-roles">
+          {t("entitlements.person.noRoles")}
+        </Text>
+      )}
       {view?.grant_ended && (
         <Alert color="gray" data-testid="person-entitlements-grant-ended">
           {t("entitlements.person.grantEnded")}
@@ -213,9 +234,9 @@ export function PersonEntitlements({
                 key={l.kind}
                 list={l}
                 endsOn={endsOn(view, l.kind)}
-                editable={editable && l.origin !== "idp" && isKind(l.kind)}
+                editable={editable && l.origin !== "idp" && editableKind(l.kind)}
                 endable={editable && l.origin === "provisa"}
-                onEdit={() => isKind(l.kind) && setMode({ type: "edit", kind: l.kind })}
+                onEdit={() => setMode({ type: "edit", kind: l.kind })}
                 onEnd={() => {
                   setEndReason("");
                   setMode({ type: "end", kind: l.kind });

@@ -53,7 +53,8 @@
       "endsOnLabel": "Termina el",
       "endsOnHint": "Déjelo vacío para mantener la lista hasta que se finalice.",
       "reasonLabel": "Motivo",
-      "reasonHint": "Se registra con el cambio, para quien revise los accesos."
+      "reasonHint": "Se registra con el cambio, para quien revise los accesos.",
+      "noRoles": "Esta persona no tiene ningún rol que usted administre."
     },
     "person": {
       "help": "Lo que esta persona puede alcanzar con cada asignación de rol, lista por tipo. Una lista del proveedor de identidad prevalece y se cambia allí.",
@@ -79,7 +80,9 @@
       "endList": "Finalizar la lista de {{kind}}",
       "addList": "Añadir lista",
       "endPrompt": "Finalizar la lista de {{kind}}. Vuelve a aplicarse el valor predeterminado del rol.",
-      "endButton": "Finalizar lista"
+      "endButton": "Finalizar lista",
+      "noRoles": "Esta persona no tiene ningún rol que usted administre.",
+      "roleNotHeld": "{{role}} (ya no lo tiene; con listas)"
     },
     "grants": {
       "heading": "Concesiones de acceso",
@@ -98,6 +101,12 @@
       "noPending": "No hay concesiones en espera.",
       "endPrompt": "Finalizar la concesión de {{kind}} para {{email}} en el rol {{role}}.",
       "endButton": "Finalizar"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Asignado en Provisa",
+      "default_assignment": "Asignación predeterminada",
+      "idp": "Proveedor de identidad"
     }
   }
 }

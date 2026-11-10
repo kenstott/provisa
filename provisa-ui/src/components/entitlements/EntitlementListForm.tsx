@@ -10,7 +10,9 @@
 
 // REQ-2219: set one entitlement list of a person's role grant, with a reason and an optional end
 // date, through the one write API. What the form is opened on (a person, a role, a kind) is shown
-// fixed; the rest is asked. The server decides whether the write stands and says why when not.
+// fixed; the rest is asked. The kinds are the server's; the roles offered are those the person
+// holds (an email no one has yet holds none, so any of the org's roles may wait on it). The server
+// decides whether the write stands and says why when not.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -20,7 +22,8 @@ import { setList, type AccessView, type Grantee, type PendingGrant } from "../..
 import { tomorrow, untilEndOf } from "../../lib/grantUntil";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { EntitlementPicker } from "./EntitlementPicker";
-import { ENTITLEMENT_KINDS, SEMANTIC_KINDS, isKind, type EntitlementKind } from "./kinds";
+import { kindInfo, useEntitlementKinds } from "./kinds";
+import { roleLabel, usePersonRoles } from "./personRoles";
 import { PeoplePicker } from "./PeoplePicker";
 
 export interface EntitlementListFormProps {
@@ -29,12 +32,13 @@ export interface EntitlementListFormProps {
   /** The role grant, when the form is opened on one; otherwise the form asks for it. */
   roleId?: string;
   /** The kind, when an existing list is edited; otherwise the form asks for it. */
-  kind?: EntitlementKind;
+  kind?: string;
   /** Kinds not offered when adding: those already held, or sent by the identity provider. */
   takenKinds?: ReadonlySet<string>;
   identifiers?: string[];
   /** The day the list ends (YYYY-MM-DD), when it has an end. */
   endsOn?: string | null;
+  /** The org's role ids: the values of a roles list, and the roles an email may wait on. */
   roleIds: string[];
   onSaved: (result: AccessView | PendingGrant) => void;
   onCancel: () => void;
@@ -58,17 +62,30 @@ export function EntitlementListForm({
   const { t } = useTranslation();
   const [grantee, setGrantee] = useState<Grantee | null>(fixedGrantee ?? null);
   const [roleId, setRoleId] = useState<string | null>(fixedRole ?? null);
-  const [kind, setKind] = useState<EntitlementKind | null>(fixedKind ?? null);
+  const [kind, setKind] = useState<string | null>(fixedKind ?? null);
   const [identifiers, setIdentifiers] = useState<string[]>(initialIdentifiers);
   const [endsOn, setEndsOn] = useState<string | null>(initialEndsOn);
   const [reason, setReason] = useState("");
 
-  const kindOptions = ENTITLEMENT_KINDS.filter((k) => k === fixedKind || !takenKinds?.has(k)).map(
-    (k) => ({ value: k, label: t(`entitlements.kind.${k}`) }),
+  const kinds = useEntitlementKinds(onError);
+  const heldRoles = usePersonRoles(
+    fixedRole === undefined && grantee !== null && "principal" in grantee
+      ? grantee.principal
+      : null,
+    onError,
   );
+
+  const kindOptions = (kinds?.kinds ?? [])
+    .filter((k) => k.kind === fixedKind || !takenKinds?.has(k.kind))
+    .map((k) => ({ value: k.kind, label: t(`entitlements.kind.${k.kind}`) }));
+  const roleOptions =
+    grantee !== null && "principal" in grantee
+      ? (heldRoles ?? []).map((r) => ({ value: r.role_id, label: roleLabel(t, r) }))
+      : [...roleIds].sort();
+  const info = kind === null ? undefined : kindInfo(kinds, kind);
   // The server refuses an end on a list that would remove nothing: an empty list, or a kind whose
   // objects the mask does not hold. The field is not offered there.
-  const canEnd = kind !== null && SEMANTIC_KINDS.has(kind) && identifiers.length > 0;
+  const canEnd = info !== undefined && info.semantic && identifiers.length > 0;
   const ready = grantee !== null && roleId !== null && kind !== null && reason.trim() !== "";
 
   const save = async () => {
@@ -96,7 +113,11 @@ export function EntitlementListForm({
           <PeoplePicker
             label={t("entitlements.form.personLabel")}
             value={grantee}
-            onChange={setGrantee}
+            onChange={(next) => {
+              setGrantee(next);
+              // The roles offered are the new person's: a role chosen for the last one may not be.
+              if (fixedRole === undefined) setRoleId(null);
+            }}
             onError={onError}
             testId={`${testId}-person`}
           />
@@ -107,9 +128,10 @@ export function EntitlementListForm({
           <Select
             label={t("entitlements.form.roleLabel")}
             placeholder={t("entitlements.form.rolePlaceholder")}
-            data={[...roleIds].sort()}
+            data={roleOptions}
             value={roleId}
             onChange={setRoleId}
+            nothingFoundMessage={t("entitlements.form.noRoles")}
             searchable
             data-testid={`${testId}-role`}
           />
@@ -123,18 +145,19 @@ export function EntitlementListForm({
             data={kindOptions}
             value={kind}
             onChange={(v) => {
-              setKind(v !== null && isKind(v) ? v : null);
+              setKind(v);
               setIdentifiers([]);
             }}
             data-testid={`${testId}-kind`}
           />
         </FormField>
       )}
-      {kind !== null && (
+      {info !== undefined && (
         <FormField size="long" help={t("entitlements.form.entriesHelp")}>
           <EntitlementPicker
             label={t("entitlements.form.entriesLabel")}
-            kind={kind}
+            kind={info}
+            names={kinds?.names ?? null}
             value={identifiers}
             onChange={setIdentifiers}
             roleIds={roleIds}

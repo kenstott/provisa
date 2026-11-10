@@ -8,74 +8,22 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2219: the semantic objects a list names, as a tree of the names table's client-facing SQL
-// names: domain, then table (its alias where it has one), then column. An identifier is the dotted
-// path of a node; a shorter one selects everything beneath it (matches() in
-// provisa/entitlements/index.py), so checking a node stands for its children.
+// REQ-2219: the semantic objects a list names, as the server's tree of the names table's
+// client-facing SQL names (names_tree() in provisa/entitlements/index.py): domain, then table,
+// then column. An identifier is the dotted path of a node; a shorter one selects everything
+// beneath it (matches() there), so checking a node stands for its children.
 
-import { domainToSqlName } from "../../naming";
+import type { NamesNode } from "../../api/entitlements";
 
-export interface NamesNode {
-  /** The identifier this node is listed as. */
-  id: string;
-  /** The last segment, which the tree shows. */
-  label: string;
-  children: NamesNode[];
-}
+export type { NamesNode };
 
-export interface NamedDomain {
-  id: string;
-}
-
-export interface NamedTable {
-  domainId: string;
-  tableName: string;
-  alias?: string | null;
-  columns: { columnName: string; alias?: string | null }[];
-}
-
-const byLabel = (a: NamesNode, b: NamesNode) => a.label.localeCompare(b.label);
-
-/** The tree down to `depth` levels: 1 domains, 2 their tables, 3 their columns. */
-export function buildNamesTree(
-  domains: readonly NamedDomain[],
-  tables: readonly NamedTable[],
-  depth: 1 | 2 | 3,
-): NamesNode[] {
-  const roots = new Map<string, NamesNode>();
-  for (const d of domains) {
-    const name = domainToSqlName(d.id);
-    roots.set(name, { id: name, label: name, children: [] });
-  }
-  if (depth >= 2) {
-    for (const t of tables) {
-      const domain = roots.get(domainToSqlName(t.domainId));
-      // A table's domain is registered before the table; one the domain list lacks is not in
-      // this model's names table either.
-      if (domain === undefined) continue;
-      const tableName = t.alias || t.tableName;
-      const table: NamesNode = {
-        id: `${domain.id}.${tableName}`,
-        label: tableName,
-        children:
-          depth === 3
-            ? t.columns.map((c) => {
-                const columnName = c.alias || c.columnName;
-                return {
-                  id: `${domain.id}.${tableName}.${columnName}`,
-                  label: columnName,
-                  children: [],
-                };
-              })
-            : [],
-      };
-      table.children.sort(byLabel);
-      domain.children.push(table);
-    }
-  }
-  const out = [...roots.values()];
-  for (const d of out) d.children.sort(byLabel);
-  return out.sort(byLabel);
+/** The server's names tree (GET /admin/entitlements/kinds) cut to `depth` levels: 1 domains, 2
+ *  their tables, 3 their columns. */
+export function toDepth(nodes: readonly NamesNode[], depth: number): NamesNode[] {
+  return nodes.map((n) => ({
+    ...n,
+    children: depth > 1 ? toDepth(n.children, depth - 1) : [],
+  }));
 }
 
 /** Whether `identifier` selects `id`: the same path, or a shorter one above it (case ignored). */

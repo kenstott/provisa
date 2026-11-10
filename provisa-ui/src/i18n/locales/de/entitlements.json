@@ -53,7 +53,8 @@
       "endsOnLabel": "Endet am",
       "endsOnHint": "Leer lassen, um die Liste bis zu ihrer Beendigung zu behalten.",
       "reasonLabel": "Grund",
-      "reasonHint": "Wird mit der Änderung gespeichert, für die Zugriffsprüfung."
+      "reasonHint": "Wird mit der Änderung gespeichert, für die Zugriffsprüfung.",
+      "noRoles": "Diese Person hat keine Rolle, die Sie verwalten."
     },
     "person": {
       "help": "Was diese Person über jede Rollenzuweisung erreichen darf, Liste für Liste nach Art. Eine Liste vom Identitätsanbieter hat Vorrang und wird dort geändert.",
@@ -79,7 +80,9 @@
       "endList": "Liste {{kind}} beenden",
       "addList": "Liste hinzufügen",
       "endPrompt": "Liste {{kind}} beenden. Der Standard der Rolle gilt wieder.",
-      "endButton": "Liste beenden"
+      "endButton": "Liste beenden",
+      "noRoles": "Diese Person hat keine Rolle, die Sie verwalten.",
+      "roleNotHeld": "{{role}} (nicht mehr inne; Listen festgelegt)"
     },
     "grants": {
       "heading": "Zugriffsgewährungen",
@@ -98,6 +101,12 @@
       "noPending": "Keine Gewährungen warten.",
       "endPrompt": "Gewährung {{kind}} für {{email}} in Rolle {{role}} beenden.",
       "endButton": "Beenden"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "In Provisa zugewiesen",
+      "default_assignment": "Standardzuweisung",
+      "idp": "Identitätsanbieter"
     }
   }
 }

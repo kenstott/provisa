@@ -22,7 +22,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from provisa.entitlements.index import Finding, build_index, check_lists, matches
+from provisa.entitlements.index import (
+    Finding,
+    ObjectIndex,
+    build_index,
+    check_lists,
+    matches,
+)
 from provisa.entitlements.lists import IDP, PROVISA, ExpiryRule, HeldEntitlements, effective_lists
 from provisa.entitlements.runtime import role_defaults
 
@@ -77,15 +83,23 @@ def _ended_by(rule: ExpiryRule, identifiers: tuple[str, ...]) -> set[str]:
     }
 
 
-def _findings(state: Any, role_id: str, role: dict, lists: dict) -> tuple[Finding, ...]:
-    """The flags on these lists, or none when there is no model yet to check them against."""
+def model_index(state: Any) -> ObjectIndex | None:
+    """The whole model's objects, which lists are checked against and the picker offers; None
+    when there is no model yet."""
     if state.names_table is None:
-        return ()
+        return None
     version = (state.schema_boot_id, state.schema_version)
-    index = state.entitlement_masks.index(
+    return state.entitlement_masks.index(
         (version, "*"),
         lambda: build_index(state.names_table, None, tuple(state.data_product_refs)),
     )
+
+
+def _findings(state: Any, role_id: str, role: dict, lists: dict) -> tuple[Finding, ...]:
+    """The flags on these lists, or none when there is no model yet to check them against."""
+    index = model_index(state)
+    if index is None:
+        return ()
     return tuple(check_lists(role_id, role, lists, index))
 
 

@@ -73,8 +73,14 @@ _READ_BY: dict[str, frozenset[str]] = {
     "regions": frozenset({"platform_settings", "cross_org"}),
 }
 
-#: Every kind of list a principal's role grant can carry.
-KINDS = SEMANTIC_LISTS | frozenset(_READ_BY)
+#: Every kind of list a principal's role grant can carry, in the order a client lists them: the
+#: semantic hierarchy first, then the rest. The write API accepts these and no other.
+KIND_ORDER: tuple[str, ...] = ("domains", *LIST_OF.values(), *_READ_BY)
+KINDS = frozenset(KIND_ORDER)
+
+#: The kinds whose identifiers are picked from the names tree, and how deep it goes for each:
+#: domains are its first level, tables its second, columns its third.
+TREE_DEPTH: dict[str, int] = {"domains": 1, LIST_OF[TABLE]: 2, LIST_OF[COLUMN]: 3}
 
 
 @dataclass(frozen=True)
@@ -84,8 +90,10 @@ class IndexedObject:
     bit: int
     kind: str
     oid: str
-    # Each spelling an identifier can use, as segments, lower-cased.
+    # Each spelling an identifier can use, as segments, lower-cased: what matching reads.
     paths: tuple[tuple[str, ...], ...]
+    # The first path as the model spells it, segment by segment: what a client shows.
+    spelled: tuple[str, ...]
     domain: str
     table_id: int | None = None
     target_table_id: int | None = None
@@ -102,8 +110,12 @@ class Finding:
     message: str
 
 
+def _lowered(segments: Iterable[str]) -> tuple[str, ...]:
+    return tuple(s.lower() for s in segments)
+
+
 def _segments(identifier: str) -> tuple[str, ...]:
-    return tuple(s.lower() for s in identifier.split("."))
+    return _lowered(identifier.split("."))
 
 
 def matches(identifier: str, paths: Iterable[tuple[str, ...]]) -> bool:
@@ -143,19 +155,21 @@ def build_index(
     """``names`` through the schema of the role whose compilation context is ``ctx`` (None: the
     whole model, which only the checks read). ``products`` are (product id, domain id)."""
     held = None if ctx is None else {tm.table_id for tm in ctx.tables.values()}
+    # Each table's (domain, name) as the model spells them; lower-cased, they are its path.
     tables: dict[int, tuple[str, str]] = {}
     for row in names.rows:
         if row.surface == "sql" and row.object_kind in ("table", "view") and len(row.scope) == 2:
             assert row.table_id is not None
-            tables[row.table_id] = (row.scope[1].lower(), row.name.lower())
+            tables[row.table_id] = (row.scope[1], row.name)
     out: list[IndexedObject] = []
 
-    def add(kind: str, oid: str, paths: tuple, domain: str, **more: Any) -> None:
-        out.append(IndexedObject(len(out), kind, oid, paths, domain, **more))
+    def add(kind: str, oid: str, spelled: tuple[str, ...], **more: Any) -> None:
+        path = _lowered(spelled)
+        out.append(IndexedObject(len(out), kind, oid, (path,), spelled, path[0], **more))
 
-    for tid, (domain, name) in sorted(tables.items()):
+    for tid, spelled in sorted(tables.items()):
         if held is None or tid in held:
-            add(TABLE, str(tid), ((domain, name),), domain, table_id=tid)
+            add(TABLE, str(tid), spelled, table_id=tid)
     for row in names.rows:
         if row.surface != "sql" or row.object_kind not in (COLUMN, METRIC):
             continue
@@ -164,14 +178,7 @@ def build_index(
             continue
         if ctx is not None and (tid, row.physical_name) not in ctx.physical_to_sql:
             continue
-        domain, table = tables[tid]
-        add(
-            row.object_kind,
-            row.object_id,
-            ((domain, table, row.name.lower()),),
-            domain,
-            table_id=tid,
-        )
+        add(row.object_kind, row.object_id, (*tables[tid], row.name), table_id=tid)
     joins = _add_relationships(names, ctx, tables, held, out)
     _add_flat_objects(names, products, out)
     return ObjectIndex(out, joins)
@@ -207,15 +214,17 @@ def _add_relationships(
             target = join.target.table_id
         seen.add(row.object_id)
         domain, table = tables[tid]
-        bare = f"{table}_{row.name.lower()}"
+        spelled = (domain, f"{table}_{row.name}")
+        domain_path, bare = _lowered(spelled)
         bit = len(out)
         out.append(
             IndexedObject(
                 bit,
                 RELATIONSHIP,
                 row.object_id,
-                ((domain, bare), (bare,)),
-                domain,
+                ((domain_path, bare), (bare,)),
+                spelled,
+                domain_path,
                 table_id=tid,
                 target_table_id=target,
             )
@@ -235,16 +244,16 @@ def _add_flat_objects(
         if row.object_kind != COMMAND or row.object_id in seen:
             continue
         seen.add(row.object_id)
-        domain = naming.domain_to_sql_name(row.domain_id).lower() if row.domain_id else ""
-        paths = ((domain, row.object_id.lower()),) if domain else ((row.object_id.lower(),),)
-        out.append(IndexedObject(len(out), COMMAND, row.object_id, paths, domain))
-    for product_id, domain_id in sorted(products):
-        domain = naming.domain_to_sql_name(domain_id).lower()
+        domain = naming.domain_to_sql_name(row.domain_id) if row.domain_id else ""
+        spelled = (domain, row.object_id) if domain else (row.object_id,)
+        path = _lowered(spelled)
         out.append(
-            IndexedObject(
-                len(out), DATA_PRODUCT, product_id, ((domain, product_id.lower()),), domain
-            )
+            IndexedObject(len(out), COMMAND, row.object_id, (path,), spelled, domain.lower())
         )
+    for product_id, domain_id in sorted(products):
+        spelled = (naming.domain_to_sql_name(domain_id), product_id)
+        path = _lowered(spelled)
+        out.append(IndexedObject(len(out), DATA_PRODUCT, product_id, (path,), spelled, path[0]))
 
 
 def check_lists(
@@ -302,3 +311,48 @@ def check_lists(
                     )
                 )
     return findings
+
+
+@dataclass(frozen=True)
+class NamesNode:
+    """One node of the names tree: ``id`` is the identifier it is listed as, ``label`` its last
+    segment, both as the model spells them. Checking a node selects everything beneath it; an
+    identifier matches it ignoring case."""
+
+    id: str
+    label: str
+    children: tuple["NamesNode", ...] = ()
+
+
+def _ordered(spellings: Iterable[str]) -> list[str]:
+    return sorted(spellings, key=lambda s: (s.lower(), s))
+
+
+def names_tree(index: ObjectIndex) -> tuple[NamesNode, ...]:
+    """The domains, tables and columns of ``index`` as a tree of the identifiers that select them,
+    each level ordered by label ignoring case: what a picker offers for the kinds of
+    :data:`TREE_DEPTH`. Objects are grouped by their lower-cased path, as matching reads them,
+    and shown as the model spells them (the first object of a path, in bit order, spells it)."""
+    spelled: dict[tuple[str, ...], str] = {}
+    children: dict[tuple[str, ...], set[tuple[str, ...]]] = {(): set()}
+
+    def note(path: tuple[str, ...], spelling: tuple[str, ...]) -> None:
+        for depth in range(1, len(path) + 1):
+            here = path[:depth]
+            spelled.setdefault(here, spelling[depth - 1])
+            children.setdefault(here[:-1], set()).add(here)
+
+    for o in index.objects:
+        if o.kind in (TABLE, COLUMN):
+            note(o.paths[0], o.spelled)
+        elif o.domain:
+            note(o.paths[0][:1], o.spelled[:1])
+
+    def nodes(parent: tuple[str, ...], prefix: str) -> tuple[NamesNode, ...]:
+        by_label = {spelled[p]: p for p in children.get(parent, ())}
+        return tuple(
+            NamesNode(prefix + label, label, nodes(by_label[label], f"{prefix}{label}."))
+            for label in _ordered(by_label)
+        )
+
+    return nodes((), "")

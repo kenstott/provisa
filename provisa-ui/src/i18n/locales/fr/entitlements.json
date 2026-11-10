@@ -53,7 +53,8 @@
       "endsOnLabel": "Se termine le",
       "endsOnHint": "Laissez vide pour conserver la liste jusqu'à ce qu'elle soit clôturée.",
       "reasonLabel": "Motif",
-      "reasonHint": "Enregistré avec la modification, pour la revue des accès."
+      "reasonHint": "Enregistré avec la modification, pour la revue des accès.",
+      "noRoles": "Cette personne n'a aucun rôle que vous administrez."
     },
     "person": {
       "help": "Ce que cette personne peut atteindre par chaque attribution de rôle, liste par type. Une liste du fournisseur d'identité prévaut et se modifie chez lui.",
@@ -79,7 +80,9 @@
       "endList": "Clôturer la liste {{kind}}",
       "addList": "Ajouter une liste",
       "endPrompt": "Clôturer la liste {{kind}}. La valeur par défaut du rôle s'applique de nouveau.",
-      "endButton": "Clôturer la liste"
+      "endButton": "Clôturer la liste",
+      "noRoles": "Cette personne n'a aucun rôle que vous administrez.",
+      "roleNotHeld": "{{role}} (plus détenu ; listes définies)"
     },
     "grants": {
       "heading": "Octrois d'accès",
@@ -98,6 +101,12 @@
       "noPending": "Aucun octroi en attente.",
       "endPrompt": "Clôturer l'octroi {{kind}} pour {{email}} dans le rôle {{role}}.",
       "endButton": "Clôturer"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Attribué dans Provisa",
+      "default_assignment": "Attribution par défaut",
+      "idp": "Fournisseur d'identité"
     }
   }
 }

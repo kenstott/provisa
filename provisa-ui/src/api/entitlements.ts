@@ -90,6 +90,44 @@ export interface PendingGrant {
   reason: string | null;
 }
 
+/** Where a person's role came from: Provisa's assignments, the deployment's default
+ *  assignments, or the identity provider (provisa/entitlements/roles.py). */
+export type RoleOrigin = "provisa" | "default_assignment" | "idp";
+
+/** A role a person holds, with each place it came from and the domains its assignments name. */
+export interface HeldRole {
+  role_id: string;
+  origins: RoleOrigin[];
+  domains: string[];
+}
+
+export interface PersonRoles {
+  principal: string;
+  roles: HeldRole[];
+}
+
+/** One node of the names tree: the identifier it is listed as, and its last segment. */
+export interface NamesNode {
+  id: string;
+  label: string;
+  children: NamesNode[];
+}
+
+/** A kind of list the write accepts: whether an expiry can end it, and how deep the names tree
+ *  goes when it is picked from there (null: typed or picked otherwise). */
+export interface KindInfo {
+  kind: string;
+  semantic: boolean;
+  tree_depth: 1 | 2 | 3 | null;
+}
+
+/** The kinds the write accepts, in the order they are listed, and the model's names tree (null
+ *  before a model is built). */
+export interface EntitlementKinds {
+  kinds: KindInfo[];
+  names: NamesNode[] | null;
+}
+
 /** Whom a write names: a principal, or an email for a person who may not have been seen yet. */
 export type Grantee = { principal: string } | { email: string };
 
@@ -135,6 +173,16 @@ export function fetchHeldLists(principal: string): Promise<HeldLists> {
 
 export function searchPeople(q: string): Promise<PersonMatch[]> {
   return call("searchPeople", `/people?${new URLSearchParams({ q })}`);
+}
+
+/** The roles `principal` holds, within the roles the caller administers. */
+export function fetchPersonRoles(principal: string): Promise<PersonRoles> {
+  return call("fetchPersonRoles", `/roles?${new URLSearchParams({ principal })}`);
+}
+
+/** The kinds the write accepts and the names tree a list is picked from. */
+export function fetchKinds(): Promise<EntitlementKinds> {
+  return call("fetchKinds", "/kinds");
 }
 
 export function fetchPending(): Promise<PendingGrant[]> {

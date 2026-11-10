@@ -22,21 +22,11 @@ vi.mock("../api/entitlements", async (orig) => ({
   ...(await orig<typeof import("../api/entitlements")>()),
   fetchHeldLists: vi.fn(),
   fetchEffective: vi.fn(),
+  fetchKinds: vi.fn(),
+  fetchPersonRoles: vi.fn(),
   setList: vi.fn(),
   endList: vi.fn(),
   searchPeople: vi.fn(),
-}));
-
-vi.mock("../hooks/useAdminQueries", () => ({
-  useDomains: () => ({ domains: [{ id: "finance" }] }),
-}));
-vi.mock("../hooks/useTableQueries", () => ({
-  useTables: () => ({
-    tables: [
-      { domainId: "finance", tableName: "revenue", columns: [] },
-      { domainId: "finance", tableName: "costs", columns: [] },
-    ],
-  }),
 }));
 
 import {
@@ -44,14 +34,19 @@ import {
   endList,
   fetchEffective,
   fetchHeldLists,
+  fetchKinds,
+  fetchPersonRoles,
   setList,
 } from "../api/entitlements";
 import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
+import { SERVER_KINDS } from "../test-utils/entitlementKinds";
 
 const mockHeld = vi.mocked(fetchHeldLists);
 const mockEffective = vi.mocked(fetchEffective);
 const mockSet = vi.mocked(setList);
 const mockEnd = vi.mocked(endList);
+const mockKinds = vi.mocked(fetchKinds);
+const mockRoles = vi.mocked(fetchPersonRoles);
 
 const MIXED: AccessView = {
   principal: "u|1",
@@ -108,7 +103,29 @@ beforeEach(() => {
     ],
   });
   mockEffective.mockResolvedValue(MIXED);
+  mockKinds.mockResolvedValue(SERVER_KINDS);
+  mockRoles.mockResolvedValue({
+    principal: "u|1",
+    roles: [
+      { role_id: "auditor", origins: ["idp"], domains: [] },
+      { role_id: "viewer", origins: ["provisa"], domains: ["*"] },
+    ],
+  });
 });
+
+/** The options of the select `testId`, from its own listbox (others stay rendered, hidden). */
+async function optionsOf(testId: string): Promise<string[]> {
+  const input = await screen.findByTestId(testId);
+  await userEvent.click(input);
+  const listbox = await waitFor(() => {
+    const el = document.getElementById(input.getAttribute("aria-controls") ?? "");
+    if (el === null) throw new Error(`${testId} has no listbox`);
+    return el;
+  });
+  return within(listbox)
+    .getAllByRole("option", { hidden: true })
+    .map((o) => o.textContent ?? "");
+}
 
 describe("a person's entitlement lists", () => {
   it("opens on the role with lists, showing each kind's origin, superseded list and end", async () => {
@@ -150,7 +167,9 @@ describe("a person's entitlement lists", () => {
     await userEvent.click(await screen.findByTestId("person-list-tables-edit"));
     const save = screen.getByTestId("person-entitlements-form-save");
     expect(save).toBeDisabled();
-    await userEvent.click(screen.getByTestId("person-entitlements-form-picker-toggle-finance"));
+    await userEvent.click(
+      await screen.findByTestId("person-entitlements-form-picker-toggle-finance"),
+    );
     await userEvent.click(screen.getByTestId("person-entitlements-form-picker-node-finance.costs"));
     await userEvent.type(screen.getByTestId("person-entitlements-form-reason"), "audit");
     await userEvent.click(save);
@@ -215,5 +234,58 @@ describe("a person's entitlement lists", () => {
     expect(await screen.findByTestId("person-entitlements-findings")).toHaveTextContent(
       "finance.gone in Tables names nothing in the model.",
     );
+  });
+
+  it("offers the roles the person holds, each with its origin, and no other role", async () => {
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer", "analyst", "auditor"]} />);
+    await screen.findByTestId("person-list-tables");
+    expect(mockRoles).toHaveBeenCalledWith("u|1");
+    expect(await optionsOf("person-entitlements-role")).toEqual([
+      "viewer · Assigned in Provisa (lists set)",
+      "auditor · Identity provider",
+    ]);
+  });
+
+  it("opens on the first role held when Provisa holds no lists for the person", async () => {
+    mockHeld.mockResolvedValue({ principal: "u|1", lists: [] });
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    await waitFor(() => expect(mockEffective).toHaveBeenCalledWith("u|1", "auditor"));
+  });
+
+  it("still offers a role Provisa holds lists for that the person no longer holds", async () => {
+    mockRoles.mockResolvedValue({
+      principal: "u|1",
+      roles: [{ role_id: "auditor", origins: ["idp"], domains: [] }],
+    });
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer", "auditor"]} />);
+    await waitFor(() => expect(mockEffective).toHaveBeenCalledWith("u|1", "auditor"));
+    expect(await optionsOf("person-entitlements-role")).toEqual([
+      "auditor · Identity provider",
+      "viewer (no longer held; lists set)",
+    ]);
+  });
+
+  it("says so when the person holds no role the caller administers", async () => {
+    mockHeld.mockResolvedValue({ principal: "u|1", lists: [] });
+    mockRoles.mockResolvedValue({ principal: "u|1", roles: [] });
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    expect(await screen.findByTestId("person-entitlements-no-roles")).toHaveTextContent(
+      "This person holds no role you administer.",
+    );
+    expect(mockEffective).not.toHaveBeenCalled();
+  });
+
+  it("adds a list of a kind the server defines, and only those", async () => {
+    mockKinds.mockResolvedValue({
+      kinds: [
+        { kind: "tables", semantic: true, tree_depth: 2 },
+        { kind: "sources", semantic: false, tree_depth: null },
+      ],
+      names: SERVER_KINDS.names,
+    });
+    mockEffective.mockResolvedValue({ ...MIXED, lists: [], expiries: [] });
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    await userEvent.click(await screen.findByTestId("person-entitlements-add"));
+    expect(await optionsOf("person-entitlements-form-kind")).toEqual(["Tables", "Sources"]);
   });
 });

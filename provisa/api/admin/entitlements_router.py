@@ -26,6 +26,9 @@ The picker finds people through one search by name or email over the org's local
 known members (``/people``). A write names a principal, or an email: one that matches a person of
 the org is that person's write, and one that matches no one is a pending grant, attached when a
 sign-in token's email matches (``provisa.entitlements.pending``).
+
+Two reads serve the picker, gated as a write: the roles a person holds, with where each came from
+(``/roles``), and the kinds the write accepts with the names it picks from (``/kinds``).
 """
 
 # Requirements: REQ-2219
@@ -43,9 +46,15 @@ from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
 from provisa.core.org_membership import record_admin_action
-from provisa.entitlements import pending, people, store
-from provisa.entitlements.effective import access_view
-from provisa.entitlements.index import KINDS, SEMANTIC_LISTS
+from provisa.entitlements import pending, people, roles, store
+from provisa.entitlements.effective import access_view, model_index
+from provisa.entitlements.index import (
+    KIND_ORDER,
+    KINDS,
+    SEMANTIC_LISTS,
+    TREE_DEPTH,
+    names_tree,
+)
 from provisa.entitlements.lists import HeldEntitlements
 from provisa.entitlements.runtime import reaches_role
 from provisa.security.rights import Capability
@@ -433,3 +442,50 @@ async def effective(principal: str, role_id: str, request: Request) -> dict:
     if not _visible_roles(request, state, principal, {role_id}):
         raise _refuse_out_of_reach(role_id)
     return _view(state, principal, role_id)
+
+
+@router.get("/roles")
+async def person_roles(principal: str, request: Request) -> dict:
+    """The roles ``principal`` holds in the caller's org, within the roles the caller administers,
+    each with where it came from: Provisa's assignments, the deployment's default assignments, or
+    the identity provider (a role it names that the org does not define is left out: no list can
+    be set on it). Gated as a write: it offers the role grants a list is set on."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    require_active_org_id(request)
+    async with _db(state).acquire() as conn:
+        held = await roles.held_roles(
+            conn,
+            principal,
+            state.idp_entitlements.get(principal, {}),
+            state.auth_config or {},
+            state.roles,
+        )
+    if _caller(request) is not None:
+        held = [r for r in held if reaches_role(state, r.role_id, {_ASSIGN})]
+    return {"principal": principal, "roles": [asdict(r) for r in held]}
+
+
+def _node(node: Any) -> dict:
+    return {"id": node.id, "label": node.label, "children": [_node(c) for c in node.children]}
+
+
+@router.get("/kinds")
+async def list_kinds(request: Request) -> dict:
+    """The kinds of list the write accepts, in the order a client lists them, each with whether an
+    expiry can end it and how deep the names tree goes for it; and that tree, of the model's
+    domains, tables and columns as the identifiers that select them (null before a model is
+    built). Gated as a write: it is what a list is picked from."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    require_active_org_id(request)
+    index = model_index(state)
+    return {
+        "kinds": [
+            {"kind": kind, "semantic": kind in SEMANTIC_LISTS, "tree_depth": TREE_DEPTH.get(kind)}
+            for kind in KIND_ORDER
+        ],
+        "names": None if index is None else [_node(n) for n in names_tree(index)],
+    }
