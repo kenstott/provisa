@@ -94715,4 +94715,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     base can run either in process or on a host, chosen per source, as a code source does (REQ-2098, REQ-2100):
     on a host, Provisa pairs with it by address and reads it through pgwire. Where that host runs (a container
     beside the server, another machine) is not Provisa''s concern; it is only an address. A connector needing
-    more resources than the data node gives it runs on a host.'
+    more resources than the data node gives it runs on a host. (Amended 2026-11-10, CODE RESOLVERS GET IT
+    FOR FREE:) Maintainer 2026-11-10: a connector built as a code resolver, in any of the four languages
+    (Node, Python, Go, Rust), gets the choice of in process or on a host with no work of its own. The generic
+    bases are built as code resolvers wherever they can be, so every connector built on them gets it too;
+    a base that cannot be one (the SQL family, read by the engines) keeps its own way.'
