@@ -17,12 +17,13 @@ import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-export type RegistryKind = "npm" | "pypi" | "goproxy" | "git";
+export type RegistryKind = "npm" | "pypi" | "goproxy" | "cargo" | "git";
 
 export interface PackageRegistry {
   id: string;
   kind: RegistryKind;
-  /** An npm registry's URL, a PyPI index's simple-index URL, or a Git host. */
+  /** An npm registry's URL, a PyPI index's simple-index URL, a Go module proxy's URL, a Cargo
+   * registry's sparse index URL (sparse+https://...), or a Git host. */
   address: string;
   /** An npm registry's scope ("@acme"), or null. */
   scope: string | null;

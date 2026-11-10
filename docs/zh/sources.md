@@ -26,7 +26,7 @@
 
 ## 所有数据源 {: #all-sources }
 
-Provisa 注册了 **78** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 78 种；索引即为计数。
+Provisa 注册了 **79** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 79 种；索引即为计数。
 
 | # | 分组 | 数据源类型 |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa 注册了 **78** 种数据源类型，即 Sources 表单所提供的类�
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
 | 31–34 | [数据湖 / 开放表格式](#data-lake-open-table-formats) | `iceberg`、`delta_lake`、`hive`、`hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`、`cosmosdb`、`qdrant`、`cassandra`、`redis` |
-| 40–42 | [代码源](code-sources.md) | `node`, `python`, `go` |
-| 43–45 | [流式处理](#streaming) | `kafka`、`websocket`、`rss` |
-| 46 | [推送接收器](#push-receiver) | `ingest` |
-| 47–48 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |
-| 49–53 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
-| 54–55 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
-| 56–64 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [API 数据源](#api-sources) | `openapi`、[`dbt`](#dbt)、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
-| 73 | [GovData](#govdata) | `govdata` |
-| 74–75 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
-| 76 | [数据剖析器](#data-profiler) | `data_profiler` |
-| 77 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
-| 78 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
+| 40–43 | [代码源](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [流式处理](#streaming) | `kafka`、`websocket`、`rss` |
+| 47 | [推送接收器](#push-receiver) | `ingest` |
+| 48–49 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |
+| 50–54 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
+| 55–56 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
+| 57–65 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365`, `quickbooks` |
+| 66–73 | [API 数据源](#api-sources) | `openapi`、[`dbt`](#dbt)、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
+| 74 | [GovData](#govdata) | `govdata` |
+| 75–76 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
+| 77 | [数据剖析器](#data-profiler) | `data_profiler` |
+| 78 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
+| 79 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
 
 Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动）表示单数据源查询直接针对该数据源原生执行（亚 100 毫秒）。"Connector Name"（连接器名称）是当该数据源参与多数据源 JOIN 时所使用的联邦连接器。
 

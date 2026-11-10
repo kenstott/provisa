@@ -26,7 +26,7 @@ Jede Abfrage läuft am Ende über die Federation-Engine, und genau das lässt je
 
 ## Alle Quellen {: #all-sources }
 
-Provisa registriert **78** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 78 ab; der Index ist die Zählung.
+Provisa registriert **79** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 79 ab; der Index ist die Zählung.
 
 | # | Gruppe | Quelltypen |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registriert **78** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–42 | [Code-Quellen](code-sources.md) | `node`, `python`, `go` |
-| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 46 | [Push-Empfänger](#push-receiver) | `ingest` |
-| 47–48 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 49–53 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 54–55 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
-| 56–64 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [API-Quellen](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 73 | [GovData](#govdata) | `govdata` |
-| 74–75 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
-| 76 | [Data-Profiler](#data-profiler) | `data_profiler` |
-| 77 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
-| 78 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
+| 40–43 | [Code-Quellen](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Push-Empfänger](#push-receiver) | `ingest` |
+| 48–49 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 50–54 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 55–56 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
+| 57–65 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 66–73 | [API-Quellen](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 74 | [GovData](#govdata) | `govdata` |
+| 75–76 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
+| 77 | [Data-Profiler](#data-profiler) | `data_profiler` |
+| 78 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
+| 79 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
 
 Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an Mehrquellen-JOINs teilnimmt.
 
