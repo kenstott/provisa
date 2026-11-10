@@ -11,9 +11,16 @@
 """Live Microsoft 365 source of the organisation's mailboxes (REQ-1923), against a real tenant.
 
 What it proves that a stand-in Graph cannot: Microsoft issues the client a token by the
-client-credentials grant; the directory lists the test mailboxes; ONE read of a mailbox feeds
+client-credentials grant; the directory lists the test mailbox; ONE read of a mailbox feeds
 the five message tables with the canonical columns; a mailbox the client may not read is left
 out and named in the build's note; and a delta link can be followed twice.
+
+The tenant has one licensed mailbox, the maintainer's own, and it is a large one, so no read here
+takes the whole of it (maintainer 2026-11-10: "redo the test using the one mailbox, but limit the
+mail"). Every read of the mailbox's mail goes through the source's own ``mail_since``, set at run
+time to :data:`_RECENT_DAYS` days back: only what was received since then is read. A delta round
+the tests ask Graph for directly carries the same date as a filter on the received time. A read
+that is still too large for :data:`_READ_SECONDS` fails as before.
 
 Nothing is written to the tenant. No server, engine or container is used: the loader is driven
 directly, so run it with the stack switched off:
@@ -29,16 +36,18 @@ permissions are required. Read from the environment (``.env`` through tests/env_
   M365_TENANT_ID             the directory (tenant) id
   M365_CLIENT_ID             the application (client) id
   M365_CLIENT_SECRET         the client secret's value
-  M365_TEST_MAILBOXES        comma-separated addresses the client may read; SMALL mailboxes,
-                             each holding at least one message -- a whole mailbox is read
+  M365_TEST_MAILBOXES        the address of the licensed mailbox the client reads (only the first
+                             address is read); it must have received a message in the last
+                             _RECENT_DAYS days
   M365_TEST_MAILBOX_OUTSIDE  optional: one address the client may NOT read (outside its
                              Exchange scope, or a user with no mailbox)
 
 In CI it runs only in its own lane, microsoft_365 (scripts/ci/run_lane.py), when a dispatch of
 integration-suite.yml asks for it (include_microsoft_365; the tenant is the maintainer's own,
-maintainer 2026-11-10); that job is handed the M365_* repo secrets, fails by name when one of the
-four required is not set, and runs with PYTEST_NO_DOCKER=1. Like every warehouse test a credential
-that is not set fails it by name rather than passing it over (tests/skip_is_failure.py).
+maintainer 2026-11-10); that job is handed the M365_* secrets of the GitHub environment
+`live`, fails by name when one of the four required is not set, and runs with
+PYTEST_NO_DOCKER=1. Like every warehouse test a credential that is not set fails it by name
+rather than passing it over (tests/skip_is_failure.py).
 
 Neither the client secret nor an access token is put in an assertion message, a log line or
 captured output; the last test asserts it.
@@ -48,6 +57,7 @@ captured output; the last test asserts it.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import os
 
@@ -72,8 +82,13 @@ from provisa.microsoft365 import directory, loader, mail  # noqa: E402
 from provisa.microsoft365 import settings as m365  # noqa: E402
 from provisa.microsoft365.graph import BASE_URL, Graph, http_send  # noqa: E402
 
-#: How long one whole-mailbox read may take before the test says the mailbox is not a small one.
+#: How long one read may take before the test says the mail read is not a small one.
 _READ_SECONDS = 600
+
+#: How many days of mail are read: the source's ``mail_since`` is this many days before today.
+_RECENT_DAYS = 7
+#: The source's ``mail_since`` for every read here, computed when the run starts.
+_SINCE = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=_RECENT_DAYS)
 
 
 def _inside() -> tuple[str, ...]:
@@ -105,11 +120,12 @@ def _read(
     accounts: tuple[str, ...],
     token: directory.ClientToken,
     kept: list | None = None,
-    since=None,
+    since: dt.date = _SINCE,
 ):
     """One group read of ``accounts``: (rows per table as arrow batches, the build's notes).
     With ``kept``, the read is then told its build completed, and what it keeps is added.
-    With ``since`` (a date), nothing received before it is held."""
+    Nothing received before ``since`` (a date; :data:`_SINCE` unless another is given) is held:
+    no read here takes a whole mailbox."""
 
     async def keep(rows):
         assert kept is not None
@@ -170,13 +186,13 @@ def test_one_read_of_a_mailbox_feeds_the_five_tables_with_the_canonical_columns(
             assert batch.schema.names == wanted, f"{table}: columns differ from the canonical ones"
             rows = batch.to_pylist()
             assert {row["account"] for row in rows} <= {account}, f"{table}: another account's rows"
-            assert {row["provider"] for row in rows} <= {"microsoft_365"}, f"{table}: provider"
+            assert {row["provider"] for row in rows} <= {cm.MICROSOFT}, f"{table}: provider"
     counts = {table: sum(b.num_rows for b in got[table]) for table in mail.MESSAGE_TABLES}
     print(f"rows read: {counts}; notes: {[(n.code, n.params) for n in notes]}")
-    # A test mailbox holds at least one message: it has a folder, a thread, and a sender or a
-    # recipient. Attachments may be none.
+    # The test mailbox received at least one message since _SINCE: it has a folder, a thread,
+    # and a sender or a recipient. Attachments may be none.
     for table in ("messages", "message_recipients", "message_folders", "threads"):
-        assert counts[table] > 0, f"{table}: no rows from a mailbox said to hold a message"
+        assert counts[table] > 0, f"{table}: no rows; no message received since {_SINCE}?"
     assert counts["threads"] <= counts["messages"]
     assert not [n for n in notes if n.code == MAILBOXES_LEFT_OUT], "the test mailbox was left out"
 
@@ -184,9 +200,8 @@ def test_one_read_of_a_mailbox_feeds_the_five_tables_with_the_canonical_columns(
 def test_nothing_received_before_the_sources_date_is_held(token):
     """``mail_since``: with the date set at the received day of the mailbox's newest message,
     every message held was received on or after it, the older ones are in no table, and a
-    date after every message holds none. Written against the reader; not run here."""
-    import datetime as dt
-
+    date after every message holds none. The newest message is found by a read limited to
+    :data:`_SINCE`, which holds it whenever any message was received since then."""
     account = _inside()[0]
     everything, _notes = _read((account,), token)
     received = sorted(
@@ -195,7 +210,7 @@ def test_nothing_received_before_the_sources_date_is_held(token):
         for row in batch.to_pylist()
         if row["received_at"] is not None
     )
-    assert received, "the test mailbox holds no message with a received time"
+    assert received, f"the test mailbox received no message with a received time since {_SINCE}"
     newest = received[-1].date()
     held, _notes = _read((account,), token, since=newest)
     rows = [row for batch in held["messages"] for row in batch.to_pylist()]
@@ -229,23 +244,27 @@ if os.environ.get("M365_TEST_MAILBOX_OUTSIDE", "").strip():
 
 def test_a_completed_read_keeps_its_links_and_nothing_has_changed_right_after(token):
     """The read is made of delta rounds, one for each folder; what it keeps answers "unchanged"
-    when asked at once (a quiet test mailbox), with a handful of requests and no listing."""
-    from provisa.federation.mail_sync_state import DELTA
+    when asked at once with the same date (a quiet test mailbox), with a handful of requests and
+    no listing. Beside the links, the date the mailbox was read with is kept."""
+    from provisa.federation.mail_sync_state import DELTA, PROBE
 
     account = _inside()[0]
     kept: list[dict] = []
     _read((account,), token, kept)
     (rows,) = kept
-    assert {(a, kind) for a, _scope, kind in rows} == {(account, DELTA)}
-    scopes = {scope for _a, scope, _k in rows}
+    links = {key: link for key, link in rows.items() if key[1] != loader.SINCE}
+    assert {(a, kind) for a, _scope, kind in links} == {(account, DELTA)}
+    assert rows[(account, loader.SINCE, PROBE)] == _SINCE.isoformat()
+    assert len(rows) == len(links) + 1, f"kept beside the links: {sorted(set(rows) - set(links))}"
+    scopes = {scope for _a, scope, _k in links}
     assert mail.MAILBOX in scopes and len(scopes) > 1, "no folder's link was kept"
-    print(f"links kept: {len(rows)} (one for each folder, one for the list of folders)")
+    print(f"links kept: {len(links)} (one for each folder, one for the list of folders)")
 
     async def kept_rows():
         return rows
 
     async def connect(_source):
-        return loader.Reading((account,), token, organisation=True, kept=kept_rows)
+        return loader.Reading((account,), token, organisation=True, kept=kept_rows, since=_SINCE)
 
     answer = asyncio.run(loader.unchanged(connect, None))
     assert answer == loader.UNCHANGED, "a mailbox just read was reported as changed"
@@ -303,7 +322,9 @@ def test_what_microsofts_pages_do_not_say_about_delta(token):
 
 def test_a_delta_link_can_be_followed_twice(token):
     """The probe follows a stored delta link without storing a new one, so the same link must
-    answer a second time (Microsoft's pages do not say; this is where it is seen)."""
+    answer a second time (Microsoft's pages do not say; this is where it is seen). The round
+    takes only what the inbox received since :data:`_SINCE`, by Graph's filter on the received
+    time, so a large inbox is not walked."""
     account = _inside()[0]
     with httpx.Client(timeout=60) as http:
 
@@ -313,12 +334,13 @@ def test_a_delta_link_can_be_followed_twice(token):
             return reply.json()
 
         page = get(
-            f"{BASE_URL}/users/{account}/mailFolders/inbox/messages/delta", {"$select": "id"}
+            f"{BASE_URL}/users/{account}/mailFolders/inbox/messages/delta",
+            {"$select": "id", "$filter": f"receivedDateTime ge {_SINCE.isoformat()}T00:00:00Z"},
         )
         rounds = 0
         while "@odata.nextLink" in page:
             rounds += 1
-            assert rounds < 500, "the test mailbox's inbox is not a small one"
+            assert rounds < 500, f"the test mailbox's inbox since {_SINCE} is not a small one"
             page = get(page["@odata.nextLink"])
         link = page["@odata.deltaLink"]
         first, second = get(link), get(link)

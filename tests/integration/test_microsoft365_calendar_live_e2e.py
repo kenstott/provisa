@@ -19,9 +19,12 @@ source's tables read back, row for row; a meeting change Graph would announce is
 the source tells nobody, and made once it does; and the change token of the source's calendars
 and task lists moves when they are written.
 
-It makes a calendar and a To Do list of its own in the first test mailbox, writes only into them,
-and removes both when it ends, whether it passed or not. A calendar or list an earlier run that
-did not end left behind (its name carries the run marker) is removed first. No server, engine or
+The tenant has one licensed mailbox, the maintainer's own (maintainer 2026-11-10), and it is the
+one written to. The test makes a calendar and a To Do list of its own there, under names unique
+to the run, writes only into them -- never the default calendar or list, so the maintainer's own
+events and tasks are untouched -- and removes both when it ends, whether it passed or not. A
+calendar or list an earlier run that did not end left behind (its name carries the run marker)
+is removed first. No server, engine or
 container is used, so run it with the stack switched off:
 
     PYTEST_NO_DOCKER=1 .venv/bin/python3 -m pytest \\
@@ -35,8 +38,13 @@ granted these application permissions, with admin consent:
     Calendars.ReadWrite
     Tasks.ReadWrite.All
 
-  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the first is written
-  to; a second, when named, is the attendee a meeting change is announced to).
+  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the licensed mailbox
+  written to; only the first address is used).
+
+A meeting needs a second person, and the tenant has no second licensed mailbox: the attendee is
+the tenant's shared mailbox invites@provisa.dev (:data:`ATTENDEE`), which needs no license and
+receives the invitation. Every assertion of the meeting test is on the organizer's side -- the
+refusal, the attendee row as written, which change is told -- so a shared mailbox suffices.
 
 In CI it runs in the mail test's lane, microsoft_365, when a dispatch asks for it
 (include_microsoft_365); a credential that is not set fails it by name.
@@ -87,7 +95,8 @@ def _mailboxes() -> tuple[str, ...]:
 
 
 ADA = _mailboxes()[0] if _HAVE_CREDS else ""
-OTHER = _mailboxes()[1] if _HAVE_CREDS and len(_mailboxes()) > 1 else None
+#: The meeting's attendee: the tenant's shared mailbox, which needs no license.
+ATTENDEE = "invites@provisa.dev"
 ROOT = f"/users/{quote(ADA, safe='')}"
 
 
@@ -235,7 +244,6 @@ def test_a_series_is_one_rrule_with_one_occurrence_moved_and_another_cancelled(t
     assert master["cancelled_occurrences"], "Graph names the cancelled occurrence on the master"
 
 
-@pytest.mark.skipif(OTHER is None, reason="M365_TEST_MAILBOXES names no second mailbox")
 def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, made):
     _run(
         token,
@@ -247,19 +255,19 @@ def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, ma
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], OTHER],
+            [meeting["id"], ATTENDEE],
         )
     assert (
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], OTHER],
+            [meeting["id"], ATTENDEE],
             send_updates=True,
         )
         == 1
     )
     people = [r for r in _rows(token, "event_attendees") if r["event_id"] == meeting["id"]]
-    assert [p["address"].lower() for p in people] == [OTHER]
+    assert [p["address"].lower() for p in people] == [ATTENDEE]
     # Now a meeting: its own reminder changes silently, its title does not.
     assert (
         _run(token, "UPDATE events SET is_reminder_on = false WHERE id = $1", [meeting["id"]]) == 1
