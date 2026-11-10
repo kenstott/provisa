@@ -31,6 +31,7 @@ import {
 import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { useTables } from "../../hooks/useTableQueries";
+import { Tip } from "../Tip";
 import { TREE_DEPTH, WILDCARD, type EntitlementKind } from "./kinds";
 import {
   allIds,
@@ -201,19 +202,20 @@ function NamesTreePicker({
             ) : (
               <span style={{ width: 22, display: "inline-block" }} />
             )}
-            <Checkbox
-              size="xs"
-              label={n.label}
-              checked={listed}
-              indeterminate={partly}
-              title={byAncestor ? t("entitlements.picker.includedByParent") : undefined}
-              onChange={(e) =>
-                onChange(
-                  e.currentTarget.checked ? checkNode(value, n) : uncheckNode(value, n, roots),
-                )
-              }
-              data-testid={`${testId}-node-${n.id}`}
-            />
+            <Tip text={byAncestor && t("entitlements.picker.includedByParent")}>
+              <Checkbox
+                size="xs"
+                label={n.label}
+                checked={listed}
+                indeterminate={partly}
+                onChange={(e) =>
+                  onChange(
+                    e.currentTarget.checked ? checkNode(value, n) : uncheckNode(value, n, roots),
+                  )
+                }
+                data-testid={`${testId}-node-${n.id}`}
+              />
+            </Tip>
           </Group>
           {expanded && n.children.length > 0 && render(n.children, level + 1)}
         </div>

@@ -61,6 +61,15 @@ describe("the entitlement picker", () => {
     expect(shown()).toEqual(["finance"]);
   });
 
+  it("says a child is included by its parent in the one tooltip, not a native title", async () => {
+    render(<Harness kind="columns" initial={["finance"]} />);
+    await userEvent.click(screen.getByTestId("entitlement-picker-toggle-finance"));
+    const child = screen.getByTestId("entitlement-picker-node-finance.revenue");
+    expect(child).not.toHaveAttribute("title");
+    await userEvent.hover(child);
+    expect(await screen.findByText("Included by the entry above it")).toBeInTheDocument();
+  });
+
   it("picks roles from the org's roles", async () => {
     render(<Harness kind="roles" initial={[]} />);
     await userEvent.click(screen.getByTestId("entitlement-picker-role-ops"));
