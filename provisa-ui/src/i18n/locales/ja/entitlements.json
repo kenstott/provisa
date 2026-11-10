@@ -53,7 +53,8 @@
       "endsOnLabel": "終了日",
       "endsOnHint": "空のままにすると、終了されるまでリストを維持します。",
       "reasonLabel": "理由",
-      "reasonHint": "変更と共に記録され、アクセスのレビューに使われます。"
+      "reasonHint": "変更と共に記録され、アクセスのレビューに使われます。",
+      "noRoles": "この人には、あなたが管理するロールがありません。"
     },
     "person": {
       "help": "各ロール割り当てを通じてこのユーザーが到達できるもの (種類ごとのリスト)。ID プロバイダーのリストが優先され、そちらで変更します。",
@@ -79,7 +80,9 @@
       "endList": "{{kind}} リストを終了",
       "addList": "リストを追加",
       "endPrompt": "{{kind}} リストを終了します。ロールの既定値が再び適用されます。",
-      "endButton": "リストを終了"
+      "endButton": "リストを終了",
+      "noRoles": "この人には、あなたが管理するロールがありません。",
+      "roleNotHeld": "{{role}} (保持していません、リスト設定済み)"
     },
     "grants": {
       "heading": "アクセス付与",
@@ -98,6 +101,12 @@
       "noPending": "待機中の付与はありません。",
       "endPrompt": "ロール {{role}} での {{email}} の {{kind}} 付与を終了します。",
       "endButton": "終了"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Provisa で割り当て",
+      "default_assignment": "既定の割り当て",
+      "idp": "ID プロバイダー"
     }
   }
 }

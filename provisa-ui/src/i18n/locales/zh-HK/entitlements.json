@@ -53,7 +53,8 @@
       "endsOnLabel": "結束日期",
       "endsOnHint": "留空則保留該清單，直至將其結束。",
       "reasonLabel": "原因",
-      "reasonHint": "隨變更一併記錄，供存取審查使用。"
+      "reasonHint": "隨變更一併記錄，供存取審查使用。",
+      "noRoles": "此人沒有您管理的角色。"
     },
     "person": {
       "help": "此人員透過每項角色指派可存取的內容，按類型逐一列出。來自身分識別提供者的清單優先，並在該處更改。",
@@ -79,7 +80,9 @@
       "endList": "結束 {{kind}} 清單",
       "addList": "新增清單",
       "endPrompt": "結束 {{kind}} 清單。角色預設值將重新適用。",
-      "endButton": "結束清單"
+      "endButton": "結束清單",
+      "noRoles": "此人沒有您管理的角色。",
+      "roleNotHeld": "{{role}}（已不再持有；已設定清單）"
     },
     "grants": {
       "heading": "存取授予",
@@ -98,6 +101,12 @@
       "noPending": "沒有等待中的授予。",
       "endPrompt": "結束角色 {{role}} 中 {{email}} 的 {{kind}} 授予。",
       "endButton": "結束"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "在 Provisa 中指派",
+      "default_assignment": "預設指派",
+      "idp": "身分識別提供者"
     }
   }
 }

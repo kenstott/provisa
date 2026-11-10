@@ -58,6 +58,8 @@ vi.mock("../api/entitlements", async (orig) => ({
   fetchPending: vi.fn(() => Promise.resolve([])),
   fetchHeldLists: vi.fn(() => Promise.resolve({ principal: "okta|31", lists: [] })),
   fetchEffective: vi.fn(),
+  fetchKinds: vi.fn(() => Promise.resolve({ kinds: [], names: null })),
+  fetchPersonRoles: vi.fn(() => Promise.resolve({ principal: "okta|31", roles: [] })),
   searchPeople: vi.fn(),
 }));
 
@@ -77,7 +79,7 @@ vi.mock("../hooks/useAdminQueries", () => ({
 vi.mock("../hooks/useTableQueries", () => ({ useTables: () => ({ tables: [] }) }));
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
-import { fetchHeldLists, fetchPending } from "../api/entitlements";
+import { fetchHeldLists, fetchKinds, fetchPending, fetchPersonRoles } from "../api/entitlements";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -104,5 +106,7 @@ describe("the Team page's entitlements", () => {
     expect(screen.queryByTestId("team-section-entitlements")).toBeNull();
     expect(fetchPending).not.toHaveBeenCalled();
     expect(fetchHeldLists).not.toHaveBeenCalled();
+    expect(fetchPersonRoles).not.toHaveBeenCalled();
+    expect(fetchKinds).not.toHaveBeenCalled();
   });
 });

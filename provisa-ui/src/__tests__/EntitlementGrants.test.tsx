@@ -20,21 +20,31 @@ import type { PendingGrant } from "../api/entitlements";
 vi.mock("../api/entitlements", async (orig) => ({
   ...(await orig<typeof import("../api/entitlements")>()),
   fetchPending: vi.fn(),
+  fetchKinds: vi.fn(),
+  fetchPersonRoles: vi.fn(),
   searchPeople: vi.fn(),
   setList: vi.fn(),
   endList: vi.fn(),
 }));
-vi.mock("../hooks/useAdminQueries", () => ({ useDomains: () => ({ domains: [] }) }));
-vi.mock("../hooks/useTableQueries", () => ({ useTables: () => ({ tables: [] }) }));
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
-import { endList, fetchPending, searchPeople, setList } from "../api/entitlements";
+import {
+  endList,
+  fetchKinds,
+  fetchPending,
+  fetchPersonRoles,
+  searchPeople,
+  setList,
+} from "../api/entitlements";
 import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
+import { SERVER_KINDS } from "../test-utils/entitlementKinds";
 
 const mockPending = vi.mocked(fetchPending);
 const mockSearch = vi.mocked(searchPeople);
 const mockSet = vi.mocked(setList);
 const mockEnd = vi.mocked(endList);
+const mockKinds = vi.mocked(fetchKinds);
+const mockRoles = vi.mocked(fetchPersonRoles);
 
 const WAITING: PendingGrant = {
   pending: true,
@@ -51,11 +61,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockPending.mockResolvedValue([WAITING]);
   mockSearch.mockResolvedValue([]);
+  mockKinds.mockResolvedValue(SERVER_KINDS);
+  mockRoles.mockResolvedValue({
+    principal: "okta|31",
+    roles: [{ role_id: "viewer", origins: ["provisa"], domains: ["*"] }],
+  });
 });
 
 async function pickOption(testId: string, text: string) {
   await userEvent.click(screen.getByTestId(testId));
   await userEvent.click(await screen.findByRole("option", { name: text, hidden: true }));
+}
+
+/** The options of the select `testId`, from its own listbox (others stay rendered, hidden). */
+async function optionsOf(testId: string): Promise<string[]> {
+  const input = await screen.findByTestId(testId);
+  await userEvent.click(input);
+  const listbox = await waitFor(() => {
+    const el = document.getElementById(input.getAttribute("aria-controls") ?? "");
+    if (el === null) throw new Error(`${testId} has no listbox`);
+    return el;
+  });
+  return within(listbox)
+    .getAllByRole("option", { hidden: true })
+    .map((o) => o.textContent ?? "");
 }
 
 describe("granting access from the Team page", () => {
@@ -85,7 +114,8 @@ describe("granting access from the Team page", () => {
       await screen.findByRole("option", { name: "Kenji Sato · kenji@acme.example", hidden: true }),
     );
     expect(mockSearch).toHaveBeenCalledWith("kenji");
-    await pickOption("entitlement-grant-form-role", "viewer");
+    await pickOption("entitlement-grant-form-role", "viewer · Assigned in Provisa");
+    expect(mockRoles).toHaveBeenCalledWith("okta|31");
     await pickOption("entitlement-grant-form-kind", "Sources");
     await userEvent.type(
       screen.getByTestId("entitlement-grant-form-picker-typed"),
@@ -103,6 +133,22 @@ describe("granting access from the Team page", () => {
         expiresAt: null,
       }),
     );
+  });
+
+  it("offers a found person only the roles they hold", async () => {
+    mockSearch.mockResolvedValue([
+      { principal: "okta|31", name: "Kenji Sato", email: "kenji@acme.example" },
+    ]);
+    render(<EntitlementGrants roleIds={["viewer", "analyst"]} />);
+    await userEvent.click(await screen.findByTestId("entitlement-grant-open"));
+    await userEvent.type(screen.getByTestId("entitlement-grant-form-person"), "kenji");
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Kenji Sato · kenji@acme.example", hidden: true }),
+    );
+    await waitFor(() => expect(mockRoles).toHaveBeenCalledWith("okta|31"));
+    expect(await optionsOf("entitlement-grant-form-role")).toEqual([
+      "viewer · Assigned in Provisa",
+    ]);
   });
 
   it("grants to a typed email no one has, as a pending grant", async () => {

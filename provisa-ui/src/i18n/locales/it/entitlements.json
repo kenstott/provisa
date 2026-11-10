@@ -53,7 +53,8 @@
       "endsOnLabel": "Termina il",
       "endsOnHint": "Lascia vuoto per mantenere la lista finché non viene terminata.",
       "reasonLabel": "Motivo",
-      "reasonHint": "Registrato con la modifica, per chi rivede gli accessi."
+      "reasonHint": "Registrato con la modifica, per chi rivede gli accessi.",
+      "noRoles": "Questa persona non ha alcun ruolo che lei amministra."
     },
     "person": {
       "help": "Ciò che questa persona può raggiungere tramite ogni assegnazione di ruolo, lista per tipo. Una lista del provider di identità prevale e si modifica lì.",
@@ -79,7 +80,9 @@
       "endList": "Termina la lista {{kind}}",
       "addList": "Aggiungi lista",
       "endPrompt": "Termina la lista {{kind}}. Si applica di nuovo il valore predefinito del ruolo.",
-      "endButton": "Termina lista"
+      "endButton": "Termina lista",
+      "noRoles": "Questa persona non ha alcun ruolo che lei amministra.",
+      "roleNotHeld": "{{role}} (non più detenuto; liste impostate)"
     },
     "grants": {
       "heading": "Concessioni di accesso",
@@ -98,6 +101,12 @@
       "noPending": "Nessuna concessione in attesa.",
       "endPrompt": "Termina la concessione {{kind}} per {{email}} nel ruolo {{role}}.",
       "endButton": "Termina"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Assegnato in Provisa",
+      "default_assignment": "Assegnazione predefinita",
+      "idp": "Provider di identità"
     }
   }
 }

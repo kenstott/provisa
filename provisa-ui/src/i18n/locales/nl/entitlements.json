@@ -53,7 +53,8 @@
       "endsOnLabel": "Eindigt op",
       "endsOnHint": "Laat leeg om de lijst te houden tot die wordt beëindigd.",
       "reasonLabel": "Reden",
-      "reasonHint": "Vastgelegd bij de wijziging, voor wie de toegang controleert."
+      "reasonHint": "Vastgelegd bij de wijziging, voor wie de toegang controleert.",
+      "noRoles": "Deze persoon heeft geen rol die u beheert."
     },
     "person": {
       "help": "Wat deze persoon via elke roltoewijzing mag bereiken, lijst per soort. Een lijst van de identiteitsprovider gaat voor en wordt daar gewijzigd.",
@@ -79,7 +80,9 @@
       "endList": "Lijst {{kind}} beëindigen",
       "addList": "Lijst toevoegen",
       "endPrompt": "Lijst {{kind}} beëindigen. De standaard van de rol geldt weer.",
-      "endButton": "Lijst beëindigen"
+      "endButton": "Lijst beëindigen",
+      "noRoles": "Deze persoon heeft geen rol die u beheert.",
+      "roleNotHeld": "{{role}} (niet meer toegewezen; lijsten ingesteld)"
     },
     "grants": {
       "heading": "Toegangsverleningen",
@@ -98,6 +101,12 @@
       "noPending": "Er wachten geen verleningen.",
       "endPrompt": "Verlening {{kind}} voor {{email}} in rol {{role}} beëindigen.",
       "endButton": "Beëindigen"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Toegewezen in Provisa",
+      "default_assignment": "Standaardtoewijzing",
+      "idp": "Identiteitsprovider"
     }
   }
 }

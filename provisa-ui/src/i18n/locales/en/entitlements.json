@@ -53,7 +53,8 @@
       "endsOnLabel": "Ends on",
       "endsOnHint": "Leave empty to keep the list until it is ended.",
       "reasonLabel": "Reason",
-      "reasonHint": "Recorded with the change, for whoever reviews access."
+      "reasonHint": "Recorded with the change, for whoever reviews access.",
+      "noRoles": "This person holds no role you administer."
     },
     "person": {
       "help": "What this person may reach through each role grant, list by kind. A list from the identity provider wins and is changed there.",
@@ -79,7 +80,9 @@
       "endList": "End the {{kind}} list",
       "addList": "Add list",
       "endPrompt": "End the {{kind}} list. The role's default applies again.",
-      "endButton": "End list"
+      "endButton": "End list",
+      "noRoles": "This person holds no role you administer.",
+      "roleNotHeld": "{{role}} (no longer held; lists set)"
     },
     "grants": {
       "heading": "Access grants",
@@ -98,6 +101,12 @@
       "noPending": "No grants are waiting.",
       "endPrompt": "End the {{kind}} grant for {{email}} in role {{role}}.",
       "endButton": "End"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Assigned in Provisa",
+      "default_assignment": "Default assignment",
+      "idp": "Identity provider"
     }
   }
 }

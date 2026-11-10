@@ -29,21 +29,16 @@ import {
   TextInput,
 } from "@mantine/core";
 import { ChevronDown, ChevronRight, X } from "lucide-react";
-import { useDomains } from "../../hooks/useAdminQueries";
-import { useTables } from "../../hooks/useTableQueries";
+import type { KindInfo } from "../../api/entitlements";
 import { Tip } from "../Tip";
-import { TREE_DEPTH, WILDCARD, type EntitlementKind } from "./kinds";
-import {
-  allIds,
-  buildNamesTree,
-  checkNode,
-  covers,
-  uncheckNode,
-  type NamesNode,
-} from "./namesTree";
+import { WILDCARD } from "./kinds";
+import { allIds, checkNode, covers, toDepth, uncheckNode, type NamesNode } from "./namesTree";
 
 export interface EntitlementPickerProps {
-  kind: EntitlementKind;
+  /** The kind, as the server defines it (GET /admin/entitlements/kinds). */
+  kind: KindInfo;
+  /** The server's names tree; null before a model is built. */
+  names: NamesNode[] | null;
   value: string[];
   onChange: (value: string[]) => void;
   /** The org's role ids, for a roles list. */
@@ -56,6 +51,7 @@ export interface EntitlementPickerProps {
 
 export function EntitlementPicker({
   kind,
+  names,
   value,
   onChange,
   roleIds,
@@ -65,7 +61,7 @@ export function EntitlementPicker({
 }: EntitlementPickerProps) {
   const { t } = useTranslation();
   const everything = value.includes(WILDCARD);
-  const depth = TREE_DEPTH[kind];
+  const depth = kind.tree_depth;
 
   return (
     <Input.Wrapper
@@ -80,13 +76,19 @@ export function EntitlementPicker({
           onChange={(e) => onChange(e.currentTarget.checked ? [WILDCARD] : [])}
           data-testid={`${testId}-everything`}
         />
-        {!everything && depth !== undefined && (
-          <NamesTreePicker depth={depth} value={value} onChange={onChange} testId={testId} />
+        {!everything && depth !== null && (
+          <NamesTreePicker
+            names={names}
+            depth={depth}
+            value={value}
+            onChange={onChange}
+            testId={testId}
+          />
         )}
-        {!everything && kind === "roles" && (
+        {!everything && kind.kind === "roles" && (
           <RolesPicker roleIds={roleIds} value={value} onChange={onChange} testId={testId} />
         )}
-        {!everything && depth === undefined && kind !== "roles" && (
+        {!everything && depth === null && kind.kind !== "roles" && (
           <TagsInput
             aria-label={t("entitlements.picker.typedLabel")}
             placeholder={t("entitlements.picker.typedPlaceholder")}
@@ -143,20 +145,20 @@ function OtherValues({
 }
 
 function NamesTreePicker({
+  names,
   depth,
   value,
   onChange,
   testId,
 }: {
+  names: NamesNode[] | null;
   depth: 1 | 2 | 3;
   value: string[];
   onChange: (v: string[]) => void;
   testId: string;
 }) {
   const { t } = useTranslation();
-  const { domains } = useDomains();
-  const { tables } = useTables({ inPage: true });
-  const roots = useMemo(() => buildNamesTree(domains, tables, depth), [domains, tables, depth]);
+  const roots = useMemo(() => toDepth(names ?? [], depth), [names, depth]);
   const known = useMemo(() => allIds(roots), [roots]);
   const [filter, setFilter] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
