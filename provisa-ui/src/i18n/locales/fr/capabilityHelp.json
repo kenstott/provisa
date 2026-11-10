@@ -12,6 +12,7 @@
     "create_view": "Créer des vues.",
     "column_grant": "Accorder l'accès à des colonnes.",
     "user_management": "Gérer les utilisateurs de l'organisation et leurs rôles.",
+    "assign_entitlements": "Définir et supprimer les entrées de liste d'autorisation et de liste de refus que Provisa tient pour un membre, dans le cadre de l'accès conféré par user_management.",
     "masking_config": "Configurer les masques de colonne.",
     "view_governance": "Voir les colonnes de gouvernance du catalogue : qui peut lire une colonne, ses masques et le SQL des vues.",
     "platform_settings": "Lire et modifier les réglages de tout le déploiement.",

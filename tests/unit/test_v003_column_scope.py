@@ -227,3 +227,46 @@ def test_a_hidden_governed_column_is_refused_wherever_it_resolves(sql):
 )
 def test_a_name_only_a_governed_relation_could_hold_is_refused(sql):
     assert _v003(sql), sql
+
+
+# -- a table absent from visible_columns fails closed (REQ-039) ---------------------------
+# A table whose tid is in table_map but has no entry in visible_columns (key absent) is
+# unknown governance data: the validator must refuse any column read from it rather than
+# treating the absent key as "all visible" (the same as the explicit None sentinel).
+
+_ABSENT_TID = 200  # a table that is in table_map but absent from visible_columns
+
+_GOV_WITH_ABSENT_TABLE = GovernanceContext(
+    table_map={"vault.secret_table": _ABSENT_TID, "secret_table": _ABSENT_TID},
+    # _ABSENT_TID is intentionally absent from both visible_columns and all_columns:
+    # it is in table_map (the SQL names it) but has no governance record in this context,
+    # matching the real production case where build_governance_context omits it.
+    visible_columns={_CUSTOMER: _CUSTOMER_VISIBLE},
+    all_columns={_CUSTOMER: [(c, "varchar") for c in _CUSTOMER_COLUMNS]},
+)
+
+
+def _v003_absent(sql: str) -> list[str]:
+    tree = sqlglot.parse_one(sql, read="postgres")
+    return [
+        v.message
+        for v in _check_column_visibility(tree, _GOV_WITH_ABSENT_TABLE)
+        if v.code == "V003"
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # qualified reference: tbl.col where tbl maps to a tid absent from visible_columns
+        "SELECT t.payload FROM vault.secret_table t",
+        "SELECT t.id FROM secret_table t",
+        # unqualified reference beside a table absent from visible_columns
+        "SELECT payload FROM secret_table",
+        "SELECT id FROM secret_table",
+    ],
+)
+def test_a_column_of_a_table_absent_from_visible_columns_is_refused(sql):
+    """A table with no entry in visible_columns (key absent, not the all-visible None sentinel)
+    must fail closed: every column read from it is a V003 violation (REQ-039)."""
+    assert _v003_absent(sql), sql
