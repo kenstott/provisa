@@ -79710,6 +79710,8 @@
   - tests/unit/test_env_data_modes.py
   - tests/unit/test_environments.py
   - tests/unit/test_synthetic_plan_results_sources.py
+  - tests/unit/test_env_synthetic_model.py
+  - tests/unit/test_sandbox_cloned_build.py
   scenario: 'Given a non-production environment created with the Test (fake) data mode
 
     When a user reads a table whose column declares a fake
@@ -82132,6 +82134,7 @@
   tests:
   - tests/integration/test_sandbox_visitor_walk.py
   - tests/unit/test_sandbox_visitor_walk_state.py
+  - tests/unit/test_sandbox_cloned_build.py
 - id: REQ-1998
   status: complete
   tests:

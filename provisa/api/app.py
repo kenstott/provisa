@@ -3153,7 +3153,14 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.tracked_webhooks = prod_rt.tracked_webhooks
     _rt.column_transforms = prod_rt.column_transforms
     _rt.undefined_commands = prod_rt.undefined_commands
-    _rt.replica_routes = prod_rt.replica_routes
+    # REQ-1942, REQ-2006: rebuild replica_routes for this env rather than copying PROD's.
+    # PROD's routes floor a replicate=0 source (e.g. demo's zoo-db with replicate: 0, always
+    # replicate) to mat_store; the cloned env's store is the synthetic dataset, not the
+    # materialisation store catalog, so copying PROD's routes sends queries to mat_store which
+    # is not attached, raising Catalog "mat_store" does not exist.
+    from provisa.federation.replica_routing import replica_routes as _build_replica_routes
+
+    _rt.replica_routes = await _build_replica_routes(state)
     _rt.metrics = prod_rt.metrics
     _rt.schema_build_cache = prod_rt.schema_build_cache
     _rt.api_sources = prod_rt.api_sources

@@ -23086,7 +23086,7 @@ Every environment other than production has one data mode, chosen when it is cre
 
 **Code:** `provisa/core/env_create.py`
 
-**Tests:** `tests/unit/test_env_data_modes.py`, `tests/unit/test_environments.py`, `tests/unit/test_synthetic_plan_results_sources.py`
+**Tests:** `tests/unit/test_env_data_modes.py`, `tests/unit/test_environments.py`, `tests/unit/test_synthetic_plan_results_sources.py`, `tests/unit/test_env_synthetic_model.py`, `tests/unit/test_sandbox_cloned_build.py`
 
 **Docs:** [cli.md](../cli.md), [pgwire.md](../pgwire.md)
 
@@ -23930,7 +23930,7 @@ provisa.dev has a live demos page with one card for each published named demo: i
 
 **Code:** `scripts/gen-site-demos.mjs`, `site/demos.html`, `provisa/api/sandbox_tier.py`, `provisa/api/demo_templates.py`, `provisa/api/demo_sandbox.py`, `provisa/api/demo_sandbox_router.py`, `provisa/security/sandbox_egress.py`, `provisa/core/sandbox_limits.py`, `provisa/core/settings_catalog_sandbox.py`, `provisa-ui/src/pages/demos/DemoOpenPage.tsx`, `provisa-ui/src/lib/sandboxSession.ts`, `provisa-ui/src/components/JoinNotice.tsx`, `docs/hosted-sandbox.md`
 
-**Tests:** `tests/integration/test_sandbox_visitor_walk.py`, `tests/unit/test_sandbox_visitor_walk_state.py`
+**Tests:** `tests/integration/test_sandbox_visitor_walk.py`, `tests/unit/test_sandbox_visitor_walk_state.py`, `tests/unit/test_sandbox_cloned_build.py`
 
 ## 4. Source Connectors
 

@@ -292,7 +292,11 @@ def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace
     from provisa.api import app, app_loaders
 
     # _rt accumulates every attribute assigned inside _install_cloned_env_schema.
-    _rt = SimpleNamespace(env="synthetic")
+    # model_db must be set here: state.model_db is a property (AppState) that delegates to
+    # _active_runtime().model_db; after _active_runtime is patched to return this SimpleNamespace,
+    # the assert / async with calls need model_db on it directly (the property getter follows
+    # the patched _active_runtime, not the deployment runtime the monkeypatch setter wrote to).
+    _rt = SimpleNamespace(env="synthetic", model_db=_DbClone(source_rows))
     # prod_rt supplies the PROD-compiled state; keep it simple.
     prod_rt = SimpleNamespace(
         surfaces={},
@@ -374,11 +378,21 @@ def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace
         def __exit__(self, *_a: object) -> None:
             pass
 
+    from provisa.federation.replica_address import ReplicaRoutes
+
+    _default_routes = ReplicaRoutes()
+
+    async def _stub_replica_routes(state: object) -> ReplicaRoutes:
+        return _default_routes
+
     monkeypatch.setattr(app, "_schema_version_guard", _SchemaVersionGuard())
     monkeypatch.setattr(app_loaders, "_install_cloned_surfaces", lambda rt, surfs: None)
-    monkeypatch.setattr(app.state, "model_db", _DbClone(source_rows))
     monkeypatch.setattr(app.state, "_active_runtime", lambda: _rt)
     monkeypatch.setattr(app.state, "schema_version", 0)
+    # Bug D (R508g2): _install_cloned_env_schema now rebuilds replica_routes via
+    # replica_routing.replica_routes(state); stub it out so the existing unit tests that
+    # only cover other properties of the clone path are not affected by the new call.
+    monkeypatch.setattr("provisa.federation.replica_routing.replica_routes", _stub_replica_routes)
 
     # Field-number and lineage writes are side-effects not under test; stub them out.
     async def _noop(*_a: object, **_kw: object) -> SimpleNamespace:
@@ -482,3 +496,117 @@ def test_walk_registry_derived_source_not_in_catalogs_does_not_crash():
     result = backend._walk_registry(state, config)
     assert result is True
     assert attached == [], "__derived__ must never be attached as a live source"
+
+
+def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
+    """Bug D (R508g2): _install_cloned_env_schema must rebuild replica_routes for the cloned env
+    rather than copying PROD's; otherwise a demo source with replicate=0 (always replicate /
+    floored) routes queries to mat_store which is not attached, causing:
+        BinderException: Binder Error: Catalog "mat_store" does not exist! (REQ-1942, REQ-2006)
+
+    PROD's replica_routes floors a replicate=0 source to the materialisation store catalog; the
+    cloned env's store is the synthetic dataset, not the materialisation store catalog, so its
+    replica_routes must be rebuilt from the env's current state, not copied from PROD."""
+    import asyncio
+
+    from provisa.api import app, app_loaders
+    from provisa.federation.replica_address import ReplicaRoutes
+
+    prod_routes = ReplicaRoutes(synthetic={99: "prod_dataset"})
+    env_routes = ReplicaRoutes(synthetic={99: "env_dataset"})
+
+    async def _build_routes(state: object) -> ReplicaRoutes:
+        return env_routes
+
+    monkeypatch.setattr("provisa.federation.replica_routing.replica_routes", _build_routes)
+
+    # Build prod_rt with replica_routes set to prod_routes — the value that must NOT be copied.
+    prod_rt = SimpleNamespace(
+        surfaces={},
+        role_build_inputs=None,
+        source_catalogs={},
+        source_types={},
+        source_dialects={},
+        tables=[],
+        relationships=None,
+        roles=None,
+        role_chains=None,
+        draft_table_ids=None,
+        view_context=None,
+        view_path_map=None,
+        names_table=None,
+        view_sql_map=None,
+        mv_registry=None,
+        bitemporal_view_reads=None,
+        stored_view_reads=None,
+        class_tables=None,
+        refused_classes=None,
+        class_bodies=None,
+        table_cache=None,
+        pg_notify_tables=None,
+        table_watermarks=None,
+        user_attributes=None,
+        masking_rules=None,
+        masked_columns=None,
+        tracked_functions=None,
+        tracked_webhooks=None,
+        column_transforms=None,
+        undefined_commands=None,
+        replica_routes=prod_routes,
+        metrics=None,
+        schema_build_cache=None,
+        api_sources=None,
+        api_endpoints=None,
+        table_approval_hooks=None,
+        source_approval_hooks=None,
+        pg_enum_types=None,
+        pg_source_enums=None,
+        graphql_remote_sources=None,
+        openapi_specs=None,
+        grpc_remote_sources=None,
+        ingest_engines=None,
+        ingest_tables=None,
+        websocket_sources=None,
+        rss_sources=None,
+        cdc_sources=None,
+        source_cache=None,
+        source_allowed_domains=None,
+        source_federation_hints=None,
+        kafka_windows=None,
+        kafka_bootstrap=None,
+        kafka_declared=None,
+        kafka_table_configs=None,
+        kafka_table_physical=None,
+        model_stamp="ms2",
+    )
+
+    db = _DbClone([_Row(id="zoo-db", binding="own")])
+    _rt = SimpleNamespace(env="dev", model_db=db, schema_version=0)
+
+    class _Guard:
+        def __enter__(self) -> "_Guard":
+            return self
+
+        def __exit__(self, *_e: object) -> None:
+            pass
+
+    async def _noop(*_a: object, **_kw: object) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    monkeypatch.setattr(app, "_schema_version_guard", _Guard())
+    monkeypatch.setattr(app_loaders, "_install_cloned_surfaces", lambda rt, surfs: None)
+    monkeypatch.setattr(app.state, "_active_runtime", lambda: _rt)
+    monkeypatch.setattr("provisa.grpc.field_numbering.load_field_number_allocator", _noop)
+    monkeypatch.setattr("provisa.grpc.field_numbering.persist_field_numbers", _noop)
+    monkeypatch.setattr("provisa.api.admin.lineage_router.write_lineage_edges", _noop)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+
+    assert _rt.replica_routes is not prod_routes, (
+        "replica_routes was copied from PROD; a replicate=0 source would route to "
+        "mat_store which is not attached in the cloned env, raising Catalog 'mat_store' "
+        "does not exist"
+    )
+    assert _rt.replica_routes is env_routes, (
+        "replica_routes was not rebuilt for the cloned env; it must call replica_routes(state)"
+    )

@@ -222,6 +222,52 @@ def test_a_generated_table_is_read_as_an_ordinary_table_its_required_parameter_a
     assert generated["columns"][1]["native_filter_type"] == "path_param"
 
 
+def test_as_generated_preserves_camel_case_param_column_names_via_alias():
+    """Bug D (R508g2): as_generated must set ``alias`` on converted parameter columns so the SQL
+    name is the original column name, not apply_sql_name's snake_case version of it (REQ-1942).
+
+    When ``alias`` is absent, CompilationContext builds ``physical_to_sql`` as
+    ``apply_sql_name("_nf_petId")`` = ``"_nf_pet_id"``, but the generated table in the synthetic
+    store holds the column as ``"_nf_petId"``.  DuckDB then raises:
+        Binder Error: Table "get_pet_by_id" does not have a column named "_nf_pet_id"
+        Candidate bindings: "_nf_petId"
+    Setting ``alias`` makes ``sql_name = col.get("alias") = "_nf_petId"`` so no rename is
+    applied and DuckDB finds the column."""
+    from provisa.synthetic.datasets import as_generated
+
+    table = {
+        "source_id": "petstore",
+        "schema_name": "default",
+        "table_name": "get_pet_by_id",
+        "columns": [
+            {"column_name": "id", "native_filter_type": None, "data_type": "integer"},
+            {
+                "column_name": "_nf_petId",
+                "native_filter_type": "path_param",
+                "data_type": None,
+            },
+        ],
+    }
+    bound = {
+        "petstore": {
+            "schema": "s",
+            "tables": [["default", "get_pet_by_id"]],
+            "parameters": {"default.get_pet_by_id": {"_nf_petId": "bigint"}},
+            "model_type": "openapi",
+        }
+    }
+    (result,) = as_generated([table], bound)
+    param_col = next(c for c in result["columns"] if c["column_name"] == "_nf_petId")
+    assert param_col["native_filter_type"] is None
+    assert param_col["data_type"] == "bigint"
+    # ``alias`` must be set so CompilationContext uses the original column name as the SQL name,
+    # not the apply_sql_name result (which lowercases and underscores it, changing its value).
+    assert param_col.get("alias") == "_nf_petId", (
+        "alias not set on converted parameter column; apply_sql_name would change the name "
+        "and DuckDB would not find the column in the generated table"
+    )
+
+
 def test_each_reason_a_table_has_no_generated_rows_is_said_as_itself():
     """REQ-1942: a table of a synthetic-bound source with no generated copy is refused for one
     of two reasons, each said as itself: it is read from its API only by a required parameter and
@@ -259,7 +305,7 @@ async def test_an_unavailable_table_is_refused_as_that_before_the_api_stage(monk
     from provisa.federation.replica_address import ReplicaRoutes
     from provisa.pgwire import _pipeline
 
-    async def _never(*a, **kw):
+    async def _never(*a: object, **kw: object) -> None:
         raise AssertionError("the API stage was reached")
 
     monkeypatch.setattr(materialization, "_materialize_api_to_engine_cache", _never)
