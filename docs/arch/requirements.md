@@ -26887,3 +26887,15 @@ Maintainer 2026-11-10. Register Table lets a person pick several tables of a sou
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2235 · Source Connectors {#REQ-2235}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** structural
+
+Maintainer 2026-11-10, a future objective. Every connector is built on one of a small set of generic connectors, six or seven: SQL databases and warehouses, OpenAPI and REST, GraphQL, OData, gRPC, files and object storage, and streams, with the code resolver and its runtime catalog ([REQ-2221](#REQ-2221)) beneath them for what fits none. A branded connector is then its connector.yaml (its URL shape, auth and fixed values) and small overrides, as [REQ-1923](#REQ-1923) builds brands on the OpenAPI and GraphQL connectors. An audit lists every existing connector, the base it would sit on, and what it would need from that base.
+
+**Code:** —
+
+**Tests:** —
