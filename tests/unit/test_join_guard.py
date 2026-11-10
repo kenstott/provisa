@@ -67,6 +67,9 @@ def _model() -> tuple[CompilationContext, GovernanceContext]:
     gov = GovernanceContext()
     gov.table_map = {"orders": 1, "customers": 2, "visits": 3}
     gov.all_columns = {tid: [(c, "integer") for c in cols] for tid, cols in _COLUMNS.items()}
+    # None means "all columns visible" (no V003 filtering). Without an entry per table, the
+    # validator fails closed (REQ-039) and raises V003 for every column reference.
+    gov.visible_columns = {tid: None for tid in _COLUMNS}
     return ctx, gov
 
 
