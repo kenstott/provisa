@@ -26,7 +26,7 @@ Les sources à **matérialisation** n'ont pas non plus de connecteur fédéré. 
 
 ## Toutes les sources {: #all-sources }
 
-Provisa enregistre **78** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 78 ; l'index correspond au décompte.
+Provisa enregistre **79** types de sources, ceux que propose le formulaire Sources. Les tableaux ci-dessous les couvrent tous les 79 ; l'index correspond au décompte.
 
 | # | Groupe | Types de sources |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa enregistre **78** types de sources, ceux que propose le formulaire Sourc
 | 26–30 | [Analytique / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Lac de données / formats de tables ouverts](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–42 | [Sources de code](code-sources.md) | `node`, `python`, `go` |
-| 43–45 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
-| 46 | [Récepteur push](#push-receiver) | `ingest` |
-| 47–48 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql` |
-| 49–53 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 54–55 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
-| 56–64 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [Sources API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 73 | [GovData](#govdata) | `govdata` |
-| 74–75 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
-| 76 | [Profileur de données](#data-profiler) | `data_profiler` |
-| 77 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
-| 78 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
+| 40–43 | [Sources de code](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Récepteur push](#push-receiver) | `ingest` |
+| 48–49 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql` |
+| 50–54 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 55–56 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
+| 57–65 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 66–73 | [Sources API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 74 | [GovData](#govdata) | `govdata` |
+| 75–76 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
+| 77 | [Profileur de données](#data-profiler) | `data_profiler` |
+| 78 | [Jeux de données Kaggle](#kaggle-datasets) | Kaggle (mis en scène via le formulaire Sources ; s'enregistre comme source `files` — voir [Jeux de données Kaggle](#kaggle-datasets)) |
+| 79 | [Wikipedia](#wikipedia) | Wikipedia (s'enregistre comme source `files` qui parcourt les pages nommées — voir [Wikipedia](#wikipedia)) |
 
 Référence de chaque type de source pris en charge par Provisa. « Pilote direct » signifie que les requêtes mono-source s'exécutent nativement contre la source (moins de 100 ms). Le « nom du connecteur » est le connecteur fédéré employé lorsque la source participe à des JOIN multi-sources.
 

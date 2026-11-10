@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **78** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 78; המספור הוא הספירה.
+Provisa רושמת **79** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 79; המספור הוא הספירה.
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa רושמת **78** סוגי מקור, אלה שטופס המקורות מ
 | 26–30 | [אנליטיקה / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data Lake / פורמטי טבלה פתוחים](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–42 | [מקורות קוד](code-sources.md) | `node`, `python`, `go` |
-| 43–45 | [סטרימינג](#streaming) | `kafka`, `websocket`, `rss` |
-| 46 | [Push Receiver](#push-receiver) | `ingest` |
-| 47–48 | [גרף וסמנטיקה](#graph-semantic) | `neo4j`, `sparql` |
-| 49–53 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 54–55 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
-| 56–64 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [מקורות API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 73 | [GovData](#govdata) | `govdata` |
-| 74–75 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
-| 76 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 77 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 78 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 40–43 | [מקורות קוד](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [סטרימינג](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Push Receiver](#push-receiver) | `ingest` |
+| 48–49 | [גרף וסמנטיקה](#graph-semantic) | `neo4j`, `sparql` |
+| 50–54 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 55–56 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
+| 57–65 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 66–73 | [מקורות API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 74 | [GovData](#govdata) | `govdata` |
+| 75–76 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
+| 77 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 78 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 79 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי.
 
