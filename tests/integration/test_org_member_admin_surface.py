@@ -126,7 +126,13 @@ async def org_plane(monkeypatch):
     monkeypatch.setattr(
         app_state,
         "roles",
-        {"org_admin": {"capabilities": list(_ORG_ADMIN_CAPS), "domain_access": ["*"]}},
+        {
+            "org_admin": {
+                "capabilities": list(_ORG_ADMIN_CAPS),
+                "domain_access": ["*"],
+                "own_domain_access": ["*"],
+            }
+        },
         raising=False,
     )
     # A booted node always holds the deployment's config (set by the boot's load); this fixture

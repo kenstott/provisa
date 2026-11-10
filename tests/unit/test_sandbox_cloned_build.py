@@ -42,19 +42,22 @@ class _Conn:
     def __init__(self, sent: list[str]) -> None:
         self.sent = sent
 
-    async def upsert(self, *args, **kwargs):
+    async def upsert(self, *_a, **_kw):
+        del _a, _kw
         self.sent.append("upsert")
 
     async def execute(self, sql: str):
         self.sent.append(sql)
         return ""
 
-    async def execute_core(self, stmt):
+    async def execute_core(self, _stmt):
+        del _stmt
         self.sent.append("execute_core")
         return SimpleNamespace(scalar=lambda: 0)
 
     @asynccontextmanager
-    async def advisory_lock(self, key: int):
+    async def advisory_lock(self, _key: int):
+        del _key
         self.sent.append("lock")
         yield self
 
@@ -78,6 +81,7 @@ def _seed(monkeypatch, *, cloned: bool) -> tuple[list[str], list[str]]:
 
     def _step(name: str):
         async def _ran(*args, **kwargs):
+            del args, kwargs
             steps.append(name)
 
         return _ran
@@ -86,6 +90,7 @@ def _seed(monkeypatch, *, cloned: bool) -> tuple[list[str], list[str]]:
         monkeypatch.setattr(startup_seed, name, _step(name))
 
     async def _view(conn, ddl: str) -> None:
+        del conn
         steps.append(f"view {ddl.strip().splitlines()[0]}")
 
     monkeypatch.setattr(startup_seed, "_seed_view", _view)
@@ -150,9 +155,11 @@ def test_a_sandbox_runtime_built_cloned_asks_for_the_cloned_build_and_none_other
     asked: list[bool] = []
 
     async def _lane(org_id, env):
+        del org_id, env
         return None
 
     async def _build(org_id, *, storage_url=None, model_cloned=False):
+        del org_id, storage_url
         asked.append(model_cloned)
 
     monkeypatch.setattr(app, "_region_lane_of", _lane)
@@ -179,7 +186,10 @@ def test_a_sandbox_environments_rows_are_landed_on_a_runtime_built_cloned(monkey
         asked.append((org_id, env, cloned))
         raise _Landed
 
-    monkeypatch.setattr(materialize_broker, "copy_schema", lambda *args: None)
+    def _copy_schema(*args):
+        del args
+
+    monkeypatch.setattr(materialize_broker, "copy_schema", _copy_schema)
     monkeypatch.setattr("provisa.api.demo_replicas._store_path", lambda org: f"/stores/{org}")
     monkeypatch.setattr(demo_synthetic, "_model_db", _model_db)
     for cloned in (True, False):
@@ -205,15 +215,19 @@ def test_an_environment_asked_for_cloned_is_built_cloned(monkeypatch):
     built: list[tuple[str, str, bool]] = []
 
     async def _none(*args, **kwargs):
+        del args, kwargs
         return None
 
     async def _flags(org_id):
+        del org_id
         return app.OrgLane(False, False, None, None, None, "", None)
 
     async def _env(admin_db, org_id, env):
+        del admin_db, org_id, env
         return {"expires_at": None, "data_mode": "test_synthetic", "mutation_handling": "refused"}
 
     async def _build(org_id, *, env, model_cloned=False, **kwargs):
+        del kwargs
         built.append((org_id, env, model_cloned))
         return SimpleNamespace()
 
@@ -326,7 +340,9 @@ def _run_install_cloned(
     # _active_runtime().model_db; after _active_runtime is patched to return this SimpleNamespace,
     # the assert / async with calls need model_db on it directly (the property getter follows
     # the patched _active_runtime, not the deployment runtime the monkeypatch setter wrote to).
-    _rt = SimpleNamespace(env="synthetic", model_db=_DbClone(source_rows), full_builds=[])
+    _rt = SimpleNamespace(
+        env="synthetic", model_db=_DbClone(source_rows), full_builds=[], data_mode=None
+    )
     # prod_rt supplies the PROD-compiled state; keep it simple.
     prod_rt = SimpleNamespace(
         surfaces={},
@@ -665,7 +681,7 @@ def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
     )
 
     db = _DbClone([_Row(id="zoo-db", binding="own")])
-    _rt = SimpleNamespace(env="dev", model_db=db, schema_version=0)
+    _rt = SimpleNamespace(env="dev", model_db=db, schema_version=0, data_mode=None)
 
     class _Guard:
         def __enter__(self) -> "_Guard":
@@ -693,4 +709,373 @@ def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
     )
     assert _rt.replica_routes is env_routes, (
         "replica_routes was not rebuilt for the cloned env; it must call replica_routes(state)"
+    )
+
+
+def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
+    """Bug R508e/J1157b: _install_cloned_env_schema left source_catalogs empty on the
+    cloned env's runtime — the pgwire pipeline guard's _known_cats_pgwire was then empty
+    too, so a physical catalog reference in any query hit "unknown catalog" (REQ-2006)."""
+
+    async def _no_routes(state):  # R508g: the clone rebuilds its routes; not what this test checks
+        return None
+
+    monkeypatch.setattr("provisa.federation.replica_routing.replica_routes", _no_routes)
+    import asyncio
+    from contextlib import asynccontextmanager
+    from provisa.api import app
+    from provisa.api.org_runtime import OrgRuntime
+
+    prod_rt = OrgRuntime(org_id="sbxtestorg")
+    prod_rt.source_catalogs = {"zoo-db": "org_sbxtestorg__zoo_db"}
+    prod_rt.source_types = {"zoo-db": "sqlite"}
+    prod_rt.source_dialects = {"zoo-db": "duckdb"}
+    prod_rt.surfaces = {}
+    # minimal fields _install_cloned_env_schema assigns from prod_rt
+    for _field in (
+        "role_build_inputs",
+        "tables",
+        "relationships",
+        "roles",
+        "role_chains",
+        "draft_table_ids",
+        "view_context",
+        "view_path_map",
+        "names_table",
+        "view_sql_map",
+        "mv_registry",
+        "bitemporal_view_reads",
+        "stored_view_reads",
+        "class_tables",
+        "refused_classes",
+        "class_bodies",
+        "table_cache",
+        "pg_notify_tables",
+        "table_watermarks",
+        "user_attributes",
+        "masking_rules",
+        "masked_columns",
+        "tracked_functions",
+        "tracked_webhooks",
+        "column_transforms",
+        "undefined_commands",
+        "replica_routes",
+        "metrics",
+        "schema_build_cache",
+        "api_sources",
+        "api_endpoints",
+        "table_approval_hooks",
+        "source_approval_hooks",
+        "pg_enum_types",
+        "pg_source_enums",
+        "graphql_remote_sources",
+        "openapi_specs",
+        "grpc_remote_sources",
+        "ingest_engines",
+        "ingest_tables",
+        "websocket_sources",
+        "rss_sources",
+        "cdc_sources",
+        "source_cache",
+        "source_allowed_domains",
+        "source_federation_hints",
+        "kafka_windows",
+        "kafka_bootstrap",
+        "kafka_declared",
+        "kafka_table_configs",
+        "kafka_table_physical",
+        "model_stamp",
+    ):
+        if not hasattr(prod_rt, _field):
+            setattr(prod_rt, _field, None)
+
+    cloned_rt = OrgRuntime(org_id="sbxtestorg", env="dev")
+
+    class _MockConn:
+        async def execute_core(self, stmt):
+            del stmt
+            return SimpleNamespace(fetchall=lambda: [])
+
+    @asynccontextmanager
+    async def _acquire():
+        yield _MockConn()
+
+    class _MockState:
+        schema_version = 0
+        model_db = SimpleNamespace(acquire=_acquire)
+
+        def _active_runtime(self):
+            return cloned_rt
+
+    monkeypatch.setattr(app, "state", _MockState())
+
+    async def _unbound(_conn):
+        del _conn
+        return frozenset()
+
+    monkeypatch.setattr(app, "_unbound_sources", _unbound)
+
+    import provisa.grpc.field_numbering as _fn
+    import provisa.api.admin.lineage_router as _lr
+
+    async def _load_fn(_conn):
+        del _conn
+        return None
+
+    async def _persist_fn(_conn, _fn):
+        del _conn, _fn
+
+    async def _lineage(_conn, _state):
+        del _conn, _state
+
+    monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
+    monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
+    monkeypatch.setattr(_lr, "write_lineage_edges", _lineage)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+
+    assert cloned_rt.source_catalogs == {"zoo-db": "org_sbxtestorg__zoo_db"}, (
+        "_install_cloned_env_schema must copy source_catalogs from prod_rt; "
+        f"got {cloned_rt.source_catalogs!r}"
+    )
+
+
+def _prod_rt_for_clone_test():
+    """Return a minimal prod_rt for _install_cloned_env_schema unit tests.
+
+    Sets prod_rt.masking_rules to a sentinel that has no fake generators, mirroring
+    a real PROD build (data_mode=None → faking=False in _load_masking_rules).
+    """
+    from provisa.api.org_runtime import OrgRuntime
+
+    prod_rt = OrgRuntime(org_id="sbxtestorg")
+    prod_rt.source_catalogs = {}
+    prod_rt.source_types = {}
+    prod_rt.source_dialects = {}
+    prod_rt.surfaces = {}
+    prod_rt.masking_rules = {"prod_rule": "no_fakes"}  # PROD built with faking=False
+    prod_rt.masked_columns = []
+    prod_rt.roles = {}
+    prod_rt.role_chains = {}
+    prod_rt.schema_build_cache = {"column_types": {}}
+    for _field in (
+        "role_build_inputs",
+        "tables",
+        "relationships",
+        "draft_table_ids",
+        "view_context",
+        "view_path_map",
+        "names_table",
+        "view_sql_map",
+        "mv_registry",
+        "bitemporal_view_reads",
+        "stored_view_reads",
+        "class_tables",
+        "refused_classes",
+        "class_bodies",
+        "table_cache",
+        "pg_notify_tables",
+        "table_watermarks",
+        "user_attributes",
+        "tracked_functions",
+        "tracked_webhooks",
+        "column_transforms",
+        "undefined_commands",
+        "replica_routes",
+        "metrics",
+        "api_sources",
+        "api_endpoints",
+        "table_approval_hooks",
+        "source_approval_hooks",
+        "pg_enum_types",
+        "pg_source_enums",
+        "graphql_remote_sources",
+        "openapi_specs",
+        "grpc_remote_sources",
+        "ingest_engines",
+        "ingest_tables",
+        "websocket_sources",
+        "rss_sources",
+        "cdc_sources",
+        "source_cache",
+        "source_allowed_domains",
+        "source_federation_hints",
+        "kafka_windows",
+        "kafka_bootstrap",
+        "kafka_declared",
+        "kafka_table_configs",
+        "kafka_table_physical",
+        "model_stamp",
+    ):
+        if not hasattr(prod_rt, _field):
+            setattr(prod_rt, _field, None)
+    return prod_rt
+
+
+def test_cloned_env_test_fake_reloads_masking_rules(monkeypatch):
+    """Bug R508e3: _install_cloned_env_schema copied prod_rt.masking_rules unchanged to a
+    test_fake cloned env.  PROD's masking_rules have no fake generators (built with faking=False,
+    data_mode=None).  A test_fake env must call _load_masking_rules with faking=True so queries
+    return synthetic fakes, not production rows (REQ-2053 / REQ-1494)."""
+
+    async def _no_routes(state):  # R508g: the clone rebuilds its routes; not what this test checks
+        return None
+
+    monkeypatch.setattr("provisa.federation.replica_routing.replica_routes", _no_routes)
+    import asyncio
+    from contextlib import asynccontextmanager
+    from provisa.api import app
+    from provisa.api.org_runtime import OrgRuntime
+
+    prod_rt = _prod_rt_for_clone_test()
+    cloned_rt = OrgRuntime(org_id="sbxtestorg", env="dev", data_mode="test_fake")
+
+    class _MockConn:
+        async def execute_core(self, stmt):
+            del stmt
+            return SimpleNamespace(fetchall=lambda: [])
+
+    @asynccontextmanager
+    async def _acquire():
+        yield _MockConn()
+
+    class _MockState:
+        schema_version = 0
+        model_db = SimpleNamespace(acquire=_acquire)
+
+        def _active_runtime(self):
+            return cloned_rt
+
+    monkeypatch.setattr(app, "state", _MockState())
+
+    masking_rules_calls: list[bool] = []
+    measure_model_calls: list[bool] = []
+
+    async def _mock_load_masking_rules(conn, col_types, roles, role_chains=None):
+        del conn, col_types, roles, role_chains
+        masking_rules_calls.append(True)
+        # simulate _load_masking_rules writing fake-aware rules (non-PROD value)
+        cloned_rt.masking_rules = {"fake_rule": "has_fakes"}
+        cloned_rt.masked_columns = []
+
+    monkeypatch.setattr(app, "_load_masking_rules", _mock_load_masking_rules)
+
+    import provisa.fakes.measured as _measured
+
+    async def _mock_measure_model(state_arg):
+        del state_arg
+        measure_model_calls.append(True)
+
+    monkeypatch.setattr(_measured, "measure_model", _mock_measure_model)
+
+    async def _unbound(_conn):
+        del _conn
+        return frozenset()
+
+    monkeypatch.setattr(app, "_unbound_sources", _unbound)
+
+    import provisa.grpc.field_numbering as _fn
+    import provisa.api.admin.lineage_router as _lr
+
+    async def _load_fn(_conn):
+        del _conn
+        return None
+
+    async def _persist_fn(_conn, _fn):
+        del _conn, _fn
+
+    async def _lineage(_conn, _state):
+        del _conn, _state
+
+    monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
+    monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
+    monkeypatch.setattr(_lr, "write_lineage_edges", _lineage)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+
+    assert masking_rules_calls, (
+        "test_fake cloned env must call _load_masking_rules to build env-specific fake rules; "
+        "PROD masking_rules have no fakes (data_mode=None during PROD build) — "
+        "copying them leaves the env serving production rows (REQ-2053)"
+    )
+    assert measure_model_calls, (
+        "test_fake cloned env must call measure_model after _load_masking_rules "
+        "to populate measured values fake generators need (REQ-1494)"
+    )
+    assert cloned_rt.masking_rules != {"prod_rule": "no_fakes"}, (
+        "test_fake env must NOT use PROD masking_rules; they have no fake generators"
+    )
+
+
+def test_cloned_env_non_test_fake_does_not_reload_masking_rules(monkeypatch):
+    """Non-test_fake envs (None / inherit / unbound) inherit PROD masking_rules as-is; only
+    test_fake needs a fresh _load_masking_rules call.  Calling it unnecessarily wastes a DB
+    round-trip and would override column masks for non-fake modes."""
+
+    async def _no_routes(state):  # R508g: the clone rebuilds its routes; not what this test checks
+        return None
+
+    monkeypatch.setattr("provisa.federation.replica_routing.replica_routes", _no_routes)
+    import asyncio
+    from contextlib import asynccontextmanager
+    from provisa.api import app
+    from provisa.api.org_runtime import OrgRuntime
+
+    prod_rt = _prod_rt_for_clone_test()
+    cloned_rt = OrgRuntime(org_id="sbxtestorg", env="dev", data_mode=None)
+
+    class _MockConn:
+        async def execute_core(self, stmt):
+            del stmt
+            return SimpleNamespace(fetchall=lambda: [])
+
+    @asynccontextmanager
+    async def _acquire():
+        yield _MockConn()
+
+    class _MockState:
+        schema_version = 0
+        model_db = SimpleNamespace(acquire=_acquire)
+
+        def _active_runtime(self):
+            return cloned_rt
+
+    monkeypatch.setattr(app, "state", _MockState())
+
+    masking_rules_calls: list[bool] = []
+
+    async def _mock_load_masking_rules(conn, col_types, roles, role_chains=None):
+        del conn, col_types, roles, role_chains
+        masking_rules_calls.append(True)
+
+    monkeypatch.setattr(app, "_load_masking_rules", _mock_load_masking_rules)
+
+    async def _unbound(_conn):
+        del _conn
+        return frozenset()
+
+    monkeypatch.setattr(app, "_unbound_sources", _unbound)
+
+    import provisa.grpc.field_numbering as _fn
+    import provisa.api.admin.lineage_router as _lr
+
+    async def _load_fn(_conn):
+        del _conn
+        return None
+
+    async def _persist_fn(_conn, _fn):
+        del _conn, _fn
+
+    async def _lineage(_conn, _state):
+        del _conn, _state
+
+    monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
+    monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
+    monkeypatch.setattr(_lr, "write_lineage_edges", _lineage)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+
+    assert not masking_rules_calls, (
+        "non-test_fake cloned env must NOT call _load_masking_rules; "
+        "PROD masking_rules are correct for inherit/unbound/None modes"
     )
