@@ -48213,9 +48213,15 @@
     alongside isolated_available so the tab disables the lane the org cannot buy rather than failing the
     save. The shared and external lanes are ungated: shared is where every org starts, and an external engine
     is the org''s own compute. A deployment with no commercial plugin, and an org with no billing row, gate
-    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) Maintainer 2026-11-09 (REQ-1327): saving
-    an org''s engine lane is the platform''s, on the deployment check, naming the org. org_settings keeps
-    the page read-only, with its report.'
+    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) [SUPERSEDED by REQ-1412, 2026-11-09 -- on
+    SaaS an org admin changes its own engine lane. Kept here for history; do not implement against it.]
+    Maintainer 2026-11-09 (REQ-1327): saving an org''s engine lane is the platform''s, on the deployment
+    check, naming the org. org_settings keeps the page read-only, with its report. [END SUPERSEDED BLOCK]
+    (Amended 2026-11-09, THE ORG ADMIN CHANGES ITS LANE:) Maintainer 2026-11-09: on SaaS an org admin changes
+    its own org''s engine lane, on org_settings, on the org page. The platform''s route stays, on the deployment
+    check, so an operator can set it for a named org. (Amended 2026-11-09, A PLAN DECIDES ITS LANE:) Maintainer
+    2026-11-09: an org on a plan changes its engine by changing its plan, and the page points there; the
+    org admin''s direct save applies to an org with no plan.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
@@ -91050,7 +91056,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
     is not drawn as its own box: the input''s column links straight to the table''s column, and the link
     names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
-    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08).'
+    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
+    2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
+    on that product alone, its member tables, their columns and the terms grounded on them, with a control
+    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -93944,7 +93953,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-07). (Amended 2026-11-08, HOW THE LISTS ARE NAMED IN A TOKEN:) The claim that carries the nested
     form is named per identity provider, in that provider''s settings, which the admin UI edits; with no
     name set, that provider sends no nested lists. The flat form is provisa:<role>:<kind>:<id>, and an empty
-    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)'
+    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)
+    (Amended 2026-11-09, ONE API, THREE WAYS TO USE IT:) Maintainer 2026-11-09: one write API sets a principal''s
+    lists, with reason, expiry and audit, and the UI is a client of it. A large enterprise integrates through
+    the API or its identity provider''s claims and sees the UI read-only; a mid-size organization with an
+    identity provider manages lists in the UI; a small one manages everything for local accounts in the
+    UI. No mode is chosen: where the identity provider sends a list for a role and kind, that list wins
+    and the UI shows it read-only. The UI''s picker finds people through one search by name or email, over
+    local accounts and known members of the org, returning the principal the sign-in token carries, with
+    name and email for display only. A person not yet seen is granted by typed email, shown as pending,
+    and the grant attaches when a sign-in token''s email matches. Directory lookup in an identity provider
+    is added per provider, behind one interface, as customers need it.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -94038,7 +94057,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     returns a status; Provisa calls it periodically and shows the result on the source in Sources. There
     are no per-statement or error tags: a function''s own code covers those. (Amended 2026-11-09, WHEN ON-START
     FAILS:) Maintainer 2026-11-09: when @on-start fails at a first join, the join is refused by name. When
-    it fails on a later restart of a joined host, the source stays and shows as unhealthy.'
+    it fails on a later restart of a joined host, the source stays and shows as unhealthy. (Amended 2026-11-09,
+    SETUP VALUES REACH THE HOST:) Maintainer 2026-11-09: Provisa delivers a connector''s setup values to
+    the host it paired with, over the paired TLS connection. Each @requires secret is resolved at delivery
+    and the read is audited; the host holds it only in memory, never on disk.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94201,7 +94223,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
     reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
     job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
-    which needs a cluster sized for the subscribers.'
+    which needs a cluster sized for the subscribers. (Amended 2026-11-09, HOW IT IS OFFERED AND WHAT THE
+    IMAGE HOLDS:) Maintainer 2026-11-09: the connector is offered to every organization through a platform
+    block file in the package, written by the release build and read beside the org''s own connectors; Sources
+    shows nothing until a release fills it. The image holds a thin Spark Connect client, not Spark: the
+    cluster value is a Spark Connect address, and the customer''s cluster does the work.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
@@ -94349,13 +94375,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     them, and commands run where dbt is installed. (Amended 2026-11-09, EVERYTHING THAT CAN BE A COMMAND
     IS ONE:) Maintainer 2026-11-09: anything dbt can run is surfaced as a command: beside models, tests,
     snapshots and seeds, also build, source freshness, and each macro through run-operation. (Amended 2026-11-09,
-    A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: a model the manifest marks public
-    with an enforced contract is offered as a candidate data product, its schema promise, tests, owner and
-    version carried from the manifest. A steward decides whether it becomes one. (Amended 2026-11-09, TARGETS,
-    DESCRIPTIONS AND MACROS:) Maintainer 2026-11-09: on an operator-run connector a dbt command is a code
-    source @command taking the dbt invocation as a fixed argument. A new manifest updates a description
-    only if no steward has changed it. Each macro means the project''s and its installed packages'' macros,
-    not dbt''s own internal dbt and dbt_* macros.'
+    A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2228, 2026-11-09
+    -- public models are registered in bulk from Register Table. Kept here for history; do not implement
+    against it.] a model the manifest marks public with an enforced contract is offered as a candidate data
+    product, its schema promise, tests, owner and version carried from the manifest. A steward decides whether
+    it becomes one. [END SUPERSEDED BLOCK] (Amended 2026-11-09, TARGETS, DESCRIPTIONS AND MACROS:) Maintainer
+    2026-11-09: on an operator-run connector a dbt command is a code source @command taking the dbt invocation
+    as a fixed argument. A new manifest updates a description only if no steward has changed it. Each macro
+    means the project''s and its installed packages'' macros, not dbt''s own internal dbt and dbt_* macros.
+    (Amended 2026-11-09, DBT IS A CHECKER:) Maintainer 2026-11-09: dbt is a third checker type under REQ-1443:
+    a steward registers a results table per tested model and each new run results file appends rows in the
+    fixed schema, with the data quality tag, product panels and export assertions. (Amended 2026-11-09,
+    REGISTER THE PUBLIC MODELS AS PRODUCTS:) Maintainer 2026-11-09: on Register Table a dbt source offers,
+    beside picking tables, to register all its public models with enforced contracts and generate data products,
+    after a preview, as drafts a steward reviews. One product per dbt group; a project with no groups gets
+    one product. Each carries its schema promise, tests, owner and version from the manifest. Register Table
+    stays for picking individual models as plain tables. (Amended 2026-11-10, UNGROUPED PUBLIC MODELS:)
+    Maintainer 2026-11-10: in a project with groups, a public contracted model in no group joins no generated
+    product; the preview lists it and it is registered by picking it as a table.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 

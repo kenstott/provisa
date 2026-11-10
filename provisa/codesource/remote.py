@@ -32,7 +32,8 @@ import secrets
 import socket
 import ssl
 import tempfile
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ from typing import Any
 from provisa.codesource.worker import (
     CONNECTIONS,
     START_TIMEOUT_S,
+    OnStartFailed,
     Worker,
     WorkerFailed,
     _frame,
@@ -50,6 +52,10 @@ from provisa.codesource.worker import (
 
 #: The port a remote host's container listens on, fixed in its image (REQ-2098).
 HOST_PORT = 7443
+#: REQ-2221: how long a host's @on-start function has to finish.
+ON_START_TIMEOUT_S = 120.0
+#: REQ-2221: how long a host's @health function has to answer.
+HEALTH_TIMEOUT_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -164,6 +170,9 @@ class Paired:
     #: REQ-2221: the manifest the host handed over as it paired; None from an image that carries
     #: none (built before REQ-2221).
     manifest: dict | None = None
+    #: REQ-2225: a script connector's script as the host read it: ``{hash, document}``, the
+    #: document as the language's reader wrote it; None for any other connector.
+    script: dict | None = None
 
 
 def pair(
@@ -173,12 +182,14 @@ def pair(
     identity: Identity,
     duckdb: dict[str, int],
     timeout: float = 10.0,
+    script: str | None = None,
 ) -> Paired:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's, and ``duckdb``, the bounds of its DuckDB
     (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin, and its
     certificate, read on this dial: what an engine attaching the host verifies it by (REQ-2100),
-    so connecting dials no third time for it."""
+    so connecting dials no third time for it. ``script`` (REQ-2225): a script connector's script,
+    which the host keeps, reads the tags of, and answers with."""
     fingerprint, secret = parse_pairing_code(code)
     try:
         conn = _dial(address, port, fingerprint, None, timeout)
@@ -195,6 +206,7 @@ def pair(
                         "secret": secret,
                         "certificate": identity.certificate,
                         "duckdb": duckdb,
+                        **({"script": script} if script is not None else {}),
                     }
                 )
             )
@@ -212,6 +224,7 @@ def pair(
         pin=fingerprint,
         certificate=ssl.DER_cert_to_PEM_cert(der),
         manifest=answer.get("manifest"),
+        script=answer.get("script"),
     )
 
 
@@ -231,6 +244,9 @@ class RemoteWorker(Worker):
         pin: str,
         identity: Identity,
         exports: Sequence[str] | None = None,
+        setup: Callable[[], dict[str, Any]] | None = None,
+        script_hash: str | None = None,
+        names: dict | None = None,
     ) -> None:
         # No process to start: the connection is dialled (start).
         super().__init__(source_id, content_hash, command=None)  # pyright: ignore[reportArgumentType]
@@ -239,6 +255,16 @@ class RemoteWorker(Worker):
         self._pin = pin
         self._identity = identity
         self._pinned_exports = None if exports is None else sorted(exports)
+        #: REQ-2221: what gives the host its setup values; None for a dial that has none to give
+        #: (a status probe, a hello check), which leaves @on-start to one that has.
+        self._setup = setup
+        self._setup_done = threading.Event()
+        self._setup_done.set()
+        self._setup_failure: str | None = None
+        #: REQ-2225: the hash of the script a script connector's host is held to, on every dial.
+        self._script_hash = script_hash
+        #: REQ-2225: the script's name tables, which only Provisa can make, given with the setup.
+        self._names_to_give = names
 
     @property
     def where(self) -> str:
@@ -262,6 +288,58 @@ class RemoteWorker(Worker):
         self._attach(list(conns), hello, f"code-remote-{self.source_id}")
         #: REQ-2100: the code's name tables, as the image carries them (provisa/codesource/names.py).
         self.names = dict(hello.get("names") or {})
+        if self._setup is not None and hello.get("setup_needed"):
+            self._begin_setup()
+
+    def _begin_setup(self) -> None:
+        """REQ-2221: give the host its setup values on a thread of its own, so a slow @on-start
+        holds no pool lock; every call waits for it (:meth:`ready`)."""
+        self._setup_done.clear()
+        threading.Thread(
+            target=self._run_setup, name=f"code-remote-setup-{self.source_id}", daemon=True
+        ).start()
+
+    def _run_setup(self) -> None:
+        from provisa.codesource.services import ServiceRefused
+
+        assert self._setup is not None
+        try:
+            try:
+                values = self._setup()
+            except (ServiceRefused, ValueError) as unread:
+                self._setup_failure = f"its setup values could not be given: {unread}"
+                return
+            given = {} if self._names_to_give is None else {"names": self._names_to_give}
+            answer = self._exchange({"op": "setup", "values": values, **given}, ON_START_TIMEOUT_S)
+            if answer is None:
+                self._setup_failure = (
+                    f"its @on-start function did not finish within {ON_START_TIMEOUT_S:g}s"
+                )
+            elif answer.get("failed"):
+                self._setup_failure = f"its @on-start function failed: {answer['failed']}"
+        finally:
+            self._setup_done.set()
+
+    def ready(self) -> None:
+        """Wait for the host's @on-start to finish; :class:`OnStartFailed`, naming it, when it
+        failed. A host whose @on-start failed stays connected and fails each call this way until
+        it restarts, which runs @on-start again."""
+        self._setup_done.wait()
+        if self._setup_failure is not None:
+            raise OnStartFailed(self.source_id, self._setup_failure)
+
+    def _open(self) -> Any:
+        self.ready()
+        return super()._open()
+
+    def health(self) -> dict[str, Any]:
+        """The host's answer to a health call: ``{"status": ...}`` as its @health function gave
+        it, or ``{"failed": why}``."""
+        self.ready()
+        answer = self._exchange({"op": "health"}, HEALTH_TIMEOUT_S)
+        if answer is None:
+            return {"failed": f"its host {self.where} did not answer within {HEALTH_TIMEOUT_S:g}s"}
+        return {k: v for k, v in answer.items() if k not in ("op", "id")}
 
     def _hello_of(self, conn: ssl.SSLSocket, timeout: float) -> dict:
         """The host's hello on ``conn``, checked: refused by name when it is not this source's."""
@@ -272,7 +350,11 @@ class RemoteWorker(Worker):
             hello = None
         if hello is None or hello.get("op") != "hello":
             raise WorkerFailed(self.source_id, f"remote host {self.where} did not say it was ready")
-        refused = refusal(hello, self.content_hash) or self._other_exports(hello)
+        refused = (
+            refusal(hello, self.content_hash)
+            or self._other_script(hello)
+            or self._other_exports(hello)
+        )
         if refused is not None:
             try:
                 conn.sendall(_frame({"op": "refused", "message": refused}))
@@ -286,6 +368,15 @@ class RemoteWorker(Worker):
         """REQ-2100: every call to a host carries the operator's DuckDB bounds, which its front
         end applies (and keeps) before the call."""
         return {**super()._call_frame(*args, **kwargs), "duckdb": duckdb_bounds()}
+
+    def _other_script(self, hello: dict) -> str | None:
+        """REQ-2225: why a script connector's hello is refused for its script, or None."""
+        if self._script_hash is None:
+            return None
+        held = hello.get("script_hash")
+        if held == self._script_hash:
+            return None
+        return f"its host runs script {held}, not the {self._script_hash} in the source's config"
 
     def _other_exports(self, hello: dict) -> str | None:
         if self._pinned_exports is None:

@@ -256,7 +256,9 @@ describe("the product panel in 2D", () => {
 describe("the full graph in 2D", () => {
   it("draws the whole ontology in lanes, with no 3D controls", async () => {
     const full = await explorer();
-    expect(laneOf("term:party")).toBe("term");
+    // A product's graph opens on the product: the whole ontology is the rest of the model.
+    fireEvent.click(within(full).getByTestId("graph3d-rest"));
+    await waitFor(() => expect(laneOf("term:party")).toBe("term"));
     expect(laneOf("p:c360")).toBe("product");
     expect(ids("node")).not.toContain("d:sales");
     for (const id of ["graph3d-layout", "graph3d-rotate", "graph3d-grid", "graph3d-attraction"])
@@ -290,7 +292,10 @@ describe("the full graph in 2D", () => {
   it("copies the diagram as Mermaid flowchart text", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.assign(navigator, { clipboard: { writeText } });
-    await explorer();
+    const full = await explorer();
+    // The term link it names is past the product's own: Party is in the rest of the model.
+    fireEvent.click(within(full).getByTestId("graph3d-rest"));
+    await waitFor(() => expect(laneOf("term:party")).toBe("term"));
     fireEvent.click(screen.getByTestId("graph3d-lanes-mermaid"));
     await screen.findByText("Copied");
     const text = (writeText.mock.calls[0] as unknown as [string])[0];

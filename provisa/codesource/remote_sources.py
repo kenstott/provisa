@@ -143,7 +143,9 @@ def remote_of(mapping: dict) -> dict:
             f"a built source names its remote host; this one has no {', '.join(missing)}: "
             "connect it again",
         )
-    return remote
+    # REQ-2225: a script connector's host is held to its script's hash on every dial.
+    script_hash = mapping.get("script_hash")
+    return remote if not script_hash else {**remote, "script_hash": script_hash}
 
 
 async def _save_mapping(source_id: str, mapping: dict) -> None:
@@ -228,16 +230,42 @@ async def connect(state: Any, source_id: str, host: str, port: int, code: str) -
 
 
 def _check(
-    source_id: str, code_hash: str, host: str, port: int, pin: str, me: Identity, exports: list[str]
+    source_id: str,
+    code_hash: str,
+    host: str,
+    port: int,
+    pin: str,
+    me: Identity,
+    exports: list[str],
+    setup: Any = None,
+    *,
+    script_hash: str | None = None,
+    names: dict | None = None,
 ) -> None:
-    """Dial the host and check its hello: refused by name when it is not the source's code."""
-    from provisa.codesource.worker import WorkerFailed
+    """Dial the host and check its hello: refused by name when it is not the source's code. With
+    ``setup`` (REQ-2221), give it its setup values and wait for its @on-start:
+    :class:`~provisa.codesource.worker.OnStartFailed` when that fails. ``script_hash``
+    (REQ-2225): the hash of the script the host must hold, and ``names`` its name tables."""
+    from provisa.codesource.worker import OnStartFailed, WorkerFailed
 
     worker = RemoteWorker(
-        source_id, code_hash, address=host, port=port, pin=pin, identity=me, exports=exports
+        source_id,
+        code_hash,
+        address=host,
+        port=port,
+        pin=pin,
+        identity=me,
+        exports=exports,
+        setup=setup,
+        script_hash=script_hash,
+        names=names,
     )
     try:
         worker.start()
+        worker.ready()
+    except OnStartFailed:
+        worker.stop()
+        raise
     except WorkerFailed as failed:
         raise RemoteRefused("remote_refused", str(failed)) from None
     worker.stop()
@@ -260,9 +288,11 @@ async def to_dev(state: Any, source_id: str) -> dict:
 async def status(state: Any, source_id: str) -> dict:
     """The source's mode and, built, whether its host answers: what it reports (its code hash and
     exports) or why it does not, as this process dials it."""
+    from provisa.api.org_runtime import runtime_key
+    from provisa.codesource import lifecycle
     from provisa.codesource.remote import RemoteWorker as _Remote
     from provisa.codesource.worker import WorkerFailed, pool
-    from provisa.core.request_context import require_current_org
+    from provisa.core.request_context import active_env, require_current_org
 
     source = await _source(state, source_id)
     mapping = source.mapping
@@ -304,6 +334,9 @@ async def status(state: Any, source_id: str) -> dict:
         "host": where,
         "pinned_hash": mapping.get("content_hash"),
         "pool": pool.remote_status(org_id, source_id),
+        # REQ-2221: what this process last found polling its @on-start and @health; None when the
+        # code has neither, or no poll has run yet.
+        "health": lifecycle.health(runtime_key(org_id, active_env()), source_id),
         **probed,
     }
 
@@ -337,6 +370,7 @@ async def repin(state: Any, source_id: str, code_hash: str) -> dict:
         remote["pin"],
         me,
         remote["exports"],
+        script_hash=remote.get("script_hash"),
     )
     mapping["content_hash"] = code_hash
     await _save_mapping(source_id, mapping)
@@ -488,6 +522,74 @@ def _manifest_of(paired: Any, labels: dict[str, str], name: str) -> Any:
         ) from None
 
 
+#: REQ-2225: how long pairing waits while the host imports a script and reads its tags.
+SCRIPT_PAIR_TIMEOUT_S = 180.0
+
+
+def _script_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _script_of(row: dict, mapping: dict, name: str) -> str | None:
+    """REQ-2225: the script a script connector was given (its presence checked already by
+    :func:`_given_requires`), held to any hash the source's config records, before anything is
+    dialled so the one-time pairing code is not spent; None for any other connector."""
+    required = next((r for r in row["requires"] if r.get("script")), None)
+    if required is None:
+        return None
+    text = mapping["settings"][required["name"]]
+    recorded = mapping.get("script_hash")
+    if recorded and recorded != _script_hash(text):
+        raise RemoteRefused(
+            "connector_script_hash",
+            f"connector {name}: the script given has hash {_script_hash(text)}, not the "
+            f"{recorded} in the source's config",
+            connector=name,
+        )
+    return text
+
+
+def _script_manifest(
+    paired: Any, image_manifest: Any, text: str, name: str
+) -> tuple[Any, dict, list[str]]:
+    """REQ-2225: what the host read from the script it was given: its manifest (its own tables and
+    commands, requiring what the image's code requires), its name tables, and every public
+    function it offers, tagged or not. The image is proven by its digest and code hash; the
+    script by its own hash."""
+    import dataclasses
+
+    from provisa.codesource.manifest import PYTHON_RULES, read_manifest
+    from provisa.codesource.names import name_tables
+
+    given = paired.script
+    if not isinstance(given, dict) or not isinstance(given.get("document"), dict):
+        raise RemoteRefused(
+            "connector_script_missing",
+            f"connector {name}: its host answered with no script: run an image built for a "
+            "script connector",
+            connector=name,
+        )
+    if given.get("hash") != _script_hash(text):
+        raise RemoteRefused(
+            "connector_script_hash",
+            f"connector {name}: its host runs script {given.get('hash')}, not the "
+            f"{_script_hash(text)} in the source's config",
+            connector=name,
+        )
+    read = read_manifest(given["document"], PYTHON_RULES)
+    offered = {r.name for r in image_manifest.requires}
+    extra = sorted({r.name for r in read.requires} - offered)
+    if extra:
+        raise RemoteRefused(
+            "connector_script_requires",
+            f"connector {name}: its script requires {', '.join(extra)}, which the connector "
+            f"does not offer ({', '.join(sorted(offered))})",
+            connector=name,
+        )
+    merged = dataclasses.replace(read, requires=image_manifest.requires)
+    return merged, name_tables(merged), sorted(e["name"] for e in given["document"]["exports"])
+
+
 def _requires_of(row: dict) -> set[tuple[str, bool]]:
     return {(r["name"], bool(r.get("secret"))) for r in row["requires"]}
 
@@ -518,6 +620,9 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
     built source's, ``connector_join`` and its pairing code gone. The code is not fetched or read
     here, and no build setting of the block is read."""
     from provisa.codesource.languages import LANGUAGES
+    from provisa.codesource.lifecycle import setup_values
+    from provisa.codesource.manifest import ON_START, manifest_json
+    from provisa.codesource.worker import OnStartFailed
     from provisa.core.request_context import require_current_org
 
     join = mapping.pop("connector_join")
@@ -535,6 +640,7 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             connector=name,
         )
     _given_requires(row, mapping, name)
+    script = _script_of(row, mapping, name)
     org_id = require_current_org()
     labels = await _image_labels(state, org_id, name, row)
     _held(row["code_hash"], labels, name)
@@ -547,8 +653,11 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             connector=name,
         )
     me = await identity(org_id)
+    pairing: dict[str, Any] = (
+        {} if script is None else {"script": script, "timeout": SCRIPT_PAIR_TIMEOUT_S}
+    )
     try:
-        paired = await asyncio.to_thread(pair, host, port, code, me, duckdb_bounds())
+        paired = await asyncio.to_thread(pair, host, port, code, me, duckdb_bounds(), **pairing)
     except ValueError as refused:  # PairingRefused: the code, or the host's answer, named
         raise RemoteRefused("pairing", str(refused)) from None
     manifest = _manifest_of(paired, labels, name)
@@ -561,9 +670,35 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             connector=name,
         )
     exports = sorted(e.name for e in manifest.exports)
-    await asyncio.to_thread(
-        _check, source_id, row["code_hash"], host, port, paired.pin, me, exports
-    )
+    names: dict | None = None
+    kept_manifest = paired.manifest
+    if script is not None:
+        manifest, names, exports = _script_manifest(paired, manifest, script, name)
+        kept_manifest = manifest_json(manifest)
+        mapping["script_hash"] = _script_hash(script)
+    setup = None
+    if script is not None or manifest.lifecycle(ON_START) is not None:
+        setup = setup_values(org_id, source_id, manifest, mapping, state.admin_db)
+    try:
+        await asyncio.to_thread(
+            _check,
+            source_id,
+            row["code_hash"],
+            host,
+            port,
+            paired.pin,
+            me,
+            exports,
+            setup,
+            script_hash=mapping.get("script_hash"),
+            names=names,
+        )
+    except OnStartFailed as failed:
+        raise RemoteRefused(
+            "connector_on_start",
+            f"connector {name}: {failed}",
+            connector=name,
+        ) from None
     mapping.update(
         mode=BUILT,
         runtime=runtime,
@@ -576,16 +711,24 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
             "pin": paired.pin,
             "certificate": paired.certificate,
             "exports": exports,
-            "manifest": paired.manifest,
+            "manifest": kept_manifest,
+            **({} if names is None else {"names": names}),
         },
     )
 
 
 def worker_for(
-    org_id: str, source_id: str, code_hash: str, remote: dict, me: Identity
+    org_id: str,
+    source_id: str,
+    code_hash: str,
+    remote: dict,
+    me: Identity,
+    *,
+    setup: Any = None,
 ) -> RemoteWorker:
     """A built source's worker: its remote host, dialled, its hello checked against the code hash
-    and exports the source is pinned to."""
+    and exports the source is pinned to. ``setup`` (REQ-2221) gives a host that has just started
+    its setup values."""
     return RemoteWorker(
         source_id,
         code_hash,
@@ -594,6 +737,9 @@ def worker_for(
         pin=remote["pin"],
         identity=me,
         exports=remote.get("exports"),
+        setup=setup,
+        script_hash=remote.get("script_hash"),
+        names=remote.get("names"),
     )
 
 

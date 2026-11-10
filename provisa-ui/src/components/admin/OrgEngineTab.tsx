@@ -8,11 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Stack, Text } from "@mantine/core";
+import { Alert, NumberInput, Radio, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Link } from "react-router-dom";
-import { fetchOrgEngine, type OrgEngineState } from "../../api/admin";
+import {
+  fetchOrgEngine,
+  setOrgEngine,
+  type OrgEngineMode,
+  type OrgEngineSave,
+  type OrgEngineState,
+} from "../../api/admin";
+import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { RegionEngineTabs } from "./RegionEngineTabs";
 import { useRegionEngines } from "./useRegionEngines";
 
@@ -39,16 +46,37 @@ export function HostedEngineReport({
         {t("orgEngineTab.hostedIntro")}
       </Text>
       <LaneFacts state={state} />
-      {billingLink && (
-        <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
-          <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
-        </Alert>
-      )}
+      {billingLink && <PlanChangeLink />}
     </Stack>
   );
 }
 
-function LaneFacts({ state, children }: { state: OrgEngineState; children?: ReactNode }) {
+/** REQ-1412 (A PLAN DECIDES ITS LANE): where an org on a plan changes its engine (REQ-1510). */
+function PlanChangeLink() {
+  const { t } = useTranslation();
+  return (
+    <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
+      <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
+    </Alert>
+  );
+}
+
+/** The same pointer on the per-region page, which otherwise reads nothing about the org's plan. */
+function RegionPlanChangeLink() {
+  const [state, setState] = useState<OrgEngineState | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchOrgEngine()
+      .then(setState)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  if (error) return <Alert color="red">{error}</Alert>;
+  return state?.plan_derived ? <PlanChangeLink /> : null;
+}
+
+function LaneFacts({ state }: { state: OrgEngineState }) {
   const { t } = useTranslation();
   const laneKey =
     state.mode === "isolated"
@@ -90,7 +118,6 @@ function LaneFacts({ state, children }: { state: OrgEngineState; children?: Reac
           })}
         </Text>
       )}
-      {children}
       {stateText && (
         <Text size="sm" data-testid="org-engine-hosted-state">
           {stateText}
@@ -108,65 +135,238 @@ export function OrgEngineTab() {
   if (regions.status === "error") return <Alert color="red">{regions.text}</Alert>;
   if (regions.status === "loading") return <Text>{t("orgEngineTab.loading")}</Text>;
   if (regions.status === "none") return <OrgEngineLane />;
-  return <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />;
-}
-
-// REQ-1412: the org's engine lane, read-only under org_settings. Saving it is the platform's, on
-// the Platform page (PlatformOrgEngine), naming the org.
-function OrgEngineLane() {
-  const { t } = useTranslation();
-  const [state, setState] = useState<OrgEngineState | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetchOrgEngine()
-      .then(setState)
-      .catch((e) => setError(String(e)));
-  }, []);
-
-  if (error) return <Alert color="red">{error}</Alert>;
-  if (!state) return <Text>{t("orgEngineTab.loading")}</Text>;
-  return state.plan_derived ? (
-    <HostedEngineReport state={state} />
-  ) : (
-    <OrgEngineReport state={state} />
+  return (
+    <Stack gap="md">
+      <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />
+      <RegionPlanChangeLink />
+    </Stack>
   );
 }
 
-/** What the org runs on where no plan decides it: the platform sets the lane, the org reads it. */
-function OrgEngineReport({ state }: { state: OrgEngineState }) {
+// REQ-1412 (THE ORG ADMIN CHANGES ITS LANE): the org's own lane, saved on org_settings.
+function OrgEngineLane() {
+  return <OrgEngineForm load={fetchOrgEngine} save={setOrgEngine} />;
+}
+
+/**
+ * The lane form, for whichever route the caller may use: the org's own, or the platform's naming
+ * an org (PlatformOrgEngine). `load` is expected to be stable; a new one reloads the form.
+ */
+export function OrgEngineForm({
+  load,
+  save: saveLane,
+  billingLink = true,
+}: {
+  load: () => Promise<OrgEngineState>;
+  save: (body: OrgEngineSave) => Promise<unknown>;
+  billingLink?: boolean;
+}) {
   const { t } = useTranslation();
-  const external = state.mode === "external";
-  const kind =
-    state.external_kinds.find((k) => k.key === state.engine_kind)?.label ?? state.engine_kind;
+  const [state, setState] = useState<OrgEngineState | null>(null);
+  const [mode, setMode] = useState<OrgEngineMode>("shared");
+  const [kind, setKind] = useState<string | null>(null);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("");
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    load()
+      .then((s) => {
+        setState(s);
+        setMode(s.mode);
+        setKind(s.engine_kind);
+        setHost(s.external_host ?? "");
+        setPort(s.external_port == null ? "" : String(s.external_port));
+      })
+      .catch((e) => setError(String(e)));
+  }, [load]);
+
+  // REQ-1418: which address the org has to supply comes from the CHOSEN KIND, reported by the
+  // server alongside the kind list — the form never decides it from the shape of what was typed.
+  const addressing = state?.external_kinds.find((k) => k.key === kind)?.addressing ?? null;
+  const externalIncomplete =
+    mode === "external" &&
+    (!kind ||
+      (addressing === "endpoint"
+        ? !host.trim() || !port.trim()
+        : !url.trim() && !state?.external_url_set));
+
+  const save = async () => {
+    if (!state) return;
+    setSaving(true);
+    setMsg("");
+    setError("");
+    try {
+      const external = mode === "external";
+      await saveLane({
+        mode,
+        engine_kind: external ? kind : null,
+        external_host: external && addressing === "endpoint" ? host.trim() : null,
+        external_port: external && addressing === "endpoint" ? Number(port) : null,
+        // Omitted when blank: an unchanged DSN is not re-sent, and the server keeps the stored one.
+        external_url: external && addressing === "url" && url.trim() ? url.trim() : null,
+      });
+      setMsg(t("orgEngineTab.saved"));
+      setState({
+        ...state,
+        mode,
+        engine_kind: external ? kind : null,
+        external_url_set: external && addressing === "url" ? true : false,
+      });
+      setUrl("");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (error && !state) return <Alert color="red">{error}</Alert>;
+  if (!state) return <Text>{t("orgEngineTab.loading")}</Text>;
+  // REQ-1512: a plan decides the lane on a hosted deployment, so the controls below are not offered
+  // there at all.
+  if (state.plan_derived) return <HostedEngineReport state={state} billingLink={billingLink} />;
+
   return (
-    <Stack gap="md" data-testid="org-engine-report">
+    <Stack gap="md">
       <Text c="dimmed" size="sm">
-        {t("orgEngineTab.reportIntro", { engine: state.engine_name })}
+        {t("orgEngineTab.intro", { engine: state.engine_name })}
       </Text>
-      <LaneFacts state={state}>
-        {external && kind && (
-          <Text size="sm" data-testid="org-engine-report-kind">
-            {t("orgEngineTab.reportKind", { kind })}
-          </Text>
-        )}
-        {external && state.external_host && (
-          <Text size="sm" data-testid="org-engine-report-endpoint">
-            {t("orgEngineTab.reportEndpoint", {
-              host: state.external_host,
-              port: state.external_port,
-            })}
-          </Text>
-        )}
-        {external && state.external_url_set && (
-          <Text size="sm" data-testid="org-engine-report-url">
-            {t("orgEngineTab.reportUrlStored")}
-          </Text>
-        )}
-      </LaneFacts>
-      <Alert color="blue" variant="light" data-testid="org-engine-report-change">
-        {t("orgEngineTab.reportChange")}
+
+      <Radio.Group
+        label={t("orgEngineTab.modeLabel")}
+        value={mode}
+        onChange={(v) => {
+          setMode(v as OrgEngineMode);
+          setMsg("");
+        }}
+        data-testid="org-engine-mode"
+      >
+        <Stack gap="sm" mt="xs">
+          <Radio
+            value="shared"
+            label={
+              t("orgEngineTab.modeShared") +
+              (state.mode === "shared" ? t("orgEngineTab.currentSuffix") : "")
+            }
+            description={t("orgEngineTab.modeSharedHelp")}
+            data-testid="org-engine-mode-shared"
+          />
+          <Radio
+            value="isolated"
+            disabled={!state.isolated_available || !state.isolated_entitled}
+            label={
+              t("orgEngineTab.modeIsolated") +
+              (state.mode === "isolated" ? t("orgEngineTab.currentSuffix") : "")
+            }
+            description={
+              !state.isolated_available
+                ? t("orgEngineTab.modeIsolatedUnavailable")
+                : state.isolated_entitled
+                  ? t("orgEngineTab.modeIsolatedHelp")
+                  : t("orgEngineTab.modeIsolatedNotEntitled")
+            }
+            data-testid="org-engine-mode-isolated"
+          />
+          <Radio
+            value="external"
+            label={
+              t("orgEngineTab.modeExternal") +
+              (state.mode === "external" ? t("orgEngineTab.currentSuffix") : "")
+            }
+            description={t("orgEngineTab.modeExternalHelp", { engine: state.engine_name })}
+            data-testid="org-engine-mode-external"
+          />
+        </Stack>
+      </Radio.Group>
+
+      {mode === "external" && (
+        <FormLayout>
+          <FormField help={t("orgEngineTab.kindHelp")} size="medium">
+            <Select
+              label={t("orgEngineTab.kindLabel")}
+              required
+              value={kind}
+              onChange={setKind}
+              data={state.external_kinds.map((k) => ({ value: k.key, label: k.label }))}
+              data-testid="org-engine-kind"
+            />
+          </FormField>
+          {kind && (
+            <FormField size="full">
+              <Text c="dimmed" size="xs">
+                {state.external_kinds.find((k) => k.key === kind)?.description}
+              </Text>
+            </FormField>
+          )}
+          {addressing === "endpoint" && (
+            <>
+              <FieldGroup>
+                <FormField size="medium">
+                  <TextInput
+                    label={t("orgEngineTab.hostLabel")}
+                    required
+                    placeholder={t("orgEngineTab.hostPlaceholder")}
+                    value={host}
+                    onChange={(e) => setHost(e.currentTarget.value)}
+                    data-testid="org-engine-host"
+                  />
+                </FormField>
+                <FormField size="short">
+                  <NumberInput
+                    label={t("orgEngineTab.portLabel")}
+                    required
+                    value={port === "" ? "" : Number(port)}
+                    onChange={(v) => setPort(String(v ?? ""))}
+                    data-testid="org-engine-port"
+                  />
+                </FormField>
+              </FieldGroup>
+            </>
+          )}
+          {addressing === "url" && (
+            <FormField
+              hint={
+                state.external_url_set ? t("orgEngineTab.urlStored") : t("orgEngineTab.urlHelp")
+              }
+              size="long"
+            >
+              <TextInput
+                label={t("orgEngineTab.urlLabel")}
+                required={!state.external_url_set}
+                placeholder={t("orgEngineTab.urlPlaceholder")}
+                value={url}
+                onChange={(e) => setUrl(e.currentTarget.value)}
+                data-testid="org-engine-url"
+              />
+            </FormField>
+          )}
+        </FormLayout>
+      )}
+
+      <Alert color="yellow" variant="light">
+        {t("orgEngineTab.applyNote")}
       </Alert>
+
+      <FormFooter
+        onSave={save}
+        saving={saving}
+        saveProps={{ "data-testid": "org-engine-save-button", disabled: externalIncomplete }}
+      >
+        {msg && (
+          <Text c="green" size="sm">
+            {msg}
+          </Text>
+        )}
+        {error && (
+          <Text c="red" size="sm">
+            {error}
+          </Text>
+        )}
+      </FormFooter>
     </Stack>
   );
 }

@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "No existe ningún rol llamado {{role}}."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} no se ofrece como producto de datos: su manifiesto no lo marca como público con un contrato aplicado.",
+        "not_registered": "Registre {{model}} como tabla antes de aceptarlo como producto de datos.",
+        "columns_missing": "La tabla no contiene las columnas del contrato: {{columns}}.",
+        "id_taken": "El producto de datos {{data_product}} ya existe.",
+        "already_a_product": "{{model}} ya es miembro del producto de datos {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "Esa no es una forma de elegir buzones: {{error}}",
       "scope_not_delegated": "La cuenta de servicio de Google de la organización no está autorizada para {{scopes}}. Un superadministrador añade su ID de cliente con ese permiso en la consola de administración de Google, en Seguridad › Control de acceso y de datos › Controles de API › Gestionar la delegación de todo el dominio; una autorización nueva puede tardar hasta 24 horas.",

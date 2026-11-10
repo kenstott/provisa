@@ -1,5 +1,5 @@
 site_name: Provisa
-site_description: Federation, metrics, ontology and governance from a single model. 77 connectors reaching over 200 data sources; query with GraphQL, Cypher, or SQL.
+site_description: Federation, metrics, ontology and governance from a single model. 78 connectors reaching over 200 data sources; query with GraphQL, Cypher, or SQL.
 site_url: https://provisa.dev/docs/
 site_dir: docs_site
 repo_url: https://github.com/kenstott/provisa
@@ -132,6 +132,7 @@ nav:
   - Data Sources:
       - Sources: sources.md
       - Code Resolvers: code-sources.md
+      - Spark Connector: spark-connector.md
       - Federation Engines: engines.md
       - Replicas: replicas.md
       - Remote Schemas: remote-schemas.md

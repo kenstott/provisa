@@ -1538,12 +1538,20 @@ class Query:  # REQ-021, REQ-042
                 source_id, source_type, schema_name, state.source_pools
             )
             # None: this source type has no routine catalog to read, so it offers no routines.
+            # REQ-2230: a Snowflake source also offers what can be run on the schema's Dynamic
+            # Tables and Tasks.
             return [
-                AvailableTableType(
-                    name=r.routine_name,
-                    comment=" — ".join(p for p in (r.kind, r.description) if p),
-                )
-                for r in routines or []
+                *(
+                    AvailableTableType(
+                        name=r.routine_name,
+                        comment=" — ".join(p for p in (r.kind, r.description) if p),
+                    )
+                    for r in routines or []
+                ),
+                *(
+                    AvailableTableType(name=op.name, comment=op.comment)
+                    for op in await offered_operations(state, source_id, schema_name) or []
+                ),
             ]
         if operation_schema != schema_name:
             return []
@@ -2928,6 +2936,10 @@ async def _introspect_available_columns(
     if source_id == DERIVED_SOURCE_ID:
         return await _derived_view_columns(schema_name, table_name)
     source_type = state.source_types.get(source_id, "")
+    if source_type == "dbt":  # REQ-2228: the warehouse's columns, with the manifest's descriptions
+        from provisa.api.admin._dbt_table_registration import model_columns
+
+        return await model_columns(source_id, schema_name, table_name)
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
     # REQ-1672 (and the same engine-independent readers for the types below): the app's own native

@@ -238,6 +238,30 @@ async def _plans(language: Language, door: _Door) -> list[Any] | Response:
     return await _mcp_plans(door)
 
 
+def _tables_read(plan: Any, state: Any) -> list[dict[str, str]]:  # REQ-2222
+    """The registered tables ``plan`` reads, once each, as the pipeline resolved them. A Class has
+    no rows of its own, so it reports the tables it is bound to. ``address`` is
+    ``source/schema/table``, as a configuration names the table."""
+    rows = {table["id"]: table for table in state.tables}
+    read: dict[str, dict[str, str]] = {}
+    for table_id in plan.table_ids:
+        row = rows.get(table_id)
+        assert row is not None, f"the pipeline resolved table {table_id} from this build's tables"
+        bound = (
+            [rows[b["table_id"]] for b in row["class_bindings"]]
+            if "class_bindings" in row
+            else [row]
+        )
+        for table in bound:
+            address = f"{table['source_id']}/{table['schema_name']}/{table['table_name']}"
+            read[address] = {
+                "address": address,
+                "domain": table["domain_id"],
+                "table": table["table_name"],
+            }
+    return [read[address] for address in sorted(read)]
+
+
 @router.post("/explain")
 async def explain_endpoint(  # REQ-2222
     raw_request: Request,
@@ -246,7 +270,8 @@ async def explain_endpoint(  # REQ-2222
 ):
     """The SQL a statement in any language becomes: the semantic statement, that statement
     governed, the optimized statement with the rules that fired, the route, the native statement
-    and the engine's own plan, one entry per statement the pipeline would run."""
+    and the engine's own plan, one entry per statement the pipeline would run, each with the
+    tables it reads."""
     from provisa.api.app import state
     from provisa.api.data.endpoint_dev import _check_sql_capabilities, _resolve_role_id
     from provisa.executor.explain import ExplainUnsupported, explained_plan
@@ -273,7 +298,13 @@ async def explain_endpoint(  # REQ-2222
         plans = await _plans(request.language, door)
         if isinstance(plans, Response):
             return plans
-        explained = [await explained_plan(p, state, analyze=request.analyze) for p in plans]
+        explained = [
+            {
+                **await explained_plan(p, state, analyze=request.analyze),
+                "tables": _tables_read(p, state),
+            }
+            for p in plans
+        ]
     except (ComplexityLimitExceeded, ReadRefused, PermissionError, HTTPException):
         raise  # each answered under its own status and code, as on every surface
     except ParameterRequired as exc:

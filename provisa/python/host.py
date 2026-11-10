@@ -40,6 +40,7 @@ import datetime
 import decimal
 import enum
 import importlib
+import importlib.util
 import inspect
 import itertools
 import json
@@ -63,6 +64,9 @@ _IR_KEY = b"provisa.ir"
 _KEY = "$key"
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
+#: REQ-2225: a connector's script, served in place of the entry module when this is set.
+SCRIPT_FILE_ENV = "PROVISA_SCRIPT_FILE"
+_SCRIPT_MODULE = "connector_script"
 #: How many connections the host makes to a socket path (provisa/codesource/worker.py).
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 
@@ -488,6 +492,15 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
     # a built image alike. The host runs isolated (-I), so it is put on the path here.
     sys.path.insert(1, str(Path(__file__).resolve().parent / "services"))
     importlib.import_module("provisa_services")
+    script = os.environ.get(SCRIPT_FILE_ENV)
+    if script:
+        # REQ-2225: the script given at setup is the code; the image's own code is what it imports.
+        spec = importlib.util.spec_from_file_location(_SCRIPT_MODULE, script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_SCRIPT_MODULE] = module
+        spec.loader.exec_module(module)
+        return module
     return importlib.import_module(entry)
 
 
@@ -518,6 +531,11 @@ async def serve(
             raise Refused(message["message"])
         if op == "ping":
             await host.send({"op": "pong", "id": message["id"]})
+        elif op == "values":
+            # REQ-2225: the connector's setup values, held in this process's memory and nowhere
+            # else, for code that reads them (provisa_services.setup_value).
+            sys.modules["provisa_services"]._set_values(message["values"])
+            await host.send({"op": "end", "id": message["id"]})
         elif op == "cancel":
             task = host.running.get(message["id"])
             if task is not None:

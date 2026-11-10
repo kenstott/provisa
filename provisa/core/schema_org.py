@@ -307,6 +307,9 @@ registered_tables = Table(
     # REQ-1981: the table's format where its source reports one (an Athena table: "iceberg" or
     # "hive"), recorded when it is registered; it decides the writes the table takes.
     Column("table_format", Text),
+    # REQ-2230: the statement that defines the table in its source (a Snowflake Dynamic Table's),
+    # recorded when it is registered; what it reads joins the lineage graph.
+    Column("source_definition", Text),
     # REQ-1954: a ServiceNow table's import set: the staging table of the transform map its
     # inserts go through. NULL = its inserts are written to the table directly.
     Column("import_set", Text),
@@ -560,6 +563,7 @@ entitlement_expiries = Table(
     Column("role_id", Text, nullable=False),
     Column("ends_at", DateTime(timezone=True), nullable=False),
     Column("ends", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("list_kind", Text),  # the list it was set with; re-setting that list withdraws it
     Column("removed", Boolean, nullable=False, server_default=false()),
     Column("reason", Text),
     Column("set_by", Text),
@@ -1131,6 +1135,15 @@ kafka_sources = Table(
         "binding", Text, nullable=False, server_default="own"
     ),  # REQ-1942: own | copied | unbound
     CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="kafka_sources_binding_check"),
+)
+
+# REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+dbt_manifests = Table(
+    "dbt_manifests",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("definitions", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 kafka_topics = Table(

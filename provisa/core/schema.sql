@@ -391,6 +391,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS file_glob TEXT;  -- REQ-788
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS source_file_column TEXT;  -- REQ-788
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS table_format TEXT;  -- REQ-1981
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS source_definition TEXT;  -- REQ-2230
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS import_set TEXT;  -- REQ-1954
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS delta JSONB;  -- REQ-874
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
@@ -556,6 +557,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_table THEN NULL;
 END $$;
 
+-- REQ-1865: one-to-one joined the cardinality check after relationships existed.
+ALTER TABLE relationships DROP CONSTRAINT IF EXISTS relationships_cardinality_check;
+ALTER TABLE relationships ADD CONSTRAINT relationships_cardinality_check
+    CHECK (cardinality IN ('many-to-one', 'one-to-many', 'one-to-one'));
+
 CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
     -- REQ-2080: what the role is for; required on every write. A standard role's is written by
@@ -631,6 +637,8 @@ CREATE TABLE IF NOT EXISTS entitlement_expiries (
     valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- The kind of list the rule was set with: re-setting or ending that list withdraws the rule.
+ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
@@ -736,6 +744,13 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1467: the CHECK the CREATE TABLE above declares, for a table that predates it.
+DO $$ BEGIN
+    ALTER TABLE tags ADD CONSTRAINT tags_param_policy_check
+        CHECK (param_policy IN ('none', 'required'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- REQ-1377: tag assignments. Exactly the typed columns implied by object_type are set;
 -- their FKs cascade cleanup when the tagged object is deleted. tag_id deliberately has NO
 -- FK: system tags have no row to reference (user-tag assignment cleanup happens in the
@@ -839,6 +854,26 @@ CREATE TABLE IF NOT EXISTS catalog_bindings (
 );
 -- Nullable here: NOT NULL with no default fails on a table that already has rows.
 ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS target TEXT;
+-- REQ-2118: a table that predates target was keyed on provider, NOT NULL with no default, which
+-- refuses every row written now. The column stays, with what it holds.
+DO $$ BEGIN
+    ALTER TABLE catalog_bindings ALTER COLUMN provider DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
+ALTER TABLE catalog_bindings DROP CONSTRAINT IF EXISTS catalog_bindings_provider_semantic_uri_key;
+-- A row with no target is never read (bindings are loaded by target), and NULLs do not collide in
+-- a UNIQUE, so the key goes on whatever the table holds.
+DO $$ BEGIN
+    ALTER TABLE catalog_bindings ADD CONSTRAINT catalog_bindings_target_semantic_uri_key
+        UNIQUE (target, semantic_uri);
+EXCEPTION WHEN duplicate_table THEN NULL;
+END $$;
+-- NOT NULL only once no row lacks a target: a provider is not a target id, so none is derived.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM catalog_bindings WHERE target IS NULL) THEN
+        ALTER TABLE catalog_bindings ALTER COLUMN target SET NOT NULL;
+    END IF;
+END $$;
 
 DO $$ BEGIN
     ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS tenant_id UUID;
@@ -1286,6 +1321,13 @@ ALTER TABLE api_sources ALTER COLUMN base_url SET DEFAULT '';
 -- MARKED rather than blanked and the query path refuses to dial whatever is local to the node.
 ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS binding TEXT NOT NULL DEFAULT 'own' CHECK (binding IN ('own', 'copied', 'unbound'));
 
+-- REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+CREATE TABLE IF NOT EXISTS dbt_manifests (
+    source_id   TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    definitions TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,
     source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,
@@ -1321,6 +1363,15 @@ DO $$ BEGIN
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS query_template TEXT;
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS response_normalizer TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- An endpoint belongs to its source's table: the key moved from table_name alone to the pair, so
+-- what the old key allowed the new one does too.
+ALTER TABLE api_endpoints DROP CONSTRAINT IF EXISTS api_endpoints_table_name_key;
+DO $$ BEGIN
+    ALTER TABLE api_endpoints ADD CONSTRAINT api_endpoints_source_table_key
+        UNIQUE (source_id, table_name);
+EXCEPTION WHEN duplicate_table THEN NULL;
 END $$;
 
 -- REQ-1668/REQ-1683/REQ-2197: the query-API source kinds joined the type check after api_sources existed;
@@ -1406,6 +1457,38 @@ ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS output_type TEXT;
 ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS last_watermark TEXT;
 ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS last_polled_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE live_query_state ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+-- A table from before (source, output_type) has query_id as its primary key, which refuses every
+-- row written now. The column stays, with what it holds.
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint c
+        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.conrelid = 'live_query_state'::regclass AND c.contype = 'p' AND a.attname = 'query_id'
+    ) THEN
+        ALTER TABLE live_query_state DROP CONSTRAINT live_query_state_pkey;
+        ALTER TABLE live_query_state ALTER COLUMN query_id DROP NOT NULL;
+    END IF;
+END $$;
+-- The primary key cannot go on while a row has no key, and nothing says what its key would be
+-- (those rows are never read: watermarks are read by source and output_type). Until they are gone a
+-- UNIQUE stands in, which NULLs do not collide in, so ON CONFLICT works either way; the first
+-- start after they are gone puts the primary key on.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM live_query_state WHERE source IS NULL OR output_type IS NULL) THEN
+        BEGIN
+            ALTER TABLE live_query_state ADD CONSTRAINT live_query_state_source_output_type_key
+                UNIQUE (source, output_type);
+        EXCEPTION WHEN duplicate_table THEN NULL;
+        END;
+    ELSIF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'live_query_state'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE live_query_state ADD CONSTRAINT live_query_state_pkey
+            PRIMARY KEY (source, output_type);
+        ALTER TABLE live_query_state DROP CONSTRAINT IF EXISTS live_query_state_source_output_type_key;
+    END IF;
+END $$;
 
 -- Tracked DB functions exposed as GraphQL mutations (REQ-205)
 CREATE TABLE IF NOT EXISTS tracked_functions (
@@ -1481,6 +1564,22 @@ CREATE TABLE IF NOT EXISTS scheduled_triggers (
 ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS on_table TEXT;
 ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS on_event TEXT;
 ALTER TABLE scheduled_triggers ADD COLUMN IF NOT EXISTS command TEXT;
+-- REQ-2054: a trigger on a table has no cron, and a command trigger joined the kinds. A row of a
+-- table that predates these has a cron and no on_table, which the new checks accept.
+ALTER TABLE scheduled_triggers ALTER COLUMN cron DROP NOT NULL;
+ALTER TABLE scheduled_triggers DROP CONSTRAINT IF EXISTS scheduled_triggers_kind_fields;
+ALTER TABLE scheduled_triggers ADD CONSTRAINT scheduled_triggers_kind_fields CHECK (
+    (kind = 'sql' AND sql IS NOT NULL AND role IS NOT NULL)
+    OR (kind = 'webhook' AND (url IS NOT NULL OR webhook_name IS NOT NULL))
+    OR (kind = 'command' AND command IS NOT NULL AND role IS NOT NULL)
+);
+DO $$ BEGIN
+    ALTER TABLE scheduled_triggers ADD CONSTRAINT scheduled_triggers_when CHECK (
+        (cron IS NOT NULL AND on_table IS NULL)
+        OR (cron IS NULL AND on_table IS NOT NULL AND on_event IS NOT NULL)
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- REQ-1939: an environment's synthetic datasets, their (table, profile run) pairs and their report.
 CREATE TABLE IF NOT EXISTS synthetic_datasets (
@@ -1597,6 +1696,12 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
 -- Nullable here: NOT NULL with no default fails on a table that already has rows.
 ALTER TABLE profiler_constraints ADD COLUMN IF NOT EXISTS physical_column TEXT;
 ALTER TABLE profiler_constraints ADD COLUMN IF NOT EXISTS physical_other_column TEXT;
+-- NOT NULL only once no row lacks it: column_name is the published name, not the registered one.
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM profiler_constraints WHERE physical_column IS NULL) THEN
+        ALTER TABLE profiler_constraints ALTER COLUMN physical_column SET NOT NULL;
+    END IF;
+END $$;
 
 -- REQ-2147: a steward's decision on a classification a profile suggested for a column.
 CREATE TABLE IF NOT EXISTS profiler_classifications (

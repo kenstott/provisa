@@ -1,0 +1,12 @@
+# The Spark connector's standard file (REQ-2221, REQ-2225), read by `provisa connector build`.
+description: Tables and commands from one annotated Spark script, run on your cluster.
+icon: icon.svg
+requires:
+  script:
+    multiline: true
+    script: true
+settings:
+  replicate:
+    # 0 is always replicated (REQ-826): a long job is built and refreshed without a query, and a
+    # steward with a fast script can turn it off.
+    default: 0

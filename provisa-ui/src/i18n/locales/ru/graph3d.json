@@ -151,6 +151,7 @@
     "hopsFrom": "Шаги от {{focus}}",
     "hopsFromMatches": "Шаги от совпадений",
     "relatedTables": "Связанные таблицы",
+    "restOfModel": "Показать остальную часть модели",
     "lateral": "Боковые рёбра",
     "grounding_grounded": "Привязан",
     "grounding_grounded_pending": "Привязан, через черновик"

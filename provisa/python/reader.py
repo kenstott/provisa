@@ -32,6 +32,7 @@ import datetime
 import decimal
 import enum
 import importlib
+import importlib.util
 import inspect
 import json
 import os
@@ -40,9 +41,13 @@ import sys
 import types
 import typing
 
-_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
+#: REQ-2225: a connector's script, read as the module :data:`_SCRIPT_MODULE`, when this is set.
+SCRIPT_FILE_ENV = "PROVISA_SCRIPT_FILE"
+_SCRIPT_MODULE = "connector_script"
+
+_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_-]*)$")
 #: A tag line with an argument, ``@name argument`` (REQ-2100: ``@loader N``).
-_TAG_ARGUMENT = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
+_TAG_ARGUMENT = re.compile(r"^@([A-Za-z_][A-Za-z0-9_-]*)\s+(\S+)$")
 _NONE = type(None)
 
 
@@ -248,10 +253,23 @@ def functions(module: types.ModuleType) -> list[tuple[str, typing.Callable]]:
     return out
 
 
+def _load_entry(entry: str) -> types.ModuleType:
+    """The module to read: the connector's script (REQ-2225) when one is named, else ``entry``."""
+    script = os.environ.get(SCRIPT_FILE_ENV)
+    if not script:
+        return importlib.import_module(entry)
+    spec = importlib.util.spec_from_file_location(_SCRIPT_MODULE, script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_SCRIPT_MODULE] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def read(entry: str) -> dict:
     reader = _Reader()
     try:
-        module = importlib.import_module(entry)
+        module = _load_entry(entry)
     except BaseException as exc:  # noqa: BLE001 -- any failure to import is the code's, reported
         return {
             "exports": [],

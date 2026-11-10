@@ -353,6 +353,57 @@ describe("CommandFormFields — a database source's routines on offer (REQ-887)"
   });
 });
 
+// REQ-2230: a Snowflake source offers operations among its routines; one picked is called as it
+// is, while a routine is still described by the form.
+describe("CommandFormFields — a Snowflake source's operations", () => {
+  function SnowflakeHarness({ functionName }: { functionName: string }) {
+    const [form, setForm] = useState<FormState>({
+      ...EMPTY_FORM,
+      actionType: "function",
+      implKind: "source_procedure",
+      sourceId: "sf",
+      schemaName: "ANALYTICS",
+      functionName,
+    });
+    return (
+      <CommandFormFields
+        form={form}
+        setForm={setForm}
+        sources={[{ id: "sf", type: "snowflake" } as never]}
+        tables={[]}
+        domainHints={[]}
+        availableFunctions={[{ name: functionName, comment: "" }]}
+        loadingFunctions={false}
+        roleOptions={[]}
+      />
+    );
+  }
+
+  it.each([
+    "refresh_dynamic_table.DAILY_SALES",
+    "suspend_dynamic_table.DAILY_SALES",
+    "resume_dynamic_table.DAILY_SALES",
+    "execute_task.NIGHTLY",
+    "suspend_task.NIGHTLY",
+    "resume_task.NIGHTLY",
+  ])("leaves the arguments and answer of %s to the operation", (functionName) => {
+    render(<SnowflakeHarness functionName={functionName} />);
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-return-type-select")).not.toBeInTheDocument();
+  });
+
+  it("still asks for the arguments and answer of a routine", () => {
+    render(<SnowflakeHarness functionName="MY_PROC" />);
+    expect(screen.getByText("Arguments")).toBeInTheDocument();
+    expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
+  });
+
+  it("leaves the schema for the steward to name", () => {
+    render(<SnowflakeHarness functionName="execute_task.NIGHTLY" />);
+    expect(screen.getByTestId("command-schema-input")).not.toHaveAttribute("readonly");
+  });
+});
+
 describe("CommandFormFields — lists laid out as the shared form lays out a list", () => {
   it("sets each output column apart as one entry, its row and its governance together", () => {
     render(
