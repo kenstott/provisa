@@ -83,7 +83,12 @@ def detect_sql_function_call(sql: str, state, role_id: str) -> tuple[str, list] 
     if tree.args.get("where") is not None:
         return None
     exprs = tree.expressions
-    if not (len(exprs) == 1 and isinstance(exprs[0], exp.Star)):
+    # Accept the table-valued form (SELECT * FROM fn(args)) OR the scalar form (SELECT fn(args)).
+    # The scalar form has the command call as the single expression (no FROM clause, no tables).
+    scalar_call = (
+        len(exprs) == 1 and isinstance(exprs[0], exp.Anonymous) and exprs[0].name in callables
+    )
+    if not (len(exprs) == 1 and isinstance(exprs[0], exp.Star)) and not scalar_call:
         return None
     node = cmd_nodes[0]
     # REQ-2168: written as its SQL command binding; answered as the command it names.

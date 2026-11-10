@@ -377,7 +377,7 @@ minted_call_tokens = Table(
     Column("org_id", Text),
     Column("tables", JSON, nullable=False),
     Column("session_vars", JSON, nullable=False),
-    Column("entitlements", JSON),
+    Column("entitlements", JSON(none_as_null=True)),
     Column("expires_at", DateTime(timezone=True), nullable=False),
 )
 
