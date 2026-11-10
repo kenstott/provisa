@@ -48219,7 +48219,9 @@
     check, naming the org. org_settings keeps the page read-only, with its report. [END SUPERSEDED BLOCK]
     (Amended 2026-11-09, THE ORG ADMIN CHANGES ITS LANE:) Maintainer 2026-11-09: on SaaS an org admin changes
     its own org''s engine lane, on org_settings, on the org page. The platform''s route stays, on the deployment
-    check, so an operator can set it for a named org.'
+    check, so an operator can set it for a named org. (Amended 2026-11-09, A PLAN DECIDES ITS LANE:) Maintainer
+    2026-11-09: an org on a plan changes its engine by changing its plan, and the page points there; the
+    org admin''s direct save applies to an org with no plan.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
