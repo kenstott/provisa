@@ -22,19 +22,6 @@
     "warehouseHost": "חשבון או מארח",
     "warehouseUser": "שם משתמש",
     "warehouseCredential": "אישור גישה",
-    "adapterUnknown": "למתאם {{adapter}} אין סוג מקור תואם. רשמו תחילה את מחסן הנתונים שלו ואז הוסיפו מקור זה.",
-    "candidatesTitle": "מוצרי נתונים מועמדים",
-    "candidatesIntro": "מודלים אלה ציבוריים ובעלי חוזה נאכף. קבלת מודל הופכת אותו למוצר נתונים עם החוזה, הבעלים והגרסה שמופיעים במניפסט שלו.",
-    "candidatesNone": "אין במניפסט זה מודל ציבורי בעל חוזה נאכף.",
-    "candidateVersion": "גרסה: {{version}}",
-    "candidateOwner": "בעלים: {{owner}}",
-    "candidateColumns": "עמודות מובטחות: {{columns}}",
-    "candidateRequired": "חובה",
-    "candidateTests": "בדיקות: {{tests}}",
-    "candidateProductId": "מזהה מוצר נתונים",
-    "candidateOwnerRole": "תפקיד בעלים",
-    "candidateAccept": "קבלה כמוצר נתונים",
-    "candidateRegisterFirst": "יש לרשום מודל זה כטבלה כדי לקבל אותו.",
-    "candidateBecame": "התקבל כמוצר הנתונים {{product}}."
+    "adapterUnknown": "למתאם {{adapter}} אין סוג מקור תואם. רשמו תחילה את מחסן הנתונים שלו ואז הוסיפו מקור זה."
   }
 }

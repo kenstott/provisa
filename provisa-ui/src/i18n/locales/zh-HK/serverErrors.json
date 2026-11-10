@@ -657,12 +657,10 @@
       "unknown_role": "沒有名為 {{role}} 的角色。"
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} 未作為數據產品提供：其清單未將其標記為合約已強制執行的公開模型。",
-        "not_registered": "請先將 {{model}} 註冊為資料表，然後再接受為數據產品。",
-        "columns_missing": "該資料表不包含合約中的欄位：{{columns}}。",
+      "products": {
+        "none_offered": "數據來源 {{source_id}} 沒有強制執行契約的公開模型。",
         "id_taken": "數據產品 {{data_product}} 已存在。",
-        "already_a_product": "{{model}} 已是數據產品 {{data_product}} 的成員。"
+        "columns_missing": "{{model}} 不包含契約的欄：{{columns}}。"
       }
     },
     "google_workspace": {

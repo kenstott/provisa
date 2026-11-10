@@ -22,19 +22,6 @@
     "warehouseHost": "Compte ou hôte",
     "warehouseUser": "Nom d'utilisateur",
     "warehouseCredential": "Identifiant de connexion",
-    "adapterUnknown": "L'adaptateur {{adapter}} n'a pas de type de source correspondant. Enregistrez d'abord son entrepôt, puis ajoutez cette source.",
-    "candidatesTitle": "Produits de données candidats",
-    "candidatesIntro": "Ces modèles sont publics avec un contrat appliqué. En accepter un en fait un produit de données doté du contrat, du propriétaire et de la version indiqués dans son manifeste.",
-    "candidatesNone": "Aucun modèle de ce manifeste n'est public avec un contrat appliqué.",
-    "candidateVersion": "Version : {{version}}",
-    "candidateOwner": "Propriétaire : {{owner}}",
-    "candidateColumns": "Colonnes promises : {{columns}}",
-    "candidateRequired": "obligatoire",
-    "candidateTests": "Tests : {{tests}}",
-    "candidateProductId": "ID du produit de données",
-    "candidateOwnerRole": "Rôle propriétaire",
-    "candidateAccept": "Accepter comme produit de données",
-    "candidateRegisterFirst": "Enregistrez ce modèle en tant que table pour l'accepter.",
-    "candidateBecame": "Accepté comme produit de données {{product}}."
+    "adapterUnknown": "L'adaptateur {{adapter}} n'a pas de type de source correspondant. Enregistrez d'abord son entrepôt, puis ajoutez cette source."
   }
 }

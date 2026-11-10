@@ -22,19 +22,6 @@
     "warehouseHost": "खाता या होस्ट",
     "warehouseUser": "उपयोगकर्ता नाम",
     "warehouseCredential": "क्रेडेंशियल",
-    "adapterUnknown": "{{adapter}} एडेप्टर का कोई मेल खाता स्रोत प्रकार नहीं है। पहले उसका वेयरहाउस पंजीकृत करें, फिर यह स्रोत जोड़ें।",
-    "candidatesTitle": "उम्मीदवार डेटा उत्पाद",
-    "candidatesIntro": "ये मॉडल सार्वजनिक हैं और इनका अनुबंध लागू है। किसी को स्वीकार करने पर वह अपने मैनिफ़ेस्ट में दिए अनुबंध, स्वामी और संस्करण के साथ डेटा उत्पाद बन जाता है।",
-    "candidatesNone": "इस मैनिफ़ेस्ट में कोई भी मॉडल लागू अनुबंध के साथ सार्वजनिक नहीं है।",
-    "candidateVersion": "संस्करण: {{version}}",
-    "candidateOwner": "स्वामी: {{owner}}",
-    "candidateColumns": "वचनबद्ध कॉलम: {{columns}}",
-    "candidateRequired": "आवश्यक",
-    "candidateTests": "परीक्षण: {{tests}}",
-    "candidateProductId": "डेटा उत्पाद आईडी",
-    "candidateOwnerRole": "स्वामी भूमिका",
-    "candidateAccept": "डेटा उत्पाद के रूप में स्वीकार करें",
-    "candidateRegisterFirst": "इसे स्वीकार करने के लिए इस मॉडल को तालिका के रूप में पंजीकृत करें।",
-    "candidateBecame": "डेटा उत्पाद {{product}} के रूप में स्वीकार किया गया।"
+    "adapterUnknown": "{{adapter}} एडेप्टर का कोई मेल खाता स्रोत प्रकार नहीं है। पहले उसका वेयरहाउस पंजीकृत करें, फिर यह स्रोत जोड़ें।"
   }
 }

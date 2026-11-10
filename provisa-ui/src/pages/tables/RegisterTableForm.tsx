@@ -73,6 +73,13 @@ import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { DbtPublicProducts } from "./DbtPublicProducts";
+import {
+  confirmable,
+  messageOf,
+  registerDbtProducts,
+  type DbtProductsPreview,
+} from "./dbtProducts";
 
 // REQ-1443: a checker's scans append to a relation in the org's control-plane schema, which the
 // server stamps on registration (as for a profiler's results); the form carries this placeholder.
@@ -120,6 +127,8 @@ interface RegisterTableFormProps {
   onContinue: (registration: Registration) => void;
   /** Closes the form without registering anything. */
   onCancel: () => void;
+  /** REQ-2228: a dbt source's public models were registered and these draft products created. */
+  onProductsRegistered: (productIds: string[]) => void;
   setError: (e: string | null) => void;
   /** What the page has to say of a registration that did not go through. */
   problem?: string | null;
@@ -140,6 +149,7 @@ export function RegisterTableForm({
   suggestTableAlias,
   onContinue,
   onCancel,
+  onProductsRegistered,
   setError,
   problem,
 }: RegisterTableFormProps) {
@@ -194,6 +204,20 @@ export function RegisterTableForm({
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
+  // REQ-2228: a dbt source registers its tables one by one, or all its public models with
+  // enforced contracts at once as draft data products.
+  const [dbtMode, setDbtMode] = useState<"tables" | "products">("tables");
+  const productsMode = sourceType === "dbt" && dbtMode === "products";
+  const [previewed, setPreviewed] = useState<{
+    sourceId: string;
+    preview: DbtProductsPreview;
+  } | null>(null);
+  const productsPreview = previewed?.sourceId === sourceId ? previewed.preview : null;
+  const onPreview = useCallback(
+    (of: string, preview: DbtProductsPreview) => setPreviewed({ sourceId: of, preview }),
+    [],
+  );
+  const [registeringProducts, setRegisteringProducts] = useState(false);
   const chosenSource = sources.find((s) => s.id === sourceId);
   // The server says whether a table of this kind is served from a replica under the engine
   // bound here; then a ttl signal with no Cache TTL on the source needs one on the table.
@@ -678,6 +702,18 @@ export function RegisterTableForm({
 
   const isCdcSource = CDC_TYPES.has(sourceType);
 
+  const registerProducts = async () => {
+    setRegisteringProducts(true);
+    setError(null);
+    try {
+      onProductsRegistered(await registerDbtProducts(sourceId, domainId));
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setRegisteringProducts(false);
+    }
+  };
+
   return (
     <FormLayout data-tour="tables-form" className="form-card">
       {/* REQ-1968: what names the table (its source, domain, schema, table and alias) sits apart at
@@ -777,7 +813,21 @@ export function RegisterTableForm({
             onChange={setTableName}
           />
         )}
-        {!isChecker && !isQueryApi && !isProfiler && (
+        {sourceType === "dbt" && (
+          <FormField size="medium">
+            <SegmentedControl
+              aria-label={t("dbtPublicProducts.modeLabel")}
+              value={dbtMode}
+              onChange={(v) => setDbtMode(v as "tables" | "products")}
+              data={[
+                { value: "tables", label: t("dbtPublicProducts.modeTables") },
+                { value: "products", label: t("dbtPublicProducts.modeProducts") },
+              ]}
+              data-testid="register-table-dbt-mode"
+            />
+          </FormField>
+        )}
+        {!isChecker && !isQueryApi && !isProfiler && !productsMode && (
           <>
             <SchemaTableSelects
               {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
@@ -809,19 +859,22 @@ export function RegisterTableForm({
             )}
           </>
         )}
-        <FormField size="medium">
-          <TextInput
-            data-testid="register-table-alias"
-            label={t("registerTableForm.aliasLabel")}
-            value={tableAlias}
-            onChange={(e) => setTableAlias(e.currentTarget.value)}
-            placeholder={t("registerTableForm.aliasPlaceholder")}
-          />
-        </FormField>
+        {!productsMode && (
+          <FormField size="medium">
+            <TextInput
+              data-testid="register-table-alias"
+              label={t("registerTableForm.aliasLabel")}
+              value={tableAlias}
+              onChange={(e) => setTableAlias(e.currentTarget.value)}
+              placeholder={t("registerTableForm.aliasPlaceholder")}
+            />
+          </FormField>
+        )}
         {/* The describe-a-table search comes after the five fields it helps to fill, not between them. */}
         {!isChecker &&
           !isQueryApi &&
           !isProfiler &&
+          !productsMode &&
           sourceId &&
           schemaName &&
           !allTablesRegistered && (
@@ -833,197 +886,204 @@ export function RegisterTableForm({
             />
           )}
       </FormIdentifiers>
-      {needsCacheTtl && (
-        <FormField
-          hint={cacheTtlHint(cacheTtl, t)}
-          help={t("registerTableForm.cacheTtlHint")}
-          size="short"
-        >
-          <NumberInput
-            min={NEVER_EXPIRES}
-            data-testid="register-table-cache-ttl"
-            label={t("registerTableForm.cacheTtlLabel")}
-            required
-            value={cacheTtl === "" ? "" : Number(cacheTtl)}
-            onChange={(v) => setCacheTtl(v === "" ? "" : String(v))}
-          />
-        </FormField>
+      {productsMode && (
+        <DbtPublicProducts key={sourceId} sourceId={sourceId} onPreview={onPreview} />
       )}
-      {sourceId && !short && (
-        <FormField size="medium">
-          <RegionSelect
-            value={region}
-            onChange={setRegion}
-            regions={regionChoices.regions}
-            scope="table"
-            testId="register-table-region-select"
-          />
-        </FormField>
-      )}
-      {isChecker && (
-        <CheckerFields
-          checker={sourceType}
-          sourceId={sourceId}
-          contractText={dqContract}
-          onContractChange={setDqContract}
-          onDatasetChange={onDqDatasetChange}
-          scanInterval={cacheTtl}
-          onScanIntervalChange={setCacheTtl}
-          roles={roles}
-          visibleTo={dqVisibleTo}
-          onVisibleToChange={setDqVisibleTo}
-        />
-      )}
-      {isQueryApi && (
-        <QueryTableFields
-          sourceType={sourceType}
-          pipeline={isPipeline}
-          query={cypher}
-          setQuery={setCypher}
-          args={pipelineArgs}
-          setArgs={(next) =>
-            setColumns([...next, ...columns.filter((c) => !isPipelineArgument(c))])
-          }
-          samples={samples}
-          setSamples={setSamples}
-          previewing={previewing}
-          canPreview={Boolean(sourceId && cypher.trim())}
-          onPreview={handleNeo4jPreview}
-          previewRows={previewRows}
-          columns={columns.filter((c) => !isPipelineArgument(c))}
-        />
-      )}
-      {isPipeline && sourceType === QDRANT && (
-        <QdrantVectorsNote sourceId={sourceId} template={cypher} />
-      )}
-      {isProfiler && tableName && (
-        <ProfilerRowRulesField rules={profilerRowRules} onChange={setProfilerRowRules} />
-      )}
-      {/* REQ-2132: on a checker source the description is the check's claim, why it exists. */}
-      {!short && isChecker && (
-        <FormField size="long" hint={t("registerTableForm.checkReasonHint")}>
-          <TextInput
-            label={t("registerTableForm.checkReasonLabel")}
-            value={tableDescription}
-            onChange={(e) => setTableDescription(e.currentTarget.value)}
-            placeholder={t("registerTableForm.checkReasonPlaceholder")}
-            data-testid="register-table-description"
-          />
-        </FormField>
-      )}
-      {!short && !isChecker && (
-        <FormField size="long">
-          <TextInput
-            label={t("registerTableForm.descriptionLabel")}
-            value={tableDescription}
-            onChange={(e) => setTableDescription(e.currentTarget.value)}
-            placeholder={t("registerTableForm.descriptionPlaceholder")}
-            data-testid="register-table-description"
-          />
-        </FormField>
-      )}
-      {pagingKind !== null && !short && (
-        <PagingField
-          kind={pagingKind}
-          paging={pagination}
-          onChange={setPagination}
-          ceilingRows={pagingCeilingRows}
-          rowsFieldEditable
-        />
-      )}
-      {sourceId && !isChecker && !isQueryApi && !short && (
-        <FormField
-          size="medium"
-          hint={
-            isCdcSource
-              ? t("registerTableForm.watermarkHintOptional")
-              : t("registerTableForm.watermarkHintRequired")
-          }
-        >
-          <Select
-            label={t("registerTableForm.watermarkLabel")}
-            placeholder={
-              isCdcSource
-                ? t("registerTableForm.watermarkNoneTriggers")
-                : t("registerTableForm.watermarkNoneSubscriptions")
-            }
-            data={columns
-              .filter((c) => c.selected && isWatermarkEligible(c.dataType))
-              .map((c) => ({ value: c.name, label: `${c.name} (${c.dataType})` }))}
-            value={watermarkColumn || null}
-            onChange={(v) => setWatermarkColumn(v ?? "")}
-            disabled={columns.length === 0}
-            clearable
-            data-testid="register-table-watermark-select"
-          />
-        </FormField>
-      )}
-      {isFilesSource && (
-        <FilesGlobFieldset
-          fileGlob={fileGlob}
-          setFileGlob={setFileGlob}
-          sourceFileColumn={sourceFileColumn}
-          setSourceFileColumn={setSourceFileColumn}
-        />
-      )}
-      {/* The ticks sit together beneath the fields. */}
-      <FormChecks>
-        {!isChecker &&
-          !isQueryApi &&
-          (!short || (tableName !== "" && !loadingColumns && columns.length === 0)) && (
-            <FormField size="short" help={t("registerTableForm.discoverHint")}>
-              <Checkbox
-                checked={discover}
-                onChange={(e) => setDiscover(e.currentTarget.checked)}
-                data-testid="discover-columns-checkbox"
-                label={t("registerTableForm.discoverLabel")}
+      {!productsMode && (
+        <>
+          {needsCacheTtl && (
+            <FormField
+              hint={cacheTtlHint(cacheTtl, t)}
+              help={t("registerTableForm.cacheTtlHint")}
+              size="short"
+            >
+              <NumberInput
+                min={NEVER_EXPIRES}
+                data-testid="register-table-cache-ttl"
+                label={t("registerTableForm.cacheTtlLabel")}
+                required
+                value={cacheTtl === "" ? "" : Number(cacheTtl)}
+                onChange={(v) => setCacheTtl(v === "" ? "" : String(v))}
               />
             </FormField>
           )}
-      </FormChecks>
-      {availableTables.find((tb) => tb.name === tableName)?.columnsDeclared && (
-        <DeclaredColumns
-          {...{ sourceId, tableName, columns, setColumns, irTypes }}
-          visibleTo={roles.map((r) => r.id)}
-        />
-      )}
-      {/* The heading shows once there is something under it: columns, or their loading. */}
-      {short && (
-        // Every discovered column is registered with its discovered type; a column discovery could
-        // not type is the one thing about the columns asked here (the server refuses it untyped).
-        <UntypedColumns
-          columns={columns}
-          untypedAtDiscovery={untypedAtDiscovery}
-          irTypes={irTypes}
-          loading={loadingColumns}
-          onType={(i, v) => updateCol(i, "dataType", v)}
-        />
-      )}
-      {short && sourceType === QDRANT && (
-        <QdrantVectorColumns
-          {...{ sourceId, columns }}
-          collection={tableName}
-          // A vector is offered unselected; naming its model registers it.
-          onModel={(i, m) =>
-            setColumns((cs) =>
-              cs.map((c, j) => (j === i ? { ...c, embeddingModel: m, selected: m !== "" } : c)),
-            )
-          }
-        />
-      )}
-      {!isChecker && !short && (columns.length > 0 || loadingColumns) && (
-        <RegisterColumnsField
-          {...{ columns, loadingColumns, updateCol, roles, irTypes, sourceType }}
-        />
-      )}
-      {columns.length > 0 && !short && (
-        <FormField size="full">
-          <UniquesPanel
-            uniques={uniqueConstraints}
-            columns={columns.map((c) => c.name)}
-            onChange={setUniqueConstraints}
-          />
-        </FormField>
+          {sourceId && !short && (
+            <FormField size="medium">
+              <RegionSelect
+                value={region}
+                onChange={setRegion}
+                regions={regionChoices.regions}
+                scope="table"
+                testId="register-table-region-select"
+              />
+            </FormField>
+          )}
+          {isChecker && (
+            <CheckerFields
+              checker={sourceType}
+              sourceId={sourceId}
+              contractText={dqContract}
+              onContractChange={setDqContract}
+              onDatasetChange={onDqDatasetChange}
+              scanInterval={cacheTtl}
+              onScanIntervalChange={setCacheTtl}
+              roles={roles}
+              visibleTo={dqVisibleTo}
+              onVisibleToChange={setDqVisibleTo}
+            />
+          )}
+          {isQueryApi && (
+            <QueryTableFields
+              sourceType={sourceType}
+              pipeline={isPipeline}
+              query={cypher}
+              setQuery={setCypher}
+              args={pipelineArgs}
+              setArgs={(next) =>
+                setColumns([...next, ...columns.filter((c) => !isPipelineArgument(c))])
+              }
+              samples={samples}
+              setSamples={setSamples}
+              previewing={previewing}
+              canPreview={Boolean(sourceId && cypher.trim())}
+              onPreview={handleNeo4jPreview}
+              previewRows={previewRows}
+              columns={columns.filter((c) => !isPipelineArgument(c))}
+            />
+          )}
+          {isPipeline && sourceType === QDRANT && (
+            <QdrantVectorsNote sourceId={sourceId} template={cypher} />
+          )}
+          {isProfiler && tableName && (
+            <ProfilerRowRulesField rules={profilerRowRules} onChange={setProfilerRowRules} />
+          )}
+          {/* REQ-2132: on a checker source the description is the check's claim, why it exists. */}
+          {!short && isChecker && (
+            <FormField size="long" hint={t("registerTableForm.checkReasonHint")}>
+              <TextInput
+                label={t("registerTableForm.checkReasonLabel")}
+                value={tableDescription}
+                onChange={(e) => setTableDescription(e.currentTarget.value)}
+                placeholder={t("registerTableForm.checkReasonPlaceholder")}
+                data-testid="register-table-description"
+              />
+            </FormField>
+          )}
+          {!short && !isChecker && (
+            <FormField size="long">
+              <TextInput
+                label={t("registerTableForm.descriptionLabel")}
+                value={tableDescription}
+                onChange={(e) => setTableDescription(e.currentTarget.value)}
+                placeholder={t("registerTableForm.descriptionPlaceholder")}
+                data-testid="register-table-description"
+              />
+            </FormField>
+          )}
+          {pagingKind !== null && !short && (
+            <PagingField
+              kind={pagingKind}
+              paging={pagination}
+              onChange={setPagination}
+              ceilingRows={pagingCeilingRows}
+              rowsFieldEditable
+            />
+          )}
+          {sourceId && !isChecker && !isQueryApi && !short && (
+            <FormField
+              size="medium"
+              hint={
+                isCdcSource
+                  ? t("registerTableForm.watermarkHintOptional")
+                  : t("registerTableForm.watermarkHintRequired")
+              }
+            >
+              <Select
+                label={t("registerTableForm.watermarkLabel")}
+                placeholder={
+                  isCdcSource
+                    ? t("registerTableForm.watermarkNoneTriggers")
+                    : t("registerTableForm.watermarkNoneSubscriptions")
+                }
+                data={columns
+                  .filter((c) => c.selected && isWatermarkEligible(c.dataType))
+                  .map((c) => ({ value: c.name, label: `${c.name} (${c.dataType})` }))}
+                value={watermarkColumn || null}
+                onChange={(v) => setWatermarkColumn(v ?? "")}
+                disabled={columns.length === 0}
+                clearable
+                data-testid="register-table-watermark-select"
+              />
+            </FormField>
+          )}
+          {isFilesSource && (
+            <FilesGlobFieldset
+              fileGlob={fileGlob}
+              setFileGlob={setFileGlob}
+              sourceFileColumn={sourceFileColumn}
+              setSourceFileColumn={setSourceFileColumn}
+            />
+          )}
+          {/* The ticks sit together beneath the fields. */}
+          <FormChecks>
+            {!isChecker &&
+              !isQueryApi &&
+              (!short || (tableName !== "" && !loadingColumns && columns.length === 0)) && (
+                <FormField size="short" help={t("registerTableForm.discoverHint")}>
+                  <Checkbox
+                    checked={discover}
+                    onChange={(e) => setDiscover(e.currentTarget.checked)}
+                    data-testid="discover-columns-checkbox"
+                    label={t("registerTableForm.discoverLabel")}
+                  />
+                </FormField>
+              )}
+          </FormChecks>
+          {availableTables.find((tb) => tb.name === tableName)?.columnsDeclared && (
+            <DeclaredColumns
+              {...{ sourceId, tableName, columns, setColumns, irTypes }}
+              visibleTo={roles.map((r) => r.id)}
+            />
+          )}
+          {/* The heading shows once there is something under it: columns, or their loading. */}
+          {short && (
+            // Every discovered column is registered with its discovered type; a column discovery could
+            // not type is the one thing about the columns asked here (the server refuses it untyped).
+            <UntypedColumns
+              columns={columns}
+              untypedAtDiscovery={untypedAtDiscovery}
+              irTypes={irTypes}
+              loading={loadingColumns}
+              onType={(i, v) => updateCol(i, "dataType", v)}
+            />
+          )}
+          {short && sourceType === QDRANT && (
+            <QdrantVectorColumns
+              {...{ sourceId, columns }}
+              collection={tableName}
+              // A vector is offered unselected; naming its model registers it.
+              onModel={(i, m) =>
+                setColumns((cs) =>
+                  cs.map((c, j) => (j === i ? { ...c, embeddingModel: m, selected: m !== "" } : c)),
+                )
+              }
+            />
+          )}
+          {!isChecker && !short && (columns.length > 0 || loadingColumns) && (
+            <RegisterColumnsField
+              {...{ columns, loadingColumns, updateCol, roles, irTypes, sourceType }}
+            />
+          )}
+          {columns.length > 0 && !short && (
+            <FormField size="full">
+              <UniquesPanel
+                uniques={uniqueConstraints}
+                columns={columns.map((c) => c.name)}
+                onChange={setUniqueConstraints}
+              />
+            </FormField>
+          )}
+        </>
       )}
       {/* Continue takes the chosen table to its settings, Cancel closes the form. */}
       <FormFooter
@@ -1033,9 +1093,20 @@ export function RegisterTableForm({
         cancelProps={{ "data-testid": "register-table-cancel" }}
         // Choosing what is registered is not a save: every setting of it follows (REQ-2109).
         action={
-          <Button onClick={handleSubmit} data-testid="register-table-submit">
-            {t("registerTableForm.continue")}
-          </Button>
+          productsMode ? (
+            <Button
+              onClick={() => void registerProducts()}
+              loading={registeringProducts}
+              disabled={!confirmable(productsPreview) || !domainId}
+              data-testid="register-table-dbt-products-submit"
+            >
+              {t("dbtPublicProducts.confirm", { count: productsPreview?.products.length ?? 0 })}
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} data-testid="register-table-submit">
+              {t("registerTableForm.continue")}
+            </Button>
+          )
         }
       />
     </FormLayout>

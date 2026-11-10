@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "Qué registrar",
+    "modeTables": "Elegir tablas",
+    "modeProducts": "Modelos públicos como productos de datos",
+    "intro_one": "Cada modelo público con contrato obligatorio se registra como tabla, y se crea {{count}} producto de datos como borrador para que un steward lo revise.",
+    "intro_other": "Cada modelo público con contrato obligatorio se registra como tabla, y se crean {{count}} productos de datos como borradores para que un steward los revise.",
+    "none": "Ningún modelo de este manifiesto es público con contrato obligatorio.",
+    "groupProduct": "Producto de datos {{id}} (grupo de dbt)",
+    "projectProduct": "Producto de datos {{id}} (todo el proyecto)",
+    "exists": "Ya existe un producto de datos llamado {{id}}. Cámbiele el nombre o elimínelo para registrar estos modelos.",
+    "owner": "Propietario: {{owner}}",
+    "ownerRole": "rol propietario {{role}}",
+    "tests": "Pruebas: {{tests}}",
+    "version": "Versión {{version}}",
+    "columns": "Columnas prometidas: {{columns}}",
+    "required": "obligatoria",
+    "alreadyRegistered": "ya registrado",
+    "ungrouped": "No pertenecen a ningún grupo, así que no se registran aquí: {{models}}. Elíjalos como tablas.",
+    "confirm_one": "Registrar y crear {{count}} borrador de producto",
+    "confirm_other": "Registrar y crear {{count}} borradores de producto"
+  }
+}

@@ -911,6 +911,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}
+        // REQ-2228: the drafts a bulk dbt registration created are reviewed on Data Products.
+        onProductsRegistered={() => {
+          setShowForm(false);
+          navigate("/data-products");
+        }}
         setError={setError}
         problem={error}
       />
