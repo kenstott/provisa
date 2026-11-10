@@ -91,6 +91,8 @@
       "cancelEdit": "Annulla la modifica",
       "remove": "Rimuovi {{name}}"
     },
-    "localUsersHeading": "Utenti locali"
+    "localUsersHeading": "Utenti locali",
+    "attributesTab": "Attributi",
+    "accessTab": "Accesso"
   }
 }

@@ -27,6 +27,7 @@ const NOT_PANELS: Readonly<Record<string, string>> = {
   "components/graph/GraphSidebar.tsx": "an explorer's tree of labels and keys",
   "components/sql-modeling/SchemaSidebar.tsx": "an explorer's schema tree",
   "pages/sql/SchemaBrowser.tsx": "an explorer's schema tree",
+  "components/entitlements/EntitlementPicker.tsx": "a picker's tree of domains, tables and columns",
   "components/list/ListTable.tsx": "a list's group headings",
   "components/relationships/RelationshipRow.tsx": "a list row's selection",
   "pages/DataProductsPage.tsx": "a list row's expansion",

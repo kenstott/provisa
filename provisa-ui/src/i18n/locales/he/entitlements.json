@@ -1,0 +1,103 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "דומיינים",
+      "tables": "טבלאות",
+      "columns": "עמודות",
+      "metrics": "מדדים",
+      "relationships": "קשרים",
+      "commands": "פקודות",
+      "data_products": "מוצרי נתונים",
+      "sources": "מקורות",
+      "environments": "סביבות",
+      "roles": "תפקידים",
+      "regions": "אזורים"
+    },
+    "origin": {
+      "idp": "ספק זהויות",
+      "provisa": "הוגדר ב-Provisa",
+      "role": "ברירת מחדל של התפקיד"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} ב-{{kind}} אינו מציין דבר במודל.",
+      "unused_kind": "תפקיד זה אינו משתמש ב-{{kind}}, ולכן הרשימה אינה בוחרת דבר."
+    },
+    "picker": {
+      "everything": "הכול, כולל מה שיתווסף בהמשך",
+      "typedLabel": "פריטים",
+      "typedPlaceholder": "הקלידו פריט והקישו Enter",
+      "filterLabel": "חיפוש",
+      "filterPlaceholder": "חיפוש לפי שם",
+      "noObjects": "במודל עדיין אין דבר מסוג זה.",
+      "otherValues": "מופיעים גם",
+      "removeValue": "הסרת {{value}}",
+      "expand": "הרחבת {{name}}",
+      "collapse": "כיווץ {{name}}",
+      "includedByParent": "כלול על ידי הפריט שמעליו"
+    },
+    "people": {
+      "placeholder": "חיפוש לפי שם או דוא\"ל",
+      "typedEmail": "{{email}} (ממתין לכניסה הראשונה)",
+      "typeMore": "הקלידו לפחות שני תווים",
+      "noneFound": "אין התאמות. הקלידו כתובת דוא\"ל מלאה כדי להעניק לה גישה."
+    },
+    "form": {
+      "personLabel": "אדם",
+      "personHint": "מי שעדיין לא נכנס יכול לקבל גישה לפי דוא\"ל.",
+      "roleLabel": "תפקיד",
+      "rolePlaceholder": "בחירת תפקיד",
+      "kindLabel": "סוג",
+      "kindPlaceholder": "בחירת סוג",
+      "entriesLabel": "פריטים",
+      "entriesHelp": "מה שאדם זה רשאי להגיע אליו מתוך מה שהתפקיד מתיר. סימון פריט כולל את כל מה שמתחתיו. רשימה ריקה אינה מגיעה לשום דבר מסוג זה.",
+      "endsOnLabel": "מסתיים בתאריך",
+      "endsOnHint": "השאירו ריק כדי לשמור את הרשימה עד שתסתיים.",
+      "reasonLabel": "סיבה",
+      "reasonHint": "נשמר עם השינוי, עבור מי שבודק הרשאות גישה."
+    },
+    "person": {
+      "help": "מה שאדם זה רשאי להגיע אליו דרך כל הקצאת תפקיד, רשימה לפי סוג. רשימה מספק הזהויות גוברת ומשתנה שם.",
+      "roleLabel": "הקצאת תפקיד",
+      "rolePlaceholder": "בחירת תפקיד",
+      "roleHint": "תפקידים עם רשימות שהוגדרו ב-Provisa מופיעים ראשונים.",
+      "roleWithLists": "{{role}} (הוגדרו רשימות)",
+      "readOnly": "כל הרשימות של הקצאה זו מגיעות מספק הזהויות: הן משתנות שם וכאן הן לקריאה בלבד.",
+      "grantEnded": "תאריך סיום חלף עבור ההקצאה כולה: אין גישה לשום דבר שלהלן.",
+      "colKind": "סוג",
+      "colEntries": "פריטים",
+      "colOrigin": "מקור",
+      "colEnds": "מסתיים",
+      "noLists": "אין רשימות: הקצאה זו מגיעה לכל מה שהתפקיד מתיר.",
+      "nothing": "כלום",
+      "everything": "הכול",
+      "more": "עוד {{count}}+",
+      "endedHint": "הסתיים בתאריך סיום שחלף",
+      "superseded": "הוחלף: {{entries}}",
+      "supersededHint": "הרשימה שזו החליפה",
+      "setBy": "הוגדר על ידי {{who}}: {{reason}}",
+      "editList": "עריכת רשימת {{kind}}",
+      "endList": "סיום רשימת {{kind}}",
+      "addList": "הוספת רשימה",
+      "endPrompt": "סיום רשימת {{kind}}. ברירת המחדל של התפקיד חלה שוב.",
+      "endButton": "סיום רשימה"
+    },
+    "grants": {
+      "heading": "הענקות גישה",
+      "help": "העניקו לאדם גישה בתוך תפקיד, לפי סוג. מי שעדיין לא נכנס מקבל אותה לפי דוא\"ל, וההענקה חלה בכניסה הראשונה.",
+      "grantButton": "הענקת גישה",
+      "saved": "הגישה לתפקיד {{role}} נשמרה.",
+      "savedPending": "נשמר. ההענקה ממתינה לכניסה של {{email}}.",
+      "pendingHeading": "ממתין לכניסה",
+      "colEmail": "דוא\"ל",
+      "colRole": "תפקיד",
+      "colKind": "סוג",
+      "colEntries": "פריטים",
+      "colEnds": "מסתיים",
+      "colReason": "סיבה",
+      "colActions": "פעולות",
+      "noPending": "אין הענקות ממתינות.",
+      "endPrompt": "סיום הענקת {{kind}} עבור {{email}} בתפקיד {{role}}.",
+      "endButton": "סיום"
+    }
+  }
+}

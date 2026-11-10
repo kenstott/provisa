@@ -22,6 +22,7 @@ import {
   Stack,
   Switch,
   Table,
+  Tabs,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -55,6 +56,9 @@ import { SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
 import { SuspendedAccess } from "../components/admin/SuspendedAccess";
 import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
+import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
+import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
+import { useCapability } from "../hooks/useCapability";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -65,6 +69,8 @@ export function TeamPage() {
   const { t } = useTranslation();
   const { activeOrgId, userId, multitenancy } = useAuth();
   const { roles } = useRoles();
+  // REQ-2219: granting and ending a person's entitlement lists is assign_entitlements.
+  const canAssign = useCapability("assign_entitlements");
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   // The member whose attributes the panel beside the list shows.
@@ -309,7 +315,9 @@ export function TeamPage() {
   return (
     <Stack gap="lg" p="md" data-testid="team-page">
       <div>
-        <PageTitle icon={Users} mb={4}>{t("teamPage.title")}</PageTitle>
+        <PageTitle icon={Users} mb={4}>
+          {t("teamPage.title")}
+        </PageTitle>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}
         </Text>
@@ -427,11 +435,45 @@ export function TeamPage() {
               </ListTable>
             }
           >
-            {selectedMemberId === null ? null : (
+            {selectedMemberId === null ? null : canAssign ? (
+              <Tabs defaultValue="attributes" keepMounted={false} data-testid="team-member-tabs">
+                <Tabs.List>
+                  <Tabs.Tab value="attributes" data-testid="team-member-tab-attributes">
+                    {t("teamPage.attributesTab")}
+                  </Tabs.Tab>
+                  <Tabs.Tab value="access" data-testid="team-member-tab-access">
+                    {t("teamPage.accessTab")}
+                  </Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel value="attributes" pt="sm">
+                  <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
+                </Tabs.Panel>
+                <Tabs.Panel value="access" pt="sm">
+                  <PersonEntitlements
+                    key={selectedMemberId}
+                    principal={selectedMemberId}
+                    roleIds={roles.map((r) => r.id)}
+                  />
+                </Tabs.Panel>
+              </Tabs>
+            ) : (
               <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
             )}
           </SplitPane>
         </CollapsibleItem>
+
+        {/* REQ-2219: grant access to anyone the people search finds, or to a typed email that
+            waits for its person's first sign-in, and the grants still waiting. */}
+        {canAssign && (
+          <CollapsibleItem
+            value="entitlements"
+            mountWhenOpen
+            controlTestId="team-section-entitlements"
+            title={t("entitlements.grants.heading")}
+          >
+            <EntitlementGrants roleIds={roles.map((r) => r.id)} />
+          </CollapsibleItem>
+        )}
 
         <CollapsibleItem
           value="invites"

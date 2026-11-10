@@ -657,12 +657,10 @@
       "unknown_role": "沒有名為 {{role}} 的角色。"
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} 未作為數據產品提供：其清單未將其標記為合約已強制執行的公開模型。",
-        "not_registered": "請先將 {{model}} 註冊為資料表，然後再接受為數據產品。",
-        "columns_missing": "該資料表不包含合約中的欄位：{{columns}}。",
+      "products": {
+        "none_offered": "數據來源 {{source_id}} 沒有強制執行契約的公開模型。",
         "id_taken": "數據產品 {{data_product}} 已存在。",
-        "already_a_product": "{{model}} 已是數據產品 {{data_product}} 的成員。"
+        "columns_missing": "{{model}} 不包含契約的欄：{{columns}}。"
       }
     },
     "google_workspace": {
@@ -787,6 +785,22 @@
       "layout_not_found": "沒有名為 {{name}} 的版面",
       "layout_name_required": "版面需要名稱",
       "layout_place_unreadable": "此版面放置了您無權讀取的 {{kind}}"
+    },
+    "entitlements": {
+      "database_not_connected": "資料庫未連線。",
+      "role_out_of_reach": "角色 {{role_id}} 不在您管理的角色範圍內。",
+      "role_not_found": "找不到角色 {{role_id}}。",
+      "principal_or_email": "請指定人員或電郵，不能同時指定。",
+      "principal_required": "必須指定人員。",
+      "email_required": "必須填寫電郵。",
+      "email_ambiguous": "{{email}} 是多於一位人員的電郵。請改為選擇人員。",
+      "reason_required": "必須填寫原因。",
+      "unknown_kind": "{{kind}} 不是權益清單的類型。",
+      "idp_supersedes": "身分識別提供者為角色 {{role_id}} 傳送了此人員的 {{kind}} 清單。該清單優先，因此須在該處更改，而非此處。",
+      "blank_identifier": "項目不可留空。",
+      "expiry_in_past": "結束日期必須是將來的日期。",
+      "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
+      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
     }
   }
 }

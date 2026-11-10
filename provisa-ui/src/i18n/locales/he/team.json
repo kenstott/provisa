@@ -91,6 +91,8 @@
       "cancelEdit": "ביטול העריכה",
       "remove": "הסרת {{name}}"
     },
-    "localUsersHeading": "משתמשים מקומיים"
+    "localUsersHeading": "משתמשים מקומיים",
+    "attributesTab": "מאפיינים",
+    "accessTab": "גישה"
   }
 }

@@ -91,6 +91,8 @@
       "cancelEdit": "取消编辑",
       "remove": "删除 {{name}}"
     },
-    "localUsersHeading": "本地用户"
+    "localUsersHeading": "本地用户",
+    "attributesTab": "属性",
+    "accessTab": "访问"
   }
 }

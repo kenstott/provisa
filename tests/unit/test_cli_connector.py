@@ -101,7 +101,9 @@ def built(monkeypatch) -> list[dict]:
     """The image build stubbed: what each call was given, and a digest and requires as its answer."""
     calls: list[dict] = []
 
-    def fake(entry, root, language, workdir, registry, package_registries, standard=None):
+    def fake(
+        entry, root, language, workdir, registry, package_registries, standard=None, layout=None
+    ):
         calls.append(
             {
                 "entry": entry,
@@ -109,6 +111,7 @@ def built(monkeypatch) -> list[dict]:
                 "language": language,
                 "registry": registry,
                 "package_registries": package_registries,
+                "layout": layout,
             }
         )
         requires = [
@@ -355,6 +358,149 @@ class TestBuild:
         monkeypatch.setenv("PATH", "")
         assert cli.main(_build_args(repo)) == 1
         assert "git is not on the PATH" in capsys.readouterr().err
+
+
+class TestBuildToALayout:
+    """REQ-2225: a build that pushes nothing, its image written for a push later."""
+
+    def test_the_layout_is_handed_to_the_build_and_nothing_signs_in(
+        self, repo, built, tmp_path, capsys
+    ):
+        layout = tmp_path / "image"
+        assert cli.main(_build_args(repo, "--oci-layout", str(layout))) == 0
+        assert built[0]["layout"] == layout.absolute()
+        assert built[0]["registry"] == {}
+        block = yaml.safe_load(capsys.readouterr().out)
+        assert block["connectors"][0]["digest"] == _NEW_DIGEST
+
+    def test_without_the_flag_the_build_pushes(self, repo, built):
+        assert cli.main(_build_args(repo)) == 0
+        assert built[0]["layout"] is None
+
+    def test_a_registry_sign_in_with_a_layout_is_usage(self, repo, built, tmp_path, monkeypatch):
+        monkeypatch.setenv("MY_CI_VAR", "s3cret")
+        args = _build_args(
+            repo,
+            "--oci-layout",
+            str(tmp_path / "image"),
+            "--registry-user",
+            "bot",
+            "--registry-password-env",
+            "MY_CI_VAR",
+        )
+        assert cli.main(args) == 2
+        assert built == []
+
+    def test_a_layout_already_there_is_usage(self, repo, built, tmp_path, capsys):
+        (tmp_path / "image").mkdir()
+        assert cli.main(_build_args(repo, "--oci-layout", str(tmp_path / "image"))) == 2
+        assert "already there" in capsys.readouterr().err
+        assert built == []
+
+    def test_the_image_is_written_not_pushed(self, tmp_path, monkeypatch):
+        from provisa.codesource import image_build, languages, oci
+
+        manifest = Manifest((), {}, ())
+        written: dict = {}
+
+        def prepare(source_id, config, code, lock, ctx):
+            return SimpleNamespace(content_hash="c" * 64, manifest=manifest)
+
+        def write_layout(image, tag, layout):
+            written["layout"] = (image, tag, layout)
+            return _NEW_DIGEST
+
+        def push(*_a):
+            raise AssertionError("a layout build pushes nothing")
+
+        language = SimpleNamespace(prepare=lambda: prepare, runtimes=("python",))
+        monkeypatch.setitem(languages.LANGUAGES, "python", language)
+        monkeypatch.setattr(
+            image_build, "assemble", lambda *a: SimpleNamespace(image="the-image", tag="the-tag")
+        )
+        monkeypatch.setattr(oci, "write_layout", write_layout)
+        monkeypatch.setattr(oci.Registry, "push", push)
+        entry = ConnectorConfig(**_entry(Path("/r"), "a" * 40))
+        digest, _requires, _hash = cli_connector._build_and_push(
+            entry, tmp_path, "python", tmp_path / "work", {}, [], None, tmp_path / "image"
+        )
+        assert digest == _NEW_DIGEST
+        assert written["layout"] == ("the-image", "the-tag", tmp_path / "image")
+
+
+class TestPush:
+    """REQ-2225: the image a layout build wrote, pushed to where its block names it."""
+
+    @pytest.fixture
+    def layout(self, tmp_path) -> tuple[Path, str]:
+        from provisa.codesource import oci
+
+        layer = oci.write_layer([oci.Entry("/opt/p/a", data=b"a")], tmp_path / "layers")
+        image = oci.Image(architecture="amd64", layers=[layer], entrypoint=["/opt/p/a"])
+        where = tmp_path / "image"
+        return where, oci.write_layout(image, "the-tag", where)
+
+    @pytest.fixture
+    def pushed(self, monkeypatch) -> list[tuple]:
+        from provisa.codesource import oci
+
+        calls: list[tuple] = []
+
+        def push_layout(registry, repository, layout):
+            calls.append((registry.host, registry.username, registry.password, repository, layout))
+            return "the-tag", _digest_of(layout)
+
+        monkeypatch.setattr(oci.Registry, "push_layout", push_layout)
+        return calls
+
+    def _args(self, layout: Path, config: Path, *extra: str) -> list[str]:
+        return ["connector", "push", str(layout), "--config", str(config), "--name", "crm", *extra]
+
+    def test_pushes_the_image_the_block_names_to_its_repository(
+        self, tmp_path, repo, layout, pushed, capsys, monkeypatch
+    ):
+        where, digest = layout
+        config = _config(tmp_path, _entry(repo, "a" * 40, digest=digest))
+        monkeypatch.setenv("MY_CI_VAR", "s3cret")
+        args = self._args(
+            where, config, "--registry-user", "bot", "--registry-password-env", "MY_CI_VAR"
+        )
+        assert cli.main(args) == 0
+        assert pushed == [("registry.example", "bot", "s3cret", "data/crm", where)]
+        captured = capsys.readouterr()
+        assert captured.out.strip() == f"{_IMAGE}@{digest}"
+        assert "s3cret" not in captured.out + captured.err
+
+    def test_an_image_other_than_the_one_the_block_names_is_refused_unpushed(
+        self, tmp_path, repo, layout, pushed, capsys
+    ):
+        where, digest = layout
+        config = _config(tmp_path, _entry(repo, "a" * 40, digest=_DIGEST))
+        assert cli.main(self._args(where, config)) == 1
+        err = capsys.readouterr().err
+        assert digest in err and _DIGEST in err
+        assert pushed == []
+
+    def test_a_connector_the_block_lacks_is_usage(self, tmp_path, repo, layout, pushed, capsys):
+        where, _digest = layout
+        config = _config(tmp_path, _entry(repo, "a" * 40, name="other"))
+        assert cli.main(self._args(where, config)) == 2
+        assert "no connector crm" in capsys.readouterr().err
+        assert pushed == []
+
+    def test_a_directory_that_is_no_layout_is_refused(self, tmp_path, repo, pushed, capsys):
+        config = _config(tmp_path, _entry(repo, "a" * 40))
+        assert cli.main(self._args(tmp_path / "nowhere", config)) == 1
+        assert "not an OCI image layout" in capsys.readouterr().err
+        assert pushed == []
+
+
+def _digest_of(layout: Path) -> str:
+    import hashlib
+
+    from provisa.codesource import oci
+
+    return "sha256:" + hashlib.sha256(oci.read_layout(layout)[1]).hexdigest()
 
 
 class TestBuildAndPush:

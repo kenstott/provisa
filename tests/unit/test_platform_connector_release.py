@@ -203,16 +203,57 @@ def test_the_block_is_written_before_the_legs_that_package_it() -> None:
         assert jobs[leg]["needs"] == "prebuilt"
 
 
-def test_only_a_publishing_run_pushes_the_image() -> None:
+def test_the_leg_builds_the_image_into_the_run_and_pushes_nothing() -> None:
     orchestrator = yaml.safe_load((_WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
     leg = orchestrator["platform-connectors"]
     assert leg["uses"] == "./.github/workflows/release-platform-connectors.yml"
     assert "github.ref_name == inputs.version" in leg["with"]["publish"]
-    steps = _steps("release-platform-connectors.yml", "platform-connectors")
+    assert leg["permissions"] == {"contents": "read"}
+    job = yaml.safe_load((_WORKFLOWS / "release-platform-connectors.yml").read_text())["jobs"][
+        "platform-connectors"
+    ]
+    assert job["permissions"] == {"contents": "read"}
+    steps = job["steps"]
     build = next(s for s in steps if "connector build" in s.get("run", ""))
     assert build["if"] == "inputs.publish"
-    upload = next(s for s in steps if "upload-artifact" in s.get("uses", ""))
-    assert upload["with"]["name"] == "platform-connectors"
+    # The image to a layout, the block naming its digest; no registry is signed in to.
+    assert "--oci-layout spark-connector-image" in build["run"]
+    assert "--registry" not in build["run"] and "REGISTRY_PASSWORD" not in build.get("env", {})
+    kept = next(s for s in steps if s.get("with", {}).get("name") == "spark-connector-image")
+    assert kept["uses"] == "actions/upload-artifact@v4" and kept["if"] == "inputs.publish"
+    assert kept["with"]["path"] == "spark-connector-image/"
+    assert kept["with"]["if-no-files-found"] == "error"
+    upload = next(s for s in steps if s.get("with", {}).get("name") == "platform-connectors")
+    assert upload["uses"] == "actions/upload-artifact@v4"
     assert upload["with"]["path"] == "provisa/core/platform_connectors.yaml"
     # Uploaded on a dry run too: the legs' packages then carry the checkout's empty block.
     assert "if" not in upload
+
+
+def test_the_image_is_pushed_after_every_leg_and_before_what_names_it() -> None:
+    orchestrator = yaml.safe_load((_WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
+    job = orchestrator["publish-connector-image"]
+    # Gated as every publication: only on a publishing run, after every leg has built.
+    assert job["if"] == orchestrator["publish"]["with"]["publish"]
+    legs = {name for name, body in orchestrator.items() if "uses" in body} - {"publish"}
+    assert set(job["needs"]) == legs
+    assert job["permissions"] == {"contents": "read", "packages": "write"}
+    # The provisa wheel and the installers carry the block: they are published only after it.
+    assert "publish-connector-image" in orchestrator["publish-provisa-pypi"]["needs"]
+    assert "publish-connector-image" in orchestrator["publish"]["needs"]
+    steps = job["steps"]
+    downloads = {
+        s["with"]["name"]: s["with"]["path"]
+        for s in steps
+        if s.get("uses") == "actions/download-artifact@v4"
+    }
+    assert downloads == {
+        "platform-connectors": "provisa/core",
+        "spark-connector-image": "spark-connector-image",
+    }
+    push = next(s for s in steps if "connector push" in s.get("run", ""))
+    # Exactly the image the block names: push refuses a layout whose digest is another.
+    assert "connector push spark-connector-image" in push["run"]
+    assert "--config provisa/core/platform_connectors.yaml --name spark" in push["run"]
+    assert "--registry-password-env REGISTRY_PASSWORD" in push["run"]
+    assert push["env"] == {"REGISTRY_PASSWORD": "${{ secrets.GITHUB_TOKEN }}"}

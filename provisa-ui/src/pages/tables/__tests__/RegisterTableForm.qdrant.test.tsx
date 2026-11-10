@@ -68,6 +68,7 @@ describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}
+        onProductsRegistered={vi.fn()}
         setError={vi.fn()}
       />,
     );

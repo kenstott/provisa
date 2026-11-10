@@ -657,12 +657,10 @@
       "unknown_role": "No role named {{role}} exists."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} is not offered as a data product: its manifest does not mark it public with an enforced contract.",
-        "not_registered": "Register {{model}} as a table before accepting it as a data product.",
-        "columns_missing": "The table does not hold the contract's columns: {{columns}}.",
+      "products": {
+        "none_offered": "Source {{source_id}} has no public model with an enforced contract.",
         "id_taken": "Data product {{data_product}} already exists.",
-        "already_a_product": "{{model}} is already a member of data product {{data_product}}."
+        "columns_missing": "{{model}} does not hold the contract's columns: {{columns}}."
       }
     },
     "google_workspace": {
@@ -787,6 +785,22 @@
       "layout_not_found": "No layout named {{name}}",
       "layout_name_required": "A layout needs a name",
       "layout_place_unreadable": "The layout places a {{kind}} you cannot read"
+    },
+    "entitlements": {
+      "database_not_connected": "The database is not connected.",
+      "role_out_of_reach": "Role {{role_id}} is outside the roles you administer.",
+      "role_not_found": "Role {{role_id}} was not found.",
+      "principal_or_email": "Name a person or an email, not both.",
+      "principal_required": "A person is required.",
+      "email_required": "An email is required.",
+      "email_ambiguous": "{{email}} is the email of more than one person. Pick the person instead.",
+      "reason_required": "A reason is required.",
+      "unknown_kind": "{{kind}} is not a kind of entitlement list.",
+      "idp_supersedes": "The identity provider sends this person's {{kind}} list for role {{role_id}}. That list wins, so it is changed there, not here.",
+      "blank_identifier": "An entry cannot be blank.",
+      "expiry_in_past": "An end date must be in the future.",
+      "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
+      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
     }
   }
 }

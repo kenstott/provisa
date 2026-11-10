@@ -657,12 +657,10 @@
       "unknown_role": "Aucun rôle nommé {{role}} n’existe."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} n'est pas proposé comme produit de données : son manifeste ne le marque pas comme public avec un contrat appliqué.",
-        "not_registered": "Enregistrez {{model}} en tant que table avant de l'accepter comme produit de données.",
-        "columns_missing": "La table ne contient pas les colonnes du contrat : {{columns}}.",
+      "products": {
+        "none_offered": "La source {{source_id}} n'a aucun modèle public au contrat appliqué.",
         "id_taken": "Le produit de données {{data_product}} existe déjà.",
-        "already_a_product": "{{model}} est déjà membre du produit de données {{data_product}}."
+        "columns_missing": "{{model}} ne contient pas les colonnes du contrat : {{columns}}."
       }
     },
     "google_workspace": {
@@ -787,6 +785,22 @@
       "layout_not_found": "Aucune disposition nommée {{name}}",
       "layout_name_required": "Une disposition doit avoir un nom",
       "layout_place_unreadable": "La disposition place un(e) {{kind}} que vous ne pouvez pas lire"
+    },
+    "entitlements": {
+      "database_not_connected": "La base de données n'est pas connectée.",
+      "role_out_of_reach": "Le rôle {{role_id}} est hors des rôles que vous administrez.",
+      "role_not_found": "Le rôle {{role_id}} est introuvable.",
+      "principal_or_email": "Indiquez une personne ou un e-mail, pas les deux.",
+      "principal_required": "Une personne est requise.",
+      "email_required": "Un e-mail est requis.",
+      "email_ambiguous": "{{email}} est l'e-mail de plusieurs personnes. Choisissez plutôt la personne.",
+      "reason_required": "Un motif est requis.",
+      "unknown_kind": "{{kind}} n'est pas un type de liste de droits d'accès.",
+      "idp_supersedes": "Le fournisseur d'identité envoie la liste {{kind}} de cette personne pour le rôle {{role_id}}. Cette liste prévaut : elle se modifie chez lui, pas ici.",
+      "blank_identifier": "Une entrée ne peut pas être vide.",
+      "expiry_in_past": "Une date de fin doit être dans le futur.",
+      "expiry_removes_nothing": "Une date de fin sur cette liste {{kind}} ne retirerait rien.",
+      "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}."
     }
   }
 }

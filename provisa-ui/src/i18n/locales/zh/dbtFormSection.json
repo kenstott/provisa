@@ -22,19 +22,6 @@
     "warehouseHost": "账户或主机",
     "warehouseUser": "用户名",
     "warehouseCredential": "凭据",
-    "adapterUnknown": "{{adapter}} 适配器没有匹配的数据源类型。请先注册其数据仓库，然后添加此数据源。",
-    "candidatesTitle": "候选数据产品",
-    "candidatesIntro": "这些模型是公开的，且契约已强制执行。接受后，模型将成为数据产品，并带有其清单中的契约、所有者和版本。",
-    "candidatesNone": "此清单中没有契约已强制执行的公开模型。",
-    "candidateVersion": "版本：{{version}}",
-    "candidateOwner": "所有者：{{owner}}",
-    "candidateColumns": "承诺的列：{{columns}}",
-    "candidateRequired": "必填",
-    "candidateTests": "测试：{{tests}}",
-    "candidateProductId": "数据产品 ID",
-    "candidateOwnerRole": "所有者角色",
-    "candidateAccept": "接受为数据产品",
-    "candidateRegisterFirst": "请先将此模型注册为表，然后才能接受。",
-    "candidateBecame": "已接受为数据产品 {{product}}。"
+    "adapterUnknown": "{{adapter}} 适配器没有匹配的数据源类型。请先注册其数据仓库，然后添加此数据源。"
   }
 }
