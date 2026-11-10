@@ -231,10 +231,15 @@ class _Az:
     """Recorded `az` answers for the test subscription (the resources standing on 2026-11-10)."""
 
     def __init__(
-        self, groups: dict[str, list[dict] | None], denied: frozenset[str] = frozenset()
+        self,
+        groups: dict[str, list[dict] | None],
+        denied: frozenset[str] = frozenset(),
+        sticky: frozenset[str] = frozenset(),
     ) -> None:
         self.groups = groups
         self.denied = denied
+        # Resources whose delete is accepted but which never go.
+        self.sticky = sticky
         self.calls: list[tuple[str, ...]] = []
         self.gone: set[str] = set()
 
@@ -253,7 +258,18 @@ class _Az:
                 raise RuntimeError(f"(ResourceGroupNotFound) Resource group '{group}' not found")
             return json.dumps([i for i in items if i["id"] not in self.gone])
         if args[:2] == ("resource", "delete"):
-            self.gone.add(args[args.index("--ids") + 1])
+            rid = args[args.index("--ids") + 1]
+            if rid not in self.sticky:
+                self.gone.add(rid)
+            if "--no-wait" not in args:
+                # Run 42886682636: the delete goes through, but waiting on it polls the
+                # operation status at subscription scope, which the CI principal cannot read.
+                raise RuntimeError(
+                    "(AuthorizationFailed) The client does not have authorization to perform "
+                    "action 'Microsoft.Synapse/locations/operationStatuses/read' over scope "
+                    f"'/subscriptions/{SUB}/providers/Microsoft.Synapse/locations/eastus/"
+                    "operationStatuses/abc' or the scope is invalid."
+                )
             return ""
         if args[:2] == ("resource", "show"):
             if args[args.index("--ids") + 1] in self.gone:
@@ -373,6 +389,79 @@ def test_azure_never_deletes_outside_its_resource_groups():
         with pytest.raises(ca.ScopeRefused):
             provider.delete(resource)
     assert not any(c[:2] == ("resource", "delete") for c in az.calls)
+
+
+class _Clock:
+    """A monotonic clock that only moves when the provider sleeps."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+def test_an_azure_delete_whose_status_read_is_refused_counts_once_the_resource_is_gone():
+    """Run 42886682636 deleted the Synapse workspace yet reported "delete failed": waiting on
+    the delete polled operationStatuses at subscription scope (AuthorizationFailed). The delete
+    is sent without waiting and judged by reading the resource back."""
+    syn = _arm("my-rg", "Microsoft.Synapse/workspaces", "provisa-syn-e2e-261016102645")
+    az = _Az({"my-rg": [syn]})
+    clock = _Clock()
+    provider = ca.AzureProvider(ca.SCOPES.azure, az, sleep=clock.sleep, clock=clock)
+    runs, _ = _github()
+    report = ca.audit([provider], runs, NOW, dry_run=False)
+    assert [(r.resource.name, r.action) for r in report.rows] == [
+        ("provisa-syn-e2e-261016102645", "deleted")
+    ]
+    assert not report.failed
+    deletes = [c for c in az.calls if c[:2] == ("resource", "delete")]
+    assert deletes == [("resource", "delete", "--ids", syn["id"], "--no-wait")]
+    assert any(c[:2] == ("resource", "show") for c in az.calls)
+
+
+def test_an_azure_resource_still_there_after_the_bound_fails_by_name():
+    syn = _arm("my-rg", "Microsoft.Synapse/workspaces", "provisa-syn-e2e-stuck")
+    az = _Az({"my-rg": [syn]}, sticky=frozenset({syn["id"]}))
+    clock = _Clock()
+    provider = ca.AzureProvider(
+        ca.SCOPES.azure, az, sleep=clock.sleep, clock=clock, bound_s=1200, poll_s=30
+    )
+    runs, _ = _github()
+    report = ca.audit([provider], runs, NOW, dry_run=False)
+    assert report.failed
+    [row] = report.rows
+    assert row.action == "delete failed"
+    assert "provisa-syn-e2e-stuck" in row.reason and "still there" in row.reason
+    # It read the resource back every 30 s up to the bound, then stopped.
+    assert clock.slept == [30] * 40
+    shows = [c for c in az.calls if c[:2] == ("resource", "show")]
+    assert len(shows) == 41
+    assert "provisa-syn-e2e-stuck" in ca.summary(report, dry_run=False)
+
+
+def test_main_reports_an_absent_scope_group_in_its_summary(monkeypatch, capsys):
+    scope = ca.AzureScope(SUB, ("my-rg", "gone-rg"))
+    az = _Az({"my-rg": []})
+    runs = _Runs()
+    monkeypatch.setenv("GITHUB_REPOSITORY", "kenstott/provisa")
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.setattr(ca, "check_scopes", lambda scopes, env: None)
+    real_runs = ca.GitHubRuns
+    monkeypatch.setattr(ca, "GitHubRuns", lambda repo, get: real_runs(repo, runs.get))
+    monkeypatch.setattr(
+        ca, "live_providers", lambda scopes, env, which: [ca.AzureProvider(scope, az)]
+    )
+    assert ca.main(["--dry-run", "--providers", "azure"]) == 0
+    printed = capsys.readouterr().out
+    assert "### Absent" in printed
+    assert "gone-rg" in printed
 
 
 # ------------------------------------------------------------------------------------------- AWS
