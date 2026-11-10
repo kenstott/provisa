@@ -1,7 +1,9 @@
 # The paid-cloud audit (maintainer 2026-11-10, .claude/refs/swarm-mode.md "Paid cloud resources"):
 # every 4 hours, list the billable resources in each test scope and delete every one that is not
 # active -- tagged with a run that is still in progress (tests/integration/cloud_run_tag.py).
-# What it found and what it deleted go to the run summary. The scopes are data in
+# What it found and what it deleted go to the run summary, with what each standing idle-free piece
+# billed since the last audit ended; one that billed while no run of its lanes was in progress
+# fails the audit by name. The scopes are data in
 # scripts/ci/cloud_audit.py; it refuses, by name, any scope that is cloud-dev (provisa-test-473,
 # cloud.provisa.dev) and never lists or touches anything outside them.
 name: Cloud audit
@@ -16,9 +18,9 @@ on:
         type: boolean
         default: false
       providers:
-        description: Comma-separated providers to audit
+        description: Comma-separated providers to audit (standing is the standing pieces' costs)
         type: string
-        default: azure,aws,gcp
+        default: azure,aws,gcp,standing
 
 permissions:
   contents: read
@@ -43,9 +45,31 @@ jobs:
       REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
       REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
       GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      # The standing pieces whose cost each audit reports (maintainer 2026-11-10: a piece that
+      # bills nothing while idle may stand; the audit fails if one bills while no run uses it),
+      # read with the credentials the live lanes already hold. A missing one fails that piece by
+      # name, not the deletions above.
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
+      ATHENA_AWS_ACCESS_KEY_ID: ${{ secrets.ATHENA_AWS_ACCESS_KEY_ID }}
+      ATHENA_AWS_SECRET_ACCESS_KEY: ${{ secrets.ATHENA_AWS_SECRET_ACCESS_KEY }}
+      ATHENA_REGION: ${{ secrets.ATHENA_REGION }}
+      ATHENA_S3_BUCKET: ${{ secrets.ATHENA_S3_BUCKET }}
+      PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID }}
+      PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY }}
+      MOTHERDUCK_API_TOKEN: ${{ secrets.MOTHERDUCK_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GITHUB_TOKEN: ${{ github.token }}
       DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
-      PROVIDERS: ${{ inputs.providers || 'azure,aws,gcp' }}
+      PROVIDERS: ${{ inputs.providers || 'azure,aws,gcp,standing' }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
