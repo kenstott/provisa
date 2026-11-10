@@ -314,6 +314,18 @@ def _run(args: argparse.Namespace, call: Any) -> int:
 
 
 def _cmd_query(args: argparse.Namespace) -> int:
+    from provisa import cli_changed
+
+    problem = cli_changed.usage_problem(args)
+    if problem is not None:
+        print(f"provisa query: {problem}", file=sys.stderr)
+        return USAGE
+    if args.changed:
+        return cli_changed.run(args)
+    if args.language is None:
+        # No statement and no --changed: there is no interactive mode to fall into.
+        print("provisa query: give the language and the statement, or --changed", file=sys.stderr)
+        raise SystemExit(USAGE)
     return _run(args, _query_answer)
 
 
@@ -321,8 +333,8 @@ def _cmd_explain(args: argparse.Namespace) -> int:
     return _run(args, _explain_answer)
 
 
-def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("language", choices=LANGUAGES)
+def _add_common(parser: argparse.ArgumentParser, *, language_optional: bool = False) -> None:
+    parser.add_argument("language", choices=LANGUAGES, nargs="?" if language_optional else None)
     parser.add_argument(
         "statement",
         nargs="?",
@@ -357,7 +369,19 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
 def register(sub: Any) -> None:
     """Add ``query`` and ``explain`` to the CLI's subcommands."""
     query = sub.add_parser("query", help="Run a statement in any language, as a client would")
-    _add_common(query)
+    _add_common(query, language_optional=True)
+    query.add_argument(
+        "--changed",
+        action="store_true",
+        help="Run the statement files of --dir that read a table changed since --state, or a "
+        "view that depends on one (needs --org)",
+    )
+    query.add_argument(
+        "--state", default=None, help="The earlier configuration, as provisa export wrote it"
+    )
+    query.add_argument(
+        "--dir", default=None, help="The statement files; the extension names the language"
+    )
     query.set_defaults(func=_cmd_query)
     explain = sub.add_parser("explain", help="Show the SQL a statement in any language becomes")
     _add_common(explain)
