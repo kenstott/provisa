@@ -28,7 +28,7 @@ connector), stderr says what happened.
 * ``2`` -- usage error or an unusable config; nothing was built.
 """
 
-# Requirements: REQ-2221
+# Requirements: REQ-2221, REQ-2227
 
 from __future__ import annotations
 
@@ -67,6 +67,8 @@ _STANDARD_FILES = {
     "go": ("go.mod",),
     "node": ("package.json",),
     "python": ("pyproject.toml", "requirements.txt"),
+    # REQ-2227: a Rust project is a crate.
+    "rust": ("Cargo.toml",),
 }
 #: Stand-ins that pass validation while the flags are checked, before anything is built.
 _UNBUILT_COMMIT = "0" * 40
