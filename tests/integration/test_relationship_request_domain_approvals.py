@@ -235,8 +235,11 @@ async def plane(monkeypatch):
 def _info(user: str) -> Any:
     identity = types.SimpleNamespace(user_id=user, roles=_held(user), acting_roles=_held(user))
     # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+    # headers={} satisfies idempotency.once (REQ-2216), which reads request.headers.get(); with
+    # no Idempotency-Key header the check is a no-op and once() delegates immediately.
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_acting(user))
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_acting(user)),
+        headers={},
     )
     return types.SimpleNamespace(context={"request": request})
 
