@@ -38,8 +38,13 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: python scripts/ci/pgwire_maven_bundles.py tarballs bundles "${TAG#engine-v}"
 
+      # pipefail: a key that fails to decode stops here, not as an empty import gpg reports as fine.
       - name: Import GPG key
-        run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
 
       - name: Sign, checksum and zip each bundle
         env:
