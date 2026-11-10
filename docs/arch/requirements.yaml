@@ -94727,4 +94727,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     both speak Arrow, the transfer between them is Arrow; a row protocol (pgwire and the like) is used only
     where one side cannot. A code host, which already produces Arrow, serves Arrow Flight beside pgwire,
     so a code resolver on a host, and every connector built on one, takes part: an engine that reads Flight
-    (DuckDB through airport today) reads it as Arrow, and one that cannot reads pgwire.'
+    (DuckDB through airport today) reads it as Arrow, and one that cannot reads pgwire. (Amended 2026-11-10,
+    FLIGHT, THEN PGWIRE, THEN A REPLICA:) Maintainer 2026-11-10: for a statement the serving engine runs
+    (a join across sources, a replica build), the engine reads a code host by the first of these it can:
+    Arrow Flight, then pgwire, and failing both the host''s tables are read as a replica. A statement reading
+    one code source''s tables alone keeps going DIRECT to the host (REQ-2100), the governed statement in
+    and Arrow out.'
