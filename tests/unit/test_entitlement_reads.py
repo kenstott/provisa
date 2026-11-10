@@ -311,7 +311,7 @@ def _mixed_case_names():
     )
 
 
-def test_the_names_tree_shows_the_models_own_spelling():
+async def test_the_names_tree_shows_the_models_own_spelling():
     tree = names_tree(build_index(_mixed_case_names(), None))
 
     def spelled(nodes):
@@ -338,7 +338,7 @@ def test_the_names_tree_shows_the_models_own_spelling():
     ]
 
 
-def test_matching_ignores_the_case_the_tree_shows():
+async def test_matching_ignores_the_case_the_tree_shows():
     index = build_index(_mixed_case_names(), None)
     amount = next(o for o in index.objects if o.oid == "1:AmountUSD")
     assert amount.spelled == ("Finance", "Revenue", "AmountUSD")
