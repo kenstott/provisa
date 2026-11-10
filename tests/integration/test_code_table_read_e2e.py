@@ -563,19 +563,21 @@ def test_the_listener_refuses_a_wrong_token(server, ledger, minted_port):
 
 def test_diag_direct_read_of_a_hidden_column(server, ledger):
     """DIAGNOSTIC (J1135j): the hidden column read directly over /data/sql, not through the
-    listener, with the grant as stored and the readers as the runtime serves them."""
+    listener, with the grant as stored and the readers as the runtime serves them. It fails on
+    purpose so that what it collected is in the CI log (a passing test's output is captured)."""
+    lines = []
     for role, table in ((_ANALYST, "orders"), (_ROLE, "vault")):
         access = httpx.get(
             f"{server.base_url}/admin/tables/{ledger[table]}/access",
             headers={"X-Provisa-Role": _ROLE},
             timeout=server.request_timeout + 120,
         )
-        print(f"DIAG access fx.{table} -> {access.status_code} {access.text}")
+        lines.append(f"DIAG access fx.{table} -> {access.status_code} {access.text}")
         r = httpx.post(
             f"{server.base_url}/data/sql",
             json={"sql": f"SELECT secret FROM fx.{table}"},
             headers={"X-Provisa-Role": role},
             timeout=server.request_timeout + 120,
         )
-        print(f"DIAG direct {role} fx.{table}.secret -> {r.status_code} {r.text}")
-    print("DIAG server log tail:\n" + server.dump_stderr_debug()[-6000:])
+        lines.append(f"DIAG direct {role} fx.{table}.secret -> {r.status_code} {r.text}")
+    pytest.fail("\n".join(lines))
