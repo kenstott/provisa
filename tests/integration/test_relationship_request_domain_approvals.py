@@ -36,6 +36,7 @@ from provisa.api.admin.creation_requests_router import router
 from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema
+from provisa.security.inheritance import with_own_domains
 from provisa.core.schema_org import (
     admin_audit_log,
     domains,
@@ -183,7 +184,7 @@ async def plane(monkeypatch):
             await conn.execute_core(
                 insert(roles).values(id=role_id, capabilities=caps, domain_access=access)
             )
-        loaded = {r["id"]: r for r in await role_repo.list_all(conn)}
+        loaded = {r["id"]: r for r in with_own_domains(await role_repo.list_all(conn))}
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
