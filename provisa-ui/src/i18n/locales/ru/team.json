@@ -91,6 +91,8 @@
       "cancelEdit": "Отменить изменение",
       "remove": "Удалить {{name}}"
     },
-    "localUsersHeading": "Локальные пользователи"
+    "localUsersHeading": "Локальные пользователи",
+    "attributesTab": "Атрибуты",
+    "accessTab": "Доступ"
   }
 }

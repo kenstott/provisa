@@ -785,6 +785,22 @@
       "layout_not_found": "Nessun layout chiamato {{name}}",
       "layout_name_required": "Un layout richiede un nome",
       "layout_place_unreadable": "Il layout posiziona un(a) {{kind}} che non puoi leggere"
+    },
+    "entitlements": {
+      "database_not_connected": "Il database non è connesso.",
+      "role_out_of_reach": "Il ruolo {{role_id}} è fuori dai ruoli che amministri.",
+      "role_not_found": "Ruolo {{role_id}} non trovato.",
+      "principal_or_email": "Indica una persona o un'email, non entrambe.",
+      "principal_required": "È richiesta una persona.",
+      "email_required": "È richiesta un'email.",
+      "email_ambiguous": "{{email}} è l'email di più persone. Scegli invece la persona.",
+      "reason_required": "È richiesto un motivo.",
+      "unknown_kind": "{{kind}} non è un tipo di lista di autorizzazioni.",
+      "idp_supersedes": "Il provider di identità invia la lista {{kind}} di questa persona per il ruolo {{role_id}}. Quella lista prevale: si modifica lì, non qui.",
+      "blank_identifier": "Una voce non può essere vuota.",
+      "expiry_in_past": "La data di fine deve essere futura.",
+      "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
+      "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."
     }
   }
 }

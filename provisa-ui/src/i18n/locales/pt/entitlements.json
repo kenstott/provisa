@@ -1,0 +1,103 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Domínios",
+      "tables": "Tabelas",
+      "columns": "Colunas",
+      "metrics": "Métricas",
+      "relationships": "Relacionamentos",
+      "commands": "Comandos",
+      "data_products": "Produtos de dados",
+      "sources": "Fontes",
+      "environments": "Ambientes",
+      "roles": "Funções",
+      "regions": "Regiões"
+    },
+    "origin": {
+      "idp": "Provedor de identidade",
+      "provisa": "Definida no Provisa",
+      "role": "Padrão da função"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} em {{kind}} não designa nada no modelo.",
+      "unused_kind": "Esta função não usa {{kind}}, então essa lista não seleciona nada."
+    },
+    "picker": {
+      "everything": "Tudo, incluindo o que for adicionado depois",
+      "typedLabel": "Entradas",
+      "typedPlaceholder": "Digite uma entrada e pressione Enter",
+      "filterLabel": "Localizar",
+      "filterPlaceholder": "Localizar por nome",
+      "noObjects": "O modelo ainda não tem nada deste tipo.",
+      "otherValues": "Também listado",
+      "removeValue": "Remover {{value}}",
+      "expand": "Expandir {{name}}",
+      "collapse": "Recolher {{name}}",
+      "includedByParent": "Incluído pela entrada acima"
+    },
+    "people": {
+      "placeholder": "Pesquisar por nome ou e-mail",
+      "typedEmail": "{{email}} (aguarda o primeiro login)",
+      "typeMore": "Digite pelo menos dois caracteres",
+      "noneFound": "Ninguém corresponde. Digite um e-mail completo para conceder a ele."
+    },
+    "form": {
+      "personLabel": "Pessoa",
+      "personHint": "Quem ainda não fez login pode receber acesso por e-mail.",
+      "roleLabel": "Função",
+      "rolePlaceholder": "Selecione uma função",
+      "kindLabel": "Tipo",
+      "kindPlaceholder": "Selecione um tipo",
+      "entriesLabel": "Entradas",
+      "entriesHelp": "O que esta pessoa pode alcançar do que a função permite. Marcar uma entrada inclui tudo abaixo dela. Uma lista vazia não alcança nada deste tipo.",
+      "endsOnLabel": "Termina em",
+      "endsOnHint": "Deixe vazio para manter a lista até que seja encerrada.",
+      "reasonLabel": "Motivo",
+      "reasonHint": "Registrado com a alteração, para quem revisar os acessos."
+    },
+    "person": {
+      "help": "O que esta pessoa pode alcançar por cada atribuição de função, lista por tipo. Uma lista do provedor de identidade prevalece e é alterada lá.",
+      "roleLabel": "Atribuição de função",
+      "rolePlaceholder": "Selecione uma função",
+      "roleHint": "Funções com listas definidas no Provisa aparecem primeiro.",
+      "roleWithLists": "{{role}} (listas definidas)",
+      "readOnly": "Todas as listas desta atribuição vêm do provedor de identidade: são alteradas lá e aqui são somente leitura.",
+      "grantEnded": "Uma data de término passou para toda esta atribuição: nada abaixo é alcançado.",
+      "colKind": "Tipo",
+      "colEntries": "Entradas",
+      "colOrigin": "Origem",
+      "colEnds": "Termina",
+      "noLists": "Sem listas: esta atribuição alcança tudo o que a função permite.",
+      "nothing": "Nada",
+      "everything": "Tudo",
+      "more": "+{{count}} a mais",
+      "endedHint": "Encerrado por uma data de término passada",
+      "superseded": "Substituída: {{entries}}",
+      "supersededHint": "A lista que esta substituiu",
+      "setBy": "Definida por {{who}}: {{reason}}",
+      "editList": "Editar a lista de {{kind}}",
+      "endList": "Encerrar a lista de {{kind}}",
+      "addList": "Adicionar lista",
+      "endPrompt": "Encerrar a lista de {{kind}}. O padrão da função volta a valer.",
+      "endButton": "Encerrar lista"
+    },
+    "grants": {
+      "heading": "Concessões de acesso",
+      "help": "Conceda a uma pessoa acesso dentro de uma função, por tipo. Quem ainda não fez login recebe por e-mail, e a concessão é aplicada no primeiro login.",
+      "grantButton": "Conceder acesso",
+      "saved": "Acesso salvo para a função {{role}}.",
+      "savedPending": "Salvo. A concessão aguarda o login de {{email}}.",
+      "pendingHeading": "Aguardando login",
+      "colEmail": "E-mail",
+      "colRole": "Função",
+      "colKind": "Tipo",
+      "colEntries": "Entradas",
+      "colEnds": "Termina",
+      "colReason": "Motivo",
+      "colActions": "Ações",
+      "noPending": "Nenhuma concessão aguardando.",
+      "endPrompt": "Encerrar a concessão de {{kind}} para {{email}} na função {{role}}.",
+      "endButton": "Encerrar"
+    }
+  }
+}

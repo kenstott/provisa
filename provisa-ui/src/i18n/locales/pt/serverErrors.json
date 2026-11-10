@@ -785,6 +785,22 @@
       "layout_not_found": "Nenhum layout chamado {{name}}",
       "layout_name_required": "Um layout precisa de um nome",
       "layout_place_unreadable": "O layout posiciona um(a) {{kind}} que você não pode ler"
+    },
+    "entitlements": {
+      "database_not_connected": "O banco de dados não está conectado.",
+      "role_out_of_reach": "A função {{role_id}} está fora das funções que você administra.",
+      "role_not_found": "A função {{role_id}} não foi encontrada.",
+      "principal_or_email": "Informe uma pessoa ou um e-mail, não ambos.",
+      "principal_required": "Uma pessoa é obrigatória.",
+      "email_required": "Um e-mail é obrigatório.",
+      "email_ambiguous": "{{email}} é o e-mail de mais de uma pessoa. Escolha a pessoa.",
+      "reason_required": "Um motivo é obrigatório.",
+      "unknown_kind": "{{kind}} não é um tipo de lista de direitos de acesso.",
+      "idp_supersedes": "O provedor de identidade envia a lista de {{kind}} desta pessoa para a função {{role_id}}. Essa lista prevalece: é alterada lá, não aqui.",
+      "blank_identifier": "Uma entrada não pode ficar em branco.",
+      "expiry_in_past": "A data de término deve ser futura.",
+      "expiry_removes_nothing": "Uma data de término nesta lista de {{kind}} não removeria nada.",
+      "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}."
     }
   }
 }

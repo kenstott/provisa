@@ -785,6 +785,22 @@
       "layout_not_found": "没有名为 {{name}} 的布局",
       "layout_name_required": "布局需要名称",
       "layout_place_unreadable": "该布局放置了您无权读取的 {{kind}}"
+    },
+    "entitlements": {
+      "database_not_connected": "数据库未连接。",
+      "role_out_of_reach": "角色 {{role_id}} 不在您管理的角色范围内。",
+      "role_not_found": "未找到角色 {{role_id}}。",
+      "principal_or_email": "请指定人员或电子邮件，不能同时指定。",
+      "principal_required": "必须指定人员。",
+      "email_required": "必须填写电子邮件。",
+      "email_ambiguous": "{{email}} 是多个人员的电子邮件。请改为选择人员。",
+      "reason_required": "必须填写原因。",
+      "unknown_kind": "{{kind}} 不是权益列表的类型。",
+      "idp_supersedes": "身份提供方为角色 {{role_id}} 发送了此人员的 {{kind}} 列表。该列表优先，因此需在那里更改，而非此处。",
+      "blank_identifier": "条目不能为空。",
+      "expiry_in_past": "结束日期必须是将来的日期。",
+      "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
+      "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
     }
   }
 }

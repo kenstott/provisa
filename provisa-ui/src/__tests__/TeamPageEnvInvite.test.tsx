@@ -56,7 +56,12 @@ vi.mock("../api/branding", () => ({
 }));
 
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ activeOrgId: "acme", userId: "uid-me", multitenancy: true }),
+  useAuth: () => ({
+    activeOrgId: "acme",
+    userId: "uid-me",
+    multitenancy: true,
+    capabilities: [],
+  }),
 }));
 vi.mock("../hooks/useAdminQueries", () => ({
   useRoles: () => ({ roles: [{ id: "analyst" }] }),

@@ -785,6 +785,22 @@
       "layout_not_found": "Geen indeling met de naam {{name}}",
       "layout_name_required": "Een indeling heeft een naam nodig",
       "layout_place_unreadable": "De indeling plaatst een {{kind}} die u niet mag lezen"
+    },
+    "entitlements": {
+      "database_not_connected": "De database is niet verbonden.",
+      "role_out_of_reach": "Rol {{role_id}} valt buiten de rollen die u beheert.",
+      "role_not_found": "Rol {{role_id}} is niet gevonden.",
+      "principal_or_email": "Geef een persoon of een e-mailadres op, niet beide.",
+      "principal_required": "Een persoon is verplicht.",
+      "email_required": "Een e-mailadres is verplicht.",
+      "email_ambiguous": "{{email}} is het e-mailadres van meer dan één persoon. Kies de persoon.",
+      "reason_required": "Een reden is verplicht.",
+      "unknown_kind": "{{kind}} is geen soort rechtenlijst.",
+      "idp_supersedes": "De identiteitsprovider stuurt de lijst {{kind}} van deze persoon voor rol {{role_id}}. Die lijst gaat voor en wordt daar gewijzigd, niet hier.",
+      "blank_identifier": "Een item mag niet leeg zijn.",
+      "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
+      "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
+      "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
     }
   }
 }

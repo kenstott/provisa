@@ -785,6 +785,22 @@
       "layout_not_found": "{{name}} という名前のレイアウトはありません",
       "layout_name_required": "レイアウトには名前が必要です",
       "layout_place_unreadable": "レイアウトが、読み取り権限のない {{kind}} を配置しています"
+    },
+    "entitlements": {
+      "database_not_connected": "データベースに接続されていません。",
+      "role_out_of_reach": "ロール {{role_id}} は、あなたが管理するロールの範囲外です。",
+      "role_not_found": "ロール {{role_id}} が見つかりません。",
+      "principal_or_email": "ユーザーかメールのどちらか一方を指定してください。",
+      "principal_required": "ユーザーは必須です。",
+      "email_required": "メールは必須です。",
+      "email_ambiguous": "{{email}} は複数のユーザーのメールです。ユーザーを選択してください。",
+      "reason_required": "理由は必須です。",
+      "unknown_kind": "{{kind}} はエンタイトルメント リストの種類ではありません。",
+      "idp_supersedes": "ID プロバイダーがロール {{role_id}} についてこのユーザーの {{kind}} リストを送信しています。そのリストが優先されるため、ここではなくそちらで変更します。",
+      "blank_identifier": "エントリを空にすることはできません。",
+      "expiry_in_past": "終了日は将来の日付にする必要があります。",
+      "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
+      "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"
     }
   }
 }

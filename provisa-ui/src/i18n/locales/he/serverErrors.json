@@ -785,6 +785,22 @@
       "layout_not_found": "אין פריסה בשם {{name}}",
       "layout_name_required": "לפריסה נדרש שם",
       "layout_place_unreadable": "הפריסה ממקמת {{kind}} שאין לך הרשאה לקרוא"
+    },
+    "entitlements": {
+      "database_not_connected": "מסד הנתונים אינו מחובר.",
+      "role_out_of_reach": "התפקיד {{role_id}} מחוץ לתפקידים שבניהולכם.",
+      "role_not_found": "התפקיד {{role_id}} לא נמצא.",
+      "principal_or_email": "ציינו אדם או כתובת דוא\"ל, לא את שניהם.",
+      "principal_required": "נדרש אדם.",
+      "email_required": "נדרשת כתובת דוא\"ל.",
+      "email_ambiguous": "{{email}} היא כתובת הדוא\"ל של יותר מאדם אחד. בחרו את האדם.",
+      "reason_required": "נדרשת סיבה.",
+      "unknown_kind": "{{kind}} אינו סוג של רשימת הרשאות.",
+      "idp_supersedes": "ספק הזהויות שולח את רשימת {{kind}} של אדם זה עבור התפקיד {{role_id}}. רשימה זו גוברת, ולכן היא משתנה שם ולא כאן.",
+      "blank_identifier": "פריט אינו יכול להיות ריק.",
+      "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
+      "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
+      "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
     }
   }
 }

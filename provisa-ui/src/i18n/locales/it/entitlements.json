@@ -1,0 +1,103 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Domini",
+      "tables": "Tabelle",
+      "columns": "Colonne",
+      "metrics": "Metriche",
+      "relationships": "Relazioni",
+      "commands": "Comandi",
+      "data_products": "Prodotti dati",
+      "sources": "Origini",
+      "environments": "Ambienti",
+      "roles": "Ruoli",
+      "regions": "Regioni"
+    },
+    "origin": {
+      "idp": "Provider di identità",
+      "provisa": "Impostata in Provisa",
+      "role": "Predefinita del ruolo"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} in {{kind}} non indica nulla nel modello.",
+      "unused_kind": "Questo ruolo non usa {{kind}}, quindi quella lista non seleziona nulla."
+    },
+    "picker": {
+      "everything": "Tutto, compreso ciò che verrà aggiunto in seguito",
+      "typedLabel": "Voci",
+      "typedPlaceholder": "Digita una voce e premi Invio",
+      "filterLabel": "Cerca",
+      "filterPlaceholder": "Cerca per nome",
+      "noObjects": "Il modello non ha ancora nulla di questo tipo.",
+      "otherValues": "Elencati anche",
+      "removeValue": "Rimuovi {{value}}",
+      "expand": "Espandi {{name}}",
+      "collapse": "Comprimi {{name}}",
+      "includedByParent": "Incluso dalla voce superiore"
+    },
+    "people": {
+      "placeholder": "Cerca per nome o email",
+      "typedEmail": "{{email}} (in attesa del primo accesso)",
+      "typeMore": "Digita almeno due caratteri",
+      "noneFound": "Nessuna corrispondenza. Digita un'email completa per concedere l'accesso."
+    },
+    "form": {
+      "personLabel": "Persona",
+      "personHint": "A chi non ha ancora effettuato l'accesso si può concedere tramite email.",
+      "roleLabel": "Ruolo",
+      "rolePlaceholder": "Seleziona un ruolo",
+      "kindLabel": "Tipo",
+      "kindPlaceholder": "Seleziona un tipo",
+      "entriesLabel": "Voci",
+      "entriesHelp": "Ciò che questa persona può raggiungere di quanto il ruolo consente. Selezionare una voce include tutto ciò che sta sotto. Una lista vuota non raggiunge nulla di questo tipo.",
+      "endsOnLabel": "Termina il",
+      "endsOnHint": "Lascia vuoto per mantenere la lista finché non viene terminata.",
+      "reasonLabel": "Motivo",
+      "reasonHint": "Registrato con la modifica, per chi rivede gli accessi."
+    },
+    "person": {
+      "help": "Ciò che questa persona può raggiungere tramite ogni assegnazione di ruolo, lista per tipo. Una lista del provider di identità prevale e si modifica lì.",
+      "roleLabel": "Assegnazione di ruolo",
+      "rolePlaceholder": "Seleziona un ruolo",
+      "roleHint": "I ruoli con liste impostate in Provisa compaiono per primi.",
+      "roleWithLists": "{{role}} (liste impostate)",
+      "readOnly": "Ogni lista di questa assegnazione proviene dal provider di identità: si modifica lì ed è di sola lettura qui.",
+      "grantEnded": "È trascorsa una data di fine per l'intera assegnazione: nulla di quanto segue viene raggiunto.",
+      "colKind": "Tipo",
+      "colEntries": "Voci",
+      "colOrigin": "Origine",
+      "colEnds": "Termina",
+      "noLists": "Nessuna lista: questa assegnazione raggiunge tutto ciò che il ruolo consente.",
+      "nothing": "Nulla",
+      "everything": "Tutto",
+      "more": "+{{count}} altri",
+      "endedHint": "Terminata da una data di fine trascorsa",
+      "superseded": "Sostituita: {{entries}}",
+      "supersededHint": "La lista che questa ha sostituito",
+      "setBy": "Impostata da {{who}}: {{reason}}",
+      "editList": "Modifica la lista {{kind}}",
+      "endList": "Termina la lista {{kind}}",
+      "addList": "Aggiungi lista",
+      "endPrompt": "Termina la lista {{kind}}. Si applica di nuovo il valore predefinito del ruolo.",
+      "endButton": "Termina lista"
+    },
+    "grants": {
+      "heading": "Concessioni di accesso",
+      "help": "Concedi a una persona l'accesso in un ruolo, per tipo. A chi non ha ancora effettuato l'accesso si concede tramite email, e la concessione si applica al primo accesso.",
+      "grantButton": "Concedi accesso",
+      "saved": "Accesso salvato per il ruolo {{role}}.",
+      "savedPending": "Salvato. La concessione attende l'accesso di {{email}}.",
+      "pendingHeading": "In attesa di accesso",
+      "colEmail": "Email",
+      "colRole": "Ruolo",
+      "colKind": "Tipo",
+      "colEntries": "Voci",
+      "colEnds": "Termina",
+      "colReason": "Motivo",
+      "colActions": "Azioni",
+      "noPending": "Nessuna concessione in attesa.",
+      "endPrompt": "Termina la concessione {{kind}} per {{email}} nel ruolo {{role}}.",
+      "endButton": "Termina"
+    }
+  }
+}
