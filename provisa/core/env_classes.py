@@ -129,6 +129,8 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         # to grant or to widen a right, the escalation REQ-1539 closed for roles.
         "entitlements",
         "entitlement_expiries",
+        # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
+        "entitlement_pending",
     }
 )
 

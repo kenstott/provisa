@@ -113,10 +113,29 @@ const ENGINE: admin.FederationEngineState = {
   restart_required_note: "restart",
 };
 
+// An org on no plan: the per-region page reads this only to know whether a plan decides the engine.
+const ORG_ENGINE: admin.OrgEngineState = {
+  org_id: "acme",
+  mode: "shared",
+  external_host: null,
+  external_port: null,
+  engine_kind: null,
+  external_url_set: false,
+  external_kinds: [],
+  isolated_available: false,
+  isolated_entitled: true,
+  engine_name: "trino",
+  plan: null,
+  plan_derived: false,
+  engine_size: null,
+  isolated_engine: null,
+};
+
 beforeEach(() => {
   auth.capabilities = PLATFORM_ADMIN;
   auth.activeOrgId = "acme";
   vi.mocked(admin.fetchFederationEngine).mockReset().mockResolvedValue(ENGINE);
+  vi.mocked(admin.fetchOrgEngine).mockReset().mockResolvedValue(ORG_ENGINE);
   fetchGrant.mockReset().mockResolvedValue(GRANT);
   fetchRegions.mockReset().mockResolvedValue(GRANT);
   saveGrant.mockReset();
@@ -230,6 +249,10 @@ describe("Admin > Federation with regions", () => {
     render(<OrgEngineTab />, { mocks: choices(["eu", "us"]) });
     expect(await screen.findByTestId("federation-region-tab-eu")).toBeInTheDocument();
     expect(screen.getByTestId("federation-region-tab-us")).toBeInTheDocument();
-    expect(admin.fetchOrgEngine).not.toHaveBeenCalled();
+    // The org's engine is read only for its plan (REQ-1412); the one-engine form is not shown.
+    await waitFor(() => expect(admin.fetchOrgEngine).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("org-engine-mode")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-save-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
   });
 });
