@@ -561,23 +561,48 @@ def test_the_listener_refuses_a_wrong_token(server, ledger, minted_port):
         assert b"28P01" in sock.recv(4096)
 
 
-def test_diag_direct_read_of_a_hidden_column(server, ledger):
-    """DIAGNOSTIC (J1135j): the hidden column read directly over /data/sql, not through the
-    listener, with the grant as stored and the readers as the runtime serves them. It fails on
-    purpose so that what it collected is in the CI log (a passing test's output is captured)."""
-    lines = []
-    for role, table in ((_ANALYST, "orders"), (_ROLE, "vault")):
-        access = httpx.get(
+@pytest.mark.parametrize(("reader", "table"), [(_ANALYST, "orders"), (_ROLE, "vault")])
+def test_a_direct_read_of_a_column_the_role_is_not_granted_is_refused(
+    server, ledger, reader, table
+):
+    """REQ-2154, REQ-2226: a column registered with a grant list named is granted exactly that
+    list, so a role it does not name is refused the column on a direct read too, not only through
+    the minted-token listener. ``orders`` grants ``secret`` to org_admin only and ``vault`` to the
+    analyst only: neither registration adds the registrant or Viewer to a named list."""
+    response = httpx.post(
+        f"{server.base_url}/data/sql",
+        json={"sql": f"SELECT secret FROM fx.{table}"},
+        headers={"X-Provisa-Role": reader},
+        timeout=server.request_timeout + 120,
+    )
+    assert response.status_code != 200, response.text
+    assert "Column 'secret' is not visible to this role" in response.text
+
+
+@pytest.mark.parametrize(("reader", "table"), [(_ROLE, "orders"), (_ANALYST, "vault")])
+def test_a_direct_read_of_a_granted_column_is_served(server, ledger, reader, table):
+    response = httpx.post(
+        f"{server.base_url}/data/sql",
+        json={"sql": f"SELECT secret FROM fx.{table}"},
+        headers={"X-Provisa-Role": reader},
+        timeout=server.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["sql"], response.text
+
+
+def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
+    """The admin's access view of ``secret`` names only the role its registration named (and
+    that role's ancestors' grants never widen it to a sibling): no Viewer grant on it."""
+    for table, reader, other in (("orders", _ROLE, _ANALYST), ("vault", _ANALYST, _ROLE)):
+        response = httpx.get(
             f"{server.base_url}/admin/tables/{ledger[table]}/access",
             headers={"X-Provisa-Role": _ROLE},
             timeout=server.request_timeout + 120,
         )
-        lines.append(f"DIAG access fx.{table} -> {access.status_code} {access.text}")
-        r = httpx.post(
-            f"{server.base_url}/data/sql",
-            json={"sql": f"SELECT secret FROM fx.{table}"},
-            headers={"X-Provisa-Role": role},
-            timeout=server.request_timeout + 120,
-        )
-        lines.append(f"DIAG direct {role} fx.{table}.secret -> {r.status_code} {r.text}")
-    pytest.fail("\n".join(lines))
+        assert response.status_code == 200, response.text
+        (secret,) = [c for c in response.json()["columns"] if c["name"] == "secret"]
+        readers = {a["role"] for a in secret["access"] if a["read"]}
+        assert reader in readers, secret
+        assert other not in readers, secret
+        assert "viewer" not in readers, secret
