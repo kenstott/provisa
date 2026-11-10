@@ -87,6 +87,9 @@ class _FakeProvider:
     def exists(self, resource) -> bool:
         return any(r.id == resource.id for r in self.resources)
 
+    def absent(self) -> list[str]:
+        return []
+
 
 def _res(id_: str, tags: dict[str, str] | None = None):
     return ca.Resource("fake", "fake-scope", "kind", id_, id_, tags or {})
@@ -227,8 +230,11 @@ def test_an_azure_scope_naming_cloud_dev_is_refused():
 class _Az:
     """Recorded `az` answers for the test subscription (the resources standing on 2026-11-10)."""
 
-    def __init__(self, groups: dict[str, list[dict] | None]) -> None:
+    def __init__(
+        self, groups: dict[str, list[dict] | None], denied: frozenset[str] = frozenset()
+    ) -> None:
         self.groups = groups
+        self.denied = denied
         self.calls: list[tuple[str, ...]] = []
         self.gone: set[str] = set()
 
@@ -236,6 +242,12 @@ class _Az:
         self.calls.append(args)
         if args[:2] == ("resource", "list"):
             group = args[args.index("-g") + 1]
+            if group in self.denied:
+                raise RuntimeError(
+                    "(AuthorizationFailed) The client does not have authorization to perform "
+                    "action 'Microsoft.Resources/subscriptions/resourcegroups/read' over scope "
+                    f"'/subscriptions/{SUB}/resourcegroups/{group}' or the scope is invalid."
+                )
             items = self.groups.get(group)
             if items is None:
                 raise RuntimeError(f"(ResourceGroupNotFound) Resource group '{group}' not found")
@@ -270,7 +282,6 @@ def test_azure_deletes_the_untagged_standing_resources_and_keeps_an_active_one()
                 # A child resource goes with its parent.
                 _arm("my-rg", "Microsoft.Synapse/workspaces/sqlPools", "x/pool"),
             ],
-            "provisa-e2e": None,  # deleted already: holds nothing
         }
     )
     runs, _ = _github()
@@ -285,8 +296,60 @@ def test_azure_deletes_the_untagged_standing_resources_and_keeps_an_active_one()
     }
     assert not report.failed
     listed = {c[c.index("-g") + 1] for c in az.calls if c[:2] == ("resource", "list")}
-    assert listed == {"my-rg", "provisa-e2e"}  # only the scope's groups are listed
+    assert listed == {"my-rg"}  # only the scope's groups are listed
     assert all(SUB in c[c.index("--subscription") + 1] for c in az.calls if "--subscription" in c)
+
+
+def test_azure_lists_each_scope_group_by_itself_never_the_subscription():
+    """The CI principal holds rights on the test groups, not read on the subscription."""
+    scope = ca.AzureScope(SUB, ("my-rg", "other-rg"))
+    az = _Az(
+        {
+            "my-rg": [_arm("my-rg", "Microsoft.Purview/accounts", "provisa-pv-1", {})],
+            "other-rg": [_arm("other-rg", "Microsoft.Storage/storageAccounts", "st1", {})],
+        }
+    )
+    found = ca.AzureProvider(scope, az).list()
+    assert {(r.scope, r.name) for r in found} == {
+        (f"{SUB}/my-rg", "provisa-pv-1"),
+        (f"{SUB}/other-rg", "st1"),
+    }
+    lists = [c for c in az.calls if c[:2] == ("resource", "list")]
+    assert [c[c.index("-g") + 1] for c in lists] == ["my-rg", "other-rg"]
+    assert all(c[c.index("--subscription") + 1] == SUB for c in lists)
+
+
+def test_a_scope_group_that_does_not_exist_is_reported_absent_and_holds_nothing():
+    scope = ca.AzureScope(SUB, ("my-rg", "gone-rg"))
+    az = _Az({"my-rg": [_arm("my-rg", "Microsoft.Storage/storageAccounts", "st1", {})]})
+    runs, _ = _github()
+    report = ca.audit([ca.AzureProvider(scope, az)], runs, NOW, dry_run=True)
+    assert not report.failed
+    assert [r.resource.name for r in report.rows] == ["st1"]
+    assert report.absent == [f"azure: resource group gone-rg ({SUB}) does not exist"]
+    text = ca.summary(report, dry_run=True)
+    assert "### Absent" in text and "gone-rg" in text and "### Errors" not in text
+
+
+def test_a_scope_group_the_principal_cannot_read_fails_the_audit_by_name():
+    scope = ca.AzureScope(SUB, ("my-rg", "locked-rg"))
+    az = _Az(
+        {"my-rg": [_arm("my-rg", "Microsoft.Storage/storageAccounts", "st1", {})], "locked-rg": []},
+        denied=frozenset({"locked-rg"}),
+    )
+    runs, _ = _github()
+    report = ca.audit([ca.AzureProvider(scope, az)], runs, NOW, dry_run=True)
+    assert report.failed
+    assert report.absent == []
+    assert len(report.errors) == 1
+    assert "resource group locked-rg:" in report.errors[0]
+    assert "AuthorizationFailed" in report.errors[0]
+
+
+def test_the_azure_scope_is_the_groups_the_live_tests_create_in():
+    """FABRIC_RESOURCE_GROUP (my-rg) holds the capacity and each run's Purview account; the
+    principal has no rights on any other group, so naming one fails every audit."""
+    assert ca.SCOPES.azure.resource_groups == ("my-rg",)
 
 
 def test_azure_never_deletes_outside_its_resource_groups():
