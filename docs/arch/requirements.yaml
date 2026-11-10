@@ -92482,7 +92482,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     connector build and offered to every organization as the Spark connector is (REQ-2225), its connector.yaml
     naming its setup values (the service root, its auth). An SAP connector is built on it later: the same
     resolver with its own connector.yaml fixing what SAP needs (the CSRF token for writes, SAP''s V2 attributes
-    read for features, its auth), as branded connectors are built on generic ones (REQ-1923).'
+    read for features, its auth), as branded connectors are built on generic ones (REQ-1923). (Amended 2026-11-10,
+    WHERE IT RUNS IS A SOURCE SETTING:) Maintainer 2026-11-10: an OData source''s settings include where
+    it runs, in process or on a host (REQ-2235): on a host, its address and pairing as a code source''s
+    built mode takes them (REQ-2098).'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
