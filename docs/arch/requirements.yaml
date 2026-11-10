@@ -92456,12 +92456,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     several pages Then every row comes back When a write to an OData table is attempted Then it is refused
     by name When a steward presses Detect and the service answers a $filter on a column and returns a nextLink
     Then that column and paging are ticked (Amended 2026-11-10, THE SERVICE''S FEATURES ARE CHECKBOXES:)
-    Maintainer 2026-11-10: an OData source carries a list of checkboxes, one per OData feature Provisa can
-    use against it ($filter, $orderby, $count, $top and $skip, $select, $expand, $apply, $search, and inserts,
-    updates and deletes). A Probe button sets them: it reads the service''s declared capabilities ($metadata
-    Capabilities annotations, or SAP''s V2 attributes) and, where the service declares nothing, sends one
-    small request per feature and ticks what the service answered. The steward can change any box. Provisa
-    pushes down only what is ticked; the rest runs on the engine.'
+    Maintainer 2026-11-10: [SUPERSEDED by REQ-2192, 2026-11-10 -- six checkboxes; filters, paging and $select
+    are the baseline. Kept here for history; do not implement against it.] an OData source carries a list
+    of checkboxes, one per OData feature Provisa can use against it ($filter, $orderby, $count, $top and
+    $skip, $select, $expand, $apply, $search, and inserts, updates and deletes). [END SUPERSEDED BLOCK]
+    A Probe button sets them: it reads the service''s declared capabilities ($metadata Capabilities annotations,
+    or SAP''s V2 attributes) and, where the service declares nothing, sends one small request per feature
+    and ticks what the service answered. The steward can change any box. Provisa pushes down only what is
+    ticked; the rest runs on the engine. (Amended 2026-11-10, SIX FEATURES:) Maintainer 2026-11-10: the
+    checkboxes are six: $orderby, $count, $expand, $apply, inserts, and updates with deletes. Filters ($filter),
+    paging ($top, $skip, nextLink) and $select are the baseline every OData source gets and have no checkbox.'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
