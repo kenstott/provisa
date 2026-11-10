@@ -94116,7 +94116,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     untyped list, given the table, its columns, its filters and its limit; every batch is checked against
     the registered columns and a value that does not fit is refused naming the table and column. A resolver
     may use the same native types to check its own rows. The catalog is read again the way a database''s
-    schema is. A resolver with no @catalog works as before, its tables typed in code.'
+    schema is. A resolver with no @catalog works as before, its tables typed in code. (Amended 2026-11-10,
+    A RESOLVER AND AN ENDPOINT MAKE AN INSTANCE:) Maintainer 2026-11-10: dynamic discovery cannot be static.
+    One resolver serves many sources: each source composes the resolver with its own metadata endpoint,
+    a setup value of that source (an OData service root, a spec URL). @catalog reads that source''s endpoint
+    when that source registers, so two sources built from the same resolver have their own tables.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
