@@ -32,7 +32,7 @@ from provisa.api.admin.dbt_router import (
     register_dbt_source,
 )
 from provisa.api.errors import ApiError
-from provisa.core import schema_org
+from provisa.core import schema_org, secrets_providers
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.models import Source, SourceType
 from provisa.core.repositories import source as source_repo
@@ -41,6 +41,14 @@ from provisa.dbt.store import dbt_model_tables, model_freshness_token, store_run
 from provisa.events.probes import source_transport
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _single_org(monkeypatch: pytest.MonkeyPatch) -> None:
+    """source_repo.upsert calls sandbox_egress.pinned_source → many_organisations(); the API
+    layer is not imported in every test here, so set it explicitly (single-org: no scoping)."""
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "dbt" / "manifest.json"
 SOURCE = "dbt-jaffle"
