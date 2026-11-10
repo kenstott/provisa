@@ -94710,4 +94710,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and fixed values) and small overrides, as REQ-1923 builds brands on the OpenAPI and GraphQL connectors.
     An audit lists every existing connector, the base it would sit on, and what it would need from that
     base. (Amended 2026-11-10, HAND-BUILT IS THE EXCEPTION:) Maintainer 2026-11-10: a hand-built connector
-    is fine; it is the exception, kept where a source''s logic does not fit a base, not the rule.'
+    is fine; it is the exception, kept where a source''s logic does not fit a base, not the rule. (Amended
+    2026-11-10, ANY CONNECTOR IN PROCESS OR ON A HOST:) Maintainer 2026-11-10: any connector built on a
+    base can run either in process or on a host, chosen per source, as a code source does (REQ-2098, REQ-2100):
+    on a host, Provisa pairs with it by address and reads it through pgwire. Where that host runs (a container
+    beside the server, another machine) is not Provisa''s concern; it is only an address. A connector needing
+    more resources than the data node gives it runs on a host.'
