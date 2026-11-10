@@ -239,3 +239,90 @@ def test_any_day_tells_the_same_story(tmp_path, as_of):
     hub = {r[0] for r in _rows(con, "SELECT account FROM renewal_risk_hub")}
     missed = _rows(con, "SELECT account FROM renewal_risk_checked WHERE missed_by_hub")
     assert len(hub) == 7 and missed == [("Larkspur Analytics",)]
+
+
+def test_no_graphql_field_name_clash_between_columns_and_relationships():
+    """A relationship whose GraphQL field name matches a column name on its source table raises
+    NamesClashRefused at server startup (REQ-194).  Catch it without containers by using
+    derive_graphql_alias (the same function store_effective_names calls to store the
+    relationship's graphql_field) and checking its result against the source table's columns.
+
+    A graphql_alias on the relationship overrides the stored graphql_field and prevents any
+    such conflict; relationships without one are checked here.
+    """
+    from provisa.core.config_loader import views_as_tables
+    from provisa.core.relationship_names import derive_graphql_alias
+
+    raw = yaml.safe_load((_DEMO / "config.yaml").read_text())
+    expanded = views_as_tables(raw)
+
+    # table_id (alias when set, else raw table name) → table dict
+    table_by_id: dict[str, dict] = {}
+    for t in expanded.get("tables", []):
+        if not isinstance(t, dict):
+            continue
+        tid = t.get("alias") or t["table"]
+        table_by_id[tid] = t
+
+    # column names and raw table name by table_id
+    col_names: dict[str, set[str]] = {
+        tid: {c["name"] for c in t.get("columns", [])} for tid, t in table_by_id.items()
+    }
+    raw_table_name: dict[str, str] = {tid: t["table"] for tid, t in table_by_id.items()}
+
+    clashes: list[str] = []
+    for rel in expanded.get("relationships", []):
+        if not isinstance(rel, dict):
+            continue
+        src_id = rel.get("source_table_id")
+        tgt_id = rel.get("target_table_id")
+        cardinality = rel.get("cardinality", "")
+        if not src_id or not tgt_id or not cardinality:
+            continue
+        if rel.get("graphql_alias"):
+            continue  # graphql_alias overrides the stored graphql_field; no clash possible
+
+        tgt_raw = raw_table_name.get(tgt_id)
+        if not tgt_raw:
+            continue
+
+        # store_effective_names stores graphql_field using derive_graphql_alias on the raw name
+        gql_field = derive_graphql_alias(tgt_raw, cardinality)
+        src_cols = col_names.get(src_id, set())
+        if gql_field and gql_field in src_cols:
+            clashes.append(
+                f"relationship {rel.get('id')!r}: graphql_field {gql_field!r} "
+                f"clashes with column {gql_field!r} on source table {src_id!r}; "
+                f"set graphql_alias on the relationship"
+            )
+
+    assert not clashes, "\n".join(clashes)
+
+
+def test_data_product_tables_use_the_registered_view_names():
+    """Every name in a data product's tables list must match the name the config registers the
+    table under — alias when set, otherwise table_name (REQ-2034).
+
+    ``views_as_tables`` registers a view declared as ``id: master`` under the name
+    ``view_master``, not ``master``. A data product listing ``master`` silently passes config
+    parsing but fails at startup when ``set_product_members`` asks the registry for it.
+
+    Works at the raw-dict level (after ``views_as_tables`` but before Pydantic) so that
+    ``${env:CUSTOMER360_PG_NS}`` placeholders without defaults, which cannot be resolved
+    in a unit-test environment, do not cause an error.
+    """
+    from provisa.core.config_loader import views_as_tables
+
+    raw = yaml.safe_load((_DEMO / "config.yaml").read_text())
+    expanded = views_as_tables(raw)
+    # Virtual table name: alias when set, otherwise table (the field views_as_tables writes).
+    declared = frozenset(
+        t.get("alias") or t["table"] for t in expanded.get("tables", []) if isinstance(t, dict)
+    )
+    for dp in expanded.get("data_products", []):
+        for name in dp.get("tables", []):
+            assert name in declared, (
+                f"data product {dp['id']!r} lists table {name!r}, "
+                "which is not in the config's declared table names; "
+                f"declared={sorted(declared)}"
+            )
