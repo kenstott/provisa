@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "No role named {{role}} exists."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} is not offered as a data product: its manifest does not mark it public with an enforced contract.",
+        "not_registered": "Register {{model}} as a table before accepting it as a data product.",
+        "columns_missing": "The table does not hold the contract's columns: {{columns}}.",
+        "id_taken": "Data product {{data_product}} already exists.",
+        "already_a_product": "{{model}} is already a member of data product {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "That is not a way to choose mailboxes: {{error}}",
       "scope_not_delegated": "The organization's Google service account is not authorized for {{scopes}}. A super administrator adds its client ID with that scope in the Google Admin console, under Security › Access and data control › API controls › Manage Domain Wide Delegation; a new authorization can take up to 24 hours to apply.",

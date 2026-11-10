@@ -234,6 +234,8 @@ class OrgRuntime:
     # REQ-2219: user id -> the entitlement lists Provisa holds for that member; the data products
     # (id, domain id) a list can name; the masks computed for this runtime's requests.
     held_entitlements: dict[str, HeldEntitlements] = field(default_factory=dict)
+    # REQ-2219: user id -> the lists their identity provider last sent, per role and kind.
+    idp_entitlements: dict[str, dict[str, dict[str, tuple[str, ...]]]] = field(default_factory=dict)
     data_product_refs: tuple[tuple[str, str], ...] = ()
     entitlement_masks: MaskCache = field(default_factory=MaskCache)
     # role id -> everything the role is served through, from ONE build (api/role_surface.py):

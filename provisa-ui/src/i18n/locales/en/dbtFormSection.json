@@ -22,6 +22,19 @@
     "warehouseHost": "Account or host",
     "warehouseUser": "Username",
     "warehouseCredential": "Credential",
-    "adapterUnknown": "The {{adapter}} adapter has no matching source type. Register its warehouse first, then add this source."
+    "adapterUnknown": "The {{adapter}} adapter has no matching source type. Register its warehouse first, then add this source.",
+    "candidatesTitle": "Candidate data products",
+    "candidatesIntro": "These models are public with an enforced contract. Accepting one makes it a data product with the contract, owner and version its manifest holds.",
+    "candidatesNone": "No model in this manifest is public with an enforced contract.",
+    "candidateVersion": "Version: {{version}}",
+    "candidateOwner": "Owner: {{owner}}",
+    "candidateColumns": "Promised columns: {{columns}}",
+    "candidateRequired": "required",
+    "candidateTests": "Tests: {{tests}}",
+    "candidateProductId": "Data product ID",
+    "candidateOwnerRole": "Owner role",
+    "candidateAccept": "Accept as data product",
+    "candidateRegisterFirst": "Register this model as a table to accept it.",
+    "candidateBecame": "Accepted as data product {{product}}."
   }
 }

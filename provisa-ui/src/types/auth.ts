@@ -22,6 +22,8 @@ export type Capability =
   | "create_view"
   | "column_grant"
   | "user_management"
+  // REQ-2219: set a member's allow-list and deny-list entries within what user_management confers.
+  | "assign_entitlements"
   | "masking_config"
   // REQ-1134: see the meta domain's GOVERNANCE columns (visible_to, unmasked_to, writable_by, the
   // mask definitions, view SQL) — the security posture rather than the structure.

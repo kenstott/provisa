@@ -637,6 +637,8 @@ CREATE TABLE IF NOT EXISTS entitlement_expiries (
     valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- The kind of list the rule was set with: re-setting or ending that list withdraws the rule.
+ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
