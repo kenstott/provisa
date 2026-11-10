@@ -157,6 +157,24 @@ def test_a_mirrored_extension_in_no_part_stops_the_build_by_name(tmp_path, monke
     assert "zz_other: in no part" in capsys.readouterr().err
 
 
+def test_a_file_outside_the_mirrors_version_dir_stops_the_build_by_name(
+    tmp_path, monkeypatch, capsys
+):
+    # Run 42828018954: the Windows mirror kept DuckDB's install directory (_install/v2.0.0/...),
+    # holding httpfs that bigquery and snowflake autoload, and the fill took it for the mirror's.
+    collect = _collect()
+    monkeypatch.setattr(collect, "_DEST", tmp_path / "_ext")
+    version = collect._pinned_duckdb_version()
+    mirror = _sized_mirror(tmp_path, version, {"mssql": 1})
+    stray = mirror / "linux-x64" / "_install" / f"v{version}" / "linux_amd64"
+    stray.mkdir(parents=True)
+    (stray / "httpfs.duckdb_extension").write_bytes(b"HTTPFS")
+    assert collect.main(mirror, "linux-x64", 1) == 1
+    err = capsys.readouterr().err
+    assert "httpfs.duckdb_extension is not under a DuckDB version dir at the root" in err
+    assert not (tmp_path / "_ext").exists()
+
+
 def test_an_unknown_part_is_refused(tmp_path, monkeypatch):
     collect = _collect()
     monkeypatch.setattr(collect, "_DEST", tmp_path / "_ext")

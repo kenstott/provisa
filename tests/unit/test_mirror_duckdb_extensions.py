@@ -90,8 +90,93 @@ def test_the_wheel_fill_order_names_crypto_and_every_mirrored_community_extensio
     sys.modules["duckdb_ext_collect_mirror"] = collect
     spec.loader.exec_module(collect)
 
-    assert set(collect.PRIORITY) == set(_mirror()._sources())
+    # Every extension the mirror carries is in exactly one part.
+    assert sorted(collect.PRIORITY) == sorted(_mirror()._sources())
     assert {"gsheets", "airport"} <= set(collect.PRIORITY)
+
+
+class _FakeResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeDuckDB:
+    """DuckDB as the mirror drives it: INSTALL writes the extension and its .info under the
+    extension directory and, like bigquery's on DuckDB 2.0, autoloads httpfs beside it."""
+
+    def __init__(self, config):
+        self.repos = Path(config["extension_repository_directory"])
+        self.ext_dir: Path | None = None
+        self.closed = False
+
+    def execute(self, sql, params=None):
+        import re
+
+        if sql == "SELECT version()":
+            return _FakeResult([("v2.0.0",)])
+        if sql == "PRAGMA platform":
+            return _FakeResult([("windows_amd64",)])
+        if sql.startswith("SET extension_directory"):
+            self.ext_dir = Path(sql.split("'")[1])
+        elif sql.startswith("CREATE EXTENSION REPOSITORY"):
+            repo = sql.split()[5]
+            (self.repos / f"{repo}.duckdb_extension.repo.json").write_text("{}")
+        elif sql.startswith("INSTALL"):
+            name, repo = re.fullmatch(r"INSTALL (\w+) FROM (\w+)", sql).groups()
+            assert self.ext_dir is not None
+            plat = self.ext_dir / "v2.0.0" / "windows_amd64"
+            where = plat if repo == "community" else plat / "repositories" / repo
+            where.mkdir(parents=True, exist_ok=True)
+            (where / f"{name}.duckdb_extension").write_bytes(name.encode())
+            (where / f"{name}.duckdb_extension.info").write_bytes(b"INFO")
+            (plat / "httpfs.duckdb_extension").write_bytes(b"HTTPFS")
+        elif sql.startswith("SELECT extension_name"):
+            return _FakeResult([(params[0], True)])
+        return _FakeResult([])
+
+    def close(self):
+        self.closed = True
+
+
+def test_what_duckdb_installs_is_never_left_in_the_mirror(tmp_path, monkeypatch):
+    # Run 42828018954: on Windows the extensions the mirror loaded stay locked, the install
+    # directory inside the mirror survived its removal, and httpfs (autoloaded) reached the wheel
+    # fill. DuckDB installs outside the mirror; only what is copied out is mirrored.
+    mirror = _mirror()
+    connections: list[_FakeDuckDB] = []
+
+    def connect(config):
+        connections.append(_FakeDuckDB(config))
+        return connections[-1]
+
+    monkeypatch.setattr(mirror.duckdb, "connect", connect)
+    monkeypatch.setattr(mirror, "_sources", lambda: {"mssql": "community", "crypto": "query_farm"})
+    real_rmtree = mirror.shutil.rmtree
+
+    def locked_rmtree(path, ignore_errors=False):  # Windows: the loaded files cannot be removed
+        if Path(path) != out:
+            return
+        real_rmtree(path, ignore_errors=ignore_errors)
+
+    monkeypatch.setattr(mirror.shutil, "rmtree", locked_rmtree)
+    out = tmp_path / "windows-x64"
+    assert mirror.main(out) == 0
+    assert connections[0].closed
+    files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
+    assert files == [
+        "manifest.json",
+        "v2.0.0/windows_amd64/mssql.duckdb_extension",
+        "v2.0.0/windows_amd64/mssql.duckdb_extension.info",
+        "v2.0.0/windows_amd64/repositories/query_farm/crypto.duckdb_extension",
+        "v2.0.0/windows_amd64/repositories/query_farm/crypto.duckdb_extension.info",
+        "v2.0.0/windows_amd64/repositories/query_farm/query_farm.duckdb_extension.repo.json",
+    ]
 
 
 def test_every_mirrored_extension_keeps_the_info_duckdb_trusts_it_by(tmp_path):

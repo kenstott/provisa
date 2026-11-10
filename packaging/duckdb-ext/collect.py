@@ -115,11 +115,11 @@ def main(
         is_anchor = ext_file.name.endswith(".duckdb_extension.repo.json")
         if ext_file.suffix not in (".duckdb_extension", ".info") and not is_anchor:
             continue
-        parts = ext_file.relative_to(src).parts
-        start = next((i for i, part in enumerate(parts) if _VERSION_DIR.fullmatch(part)), None)
-        if start is None:
-            return _err(f"{ext_file} is under no DuckDB version dir")
-        rel = Path(*parts[start:])
+        rel = ext_file.relative_to(src)
+        # The mirror's layout begins at its root: a file anywhere else (an install directory the
+        # mirror left behind) is not the mirror's, and stops the build by name.
+        if not _VERSION_DIR.fullmatch(rel.parts[0]):
+            return _err(f"{ext_file} is not under a DuckDB version dir at the root of the mirror")
         if rel.parts[0].lstrip("v") != pinned:
             return _err(
                 f"{ext_file} was mirrored from DuckDB {rel.parts[0]}, "
