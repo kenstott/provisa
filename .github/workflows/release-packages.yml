@@ -175,7 +175,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/platform-connectors
+      # REQ-2225: the platform connector block of this run (release-platform-connectors.yml)
+      # over the checkout's, before anything is packaged.
+      - name: Platform connector block
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core
 
       - name: Set up Python
         id: python

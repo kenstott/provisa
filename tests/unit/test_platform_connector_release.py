@@ -187,8 +187,11 @@ def _steps(workflow: str, job: str) -> list[dict]:
     [(w, j) for w, jobs in _PACKAGING_JOBS.items() for j in jobs],
 )
 def test_every_job_that_packages_provisa_takes_the_block(workflow, job) -> None:
-    uses = [step.get("uses", "") for step in _steps(workflow, job)]
-    assert uses.index("./.github/actions/platform-connectors") == 1, uses[:3]
+    steps = _steps(workflow, job)
+    # Right after the checkout: the run's block, over the checkout's empty one.
+    block = steps[1]
+    assert block.get("uses") == "actions/download-artifact@v4", [s.get("uses") for s in steps[:3]]
+    assert block["with"] == {"name": "platform-connectors", "path": "provisa/core"}
 
 
 def test_the_block_is_written_before_the_legs_that_package_it() -> None:
@@ -201,9 +204,15 @@ def test_the_block_is_written_before_the_legs_that_package_it() -> None:
 
 
 def test_only_a_publishing_run_pushes_the_image() -> None:
-    jobs = yaml.safe_load((_WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
-    job = jobs["platform-connectors"]
-    build = next(s for s in job["steps"] if "connector build" in s.get("run", ""))
-    assert build["if"] == "env.PUBLISH == 'true'"
-    assert "github.ref_name == inputs.version" in job["env"]["PUBLISH"]
-    assert next(s for s in job["steps"] if "upload-artifact" in s.get("uses", ""))
+    orchestrator = yaml.safe_load((_WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
+    leg = orchestrator["platform-connectors"]
+    assert leg["uses"] == "./.github/workflows/release-platform-connectors.yml"
+    assert "github.ref_name == inputs.version" in leg["with"]["publish"]
+    steps = _steps("release-platform-connectors.yml", "platform-connectors")
+    build = next(s for s in steps if "connector build" in s.get("run", ""))
+    assert build["if"] == "inputs.publish"
+    upload = next(s for s in steps if "upload-artifact" in s.get("uses", ""))
+    assert upload["with"]["name"] == "platform-connectors"
+    assert upload["with"]["path"] == "provisa/core/platform_connectors.yaml"
+    # Uploaded on a dry run too: the legs' packages then carry the checkout's empty block.
+    assert "if" not in upload

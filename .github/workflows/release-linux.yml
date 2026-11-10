@@ -50,7 +50,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/platform-connectors
+      # REQ-2225: the platform connector block of this run (release-platform-connectors.yml)
+      # over the checkout's, before anything is packaged.
+      - name: Platform connector block
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core
 
       # Slim AppImage: images are NOT bundled (they'd push it over GitHub's 2 GB
       # asset limit alongside the native venv payload). The Docker tier acquires

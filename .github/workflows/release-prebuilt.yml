@@ -125,7 +125,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/platform-connectors
+      # REQ-2225: the platform connector block of this run (release-platform-connectors.yml)
+      # over the checkout's, before anything is packaged.
+      - name: Platform connector block
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core
 
       # The app image's build and the saved images need more disk than every hosted runner
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
@@ -254,7 +260,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/platform-connectors
+      # REQ-2225: the platform connector block of this run (release-platform-connectors.yml)
+      # over the checkout's, before anything is packaged.
+      - name: Platform connector block
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core
 
       # The app image's build and the saved images need more disk than every hosted runner
       # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
