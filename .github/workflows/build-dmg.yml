@@ -6,8 +6,8 @@
 #
 #   prebuilt ─┬─ macos ───┐
 #             ├─ windows ─┤
-#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ── publish-provisa-pypi ── publish
-#   packages ─────────────┘
+#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ─┬─ publish-provisa-pypi ── publish
+#   packages ─────────────┘  publish-connector-image ──────────────┘
 #
 # A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
 # release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:
@@ -42,13 +42,12 @@ concurrency:
 jobs:
   # REQ-2225: the platform connector block, first: every package of the release carries it (each
   # leg job that packages provisa downloads it over its checkout). On a release the connector's
-  # image is pushed here, before the other legs; nothing names it until a package carrying this
-  # block is published. A dry run pushes nothing and ships the empty block.
+  # image is built here and kept in the run; publish-connector-image pushes it after every leg.
+  # A dry run builds no image and ships the empty block.
   platform-connectors:
     name: Platform connector block
     permissions:
       contents: read
-      packages: write
     uses: ./.github/workflows/release-platform-connectors.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -162,11 +161,53 @@ jobs:
           skip-existing: true
           attestations: true
 
+  # REQ-2225: the Spark connector's image, built by platform-connectors and kept in the run, pushed
+  # to the registry byte for byte -- after every leg, and before any package naming it (the provisa
+  # wheel and the installers carry the block) is published. `connector push` refuses an image other
+  # than the one the block's digest names.
+  publish-connector-image:
+    name: Publish Spark connector image
+    # Publishes and does nothing else: not run on a dry run.
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Download the block
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core
+
+      - name: Download the image
+        uses: actions/download-artifact@v4
+        with:
+          name: spark-connector-image
+          path: spark-connector-image
+
+      - name: Push the image the block names
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run provisa connector push spark-connector-image \
+            --config provisa/core/platform_connectors.yaml --name spark \
+            --registry-user "$GITHUB_ACTOR" --registry-password-env REGISTRY_PASSWORD
+
   publish-provisa-pypi:
     name: Publish provisa server to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
+    # REQ-2225: its wheel carries the platform connector block, so the image it names is pushed first.
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-notebook-pypi, publish-connector-image]
     runs-on: ubuntu-latest
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
     # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
@@ -195,7 +236,7 @@ jobs:
   # proves the asset set is whole), and never after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi, publish-connector-image]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
     # Sigstore attestations (id-token), the image pushes (packages).
