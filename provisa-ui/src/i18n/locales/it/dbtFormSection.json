@@ -22,19 +22,6 @@
     "warehouseHost": "Account o host",
     "warehouseUser": "Nome utente",
     "warehouseCredential": "Credenziale",
-    "adapterUnknown": "L'adattatore {{adapter}} non ha un tipo di origine corrispondente. Registra prima il suo warehouse, poi aggiungi questa origine.",
-    "candidatesTitle": "Prodotti dati candidati",
-    "candidatesIntro": "Questi modelli sono pubblici e hanno un contratto applicato. Accettandone uno, diventa un prodotto dati con il contratto, il proprietario e la versione indicati nel suo manifest.",
-    "candidatesNone": "Nessun modello di questo manifest è pubblico con un contratto applicato.",
-    "candidateVersion": "Versione: {{version}}",
-    "candidateOwner": "Proprietario: {{owner}}",
-    "candidateColumns": "Colonne promesse: {{columns}}",
-    "candidateRequired": "obbligatoria",
-    "candidateTests": "Test: {{tests}}",
-    "candidateProductId": "ID del prodotto dati",
-    "candidateOwnerRole": "Ruolo proprietario",
-    "candidateAccept": "Accetta come prodotto dati",
-    "candidateRegisterFirst": "Registra questo modello come tabella per accettarlo.",
-    "candidateBecame": "Accettato come prodotto dati {{product}}."
+    "adapterUnknown": "L'adattatore {{adapter}} non ha un tipo di origine corrispondente. Registra prima il suo warehouse, poi aggiungi questa origine."
   }
 }

@@ -44,6 +44,7 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.api.admin.read_rights import DependentsReader
+    from provisa.api.admin.types import AvailableColumnType
     from provisa.core.database import Connection
 
 from provisa.compiler.sql_types import key_list
@@ -2286,6 +2287,36 @@ def _column_alias(column: str) -> str | None:  # REQ-194
     return alias if alias != column else None
 
 
+def default_table_input(
+    source_id: str,
+    domain_id: str,
+    schema_name: str,
+    table_name: str,
+    columns: list[AvailableColumnType],
+) -> TableInput:
+    """What the Register Table form gives a new table by default: every role sees each column,
+    in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not."""
+    from provisa.api.app import state
+
+    roles = sorted(state.roles or {})
+    return TableInput(
+        source_id=source_id,
+        domain_id=domain_id,
+        schema_name=schema_name,
+        table_name=table_name,
+        columns=[
+            ColumnInput(
+                name=c.name,
+                visible_to=roles,
+                alias=_column_alias(c.name),
+                data_type=c.data_type,
+                description=c.comment,
+            )
+            for c in columns
+        ],
+    )
+
+
 async def _register_draft_table(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
@@ -2294,7 +2325,6 @@ async def _register_draft_table(
     typed from its file as Register Table proposes it, every role seeing every column. None
     when it is set up; else the source stands and why its table was not set up is said."""
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
-    from provisa.api.app import state
     from provisa.core.source_downloads import DOWNLOAD_TYPES
 
     def _without(reason: str) -> MutationResult:
@@ -2312,25 +2342,7 @@ async def _register_draft_table(
     columns = await resolve_available_columns_metadata(input.id, "main", input.id)
     if not columns:
         return _without("its file has no columns")
-    # What the Register Table form gives a new table by default: every role sees each column,
-    # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
-    roles = sorted(state.roles or {})
-    table = TableInput(
-        source_id=input.id,
-        domain_id=input.table_domain_id,
-        schema_name="main",
-        table_name=input.id,
-        columns=[
-            ColumnInput(
-                name=c.name,
-                visible_to=roles,
-                alias=_column_alias(c.name),
-                data_type=c.data_type,
-                description=c.comment,
-            )
-            for c in columns
-        ],
-    )
+    table = default_table_input(input.id, input.table_domain_id, "main", input.id, columns)
     result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
     return None if result.success else _without(result.message)
 

@@ -657,12 +657,10 @@
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} wordt niet aangeboden als dataproduct: het manifest markeert het niet als openbaar met een afgedwongen contract.",
-        "not_registered": "Registreer {{model}} als tabel voordat u het als dataproduct accepteert.",
-        "columns_missing": "De tabel bevat de kolommen van het contract niet: {{columns}}.",
+      "products": {
+        "none_offered": "Bron {{source_id}} heeft geen openbaar model met een afgedwongen contract.",
         "id_taken": "Dataproduct {{data_product}} bestaat al.",
-        "already_a_product": "{{model}} is al lid van dataproduct {{data_product}}."
+        "columns_missing": "{{model}} bevat de kolommen van het contract niet: {{columns}}."
       }
     },
     "google_workspace": {

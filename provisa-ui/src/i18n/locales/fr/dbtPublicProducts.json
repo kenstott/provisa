@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "Ce qui est enregistré",
+    "modeTables": "Choisir des tables",
+    "modeProducts": "Modèles publics comme produits de données",
+    "intro_one": "Chaque modèle public au contrat appliqué est enregistré comme table, et {{count}} produit de données est créé en brouillon pour qu'un intendant le revoie.",
+    "intro_other": "Chaque modèle public au contrat appliqué est enregistré comme table, et {{count}} produits de données sont créés en brouillon pour qu'un intendant les revoie.",
+    "none": "Aucun modèle de ce manifeste n'est public avec un contrat appliqué.",
+    "groupProduct": "Produit de données {{id}} (groupe dbt)",
+    "projectProduct": "Produit de données {{id}} (tout le projet)",
+    "exists": "Un produit de données nommé {{id}} existe déjà. Renommez-le ou supprimez-le pour enregistrer ces modèles.",
+    "owner": "Propriétaire : {{owner}}",
+    "ownerRole": "rôle propriétaire {{role}}",
+    "tests": "Tests : {{tests}}",
+    "version": "Version {{version}}",
+    "columns": "Colonnes promises : {{columns}}",
+    "required": "obligatoire",
+    "alreadyRegistered": "déjà enregistré",
+    "ungrouped": "Dans aucun groupe, donc non enregistrés ici : {{models}}. Choisissez-les plutôt comme tables.",
+    "confirm_one": "Enregistrer et créer {{count}} brouillon de produit",
+    "confirm_other": "Enregistrer et créer {{count}} brouillons de produit"
+  }
+}

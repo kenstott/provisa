@@ -218,6 +218,61 @@ def test_an_image_is_pushed_signing_in_on_the_registrys_challenge(tmp_path: Path
     assert served.blobs == held
 
 
+def test_an_image_written_as_a_layout_is_pushed_under_the_digest_it_was_written_with(
+    tmp_path: Path,
+):
+    """REQ-2225: built in one job, pushed in another -- the digest is known before the push."""
+    image = _image(tmp_path / "made")
+    layout = tmp_path / "layout"
+    written = oci.write_layout(image, "abc", layout)
+    assert written == "sha256:" + hashlib.sha256(image.manifest()).hexdigest()
+    index = json.loads((layout / "index.json").read_text())
+    (described,) = index["manifests"]
+    assert described["digest"] == written
+    assert described["annotations"] == {"org.opencontainers.image.ref.name": "abc"}
+    assert json.loads((layout / "oci-layout").read_text()) == {"imageLayoutVersion": "1.0.0"}
+    served = _Registry()
+    registry = oci.Registry(
+        "reg.test", "bot", "made-up-token", transport=httpx.MockTransport(served)
+    )
+    tag, pushed = registry.push_layout("acme/spark", layout)
+    assert (tag, pushed) == ("abc", written)
+    assert served.manifests["abc"] == image.manifest()
+    config = image.config()
+    assert served.blobs["sha256:" + hashlib.sha256(config).hexdigest()] == config
+    assert served.blobs[image.layers[0].digest] == image.layers[0].blob.read_bytes()
+    # The same image pushed straight from the build gives the same digest.
+    assert registry.push("acme/spark", "abc", image) == written
+
+
+def test_a_layout_whose_blob_was_changed_is_refused_and_nothing_is_pushed(tmp_path: Path):
+    image = _image(tmp_path / "made")
+    layout = tmp_path / "layout"
+    oci.write_layout(image, "abc", layout)
+    blob = layout / "blobs" / "sha256" / image.layers[0].digest.removeprefix("sha256:")
+    blob.write_bytes(b"something else")
+    served = _Registry()
+    registry = oci.Registry(
+        "reg.test", "bot", "made-up-token", transport=httpx.MockTransport(served)
+    )
+    with pytest.raises(oci.ImageRefused, match="not what its digest names"):
+        registry.push_layout("acme/spark", layout)
+    assert served.blobs == {} and served.manifests == {}
+
+
+def test_a_layout_holding_other_than_one_image_is_refused(tmp_path: Path):
+    image = _image(tmp_path / "made")
+    layout = tmp_path / "layout"
+    oci.write_layout(image, "abc", layout)
+    index = json.loads((layout / "index.json").read_text())
+    index["manifests"] *= 2
+    (layout / "index.json").write_text(json.dumps(index))
+    with pytest.raises(oci.ImageRefused, match="exactly one image"):
+        oci.read_layout(layout)
+    with pytest.raises(oci.ImageRefused, match="not an OCI image layout"):
+        oci.read_layout(tmp_path / "nowhere")
+
+
 def test_a_base_image_is_pulled_by_its_digest_and_checked(tmp_path: Path):
     served = _Registry()
     pusher = oci.Registry("reg.test", "bot", "made-up-token", transport=httpx.MockTransport(served))

@@ -100,6 +100,7 @@ function renderForm() {
       suggestTableAlias={vi.fn().mockResolvedValue("")}
       onContinue={onContinue}
       onCancel={() => {}}
+      onProductsRegistered={vi.fn()}
       setError={vi.fn()}
     />,
   );

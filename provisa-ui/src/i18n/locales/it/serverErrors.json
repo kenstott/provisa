@@ -657,12 +657,10 @@
       "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} non è offerto come prodotto dati: il suo manifest non lo indica come pubblico con un contratto applicato.",
-        "not_registered": "Registra {{model}} come tabella prima di accettarlo come prodotto dati.",
-        "columns_missing": "La tabella non contiene le colonne del contratto: {{columns}}.",
+      "products": {
+        "none_offered": "L'origine {{source_id}} non ha alcun modello pubblico con contratto applicato.",
         "id_taken": "Il prodotto dati {{data_product}} esiste già.",
-        "already_a_product": "{{model}} è già membro del prodotto dati {{data_product}}."
+        "columns_missing": "{{model}} non contiene le colonne del contratto: {{columns}}."
       }
     },
     "google_workspace": {

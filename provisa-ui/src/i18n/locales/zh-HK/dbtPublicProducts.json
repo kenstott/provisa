@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "註冊內容",
+    "modeTables": "選擇表",
+    "modeProducts": "將公開模型作為數據產品",
+    "intro_one": "每個強制執行契約的公開模型都註冊為表，並建立 {{count}} 個數據產品草稿，供數據管家審閱。",
+    "intro_other": "每個強制執行契約的公開模型都註冊為表，並建立 {{count}} 個數據產品草稿，供數據管家審閱。",
+    "none": "此資訊清單中沒有強制執行契約的公開模型。",
+    "groupProduct": "數據產品 {{id}}（dbt 群組）",
+    "projectProduct": "數據產品 {{id}}（整個項目）",
+    "exists": "名為 {{id}} 的數據產品已存在。請重新命名或刪除它，以註冊這些模型。",
+    "owner": "擁有者：{{owner}}",
+    "ownerRole": "擁有者角色 {{role}}",
+    "tests": "測試：{{tests}}",
+    "version": "版本 {{version}}",
+    "columns": "承諾的欄：{{columns}}",
+    "required": "必填",
+    "alreadyRegistered": "已註冊",
+    "ungrouped": "不屬於任何群組，因此不在此註冊：{{models}}。請改為將其作為表選擇。",
+    "confirm_one": "註冊並建立 {{count}} 個產品草稿",
+    "confirm_other": "註冊並建立 {{count}} 個產品草稿"
+  }
+}

@@ -657,12 +657,10 @@
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} wird nicht als Datenprodukt angeboten: Sein Manifest kennzeichnet es nicht als öffentlich mit erzwungenem Vertrag.",
-        "not_registered": "Registrieren Sie {{model}} als Tabelle, bevor Sie es als Datenprodukt annehmen.",
-        "columns_missing": "Die Tabelle enthält die Spalten des Vertrags nicht: {{columns}}.",
+      "products": {
+        "none_offered": "Die Quelle {{source_id}} hat kein öffentliches Modell mit erzwungenem Vertrag.",
         "id_taken": "Das Datenprodukt {{data_product}} existiert bereits.",
-        "already_a_product": "{{model}} ist bereits Mitglied des Datenprodukts {{data_product}}."
+        "columns_missing": "{{model}} enthält die Spalten des Vertrags nicht: {{columns}}."
       }
     },
     "google_workspace": {

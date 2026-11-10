@@ -20,7 +20,8 @@ A layer is reproducible: its entries in path order, every time zero, every owner
 files make the same layer, with the same digest.
 
 The image is pushed to a registry over the OCI distribution API (``/v2/``), signing in with the
-registry's bearer-token challenge, or written as a ``docker load`` archive.
+registry's bearer-token challenge, written as a ``docker load`` archive, or written as an OCI
+image layout to be pushed later, byte for byte, with the digest it was written with.
 """
 
 # Requirements: REQ-2098
@@ -392,12 +393,24 @@ class Registry:
 
     def push(self, repository: str, tag: str, image: Image) -> str:
         """Push ``image`` as ``repository:tag``; its manifest's digest."""
-        scope = f"repository:{repository}:pull,push"
         config = image.config()
         blobs: list[tuple[str, Path | bytes]] = [
             ("sha256:" + hashlib.sha256(config).hexdigest(), config),
             *((layer.digest, layer.blob) for layer in image.layers),
         ]
+        return self._push(repository, tag, blobs, image.manifest())
+
+    def push_layout(self, repository: str, layout: Path) -> tuple[str, str]:
+        """Push the image an OCI image layout holds (:func:`write_layout`) as
+        ``repository:<its tag>``, the manifest's bytes as written: its tag and the digest, which is
+        the one the layout was written with."""
+        tag, manifest, blobs = read_layout(layout)
+        return tag, self._push(repository, tag, blobs, manifest)
+
+    def _push(
+        self, repository: str, tag: str, blobs: list[tuple[str, Path | bytes]], manifest: bytes
+    ) -> str:
+        scope = f"repository:{repository}:pull,push"
         for digest, content in blobs:
             held = self.request("HEAD", f"{self.base}/{repository}/blobs/{digest}", scope)
             if held.status_code == 200:
@@ -425,7 +438,6 @@ class Registry:
                     f"{self.host}/{repository} refused blob {digest}: HTTP {done.status_code} "
                     f"{done.text[:200]}"
                 )
-        manifest = image.manifest()
         put = self.request(
             "PUT",
             f"{self.base}/{repository}/manifests/{tag}",
@@ -439,6 +451,87 @@ class Registry:
                 f"{put.text[:200]}"
             )
         return "sha256:" + hashlib.sha256(manifest).hexdigest()
+
+
+# -- an OCI image layout ------------------------------------------------------------------------
+#
+# An image written to a directory instead of pushed (the OCI image layout specification): built in
+# one place, pushed byte for byte in another. Its manifest is the one a push sends, so the digest
+# it is written with is the digest the registry will hold.
+
+_REF_NAME = "org.opencontainers.image.ref.name"
+
+
+def _blob_path(layout: Path, digest: str) -> Path:
+    algorithm, _, hexdigest = digest.partition(":")
+    if algorithm != "sha256" or not re.fullmatch(r"[0-9a-f]{64}", hexdigest):
+        raise ImageRefused(f"{layout}: {digest} is not a sha256 digest")
+    return layout / "blobs" / "sha256" / hexdigest
+
+
+def write_layout(image: Image, tag: str, layout: Path) -> str:
+    """``image`` as an OCI image layout at ``layout`` (a new directory), its manifest named
+    ``tag``: the digest a push of it gives."""
+    manifest, config = image.manifest(), image.config()
+    digest = "sha256:" + hashlib.sha256(manifest).hexdigest()
+    layout.mkdir(parents=True)
+    (layout / "blobs" / "sha256").mkdir(parents=True)
+    _blob_path(layout, digest).write_bytes(manifest)
+    _blob_path(layout, "sha256:" + hashlib.sha256(config).hexdigest()).write_bytes(config)
+    for layer in image.layers:
+        target = _blob_path(layout, layer.digest)
+        with layer.blob.open("rb") as src, target.open("wb") as out:
+            for chunk in iter(lambda: src.read(1 << 20), b""):
+                out.write(chunk)
+    (layout / "oci-layout").write_text(json.dumps({"imageLayoutVersion": "1.0.0"}))
+    index = {
+        "schemaVersion": 2,
+        "mediaType": OCI_INDEX,
+        "manifests": [
+            {
+                "mediaType": OCI_MANIFEST,
+                "digest": digest,
+                "size": len(manifest),
+                "annotations": {_REF_NAME: tag},
+            }
+        ],
+    }
+    (layout / "index.json").write_text(json.dumps(index, sort_keys=True))
+    return digest
+
+
+def read_layout(layout: Path) -> tuple[str, bytes, list[tuple[str, Path | bytes]]]:
+    """The one image an OCI image layout holds: its tag, its manifest's bytes, and every blob the
+    manifest names (the configuration first), each checked against its digest. Refused when the
+    layout holds anything else."""
+    try:
+        index = json.loads((layout / "index.json").read_text())
+    except (OSError, ValueError) as exc:
+        raise ImageRefused(f"{layout} is not an OCI image layout: no readable index.json") from exc
+    described = index.get("manifests") if isinstance(index, dict) else None
+    if not isinstance(described, list) or len(described) != 1:
+        raise ImageRefused(f"{layout}: an image layout to push holds exactly one image")
+    (entry,) = described
+    if entry.get("mediaType") != OCI_MANIFEST:
+        raise ImageRefused(f"{layout}: its image is not an OCI manifest")
+    tag = (entry.get("annotations") or {}).get(_REF_NAME)
+    if not tag:
+        raise ImageRefused(f"{layout}: its image has no {_REF_NAME}")
+
+    def checked(digest: str) -> Path:
+        path = _blob_path(layout, digest)
+        if not path.is_file():
+            raise ImageRefused(f"{layout} has no blob {digest}")
+        if sha256_of(path) != digest:
+            raise ImageRefused(f"{layout}: blob {digest} is not what its digest names")
+        return path
+
+    manifest = checked(entry["digest"]).read_bytes()
+    body = json.loads(manifest)
+    blobs: list[tuple[str, Path | bytes]] = [
+        (d["digest"], checked(d["digest"])) for d in (body["config"], *body["layers"])
+    ]
+    return tag, manifest, blobs
 
 
 def _oci(media_type: str) -> str:

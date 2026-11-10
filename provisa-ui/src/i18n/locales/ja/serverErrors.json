@@ -657,12 +657,10 @@
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} はデータプロダクトとして提供されていません。マニフェストで、コントラクトが強制された公開モデルとして指定されていません。",
-        "not_registered": "{{model}} をデータプロダクトとして承認する前に、テーブルとして登録してください。",
-        "columns_missing": "テーブルにコントラクトの列がありません: {{columns}}。",
-        "id_taken": "データプロダクト {{data_product}} はすでに存在します。",
-        "already_a_product": "{{model}} はすでにデータプロダクト {{data_product}} のメンバーです。"
+      "products": {
+        "none_offered": "ソース {{source_id}} には、契約が適用された公開モデルがありません。",
+        "id_taken": "データプロダクト {{data_product}} は既に存在します。",
+        "columns_missing": "{{model}} には契約の列がありません: {{columns}}。"
       }
     },
     "google_workspace": {

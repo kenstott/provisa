@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "Wat er wordt geregistreerd",
+    "modeTables": "Tabellen kiezen",
+    "modeProducts": "Openbare modellen als dataproducten",
+    "intro_one": "Elk openbaar model met een afgedwongen contract wordt als tabel geregistreerd, en {{count}} dataproduct wordt als ontwerp aangemaakt voor een steward om te beoordelen.",
+    "intro_other": "Elk openbaar model met een afgedwongen contract wordt als tabel geregistreerd, en {{count}} dataproducten worden als ontwerp aangemaakt voor een steward om te beoordelen.",
+    "none": "Geen enkel model in dit manifest is openbaar met een afgedwongen contract.",
+    "groupProduct": "Dataproduct {{id}} (dbt-groep)",
+    "projectProduct": "Dataproduct {{id}} (het hele project)",
+    "exists": "Er bestaat al een dataproduct met de naam {{id}}. Hernoem of verwijder het om deze modellen te registreren.",
+    "owner": "Eigenaar: {{owner}}",
+    "ownerRole": "eigenaarsrol {{role}}",
+    "tests": "Tests: {{tests}}",
+    "version": "Versie {{version}}",
+    "columns": "Beloofde kolommen: {{columns}}",
+    "required": "verplicht",
+    "alreadyRegistered": "al geregistreerd",
+    "ungrouped": "In geen enkele groep, dus hier niet geregistreerd: {{models}}. Kies ze in plaats daarvan als tabellen.",
+    "confirm_one": "Registreren en {{count}} productontwerp aanmaken",
+    "confirm_other": "Registreren en {{count}} productontwerpen aanmaken"
+  }
+}

@@ -657,12 +657,10 @@
       "unknown_role": "אין תפקיד בשם {{role}}."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} אינו מוצע כמוצר נתונים: המניפסט שלו אינו מסמן אותו כציבורי בעל חוזה נאכף.",
-        "not_registered": "יש לרשום את {{model}} כטבלה לפני קבלתו כמוצר נתונים.",
-        "columns_missing": "הטבלה אינה מכילה את עמודות החוזה: {{columns}}.",
+      "products": {
+        "none_offered": "למקור {{source_id}} אין מודל ציבורי עם חוזה נאכף.",
         "id_taken": "מוצר הנתונים {{data_product}} כבר קיים.",
-        "already_a_product": "{{model}} כבר חבר במוצר הנתונים {{data_product}}."
+        "columns_missing": "{{model}} אינו מכיל את עמודות החוזה: {{columns}}."
       }
     },
     "google_workspace": {

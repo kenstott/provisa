@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""``provisa connector build|check|rebuild`` -- an organization's own code connectors (REQ-2221).
+"""``provisa connector build|push|check|rebuild`` -- an organization's own code connectors (REQ-2221).
 
 Runs wherever the operator runs it (any CI), with no Provisa server: it needs git, the project, and
 the container registry. The server never builds a connector or reads its build settings. A build
@@ -18,6 +18,11 @@ operator's own deployment runs the image.
 
 Credentials stay the operator's: git's own configuration signs in to the repository, and the
 registry password is read from an environment variable the operator names.
+
+A build pushes its image, or with ``--oci-layout`` writes it to a directory and pushes nothing: the
+block it prints already carries the digest, since a push sends the manifest as written. ``push``
+then sends that image, byte for byte, to where a block names it, once the operator is ready to let
+it leave (REQ-2225: a release builds its connector first and pushes it only when it publishes).
 
 THE CONTRACT WITH A SCRIPT: stdout is the result (a ``connectors:`` block, or one line per
 connector), stderr says what happened.
@@ -33,6 +38,7 @@ connector), stderr says what happened.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shlex
@@ -345,10 +351,12 @@ def _build_and_push(
     registry: dict[str, str],
     package_registries: list[Any],
     standard: _StandardFile | None = None,
+    layout: Path | None = None,
 ) -> tuple[str, list[ConnectorRequirement], str]:
     """The code source image build (REQ-2098) on the project at ``root``: its digest once pushed,
-    what its code declares it requires, and the hash of that code. With no server there are no
-    organization package registries: ``package_registries`` are the indexes the operator named
+    what its code declares it requires, and the hash of that code. With ``layout`` the image is
+    written there as an OCI image layout and not pushed; the digest is the one its push gives.
+    With no server there are no organization package registries: ``package_registries`` are the indexes the operator named
     for private dependencies (:func:`_package_registries`); the rest come from the public ones.
     ``standard`` is held to what the code declares before anything is built or pushed."""
     from provisa.codesource import image_build, oci
@@ -393,6 +401,8 @@ def _build_and_push(
     )
     workdir.mkdir(parents=True)
     built = image_build.assemble(plan, code, None, entry.arch, workdir)
+    if layout is not None:
+        return oci.write_layout(built.image, built.tag, layout), requires, prepared.content_hash
     host, _, repository = entry.image.partition("/")
     digest = oci.Registry(host, registry.get("username"), registry.get("password")).push(
         repository, built.tag, built.image
@@ -405,8 +415,10 @@ def _build(
     commit: str,
     registry: dict[str, str],
     package_registries: list[Any],
+    layout: Path | None = None,
 ) -> ConnectorConfig:
-    """``entry`` built at ``commit``: the build system's answer, taken as it comes."""
+    """``entry`` built at ``commit``: the build system's answer, taken as it comes. With
+    ``layout`` its image is written there, not pushed."""
     with tempfile.TemporaryDirectory(prefix="provisa-connector-") as scratch:
         work = Path(scratch)
         checkout = work / "checkout"
@@ -417,7 +429,7 @@ def _build(
         language = _detect_language(root, entry.path)
         standard = _read_standard_file(root)
         digest, requires, code_hash = _build_and_push(
-            entry, root, language, work / "image", registry, package_registries, standard
+            entry, root, language, work / "image", registry, package_registries, standard, layout
         )
     return entry.model_copy(
         update={
@@ -616,14 +628,58 @@ def _cmd_build(args: argparse.Namespace) -> int:
     except ValidationError as exc:
         raise _Usage(_problems(exc)) from exc
     registry = _registry_sign_in(args)
+    layout = _new_layout(args.oci_layout, registry)
     package_registries = _package_registries(args.package_registries)
     try:
         commit = args.commit or _latest_commit(planned.git, planned.ref)
-        built = _build(planned, commit, registry, package_registries)
+        built = _build(planned, commit, registry, package_registries, layout)
     except _failures() as exc:
         print(f"connector {planned.name}: {exc}", file=sys.stderr)
         return 1
     sys.stdout.write(_block([built]))
+    return 0
+
+
+def _new_layout(path: str | None, registry: dict[str, str]) -> Path | None:
+    """Where ``--oci-layout`` writes the image: a directory not there yet. Nothing is pushed then,
+    so a registry sign-in is a usage error rather than a credential read for nothing."""
+    if path is None:
+        return None
+    if registry:
+        raise _Usage("--oci-layout pushes nothing; push it with `provisa connector push`")
+    layout = Path(path)
+    if layout.exists():
+        raise _Usage(f"{path} is already there; --oci-layout writes a new directory")
+    return layout.absolute()
+
+
+def _cmd_push(args: argparse.Namespace) -> int:
+    """The image a ``--oci-layout`` build wrote, pushed to where the block names it -- refused,
+    with nothing pushed, unless it is the image the block's digest names."""
+    from provisa.codesource import oci
+
+    named = [c for c in _load_connectors(args.config) if c.name == args.name]
+    if not named:
+        raise _Usage(f"{args.config} has no connector {args.name}")
+    (connector,) = named
+    registry = _registry_sign_in(args)
+    layout = Path(args.layout)
+    try:
+        _tag, manifest, _blobs = oci.read_layout(layout)
+        held = "sha256:" + hashlib.sha256(manifest).hexdigest()
+        if held != connector.digest:
+            raise _Refused(
+                f"{args.layout} holds the image {held}; {args.config} names {connector.digest}"
+            )
+        host, _, repository = connector.image.partition("/")
+        tag, digest = oci.Registry(
+            host, registry.get("username"), registry.get("password")
+        ).push_layout(repository, layout)
+    except _failures() as exc:
+        print(f"connector {connector.name}: {exc}", file=sys.stderr)
+        return 1
+    print(f"connector {connector.name}: pushed {connector.image}:{tag}", file=sys.stderr)
+    print(f"{connector.image}@{digest}")
     return 0
 
 
@@ -735,8 +791,34 @@ def register(sub) -> None:
         default="",
         help="Run at the repository's root, before the build, to produce the project at --path",
     )
+    build.add_argument(
+        "--oci-layout",
+        default=None,
+        metavar="DIR",
+        help=(
+            "Write the image to this new directory as an OCI image layout instead of pushing it; "
+            "the block carries the digest its push gives (see `connector push`)"
+        ),
+    )
     _registry_flags(build)
     build.set_defaults(func=_running(_cmd_build))
+
+    push = actions.add_parser(
+        "push", help="Push an image `build --oci-layout` wrote, to where its block names it"
+    )
+    push.add_argument("layout", help="The directory `build --oci-layout` wrote")
+    push.add_argument(
+        "--config", required=True, help="The file with the connectors: block naming the image"
+    )
+    push.add_argument("--name", required=True, help="The connector in the block")
+    push.add_argument("--registry-user", default=None, help="Container registry user")
+    push.add_argument(
+        "--registry-password-env",
+        default=None,
+        metavar="VARIABLE",
+        help="The environment variable holding the container registry password",
+    )
+    push.set_defaults(func=_running(_cmd_push))
 
     check = actions.add_parser("check", help="Report the connectors behind their git ref")
     check.add_argument(

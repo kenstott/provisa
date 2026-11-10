@@ -66,6 +66,7 @@ describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}
+        onProductsRegistered={vi.fn()}
         setError={vi.fn()}
       />,
     );
