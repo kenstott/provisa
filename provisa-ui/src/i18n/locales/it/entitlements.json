@@ -26,14 +26,27 @@
       "everything": "Tutto, compreso ciò che verrà aggiunto in seguito",
       "typedLabel": "Voci",
       "typedPlaceholder": "Digita una voce e premi Invio",
-      "filterLabel": "Cerca",
-      "filterPlaceholder": "Cerca per nome",
       "noObjects": "Il modello non ha ancora nulla di questo tipo.",
       "otherValues": "Elencati anche",
       "removeValue": "Rimuovi {{value}}",
-      "expand": "Espandi {{name}}",
-      "collapse": "Comprimi {{name}}",
-      "includedByParent": "Incluso dalla voce superiore"
+      "domains": {
+        "label": "Domini",
+        "search": "Cerca domini"
+      },
+      "tables": {
+        "label": "Tabelle",
+        "search": "Cerca le tabelle dei domini scelti",
+        "searchAll": "Cerca tutte le tabelle",
+        "chooseAbove": "I domini scelti non hanno tabelle"
+      },
+      "columns": {
+        "label": "Colonne",
+        "search": "Cerca le colonne delle tabelle scelte",
+        "chooseAbove": "Scegli delle tabelle per elencarne le colonne"
+      },
+      "noMatch": "Nessuna corrispondenza",
+      "more": "Visualizzati {{shown}} di {{total}}. Digita per restringere.",
+      "unknownValue": "Il modello non contiene questo elemento. Viene mantenuto finché non lo rimuovi."
     },
     "people": {
       "placeholder": "Cerca per nome o email",
@@ -49,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Seleziona un tipo",
       "entriesLabel": "Voci",
-      "entriesHelp": "Ciò che questa persona può raggiungere di quanto il ruolo consente. Selezionare una voce include tutto ciò che sta sotto. Una lista vuota non raggiunge nulla di questo tipo.",
+      "entriesHelp": "Ciò che questa persona può raggiungere di quanto il ruolo consente. Un dominio o una tabella scelti senza nulla di scelto al di sotto includono tutto il loro contenuto. Un elenco vuoto non raggiunge nulla di questo tipo.",
       "endsOnLabel": "Termina il",
       "endsOnHint": "Lascia vuoto per mantenere la lista finché non viene terminata.",
       "reasonLabel": "Motivo",

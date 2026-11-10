@@ -26,14 +26,27 @@
       "everything": "Alles, einschließlich später Hinzugefügtem",
       "typedLabel": "Einträge",
       "typedPlaceholder": "Eintrag eingeben und Enter drücken",
-      "filterLabel": "Suchen",
-      "filterPlaceholder": "Nach Namen suchen",
       "noObjects": "Das Modell enthält noch nichts dieser Art.",
       "otherValues": "Ebenfalls aufgeführt",
       "removeValue": "{{value}} entfernen",
-      "expand": "{{name}} aufklappen",
-      "collapse": "{{name}} zuklappen",
-      "includedByParent": "Durch den Eintrag darüber enthalten"
+      "domains": {
+        "label": "Domänen",
+        "search": "Domänen suchen"
+      },
+      "tables": {
+        "label": "Tabellen",
+        "search": "Tabellen der gewählten Domänen suchen",
+        "searchAll": "Alle Tabellen suchen",
+        "chooseAbove": "Die gewählten Domänen haben keine Tabellen"
+      },
+      "columns": {
+        "label": "Spalten",
+        "search": "Spalten der gewählten Tabellen suchen",
+        "chooseAbove": "Tabellen wählen, um ihre Spalten aufzulisten"
+      },
+      "noMatch": "Keine Treffer",
+      "more": "{{shown}} von {{total}} angezeigt. Zum Eingrenzen tippen.",
+      "unknownValue": "Das Modell enthält dies nicht. Es bleibt erhalten, bis Sie es entfernen."
     },
     "people": {
       "placeholder": "Nach Name oder E-Mail suchen",
@@ -49,7 +62,7 @@
       "kindLabel": "Art",
       "kindPlaceholder": "Art auswählen",
       "entriesLabel": "Einträge",
-      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Ein markierter Eintrag schließt alles darunter ein. Eine leere Liste erreicht nichts dieser Art.",
+      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine gewählte Domäne oder Tabelle ohne darunter Gewähltes umfasst alles darin. Eine leere Liste erreicht nichts dieser Art.",
       "endsOnLabel": "Endet am",
       "endsOnHint": "Leer lassen, um die Liste bis zu ihrer Beendigung zu behalten.",
       "reasonLabel": "Grund",

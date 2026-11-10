@@ -26,14 +26,27 @@
       "everything": "全部，包括日後新增的內容",
       "typedLabel": "項目",
       "typedPlaceholder": "輸入項目後按 Enter",
-      "filterLabel": "尋找",
-      "filterPlaceholder": "按名稱尋找",
       "noObjects": "模型中尚未有此類內容。",
       "otherValues": "其他已列項目",
       "removeValue": "移除 {{value}}",
-      "expand": "展開 {{name}}",
-      "collapse": "摺疊 {{name}}",
-      "includedByParent": "已由上層項目包含"
+      "domains": {
+        "label": "網域",
+        "search": "搜尋網域"
+      },
+      "tables": {
+        "label": "資料表",
+        "search": "搜尋所選網域的資料表",
+        "searchAll": "搜尋所有資料表",
+        "chooseAbove": "所選網域沒有資料表"
+      },
+      "columns": {
+        "label": "欄",
+        "search": "搜尋所選資料表的欄",
+        "chooseAbove": "選擇資料表以列出其欄"
+      },
+      "noMatch": "沒有相符項目",
+      "more": "顯示 {{total}} 項中的 {{shown}} 項。輸入以縮小範圍。",
+      "unknownValue": "模型中沒有此項。在你移除之前會一直保留。"
     },
     "people": {
       "placeholder": "按姓名或電郵搜尋",
@@ -49,7 +62,7 @@
       "kindLabel": "類型",
       "kindPlaceholder": "選擇類型",
       "entriesLabel": "項目",
-      "entriesHelp": "此人員在角色允許範圍內可存取的內容。勾選項目即包含其下所有內容。空白清單表示不存取此類型的任何內容。",
+      "entriesHelp": "此人可在角色允許的範圍內存取的內容。選取某個網域或資料表而其下未選取任何內容時，即包含其全部內容。空白清單不能存取此類的任何內容。",
       "endsOnLabel": "結束日期",
       "endsOnHint": "留空則保留該清單，直至將其結束。",
       "reasonLabel": "原因",
