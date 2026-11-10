@@ -724,9 +724,19 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                             )
                         )
                 else:
-                    tid = am.get(tbl_ref)
-                    if tid is None:
+                    named = _qualified_relation(col, gov_ctx, cte_names_set)
+                    if named is None:
+                        violations.append(
+                            ValidationViolation(
+                                "V003",
+                                f"Column {tbl_ref}.{col_name}: {tbl_ref!r} names no governed "
+                                "relation, so the column is not read",
+                            )
+                        )
                         continue
+                    if not isinstance(named, int):
+                        continue  # _DERIVED: a derived relation's own SELECT is checked where it is
+                    tid = named
                     vis = gov_ctx.visible_columns.get(tid)
                     # Refuse when no governance data (key absent = fail closed) OR when the role's
                     # visible set exists and excludes this column (REQ-2226, REQ-039).
@@ -742,6 +752,45 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
         violations += _hidden_sort_keys(select, am, gov_ctx)
         violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
+
+
+#: What :func:`_qualified_relation` answers for a qualifier naming a derived relation: a CTE, a
+#: derived table, a row generator or table function, or the session's own temporary table.
+_DERIVED = object()
+
+
+def _from_items(select: exp.Select) -> list[exp.Expr]:
+    """The relations ``select``'s own FROM clause and joins name, each once."""
+    from_clause = select.args.get("from_") or select.args.get("from")
+    items = [from_clause.this] if from_clause is not None else []
+    return items + [join.this for join in select.args.get("joins") or []]
+
+
+def _qualified_relation(  # REQ-039, REQ-2226
+    col: exp.Column, gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
+) -> int | object | None:
+    """The registered table a qualified column ``col`` reads, found by its qualifier in the
+    column's own SELECT and then each enclosing one (a correlated reference reads an outer
+    table); :data:`_DERIVED` for a qualifier naming a derived relation; None for one naming a
+    table no registered table resolves, or no relation at all. None is refused, never read as a
+    column there is nothing to check: unresolved, ``o.secret`` was served to a role whose grant
+    does not name it (REQ-2226)."""
+    select = col.find_ancestor(exp.Select)
+    while select is not None:
+        for item in _from_items(select):
+            if item.alias_or_name != col.table:
+                continue
+            if not isinstance(item, exp.Table) or not isinstance(item.this, exp.Identifier):
+                return _DERIVED
+            if not item.db and (
+                item.name in cte_names_set
+                or names_a_cte_in_scope(item)
+                or item.name in temp_tables.names()
+            ):
+                return _DERIVED
+            return _resolve_table_id(item, gov_ctx)
+        select = select.find_ancestor(exp.Select)
+    return None
 
 
 def _unqualified_column_refused(  # REQ-039, REQ-2190
