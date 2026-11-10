@@ -86,7 +86,9 @@ def server():
                 {
                     "id": "reader",
                     "description": "Test role.",
-                    "capabilities": reads,
+                    # REQ-870: command_execution is required to run commands; the assignment is
+                    # the grant — a role in visible_to with no command_execution is refused.
+                    "capabilities": [*reads, "command_execution"],
                     "domain_access": ["*"],
                 },
                 {
