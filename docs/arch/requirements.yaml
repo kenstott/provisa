@@ -18438,7 +18438,15 @@
     to Maven Central when a bundle changes. One stage command for the DMG, AppImage, Windows and pip installs
     runs once at install or first launch, using the machine''s configured package index, and a directory
     already filled is used without fetching. The container image is built with these assets inside it; it
-    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08).'
+    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08). (Amended 2026-11-10, LINUX
+    ARM64 HAS NO PGWIRE CONNECTORS:) Maintainer 2026-11-10: [SUPERSEDED by REQ-294, 2026-11-10 -- Linux
+    arm64 is not a supported platform. Kept here for history; do not implement against it.] Linux arm64
+    receives the DuckDB extension parts but no pgwire connector bundles; a pgwire connector there is refused
+    by name, naming the platforms that have it. The release build''s probe on Linux arm64 expects that refusal
+    rather than a bundle. [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS NOT SUPPORTED:) Maintainer
+    2026-11-10: Linux arm64 is not a supported platform. The release builds, publishes and probes nothing
+    for it: no DuckDB extension parts and no pgwire connector bundles. The supported platforms are macOS
+    arm64, Linux x86_64 and Windows x86_64.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -89377,22 +89385,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: roles-and-capabilities-domain-access
   priority: MUST
   type: behavioral
-  description: 'Registering a table grants read on every one of its columns to the role the registrant is
-    acting as and to the standard Viewer role (REQ-2155), written into each column''s grant list where they
-    can be seen and changed. Registration never grants write; write is an explicit grant (REQ-868). An empty
-    grant list means no role, in every domain. A column is made sensitive by removing Viewer from its grant
-    list. A role cannot remove its own read on a column; to keep a column''s values from itself it adds
-    a mask rule for itself, which keeps the column''s name so the role can still administer it. The last
-    role holding read on a column cannot lose it, so every column has a reader. If no role can read a column,
-    re-registering the table from its source recovers it: registration shows the raw schema (REQ-2152) and
-    sets new grants. Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A
-    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
-    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
-    before the product is declared green. (Amended 2026-10-28, A ROLE SERVED NO TABLES IS NOT REFUSED:)
-    A role whose grants serve it no table is not refused as such: its data surface is simply empty. A statement
-    naming a table answers as for any role that is not served that table, and statements that need no table
-    (a graph-session CREATE, MATCH or MERGE of ephemeral objects, literals, catalog reads) run as for any
-    role.'
+  description: '[SUPERSEDED by REQ-2154, 2026-11-10 -- the default applies only to a column registered with
+    no grant named. Kept here for history; do not implement against it.] Registering a table grants read
+    on every one of its columns to the role the registrant is acting as and to the standard Viewer role
+    (REQ-2155), written into each column''s grant list where they can be seen and changed. [END SUPERSEDED
+    BLOCK] Registration never grants write; write is an explicit grant (REQ-868). An empty grant list means
+    no role, in every domain. A column is made sensitive by removing Viewer from its grant list. A role
+    cannot remove its own read on a column; to keep a column''s values from itself it adds a mask rule for
+    itself, which keeps the column''s name so the role can still administer it. The last role holding read
+    on a column cannot lose it, so every column has a reader. If no role can read a column, re-registering
+    the table from its source recovers it: registration shows the raw schema (REQ-2152) and sets new grants.
+    Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A REQUIREMENT DEFECT:)
+    This corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
+    or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
+    green. (Amended 2026-10-28, A ROLE SERVED NO TABLES IS NOT REFUSED:) A role whose grants serve it no
+    table is not refused as such: its data surface is simply empty. A statement naming a table answers as
+    for any role that is not served that table, and statements that need no table (a graph-session CREATE,
+    MATCH or MERGE of ephemeral objects, literals, catalog reads) run as for any role. (Amended 2026-11-10,
+    A NAMED GRANT IS USED AS GIVEN:) Maintainer 2026-11-10: a column registered with a grant list named
+    is granted exactly that list. Only a column registered with no grant named gets the default, read for
+    the role the registrant is acting as and the standard Viewer role (REQ-2155), written into its grant
+    list where it can be seen and changed. Tables now match metrics, commands and MCP tools, which already
+    use a named list as given.'
   scenario: 'Given a steward acting as data_steward registers table claims
 
     Then every column of claims grants read to data_steward and viewer and grants no write
@@ -94303,14 +94317,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
-    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
-    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
-    the same manifest from the code's exported functions and types, a host program that speaks the worker
-    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
-    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
-    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
-    detects it from the project's standard files.
+  description: 'Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build image
+    (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints the same
+    manifest from the code''s exported functions and types, a host program that speaks the worker protocol
+    and returns rows as Arrow, package fetch and install through the organisation''s registries, the runtime
+    (a static binary compiled once per code hash with the code linked in and cached like an install), the
+    sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221) detects it
+    from the project''s standard files. (Amended 2026-11-10, A C LINKER IN THE IMAGE:) Maintainer 2026-11-10:
+    a Rust source is prepared on the server like any other code source; the product image carries gcc and
+    libc6-dev, because build scripts and procedural macros (serde among them) are compiled and linked on
+    the build machine.'
   scenario: 'Given a Rust code source whose exported functions return rows
 
 
@@ -94390,7 +94407,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     beside picking tables, to register all its public models with enforced contracts and generate data products,
     after a preview, as drafts a steward reviews. One product per dbt group; a project with no groups gets
     one product. Each carries its schema promise, tests, owner and version from the manifest. Register Table
-    stays for picking individual models as plain tables.'
+    stays for picking individual models as plain tables. (Amended 2026-11-10, UNGROUPED PUBLIC MODELS:)
+    Maintainer 2026-11-10: in a project with groups, a public contracted model in no group joins no generated
+    product; the preview lists it and it is registered by picking it as a table.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 

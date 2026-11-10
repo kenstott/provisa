@@ -48,6 +48,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "environment_management",
     "environment_data",
     "user_management",
+    "assign_entitlements", // REQ-2219
     "org_glossary_rw",
     "data_product_rw",
   ] as Capability[],
@@ -69,6 +70,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "approve_relationship",
     "access_config",
     "user_management",
+    "assign_entitlements", // REQ-2219
     "masking_config",
     "column_grant",
     "view_governance",

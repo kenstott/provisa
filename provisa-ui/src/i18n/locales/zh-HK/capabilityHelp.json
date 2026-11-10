@@ -12,6 +12,7 @@
     "create_view": "建立檢視。",
     "column_grant": "授予欄位的存取權限。",
     "user_management": "管理組織的使用者及其角色。",
+    "assign_entitlements": "在 user_management 授予的存取權限範圍內，設定和移除 Provisa 為成員持有的允許清單和拒絕清單項目。",
     "masking_config": "設定欄位遮罩。",
     "view_governance": "查看目錄的管治欄位：誰能讀取欄位、欄位的遮罩及檢視 SQL。",
     "platform_settings": "讀取及更改整個部署的設定。",
