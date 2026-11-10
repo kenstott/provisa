@@ -81167,7 +81167,10 @@
     NO LOOSE ROW TYPES:) Maintainer 2026-11-09: in every language (REQ-1993, REQ-2200) a table''s row type
     is declared. A function whose row type is loose (any, unknown, a Record, a dict) is refused by name
     when the code is loaded: its author converts to a typed array. There is no preview. A single field of
-    a typed row may still be loose, as a json column.'
+    a typed row may still be loose, as a json column. (Amended 2026-11-10, TYPES FROM CODE OR FROM A RUNTIME
+    CATALOG:) Maintainer 2026-11-10: a code resolver''s row types come either from its code or from its
+    @catalog (REQ-2221), in a named native type system; rows from @rows are checked against them. Neither
+    is a loose row type.'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -92465,7 +92468,21 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and ticks what the service answered. The steward can change any box. Provisa pushes down only what is
     ticked; the rest runs on the engine. (Amended 2026-11-10, SIX FEATURES:) Maintainer 2026-11-10: the
     checkboxes are six: $orderby, $count, $expand, $apply, inserts, and updates with deletes. Filters ($filter),
-    paging ($top, $skip, nextLink) and $select are the baseline every OData source gets and have no checkbox.'
+    paging ($top, $skip, nextLink) and $select are the baseline every OData source gets and have no checkbox.
+    (Amended 2026-11-10, BUILT AS A CODE RESOLVER:) Maintainer 2026-11-10: the OData connector is a code
+    resolver using @catalog and @rows (REQ-2221): @catalog reads the service''s $metadata and declares its
+    entity sets with their Edm types, keys, navigation properties and the six features the Probe found;
+    @rows reads an entity set with the baseline $filter, paging and $select, and the ticked features. Actions
+    and functions are its commands. (Amended 2026-11-10, THE OFFICIAL CONNECTOR PROBES FOR ITSELF:) Maintainer
+    2026-11-10: the probe lives in the OData resolver: its @catalog reads the service''s Capabilities annotations
+    (or SAP''s V2 attributes) and, where they are silent, sends one small request per feature, and returns
+    the features the service answered. The source''s six checkboxes show what it returned and the steward
+    may change them; Probe reads @catalog again. (Amended 2026-11-10, AN OFFERED RUST CONNECTOR, SAP BUILT
+    ON IT:) Maintainer 2026-11-10: the OData connector is a Rust code resolver (REQ-2227) built by the standard
+    connector build and offered to every organization as the Spark connector is (REQ-2225), its connector.yaml
+    naming its setup values (the service root, its auth). An SAP connector is built on it later: the same
+    resolver with its own connector.yaml fixing what SAP needs (the CSRF token for writes, SAP''s V2 attributes
+    read for features, its auth), as branded connectors are built on generic ones (REQ-1923).'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
@@ -94097,7 +94114,46 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     it fails on a later restart of a joined host, the source stays and shows as unhealthy. (Amended 2026-11-09,
     SETUP VALUES REACH THE HOST:) Maintainer 2026-11-09: Provisa delivers a connector''s setup values to
     the host it paired with, over the paired TLS connection. Each @requires secret is resolved at delivery
-    and the read is audited; the host holds it only in memory, never on disk.'
+    and the read is audited; the host holds it only in memory, never on disk. (Amended 2026-11-10, A CATALOG
+    DISCOVERED AT RUNTIME:) Maintainer 2026-11-10: a code resolver whose tables are known only at runtime
+    (a service read through its own metadata) may declare two more tags beside the lifecycle tags. @catalog
+    is a function returning the resolver''s tables: for each, its columns with their types written in a
+    native type system the resolver names once (edm, postgres, arrow and the like), its keys and relationships,
+    and for a source with optional features the features it supports. Provisa reads it at registration,
+    maps each native type through the type mapping it already has for that system, and refuses by name a
+    type the system does not define. @rows is a function returning the rows of one of those tables as an
+    untyped list, given the table, its columns, its filters and its limit; every batch is checked against
+    the registered columns and a value that does not fit is refused naming the table and column. A resolver
+    may use the same native types to check its own rows. The catalog is read again the way a database''s
+    schema is. A resolver with no @catalog works as before, its tables typed in code. (Amended 2026-11-10,
+    A RESOLVER AND AN ENDPOINT MAKE AN INSTANCE:) Maintainer 2026-11-10: dynamic discovery cannot be static.
+    One resolver serves many sources: each source composes the resolver with its own metadata endpoint,
+    a setup value of that source (an OData service root, a spec URL). @catalog reads that source''s endpoint
+    when that source registers, so two sources built from the same resolver have their own tables. (Amended
+    2026-11-10, THE CATALOG IS PLAIN DATA, NO LIBRARY:) Maintainer 2026-11-10: there is no SDK library.
+    @catalog returns plain data any language builds from its own lists and maps: types, the native type
+    system''s name; tables, each with name and columns, a column being a pair of its name and a native type
+    string; optional key (a list of column names), references (each a triple: column, table, column) and,
+    for a source with optional features, features (a list of feature names). Nothing else. Provisa checks
+    it and refuses a wrong field by name. @rows receives the table name, the column names, the filters and
+    the limit as plain values and returns a list of rows, each a list in the column order or a map by column
+    name. (Amended 2026-11-10, A REQUIRED VALUE DESCRIBES ITS OWN FIELD:) Maintainer 2026-11-10: @requires
+    takes named parameters describing the field that asks for the value: label, help, type (string, integer,
+    boolean, url, date), values (the allowed values), many (several of them, a list), widget (how they are
+    offered, e.g. radios or a select), pattern (a regular expression the value must match) and when (shown
+    only when another value equals a given one). Written as comma-separated key=value pairs, several values
+    joined by |, a value quoted when it holds a comma or |; an unknown key is refused by name, in every
+    language''s reader. The server checks every entered value against them. Defaults and fixed values stay
+    in connector.yaml, so a brand built on a generic connector sets them without changing its code. The
+    same parameters describe a table''s form for a @rows parameter on Register Table. Layout stays Provisa''s
+    shared form layout. (Amended 2026-11-10, FIELD ORDER:) Maintainer 2026-11-10: @requires also takes order,
+    a number placing the field among the form''s fields; fields without one follow, in the order their tags
+    appear. (Amended 2026-11-10, FIELD COLUMN:) Maintainer 2026-11-10: @requires also takes column, how
+    many columns of the shared flow layout the field spans, so narrow fields sit side by side and a long
+    one takes the row. (Amended 2026-11-10, THE CATALOG DESCRIBES ITS FIELDS TOO:) Maintainer 2026-11-10:
+    a table in @catalog may list parameters, each described with the same keys as @requires (label, help,
+    type, values, many, widget, pattern, when, order, column), so a table discovered at runtime gets the
+    same described form on Register Table as a table declared in code.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94636,3 +94692,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
     refuses is named while the others are registered.'
+
+- id: REQ-2235
+  status: proposed
+  target: 2027-Q3
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-nosql-search-and-graph
+  priority: MAY
+  type: structural
+  unit_test: false
+  unit_test_reason: A future objective for how connectors are organized; each move is tested by the base it moves onto.
+  description: 'Maintainer 2026-11-10, a future objective. Every connector is built on one of a small set
+    of generic connectors, six or seven: SQL databases and warehouses, OpenAPI and REST, GraphQL, OData,
+    gRPC, files and object storage, and streams, with the code resolver and its runtime catalog (REQ-2221)
+    beneath them for what fits none. A branded connector is then its connector.yaml (its URL shape, auth
+    and fixed values) and small overrides, as REQ-1923 builds brands on the OpenAPI and GraphQL connectors.
+    An audit lists every existing connector, the base it would sit on, and what it would need from that
+    base. (Amended 2026-11-10, HAND-BUILT IS THE EXCEPTION:) Maintainer 2026-11-10: a hand-built connector
+    is fine; it is the exception, kept where a source''s logic does not fit a base, not the rule. (Amended
+    2026-11-10, ANY CONNECTOR IN PROCESS OR ON A HOST:) Maintainer 2026-11-10: any connector built on a
+    base can run either in process or on a host, chosen per source, as a code source does (REQ-2098, REQ-2100):
+    on a host, Provisa pairs with it by address and reads it through pgwire. Where that host runs (a container
+    beside the server, another machine) is not Provisa''s concern; it is only an address. A connector needing
+    more resources than the data node gives it runs on a host.'
