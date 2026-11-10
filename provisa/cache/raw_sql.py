@@ -264,16 +264,12 @@ class ResponseCacheTee:
             self._run(self.commit())
 
     def rows(self, stream: ResultStream) -> ResultStream:
-        """``stream`` with every batch forwarded as it arrives and captured within the bound: an
-        Arrow stream's record batches as an Arrow entry (REQ-2194: never turned into rows to be
-        kept), a row stream's rows as a rows entry."""
+        """``stream`` with every batch forwarded as it arrives and captured within the bound:
+        always as a rows entry. Arrow streams are converted to row tuples via the stream's own
+        ``batches()`` so the cache entry is of kind ``rows``, not ``arrow_ipc`` — pgwire's contract
+        requires row entries (REQ-1897). Flight uses :meth:`arrow` directly for Arrow entries."""
         column_names = list(stream.column_names)
         self._column_types = stream.column_types
-        if isinstance(stream, (ArrowStreamResult, ArrowResult)) and _holds_arrow(stream):
-            schema = stream.schema if isinstance(stream, ArrowStreamResult) else stream.table.schema
-            return rewrapped(
-                stream, lambda batches: self.arrow(schema, batches), on_release=_releaser(stream)
-            )
 
         def _batches(batches: Iterator[list[tuple]]) -> Iterator[list[tuple]]:
             for batch in batches:
@@ -282,6 +278,18 @@ class ResponseCacheTee:
             if self._buffer is not None:
                 self._entry = rows_entry([r for b in self._buffer for r in b], column_names)
             self._finished()
+
+        if isinstance(stream, (ArrowStreamResult, ArrowResult)) and _holds_arrow(stream):
+            # Convert Arrow record batches to Python row tuples so the cache entry is 'rows'.
+            # stream.batches() calls _to_rows on each Arrow batch; _releaser is idempotent on
+            # a stream whose drain already finished (ArrowStreamResult._closed = True).
+            return StreamingQueryResult(
+                _batches(stream.batches()),
+                column_names=column_names,
+                column_types=stream.column_types,
+                on_release=_releaser(stream),
+                column_type_oids=stream.column_type_oids,
+            )
 
         return rewrapped(stream, _batches, on_release=_releaser(stream))
 

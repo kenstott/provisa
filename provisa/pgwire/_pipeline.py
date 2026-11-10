@@ -1902,6 +1902,13 @@ async def govern_statement(
     await _reject_unbound_writes(_parsed_input, state)
 
     gov_ctx = _governance()
+    if current_catalog_request.get() is not None:
+        # REQ-2190, REQ-005: a catalog statement is answered whole. The role's row cap bounds the
+        # data it reads, not the catalog a client discovers it by: capped, a discovery statement
+        # (DuckDB's ATTACH reads pg_class x pg_attribute, pg_catalog's own rows first) is answered
+        # system relations and none of the role's tables. Row scope and column rules still hold,
+        # as does a ceiling set on a table; the role's context, shared by its statements, is kept.
+        gov_ctx = dataclasses.replace(gov_ctx, limit_ceiling=None)
     # ONE semantic statement: every view the statement reads is replaced by its SQL before
     # governance, so governance judges it whole for this reader (provisa.mv.view_read).
     _validated_sql = normalized_sql

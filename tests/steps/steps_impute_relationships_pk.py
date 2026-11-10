@@ -5,6 +5,8 @@
 # This source code is licensed under the Business Source License 1.1
 """pytest-bdd steps for REQ-786 — impute-relationships resolves stable ids via composite PKs."""
 
+# Requirements: REQ-786
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -23,6 +25,9 @@ def shared_data():
 class _FakeResult:
     def fetchone(self):
         return None  # no pre-existing properties to merge
+
+    def fetchall(self):
+        return []
 
 
 class _FakeConn:

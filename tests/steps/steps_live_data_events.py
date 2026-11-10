@@ -5,6 +5,8 @@
 
 """pytest-bdd step implementations for REQ-943 - Live Data & Events: SourceRowLoader."""
 
+# Requirements: REQ-943, REQ-945
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -236,6 +238,7 @@ def given_openapi_source_with_registered_endpoint(shared_data):
         base_url="https://api.example.com",
         auth={"type": "bearer", "token": "tok-123"},
         headers={},
+        type=SimpleNamespace(value="openapi"),
     )
 
     # Endpoints are held by (source, table): a table is named within its source.
