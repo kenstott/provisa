@@ -17,10 +17,6 @@ This roadmap shows where Provisa is headed. Groupings and timing reflect current
 - Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.
 - Join your Jena, GraphDB or Stardog triples with Provisa's governed data live, with no copy needed.
 
-### Catalog and discovery
-
-- State the business meaning of each data quality check in plain language, not just its technical predicate.
-
 ### Approvals and query limits
 
 - Refer a pending data registration to another domain steward for confirmation, keeping the request live.
@@ -29,6 +25,8 @@ This roadmap shows where Provisa is headed. Groupings and timing reflect current
 
 - Export server logs with secrets and physical addresses redacted, ready to attach to a support email.
 - Add a new data source, query engine or secrets vault by writing a driver, using the same kit the built-ins use.
+- Real PostgreSQL drivers pass their own test suites against Provisa's pgwire, apart from listed differences, so a client that works with PostgreSQL works with Provisa.
+- The catalog queries BI tools and psql send are answered as PostgreSQL answers them, so their schema browsers work on Provisa.
 
 ### Change events and streams
 
