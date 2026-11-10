@@ -431,7 +431,6 @@ jobs:
       BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
       BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
       GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-      PROVISA_E2E_PURVIEW_ENDPOINT: ${{ secrets.PROVISA_E2E_PURVIEW_ENDPOINT }}
       PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID }}
       PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY }}
       PROVISA_E2E_DATAZONE_DOMAIN_ID: ${{ secrets.PROVISA_E2E_DATAZONE_DOMAIN_ID }}
@@ -483,11 +482,6 @@ jobs:
       CLOUDOPS_AWS_REGION: ${{ secrets.CLOUDOPS_AWS_REGION }}
       CLOUDOPS_AWS_ROLE_ARN: ""
       CLOUDOPS_GCP_PROJECT_IDS: ${{ secrets.CLOUDOPS_GCP_PROJECT_IDS }}
-      # The standing Synapse workspace the lane pins: a workspace the CI principal creates never
-      # admits it (tests/integration/synapse_provision.py says why, and its one-time setup).
-      SYNAPSE_SQL_SERVER: ${{ secrets.SYNAPSE_SQL_SERVER }}
-      SYNAPSE_DATABASE: ${{ secrets.SYNAPSE_DATABASE }}
-      SYNAPSE_ADLS_URL: ${{ secrets.SYNAPSE_ADLS_URL }}
       # The Google Sheets read reaches the live sheet only when asked to.
       PROVISA_GSHEETS_LIVE: "1"
       # Where a demo test writes the real answers its card is shot from (the agriculture
