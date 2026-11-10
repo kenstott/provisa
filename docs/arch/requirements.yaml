@@ -94611,7 +94611,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     in a spec) is registered as a parameter column with no input from the person, required or not; a query
     supplies it. A table needs input only when discovery cannot give its columns their types (a file or
     topic with no schema, an endpoint with no spec) or a parameter must be declared by hand. GraphQL, gRPC
-    and OpenAPI tables with a schema can be picked together.'
+    and OpenAPI tables with a schema can be picked together. (Amended 2026-11-10, REGISTER TABLES RIGHT
+    AFTER A SOURCE IS SAVED:) Maintainer 2026-11-10: once a source is saved, its detail panel opens on a
+    Register tables step, not a modal: Register Table with that source already chosen and every table discovery
+    found listed, the tables that need no input ticked, so one action registers them all with their defaults.
+    Tables that need input are listed and marked, registered one at a time later. Skipping the step closes
+    it.'
   scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
