@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} wird nicht als Datenprodukt angeboten: Sein Manifest kennzeichnet es nicht als öffentlich mit erzwungenem Vertrag.",
+        "not_registered": "Registrieren Sie {{model}} als Tabelle, bevor Sie es als Datenprodukt annehmen.",
+        "columns_missing": "Die Tabelle enthält die Spalten des Vertrags nicht: {{columns}}.",
+        "id_taken": "Das Datenprodukt {{data_product}} existiert bereits.",
+        "already_a_product": "{{model}} ist bereits Mitglied des Datenprodukts {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "Das ist keine Möglichkeit, Postfächer auszuwählen: {{error}}",
       "scope_not_delegated": "Das Google-Dienstkonto der Organisation ist nicht für {{scopes}} autorisiert. Ein Super Admin fügt dessen Client-ID mit diesem Bereich in der Google Admin-Konsole unter Sicherheit › Zugriffs- und Datenkontrolle › API-Steuerung › Domainweite Delegierung verwalten hinzu; eine neue Autorisierung kann bis zu 24 Stunden brauchen.",

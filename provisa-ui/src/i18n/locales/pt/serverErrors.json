@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} não é oferecido como produto de dados: seu manifesto não o marca como público com um contrato aplicado.",
+        "not_registered": "Registre {{model}} como tabela antes de aceitá-lo como produto de dados.",
+        "columns_missing": "A tabela não contém as colunas do contrato: {{columns}}.",
+        "id_taken": "O produto de dados {{data_product}} já existe.",
+        "already_a_product": "{{model}} já é membro do produto de dados {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "Essa não é uma forma de escolher caixas de correio: {{error}}",
       "scope_not_delegated": "A conta de serviço do Google da organização não está autorizada para {{scopes}}. Um superadministrador adiciona o ID do cliente dela com esse escopo no Google Admin Console, em Segurança › Controle de dados e acesso › Controles de API › Gerenciar a delegação em todo o domínio; uma nova autorização pode levar até 24 horas.",

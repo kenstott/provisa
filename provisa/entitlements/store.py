@@ -13,7 +13,9 @@
 Append-only: setting a list appends a row whose ``valid_from`` ends the row before it for the
 same person, role, kind and capability, and ``removed`` ends one with nothing after it. What a
 person holds now is the last row per key (:func:`load_held`). Publishing the store (the ops
-tables), the identity provider's mirror rows and the role's own rows are written elsewhere.
+tables) and the role's own rows are written elsewhere. The identity provider's rows mirror what a
+sign-in's token carried (:func:`mirror_idp`): enforcement reads the token, and a write for someone
+else can only be refused against the mirror (:func:`load_idp`).
 """
 
 # Requirements: REQ-2219
@@ -23,13 +25,20 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import insert, select
 
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core.schema_org import entitlement_expiries, entitlements
-from provisa.entitlements.lists import PROVISA, ExpiryRule, HeldEntitlements, HeldList
+from provisa.entitlements.lists import (
+    IDP,
+    PROVISA,
+    ExpiryRule,
+    HeldEntitlements,
+    HeldList,
+    IdpLists,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -102,8 +111,10 @@ async def add_expiry(
     *,
     set_by: str | None,
     reason: str | None,
+    list_kind: str | None = None,
 ) -> str:
-    """Add an expiry rule to ``principal``'s grant of ``role_id``; returns its key."""
+    """Add an expiry rule to ``principal``'s grant of ``role_id``; returns its key. ``list_kind``
+    names the list it was set with, which :func:`withdraw_list_expiries` withdraws it with."""
     rule_key = uuid.uuid4().hex
     await conn.execute_core(
         insert(entitlement_expiries).values(
@@ -112,11 +123,105 @@ async def add_expiry(
             role_id=role_id,
             ends_at=ends_at,
             ends={capability: list(ids) for capability, ids in ends.items()},
+            list_kind=list_kind,
             set_by=set_by,
             reason=reason,
         )
     )
     return rule_key
+
+
+async def withdraw_list_expiries(
+    conn: "Connection",
+    principal: str,
+    role_id: str,
+    kind: str,
+    *,
+    set_by: str | None,
+    reason: str | None,
+) -> None:
+    """Withdraw the rules in force that ``principal``'s list for ``role_id`` and ``kind`` was set
+    with: a rule outliving its list would end what a later list selects. Appends, as every change
+    to the store does."""
+    rows = await conn.execute_core(
+        select(entitlement_expiries)
+        .where(
+            entitlement_expiries.c.principal == principal,
+            entitlement_expiries.c.role_id == role_id,
+        )
+        .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
+    )
+    live: dict[str, Any] = {}
+    for row in rows.fetchall():
+        if row.removed:
+            live.pop(row.rule_key, None)
+        else:
+            live[row.rule_key] = row
+    for rule in live.values():
+        if rule.list_kind != kind:
+            continue
+        await conn.execute_core(
+            insert(entitlement_expiries).values(
+                rule_key=rule.rule_key,
+                principal=principal,
+                role_id=role_id,
+                ends_at=rule.ends_at,
+                ends=rule.ends,
+                list_kind=kind,
+                removed=True,
+                set_by=set_by,
+                reason=reason,
+            )
+        )
+
+
+async def mirror_idp(conn: "Connection", principal: str, lists: IdpLists) -> None:
+    """Record what ``principal``'s token carried at sign-in: a row per list that changed, and a
+    ``removed`` row per list it no longer carries. Nothing changed appends nothing, so a sign-in
+    with the same lists does not advance the config stamp."""
+    current = (await load_idp(conn, principal)).get(principal, {})
+    wanted = {(role, kind): ids for role, kinds in lists.items() for kind, ids in kinds.items()}
+    held = {(role, kind): ids for role, kinds in current.items() for kind, ids in kinds.items()}
+    for (role_id, kind), identifiers in wanted.items():
+        if held.get((role_id, kind)) != identifiers:
+            await conn.execute_core(
+                insert(entitlements).values(
+                    source=IDP,
+                    principal=principal,
+                    role_id=role_id,
+                    kind=kind,
+                    identifiers=list(identifiers),
+                )
+            )
+    for role_id, kind in held.keys() - wanted.keys():
+        await conn.execute_core(
+            insert(entitlements).values(
+                source=IDP,
+                principal=principal,
+                role_id=role_id,
+                kind=kind,
+                identifiers=[],
+                removed=True,
+            )
+        )
+
+
+async def load_idp(conn: "Connection", principal: str | None = None) -> dict[str, IdpLists]:
+    """user id -> the lists their identity provider last sent, per role and kind: the last row of
+    each key, unless it ended the key. ``principal`` reads one person's."""
+    query = select(entitlements).where(entitlements.c.source == IDP)
+    if principal is not None:
+        query = query.where(entitlements.c.principal == principal)
+    rows = await conn.execute_core(query.order_by(entitlements.c.valid_from, entitlements.c.id))
+    last: dict[tuple[str, str, str], tuple[str, ...] | None] = {}
+    for row in rows.fetchall():
+        key = (row.principal, row.role_id, row.kind)
+        last[key] = None if row.removed else tuple(row.identifiers)
+    out: dict[str, IdpLists] = {}
+    for (who, role_id, kind), identifiers in last.items():
+        if identifiers is not None:
+            out.setdefault(who, {}).setdefault(role_id, {})[kind] = identifiers
+    return out
 
 
 async def record_product_creator(
@@ -180,6 +285,8 @@ async def load_held(conn: "Connection") -> dict[str, HeldEntitlements]:
                 row.ends_at,
                 {capability: tuple(ids) for capability, ids in row.ends.items()},
                 reason=row.reason,
+                rule_key=row.rule_key,
+                list_kind=row.list_kind,
             )
     return {
         principal: HeldEntitlements(tuple(h.lists.values()), tuple(h.expiries.values()))

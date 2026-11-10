@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "沒有名為 {{role}} 的角色。"
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} 未作為數據產品提供：其清單未將其標記為合約已強制執行的公開模型。",
+        "not_registered": "請先將 {{model}} 註冊為資料表，然後再接受為數據產品。",
+        "columns_missing": "該資料表不包含合約中的欄位：{{columns}}。",
+        "id_taken": "數據產品 {{data_product}} 已存在。",
+        "already_a_product": "{{model}} 已是數據產品 {{data_product}} 的成員。"
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "這不是選擇信箱的方式:{{error}}",
       "scope_not_delegated": "組織的 Google 服務帳戶未獲 {{scopes}} 的授權。超級管理員在 Google 管理控制台的「安全性 › 存取權和資料控制 › API 控制項 › 管理全網域委派」之下,為其用戶端 ID 加入該範圍;新的授權最長可能需要 24 小時才生效。",

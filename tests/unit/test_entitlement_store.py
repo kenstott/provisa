@@ -112,12 +112,12 @@ async def test_changing_the_domains_rewrites_the_defaults(conn):
 
 
 async def test_a_plain_default_is_the_role_itself():
-    from provisa.entitlements.runtime import _role_defaults
+    from provisa.entitlements.runtime import role_defaults
 
     role = {"domain_access": ["sales"], "default_entitlements": {"domains": ["sales"]}}
-    assert _role_defaults(role) == {}
+    assert role_defaults(role) == {}
     deny = {"domain_access": ["sales"], "default_entitlements": {"domains": []}}
-    assert _role_defaults(deny) == {"domains": []}
+    assert role_defaults(deny) == {"domains": []}
 
 
 async def test_created_by_is_set_on_insert_only(conn):
