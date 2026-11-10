@@ -133,6 +133,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
+    _qualified_calls_as_calls(written)
     folded = normalize_identifiers(written.copy(), dialect="postgres")
 
     seen: set[tuple[str, str, tuple[int, int] | None]] = set()
@@ -153,6 +154,22 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
                 seen.add(key)
                 violations.append(v)
     return violations
+
+
+def _qualified_calls_as_calls(tree: exp.Expr) -> None:  # REQ-039, REQ-2167
+    """Read a schema-qualified call sqlglot takes for a column as the call it is, in place.
+
+    sqlglot parses ``pg_catalog."cume_dist"(x) WITHIN GROUP (ORDER BY y)`` -- and a qualified
+    call with FILTER -- as a column whose name is the call and whose relation is the schema,
+    where ``pg_catalog."lower"(x)`` is a Dot of the schema and the call. As a column it is
+    refused, its schema naming no relation in scope, and the columns inside it are never
+    judged. It becomes the Dot every other qualified call is: a function call, whose arguments,
+    ORDER BY and FILTER are judged as the expressions they are."""
+    for col in list(tree.find_all(exp.Column)):
+        if isinstance(col.this, (exp.Identifier, exp.Star)):
+            continue
+        qualifiers = [col.args[k] for k in ("catalog", "db", "table") if col.args.get(k)]
+        col.replace(exp.Dot.build([*qualifiers, col.this]))
 
 
 def _violations(
