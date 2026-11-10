@@ -714,10 +714,18 @@ def pgwire_pg_backend(docker_postgres):
     # seed does; the audit-only tenant_db has no meta.* views, so a real control plane serves them.
     from provisa.core.database import Database
     from tests.pg_control_plane import fresh_control_plane
-    from tests.unit.pgwire.catalog_plane import plane_engine, write_model as _write_catalog_model
+    from tests.unit.pgwire.catalog_plane import (
+        grant_catalog_client,
+        plane_engine,
+        write_model as _write_catalog_model,
+    )
 
     _cp = fresh_control_plane()
     _cp_engine = plane_engine(_cp)
+    # The admin terminal runs the client's catalog SQL as the client role (SET LOCAL ROLE), which
+    # reads only what the seed grants it; ungranted, every catalog read is "permission denied for
+    # schema org_default".
+    grant_catalog_client(_cp_engine)
     model_db = Database(_cp_engine, name="model")
     meta_tables, meta_col_types = _pgw_meta_catalog(model_db, loop)
 
