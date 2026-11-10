@@ -18439,9 +18439,14 @@
     runs once at install or first launch, using the machine''s configured package index, and a directory
     already filled is used without fetching. The container image is built with these assets inside it; it
     is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08). (Amended 2026-11-10, LINUX
-    ARM64 HAS NO PGWIRE CONNECTORS:) Maintainer 2026-11-10: Linux arm64 receives the DuckDB extension parts
-    but no pgwire connector bundles; a pgwire connector there is refused by name, naming the platforms that
-    have it. The release build''s probe on Linux arm64 expects that refusal rather than a bundle.'
+    ARM64 HAS NO PGWIRE CONNECTORS:) Maintainer 2026-11-10: [SUPERSEDED by REQ-294, 2026-11-10 -- Linux
+    arm64 is not a supported platform. Kept here for history; do not implement against it.] Linux arm64
+    receives the DuckDB extension parts but no pgwire connector bundles; a pgwire connector there is refused
+    by name, naming the platforms that have it. The release build''s probe on Linux arm64 expects that refusal
+    rather than a bundle. [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS NOT SUPPORTED:) Maintainer
+    2026-11-10: Linux arm64 is not a supported platform. The release builds, publishes and probes nothing
+    for it: no DuckDB extension parts and no pgwire connector bundles. The supported platforms are macOS
+    arm64, Linux x86_64 and Windows x86_64.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
