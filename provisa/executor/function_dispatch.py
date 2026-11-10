@@ -356,8 +356,10 @@ _EXTERNAL_KINDS = frozenset({"http", "grpc"})
 _PASSED_THROUGH_KINDS = frozenset(
     {"source_procedure", "source_operation", "source_query", "statement"}  # REQ-2001
     | {"sql_expression", "builtin"}  # REQ-2168
-    | {"code_command"}  # REQ-2228
 )
+# A code_command is not passed through: its table arguments are prepared as table_ref references
+# the worker reads (REQ-2226). A command bound with fixed arguments (REQ-2228) takes the call's
+# arguments as given, by name, from ``args`` rather than the prepared payload.
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
 
