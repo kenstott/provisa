@@ -346,6 +346,7 @@ code:not(pre code) {
   border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   background: var(--bg-elev); box-shadow: 0 30px 70px -34px rgba(0,0,0,.75);
 }
+.shot-frame > a { display: block; }
 .shot-frame img { display: block; width: 100%; height: auto; border-top: 1px solid var(--border-soft); }
 .shot figcaption { margin-top: 14px; color: var(--text-muted); font-size: .92rem; text-align: center; }
 
