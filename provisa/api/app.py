@@ -3154,6 +3154,13 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.source_cache = prod_rt.source_cache
     _rt.source_allowed_domains = prod_rt.source_allowed_domains
     _rt.source_federation_hints = prod_rt.source_federation_hints
+    # REQ-2006: copy source identity maps so the query pipeline's _known_cats_pgwire
+    # check and the native backend's catalog lookup succeed for the cloned env.
+    # source_catalogs maps source_id → org-prefixed catalog name; source_types and
+    # source_dialects are identical for a cloned env (same sources, same model).
+    _rt.source_catalogs = prod_rt.source_catalogs
+    _rt.source_types = prod_rt.source_types
+    _rt.source_dialects = prod_rt.source_dialects
     _rt.kafka_windows = prod_rt.kafka_windows
     _rt.kafka_bootstrap = prod_rt.kafka_bootstrap
     _rt.kafka_declared = prod_rt.kafka_declared

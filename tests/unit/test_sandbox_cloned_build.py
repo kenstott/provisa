@@ -235,3 +235,123 @@ def test_an_environment_asked_for_cloned_is_built_cloned(monkeypatch):
         ("sbx0aef6d8dbe7d", "synthetic", True),
         ("sbx0aef6d8dbe7d", "synthetic", False),
     ]
+
+
+def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
+    """Bug R508e/J1157b: _install_cloned_env_schema left source_catalogs empty on the
+    cloned env's runtime — the pgwire pipeline guard's _known_cats_pgwire was then empty
+    too, so a physical catalog reference in any query hit "unknown catalog" (REQ-2006)."""
+    import asyncio
+    from contextlib import asynccontextmanager
+    from provisa.api import app
+    from provisa.api.org_runtime import OrgRuntime
+
+    prod_rt = OrgRuntime(org_id="sbxtestorg")
+    prod_rt.source_catalogs = {"zoo-db": "org_sbxtestorg__zoo_db"}
+    prod_rt.source_types = {"zoo-db": "sqlite"}
+    prod_rt.source_dialects = {"zoo-db": "duckdb"}
+    prod_rt.surfaces = {}
+    # minimal fields _install_cloned_env_schema assigns from prod_rt
+    for _field in (
+        "role_build_inputs",
+        "tables",
+        "relationships",
+        "roles",
+        "role_chains",
+        "draft_table_ids",
+        "view_context",
+        "view_path_map",
+        "names_table",
+        "view_sql_map",
+        "mv_registry",
+        "bitemporal_view_reads",
+        "stored_view_reads",
+        "class_tables",
+        "refused_classes",
+        "class_bodies",
+        "table_cache",
+        "pg_notify_tables",
+        "table_watermarks",
+        "user_attributes",
+        "masking_rules",
+        "masked_columns",
+        "tracked_functions",
+        "tracked_webhooks",
+        "column_transforms",
+        "undefined_commands",
+        "replica_routes",
+        "metrics",
+        "schema_build_cache",
+        "api_sources",
+        "api_endpoints",
+        "table_approval_hooks",
+        "source_approval_hooks",
+        "pg_enum_types",
+        "pg_source_enums",
+        "graphql_remote_sources",
+        "openapi_specs",
+        "grpc_remote_sources",
+        "ingest_engines",
+        "ingest_tables",
+        "websocket_sources",
+        "rss_sources",
+        "cdc_sources",
+        "source_cache",
+        "source_allowed_domains",
+        "source_federation_hints",
+        "kafka_windows",
+        "kafka_bootstrap",
+        "kafka_declared",
+        "kafka_table_configs",
+        "kafka_table_physical",
+        "model_stamp",
+    ):
+        if not hasattr(prod_rt, _field):
+            setattr(prod_rt, _field, None)
+
+    cloned_rt = OrgRuntime(org_id="sbxtestorg", env="dev")
+
+    class _MockConn:
+        async def execute_core(self, stmt):
+            return SimpleNamespace(fetchall=lambda: [])
+
+    @asynccontextmanager
+    async def _acquire():
+        yield _MockConn()
+
+    class _MockState:
+        schema_version = 0
+        model_db = SimpleNamespace(acquire=_acquire)
+
+        def _active_runtime(self):
+            return cloned_rt
+
+    monkeypatch.setattr(app, "state", _MockState())
+
+    async def _unbound(_conn):
+        return frozenset()
+
+    monkeypatch.setattr(app, "_unbound_sources", _unbound)
+
+    import provisa.grpc.field_numbering as _fn
+    import provisa.api.admin.lineage_router as _lr
+
+    async def _load_fn(_conn):
+        return None
+
+    async def _persist_fn(_conn, _fn):
+        pass
+
+    async def _lineage(_conn, _state):
+        pass
+
+    monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
+    monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
+    monkeypatch.setattr(_lr, "write_lineage_edges", _lineage)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+
+    assert cloned_rt.source_catalogs == {"zoo-db": "org_sbxtestorg__zoo_db"}, (
+        "_install_cloned_env_schema must copy source_catalogs from prod_rt; "
+        f"got {cloned_rt.source_catalogs!r}"
+    )

@@ -239,3 +239,32 @@ def test_any_day_tells_the_same_story(tmp_path, as_of):
     hub = {r[0] for r in _rows(con, "SELECT account FROM renewal_risk_hub")}
     missed = _rows(con, "SELECT account FROM renewal_risk_checked WHERE missed_by_hub")
     assert len(hub) == 7 and missed == [("Larkspur Analytics",)]
+
+
+def test_data_product_tables_use_the_registered_view_names():
+    """Every name in a data product's tables list must match the name the config registers the
+    table under — alias when set, otherwise table_name (REQ-2034).
+
+    ``views_as_tables`` registers a view declared as ``id: master`` under the name
+    ``view_master``, not ``master``. A data product listing ``master`` silently passes config
+    parsing but fails at startup when ``set_product_members`` asks the registry for it.
+
+    Works at the raw-dict level (after ``views_as_tables`` but before Pydantic) so that
+    ``${env:CUSTOMER360_PG_NS}`` placeholders without defaults, which cannot be resolved
+    in a unit-test environment, do not cause an error.
+    """
+    from provisa.core.config_loader import views_as_tables
+
+    raw = yaml.safe_load((_DEMO / "config.yaml").read_text())
+    expanded = views_as_tables(raw)
+    # Virtual table name: alias when set, otherwise table (the field views_as_tables writes).
+    declared = frozenset(
+        t.get("alias") or t["table"] for t in expanded.get("tables", []) if isinstance(t, dict)
+    )
+    for dp in expanded.get("data_products", []):
+        for name in dp.get("tables", []):
+            assert name in declared, (
+                f"data product {dp['id']!r} lists table {name!r}, "
+                "which is not in the config's declared table names; "
+                f"declared={sorted(declared)}"
+            )
