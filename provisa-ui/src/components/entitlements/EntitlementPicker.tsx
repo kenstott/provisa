@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Badge,
+  Box,
   Checkbox,
   CheckIcon,
   Combobox,
@@ -260,8 +261,18 @@ function NamesPickers({
     );
   }
 
+  // One row to a level: its name at the start, its search and chosen pills after it. The names
+  // sit beside the searches, not above them, so the first search is level with the controls
+  // beside the field.
   return (
-    <Stack gap="xs">
+    <Box
+      style={{
+        display: "grid",
+        gridTemplateColumns: "max-content minmax(0, 1fr)",
+        gap: "var(--mantine-spacing-xs) var(--mantine-spacing-sm)",
+        alignItems: "start",
+      }}
+    >
       {sel.levels.map((_, level) => (
         <LevelPicker
           key={LEVELS[level]}
@@ -276,7 +287,7 @@ function NamesPickers({
           testId={`${testId}-${LEVELS[level]}`}
         />
       ))}
-    </Stack>
+    </Box>
   );
 }
 
@@ -322,117 +333,136 @@ function LevelPicker({
   const isChosen = new Set(chosen);
 
   return (
-    <div className="entitlement-level" data-testid={testId}>
-      <Combobox store={combobox} onOptionSubmit={(id) => onToggle(id)} withinPortal>
-        <Combobox.Target>
-          <TextInput
-            id={inputId}
-            label={t(`entitlements.picker.${name}.label`)}
-            size="sm"
-            value={search}
-            placeholder={placeholder}
-            disabled={disabled || nothingToPick}
-            rightSection={<Combobox.Chevron />}
-            rightSectionPointerEvents="none"
-            onChange={(e) => {
-              setSearch(e.currentTarget.value);
-              combobox.openDropdown();
-              combobox.updateSelectedOptionIndex();
-            }}
-            onClick={() => combobox.openDropdown()}
-            onFocus={() => combobox.openDropdown()}
-            onBlur={() => combobox.closeDropdown()}
-            data-testid={`${testId}-search`}
-          />
-        </Combobox.Target>
-        <Combobox.Dropdown>
-          <Combobox.Options>
-            <ScrollArea.Autosize mah={260} type="auto">
-              {listed.total === 0 ? (
-                <Combobox.Empty>{t("entitlements.picker.noMatch")}</Combobox.Empty>
-              ) : (
-                listed.groups.map((g) => {
-                  const options = g.options.map((o) => (
-                    <Combobox.Option
-                      key={o.id}
-                      value={o.id}
-                      active={isChosen.has(o.id)}
-                      aria-selected={isChosen.has(o.id)}
-                      data-testid={`${testId}-option-${o.id}`}
-                    >
-                      <Group gap={6} wrap="nowrap">
-                        {isChosen.has(o.id) ? (
-                          <CheckIcon size={10} style={{ flex: "none" }} />
-                        ) : (
-                          <span style={{ width: 10, flex: "none" }} />
-                        )}
-                        <span>{o.label}</span>
-                      </Group>
-                    </Combobox.Option>
-                  ));
-                  return g.parent === null ? (
-                    options
-                  ) : (
-                    <Combobox.Group key={g.parent} label={g.parent}>
-                      {options}
-                    </Combobox.Group>
-                  );
-                })
-              )}
-            </ScrollArea.Autosize>
-          </Combobox.Options>
-          {listed.shown < listed.total && (
-            <Combobox.Footer>
-              <Text size="xs" c="dimmed" data-testid={`${testId}-more`}>
-                {t("entitlements.picker.more", { shown: listed.shown, total: listed.total })}
-              </Text>
-            </Combobox.Footer>
-          )}
-        </Combobox.Dropdown>
-      </Combobox>
-      {(chosen.length > 0 || unknown.length > 0) && (
-        <ScrollArea.Autosize mah={96} type="auto" mt={6}>
-          <Pill.Group data-testid={`${testId}-chosen`}>
-            {chosen.map((id) => (
-              <Pill
-                key={id}
-                withRemoveButton={!disabled}
-                onRemove={() => onToggle(id)}
-                removeButtonProps={{
-                  // Mantine hides a pill's remove from the keyboard and assistive technology.
-                  "aria-hidden": false,
-                  tabIndex: 0,
-                  "aria-label": t("entitlements.picker.removeValue", { value: id }),
-                }}
-                data-testid={`${testId}-pill-${id}`}
-              >
-                {id}
-              </Pill>
-            ))}
-            {unknown.map((v) => (
-              <Tip key={v} text={t("entitlements.picker.unknownValue")}>
+    <>
+      {/* As tall as a small input (Mantine scopes --input-height-sm to the input itself), so the
+          name is centred beside its search. */}
+      <Text
+        component="label"
+        htmlFor={inputId}
+        size="sm"
+        style={{ lineHeight: "calc(2.25rem * var(--mantine-scale))" }}
+      >
+        {t(`entitlements.picker.${name}.label`)}
+      </Text>
+      <div data-testid={testId}>
+        <Combobox store={combobox} onOptionSubmit={(id) => onToggle(id)} withinPortal>
+          <Combobox.Target>
+            <TextInput
+              id={inputId}
+              size="sm"
+              value={search}
+              placeholder={placeholder}
+              disabled={disabled || nothingToPick}
+              rightSection={<Combobox.Chevron />}
+              rightSectionPointerEvents="none"
+              onChange={(e) => {
+                setSearch(e.currentTarget.value);
+                combobox.openDropdown();
+                combobox.updateSelectedOptionIndex();
+              }}
+              onClick={() => combobox.openDropdown()}
+              onFocus={() => combobox.openDropdown()}
+              onBlur={() => combobox.closeDropdown()}
+              onKeyDown={(e) => {
+                // An Escape that closes the list is the list's: the panel around the form
+                // (SplitPane) must not also close on it.
+                if (e.key === "Escape" && combobox.dropdownOpened) {
+                  e.preventDefault();
+                  combobox.closeDropdown();
+                }
+              }}
+              data-testid={`${testId}-search`}
+            />
+          </Combobox.Target>
+          <Combobox.Dropdown>
+            <Combobox.Options>
+              <ScrollArea.Autosize mah={260} type="auto">
+                {listed.total === 0 ? (
+                  <Combobox.Empty>{t("entitlements.picker.noMatch")}</Combobox.Empty>
+                ) : (
+                  listed.groups.map((g) => {
+                    const options = g.options.map((o) => (
+                      <Combobox.Option
+                        key={o.id}
+                        value={o.id}
+                        active={isChosen.has(o.id)}
+                        aria-selected={isChosen.has(o.id)}
+                        data-testid={`${testId}-option-${o.id}`}
+                      >
+                        <Group gap={6} wrap="nowrap">
+                          {isChosen.has(o.id) ? (
+                            <CheckIcon size={10} style={{ flex: "none" }} />
+                          ) : (
+                            <span style={{ width: 10, flex: "none" }} />
+                          )}
+                          <span>{o.label}</span>
+                        </Group>
+                      </Combobox.Option>
+                    ));
+                    return g.parent === null ? (
+                      options
+                    ) : (
+                      <Combobox.Group key={g.parent} label={g.parent}>
+                        {options}
+                      </Combobox.Group>
+                    );
+                  })
+                )}
+              </ScrollArea.Autosize>
+            </Combobox.Options>
+            {listed.shown < listed.total && (
+              <Combobox.Footer>
+                <Text size="xs" c="dimmed" data-testid={`${testId}-more`}>
+                  {t("entitlements.picker.more", { shown: listed.shown, total: listed.total })}
+                </Text>
+              </Combobox.Footer>
+            )}
+          </Combobox.Dropdown>
+        </Combobox>
+        {(chosen.length > 0 || unknown.length > 0) && (
+          <ScrollArea.Autosize mah={96} type="auto" mt={6}>
+            <Pill.Group data-testid={`${testId}-chosen`}>
+              {chosen.map((id) => (
                 <Pill
+                  key={id}
                   withRemoveButton={!disabled}
-                  onRemove={() => onDropUnknown(v)}
+                  onRemove={() => onToggle(id)}
                   removeButtonProps={{
+                    // Mantine hides a pill's remove from the keyboard and assistive technology.
                     "aria-hidden": false,
                     tabIndex: 0,
-                    "aria-label": t("entitlements.picker.removeValue", { value: v }),
+                    "aria-label": t("entitlements.picker.removeValue", { value: id }),
                   }}
-                  bg="var(--mantine-color-yellow-light)"
-                  data-testid={`${testId}-unknown-${v}`}
+                  data-testid={`${testId}-pill-${id}`}
                 >
-                  <Group gap={4} wrap="nowrap" component="span">
-                    <TriangleAlert size={12} aria-hidden />
-                    {v}
-                  </Group>
+                  {id}
                 </Pill>
-              </Tip>
-            ))}
-          </Pill.Group>
-        </ScrollArea.Autosize>
-      )}
-    </div>
+              ))}
+              {unknown.map((v) => (
+                <Tip key={v} text={t("entitlements.picker.unknownValue")}>
+                  <Pill
+                    withRemoveButton={!disabled}
+                    onRemove={() => onDropUnknown(v)}
+                    removeButtonProps={{
+                      "aria-hidden": false,
+                      tabIndex: 0,
+                      "aria-label": t("entitlements.picker.removeValue", { value: v }),
+                    }}
+                    bg="var(--mantine-color-yellow-light)"
+                    data-testid={`${testId}-unknown-${v}`}
+                  >
+                    <Group gap={4} wrap="nowrap" component="span">
+                      <TriangleAlert size={12} aria-hidden />
+                      {v}
+                    </Group>
+                  </Pill>
+                </Tip>
+              ))}
+            </Pill.Group>
+          </ScrollArea.Autosize>
+        )}
+      </div>
+    </>
   );
 }
 

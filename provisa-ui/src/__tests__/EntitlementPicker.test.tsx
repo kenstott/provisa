@@ -175,6 +175,20 @@ describe("the entitlement picker", () => {
     expect(shown()).toEqual(["finance.revenue", "sales.orders.total"]);
   });
 
+  it("claims the Escape that closes a list, so the panel around the form stays open", async () => {
+    render(<Harness kind="tables" initial={[]} />);
+    const seen: boolean[] = [];
+    const listen = (e: KeyboardEvent) => e.key === "Escape" && seen.push(e.defaultPrevented);
+    document.addEventListener("keydown", listen);
+    await userEvent.click(search("tables"));
+    await options("tables");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.keyboard("{Escape}");
+    document.removeEventListener("keydown", listen);
+    // The first closes the list and is claimed; the second, with the list closed, is not.
+    expect(seen).toEqual([true, false]);
+  });
+
   it("searches as you type", async () => {
     render(<Harness kind="columns" initial={["finance.revenue", "sales.orders"]} />);
     await userEvent.type(search("columns"), "tot");
