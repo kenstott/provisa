@@ -376,12 +376,21 @@ class TestFlightDoGetWithRealData:
         # visible_columns.  After the fail-closed change (da35e5c82c) a table absent
         # from visible_columns raises V003 for every column reference.  Supply the
         # raw table dict for the "orders" table so governance is fully populated.
-        # Production always has state.tables set (app.py serve_model); this fixture
-        # must mirror that or every column access is refused on every run.
+        # Production always has state.tables set (app.py serve_model, line ~3833);
+        # this fixture must mirror that or every column access is refused on every run.
+        # The shape mirrors fetch_tables (provisa/api/admin/db_queries.py) which is what
+        # app.py assigns to state.tables: at minimum id, source_id, schema_name,
+        # table_name must be present — _pipeline._govern_compiled accesses all four
+        # directly with [] (not .get()), so a missing key raises KeyError inside the
+        # metric-expansion block (lines ~5499) and the governed-plan builder (~3431).
         state.tables = [
             {
                 "id": 1,
                 "domain_id": "default",
+                "table_name": "orders",
+                "source_id": "test-pg",
+                "schema_name": "public",
+                "write_grants": [],
                 "columns": [
                     {"column_name": "id", "data_type": "integer", "visible_to": ["admin"]},
                     {"column_name": "region", "data_type": "varchar", "visible_to": ["admin"]},
@@ -389,6 +398,12 @@ class TestFlightDoGetWithRealData:
                 ],
             }
         ]
+        # REQ-1319/REQ-1132: a bare MagicMock attribute is truthy, so leaving these
+        # unset causes the metric-expansion block (_pipeline._govern_compiled ~5495) and
+        # the relationship guard to run with an unset registry.  Name both absent; the
+        # Flight data-path fixture tests query execution, not metrics or relationships.
+        state.metrics = {}
+        state.relationships = []
         from tests.helpers import stub_materialization_noop
 
         stub_materialization_noop(state)

@@ -100,6 +100,13 @@ def _gov_ctx(raw_tables: list[dict]):
 _ORDERS_TABLE_DICT: dict = {
     "id": _TABLE_ID,
     "domain_id": "default",
+    # R508c2: match the shape fetch_tables (db_queries.py) produces.  The pipeline
+    # accesses table_name, source_id, and schema_name via [] (not .get()), so they
+    # must be present to avoid KeyError in _govern_compiled's metric-expansion block.
+    "table_name": "orders",
+    "source_id": "test-pg",
+    "schema_name": "public",
+    "write_grants": [],
     "columns": [
         {"column_name": "id", "data_type": "integer", "visible_to": [_ROLE_ID]},
         {"column_name": "region", "data_type": "varchar", "visible_to": [_ROLE_ID]},
