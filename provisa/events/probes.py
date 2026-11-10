@@ -219,6 +219,16 @@ def loader_probe(loaders: dict[str, Any], source: Any, table: Any) -> "Transport
     return make(source, table) if make is not None else None
 
 
+def source_transport(
+    state: Any, loaders: dict[str, Any], source: Any, table: Any
+) -> "Transport | None":
+    """The token transport for ``table`` beyond a SQL scan: what its source's adapter gives, or,
+    for a table dbt builds, dbt's run results (REQ-2228, REQ-858)."""
+    from provisa.dbt.store import model_probe
+
+    return loader_probe(loaders, source, table) or model_probe(state, source, table)
+
+
 def build_probe(
     probe_type: str,
     *,

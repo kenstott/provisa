@@ -18444,9 +18444,15 @@
     receives the DuckDB extension parts but no pgwire connector bundles; a pgwire connector there is refused
     by name, naming the platforms that have it. The release build''s probe on Linux arm64 expects that refusal
     rather than a bundle. [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS NOT SUPPORTED:) Maintainer
-    2026-11-10: Linux arm64 is not a supported platform. The release builds, publishes and probes nothing
-    for it: no DuckDB extension parts and no pgwire connector bundles. The supported platforms are macOS
-    arm64, Linux x86_64 and Windows x86_64.'
+    2026-11-10: [SUPERSEDED by REQ-294, 2026-11-10 -- Linux arm64 is fully supported; the macOS container
+    tier is Linux arm64. Kept here for history; do not implement against it.] Linux arm64 is not a supported
+    platform. The release builds, publishes and probes nothing for it: no DuckDB extension parts and no
+    pgwire connector bundles. The supported platforms are macOS arm64, Linux x86_64 and Windows x86_64.
+    [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS FULLY SUPPORTED:) Maintainer 2026-11-10:
+    Linux arm64 is a fully supported platform, because Docker on Apple silicon runs Linux arm64 and the
+    macOS container tier is a Linux arm64 install. The release builds, publishes and probes everything for
+    it as for the other platforms: the Provisa wheel, the DuckDB extension parts and every pgwire connector
+    bundle. The supported platforms are macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:

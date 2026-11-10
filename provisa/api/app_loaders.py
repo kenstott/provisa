@@ -1667,6 +1667,9 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     tracked_functions, tracked_webhooks = commands.functions, commands.webhooks
     not_defined, undefined = commands.not_defined, commands.undefined
     state.column_transforms = commands.column_transforms
+    from provisa.dbt.store import dbt_model_tables
+
+    state.dbt_model_tables = await dbt_model_tables(conn)  # REQ-2228
 
     # The prefixed alias MUST match the GraphQL field name the schema generator emits
     # (actions_schema), which takes the domain's alias from domain_alias_map over the same domains

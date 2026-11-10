@@ -42,7 +42,7 @@ Provisa registra **78** tipos de origen, los que ofrece el formulario de Orígen
 | 49–53 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [Orígenes de API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 65–72 | [Orígenes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
 | 73 | [GovData](#govdata) | `govdata` |
 | 74–75 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
 | 76 | [Perfilador de datos](#data-profiler) | `data_profiler` |
@@ -909,6 +909,30 @@ Se aplican a la especificación cuando se carga, de modo que la lista de registr
 Una exclusión que nombra una operación o un argumento que la especificación no tiene hace fallar la carga de la especificación de ese origen y nombra cada entrada obsoleta, de modo que se advierte una lista que ya no coincide con una especificación más reciente.
 
 Un origen de marca distribuye sus propias exclusiones como parte de su curaduría, y las de un operador se suman a ellas. El origen de Stripe excluye la integración de pagos obsoleta de Stripe basada en tokens y sources: crear un cargo, las API Tokens y Sources, añadir una tarjeta o cuenta bancaria a un cliente a partir de un token, y los argumentos `source`, `card`, `bank_account` y `default_card` de las escrituras de clientes y pagos de facturas. Los pagos se cobran mediante Payment Intents, Payment Methods y Setup Intents, que el origen ofrece. La lectura y eliminación de las fuentes de pago que una cuenta ya tiene sigue disponible.
+
+### dbt
+
+Un origen dbt deja su proyecto dbt donde está y dbt lo sigue construyendo. Provisa lee el `manifest.json` del proyecto para obtener las definiciones y nunca copia filas ni el proyecto.
+
+| El manifiesto viene de | Se configura en el origen |
+| --- | --- |
+| Una URL o ubicación de artefacto | `location` |
+| Una carga | `content` |
+| La API de dbt Cloud | `host`, `account_id`, `job_id` y un token de API, guardado como la credencial de cualquier origen |
+
+Cada modelo se ofrece como tabla, y agregar el origen no registra nada. Cuando un steward registra un modelo, este se lee a través del origen de almacén que coincide con el adaptador del manifiesto y la base de datos del modelo. El manifiesto no contiene credenciales y el archivo de perfiles de dbt no se lee, de modo que si ningún origen registrado coincide, el formulario de configuración ofrece crear uno. El linaje de un modelo proviene de su SQL compilado.
+
+**Comandos.** Cada modelo, prueba, snapshot y seed se ofrece como comando de mutación, al igual que `build`, `source freshness` y cada macro del proyecto y de sus paquetes instalados mediante `run-operation`. Un comando solo se ejecuta cuando lo ejecuta una llamada, un disparador o una programación. Se ejecuta allí donde dbt ya se ejecuta:
+
+| Destino | Cómo se ejecuta | Se configura en el origen |
+| --- | --- | --- |
+| dbt Cloud | Ejecuta el trabajo mediante la API de trabajos con el comando como único paso | `spec: cloud` |
+| Un script | Ejecuta `dbt` en una línea de comandos que Provisa puede alcanzar | `command_line` |
+| Un conector gestionado por el operador | Llama a un `@command` de un [origen de código](code-sources.md), con la invocación de dbt como argumento fijo que quien llama no puede cambiar | `connector_source`, `connector_command`, `connector_invocation_argument` (por defecto `invocation`) |
+
+**Frescura.** El `run_results.json` de dbt indica cuándo se construyó cada modelo por última vez. Proporciónelo como `run_results`, apunte `run_results_location` al lugar donde se publica, o deje que un origen de dbt Cloud lo lea de la última ejecución correcta del trabajo. Al actualizar el origen se vuelve a leer, y una carga puede traer resultados de ejecución sin un manifiesto nuevo. Para usarlo, configure la tabla del modelo con la señal de cambio `probe` o `ttl_probe` y `probe_type: hash`. La tabla queda obsoleta en cuanto dbt vuelve a construir el modelo. Un modelo cuya última ejecución falló o se omitió tiene frescura desconocida y nunca se considera fresco.
+
+**Un manifiesto nuevo** actualiza los comandos ofrecidos, el linaje y las descripciones de los modelos registrados. Una descripción que un steward ha cambiado se queda como la dejó el steward, campo por campo.
 
 ### GovData
 

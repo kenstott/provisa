@@ -1169,6 +1169,18 @@ dbt_manifests = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2228, REQ-858: what dbt's run results last said of each node it builds. built_at is when dbt
+# last built it, kept through a later run that failed.
+dbt_node_runs = Table(
+    "dbt_node_runs",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("unique_id", Text, primary_key=True),
+    Column("status", Text, nullable=False),
+    Column("generated_at", DateTime(timezone=True), nullable=False),
+    Column("built_at", DateTime(timezone=True)),
+)
+
 kafka_topics = Table(
     "kafka_topics",
     metadata,
