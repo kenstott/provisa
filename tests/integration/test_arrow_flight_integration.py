@@ -372,6 +372,23 @@ class TestFlightDoGetWithRealData:
         state.masking_rules = {}
         state.flight_client = None
         state.engine_conn = None
+        # REQ-039/REQ-263: build_governance_context reads state.tables to derive
+        # visible_columns.  After the fail-closed change (da35e5c82c) a table absent
+        # from visible_columns raises V003 for every column reference.  Supply the
+        # raw table dict for the "orders" table so governance is fully populated.
+        # Production always has state.tables set (app.py serve_model); this fixture
+        # must mirror that or every column access is refused on every run.
+        state.tables = [
+            {
+                "id": 1,
+                "domain_id": "default",
+                "columns": [
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["admin"]},
+                    {"column_name": "region", "data_type": "varchar", "visible_to": ["admin"]},
+                    {"column_name": "amount", "data_type": "numeric", "visible_to": ["admin"]},
+                ],
+            }
+        ]
         from tests.helpers import stub_materialization_noop
 
         stub_materialization_noop(state)
