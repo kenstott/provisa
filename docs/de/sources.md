@@ -42,7 +42,7 @@ Provisa registriert **78** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 49–53 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [API-Quellen](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 65–72 | [API-Quellen](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
 | 73 | [GovData](#govdata) | `govdata` |
 | 74–75 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
 | 76 | [Data-Profiler](#data-profiler) | `data_profiler` |
@@ -909,6 +909,30 @@ Sie werden beim Laden auf die Spezifikation angewendet, sodass die Registrierung
 Ein Ausschluss, der eine Operation oder ein Argument benennt, das die Spezifikation nicht hat, lässt das Laden der Spezifikation dieser Quelle fehlschlagen und benennt jeden veralteten Eintrag, sodass eine Liste auffällt, die zu einer neueren Spezifikation nicht mehr passt.
 
 Eine Marken-Quelle liefert ihre eigenen Ausschlüsse als Teil ihrer Kuratierung mit, und die eines Operators werden ihnen hinzugefügt. Die Stripe-Quelle schließt die veraltete Token-und-Source-Zahlungsintegration von Stripe aus: das Erstellen einer Charge, die Tokens- und Sources-APIs, das Hinzufügen einer Karte oder eines Bankkontos zu einem Kunden aus einem Token sowie die Argumente `source`, `card`, `bank_account` und `default_card` von Schreibvorgängen für Kunden und Rechnungszahlungen. Zahlungen werden über Payment Intents, Payment Methods und Setup Intents abgewickelt, die die Quelle anbietet. Das Lesen und Löschen von Zahlungsquellen, die ein Konto bereits hat, bleibt im Angebot.
+
+### dbt
+
+Eine dbt-Quelle lässt Ihr dbt-Projekt, wo es ist, und dbt baut es weiterhin. Provisa liest die `manifest.json` des Projekts für die Definitionen und kopiert weder Zeilen noch das Projekt.
+
+| Das Manifest kommt von | An der Quelle gesetzt |
+| --- | --- |
+| Einer URL oder einem Artefaktort | `location` |
+| Einem Upload | `content` |
+| Der API von dbt Cloud | `host`, `account_id`, `job_id` und ein API-Token, gehalten wie die Anmeldedaten jeder Quelle |
+
+Jedes Modell wird als Tabelle angeboten, und das Hinzufügen der Quelle registriert nichts. Registriert ein Steward ein Modell, wird es über die Warehouse-Quelle gelesen, die zum Adapter des Manifests und zur Datenbank des Modells passt. Das Manifest enthält keine Anmeldedaten und die Profildatei von dbt wird nicht gelesen; passt keine registrierte Quelle, bietet das Einrichtungsformular an, eine anzulegen. Die Lineage eines Modells stammt aus seinem kompilierten SQL.
+
+**Befehle.** Jedes Modell, jeder Test, Snapshot und Seed wird als Mutationsbefehl angeboten, ebenso `build`, `source freshness` und jedes Makro des Projekts und seiner installierten Pakete über `run-operation`. Ein Befehl läuft nur, wenn ein Aufruf, ein Trigger oder ein Zeitplan ihn ausführt. Er läuft dort, wo dbt bereits läuft:
+
+| Ziel | Wie er läuft | An der Quelle gesetzt |
+| --- | --- | --- |
+| dbt Cloud | Führt den Job über die Jobs-API mit dem Befehl als einzigem Schritt aus | `spec: cloud` |
+| Ein Skript | Führt `dbt` auf einer Kommandozeile aus, die Provisa erreicht | `command_line` |
+| Ein vom Betreiber ausgeführter Connector | Ruft einen `@command` einer [Code-Quelle](code-sources.md) auf, mit dem dbt-Aufruf als festem Argument, das ein Aufrufer nicht ändern kann | `connector_source`, `connector_command`, `connector_invocation_argument` (Standard `invocation`) |
+
+**Aktualität.** Die `run_results.json` von dbt sagt, wann jedes Modell zuletzt gebaut wurde. Übergeben Sie sie als `run_results`, verweisen Sie mit `run_results_location` auf ihren Veröffentlichungsort, oder lassen Sie eine dbt-Cloud-Quelle sie aus dem letzten erfolgreichen Lauf des Jobs lesen. Beim Aktualisieren der Quelle wird sie erneut gelesen, und ein Upload kann Laufergebnisse ohne neues Manifest bringen. Um sie zu nutzen, setzen Sie die Tabelle des Modells auf das Änderungssignal `probe` oder `ttl_probe` mit `probe_type: hash`. Die Tabelle ist veraltet, sobald dbt das Modell erneut gebaut hat. Bei einem Modell, dessen letzter Lauf fehlgeschlagen ist oder übersprungen wurde, ist die Aktualität unbekannt; es gilt nie als aktuell.
+
+**Ein neues Manifest** aktualisiert die angebotenen Befehle, die Lineage und die Beschreibungen registrierter Modelle. Eine Beschreibung, die ein Steward geändert hat, bleibt Feld für Feld so, wie der Steward sie hinterlassen hat.
 
 ### GovData
 

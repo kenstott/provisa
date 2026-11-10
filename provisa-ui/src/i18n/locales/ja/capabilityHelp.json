@@ -12,6 +12,7 @@
     "create_view": "ビューを作成します。",
     "column_grant": "列へのアクセスを付与します。",
     "user_management": "組織のユーザーとそのロールを管理します。",
+    "assign_entitlements": "user_management が付与するアクセス範囲内で、Provisa がメンバーに対して保持する許可リストと拒否リストのエントリを設定および削除します。",
     "masking_config": "列マスクを構成します。",
     "view_governance": "カタログのガバナンス列を表示します。列を読み取れるユーザー、マスク、ビューの SQL を確認できます。",
     "platform_settings": "デプロイ全体の設定を読み取り、変更します。",

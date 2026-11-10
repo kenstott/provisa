@@ -46,6 +46,15 @@ jobs:
           python scripts/gen_docs_index.py
           mkdocs build --strict -d site/docs
 
+      # The zone's browser cache TTL holds styles.css for hours whatever _headers says, while the
+      # HTML revalidates, so the stylesheet URL carries its content hash and changes with it.
+      - name: Stamp the stylesheet URL with its content hash
+        working-directory: site
+        run: |
+          v=$(sha256sum styles.css | cut -c1-10)
+          find . -name '*.html' -not -path './docs/*' -exec sed -i "s#styles\.css\"#styles.css?v=$v\"#" {} +
+          grep -q "styles.css?v=$v" index.html
+
       - name: Deploy to Cloudflare Pages
         working-directory: site
         env:

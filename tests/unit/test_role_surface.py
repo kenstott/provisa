@@ -341,6 +341,9 @@ def test_the_build_is_the_only_writer_of_surfaces():
     assert installers == {
         "provisa/api/app_loaders.py::register_role_surface",
         "provisa/api/app_loaders.py::_drop_data_surface",
+        # A cloned sandbox env's compiled schema is copied from PROD through install_surface,
+        # one surface per role, so the build stays the single writer (REQ-2006, J1157b).
+        "provisa/api/app_loaders.py::_install_cloned_surfaces",
         # A view's own write, which product code never reaches (the test above).
         "provisa/api/role_surface.py::__setitem__",
         "provisa/api/role_surface.py::__delitem__",
