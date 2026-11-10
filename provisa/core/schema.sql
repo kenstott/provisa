@@ -1348,6 +1348,17 @@ CREATE TABLE IF NOT EXISTS dbt_manifests (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- REQ-2228, REQ-858: what dbt's run results last said of each node it builds. built_at is when dbt
+-- last built it, kept through a later run that failed.
+CREATE TABLE IF NOT EXISTS dbt_node_runs (
+    source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    unique_id    TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL,
+    built_at     TIMESTAMPTZ,
+    PRIMARY KEY (source_id, unique_id)
+);
+
 CREATE TABLE IF NOT EXISTS api_endpoints (
     id              SERIAL PRIMARY KEY,
     source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,

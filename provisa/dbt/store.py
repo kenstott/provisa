@@ -20,16 +20,30 @@ it, and the descriptions of the models already registered are updated in place.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
 
 from provisa.api.errors import ApiError
 from provisa.compiler.naming import domain_to_sql_name
-from provisa.core.schema_org import dbt_manifests, registered_tables, sources, table_columns
-from provisa.dbt.commands import TargetRefused, cloud_binding, command_named, script_binding
+from provisa.core.schema_org import (
+    dbt_manifests,
+    dbt_node_runs,
+    registered_tables,
+    sources,
+    table_columns,
+)
+from provisa.dbt.commands import (
+    TargetRefused,
+    cloud_binding,
+    command_named,
+    connector_binding,
+    script_binding,
+)
 from provisa.dbt.lineage import compiled_views
 from provisa.dbt.manifest import DbtManifest, DbtModel, from_definitions, to_definitions
+from provisa.dbt.run_results import SUCCESS, NodeResult, RunResults
 from provisa.dbt.warehouse import warehouse_for
 
 #: Where a dbt source's manifest comes from, in its row's ``mapping``.
@@ -38,6 +52,8 @@ SPEC_LOCATION = "location"
 SPEC_UPLOAD = "upload"
 #: The dbt source type, as a source row names it.
 DBT = "dbt"
+#: The ``@command`` parameter a connector takes the dbt invocation in, unless its source says.
+INVOCATION_ARGUMENT = "invocation"
 
 
 @dataclass
@@ -107,18 +123,50 @@ async def model_tables(conn: Any, manifest: DbtManifest) -> list[tuple[DbtModel,
     return out
 
 
-async def _update_descriptions(conn: Any, manifest: DbtManifest) -> None:
-    """What the manifest says of each model already registered, over what the table carries."""
-    for model, row in await model_tables(conn, manifest):
-        if model.description is not None:
+def _unchanged(current: str | None, manifest_said: str | None) -> bool:
+    """Whether a field still holds what the last manifest said of it: no steward has changed it.
+    A manifest that said nothing and a field left empty are the same."""
+    return (current or None) == manifest_said
+
+
+async def _update_table_description(
+    conn: Any, row: Any, model: DbtModel, previous: DbtModel | None
+) -> None:
+    if model.description is None or previous is None:
+        return
+    current = (
+        await conn.execute_core(
+            select(registered_tables.c.description).where(registered_tables.c.id == row.id)
+        )
+    ).scalar()
+    if _unchanged(current, previous.description):
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == row.id)
+            .values(description=model.description)
+        )
+
+
+async def _update_column_descriptions(
+    conn: Any, row: Any, model: DbtModel, previous: DbtModel | None
+) -> None:
+    if previous is None:
+        return
+    said = {c.name: c.description for c in previous.columns}
+    held = {
+        r.column_name: r.description
+        for r in (
             await conn.execute_core(
-                update(registered_tables)
-                .where(registered_tables.c.id == row.id)
-                .values(description=model.description)
+                select(table_columns.c.column_name, table_columns.c.description).where(
+                    table_columns.c.table_id == row.id
+                )
             )
-        for column in model.columns:
-            if column.description is None:
-                continue
+        ).fetchall()
+    }
+    for column in model.columns:
+        if column.description is None or column.name not in held:
+            continue
+        if _unchanged(held[column.name], said.get(column.name)):
             await conn.execute_core(
                 update(table_columns)
                 .where(
@@ -129,14 +177,118 @@ async def _update_descriptions(conn: Any, manifest: DbtManifest) -> None:
             )
 
 
+async def _update_descriptions(
+    conn: Any, manifest: DbtManifest, previous: DbtManifest | None
+) -> None:
+    """What the manifest says of each model already registered, over each description that still
+    holds what the manifest before it said: one a steward has changed stands, field by field."""
+    if previous is None:
+        return
+    earlier = {m.unique_id: m for m in previous.models}
+    for model, row in await model_tables(conn, manifest):
+        await _update_table_description(conn, row, model, earlier.get(model.unique_id))
+        await _update_column_descriptions(conn, row, model, earlier.get(model.unique_id))
+
+
 async def store_manifest(conn: Any, source_id: str, manifest: DbtManifest) -> None:
     """Hold ``manifest`` as ``source_id``'s, in place of any before it, updating what follows."""
+    previous = await held_manifest(conn, source_id)
     await conn.upsert(
         dbt_manifests,
         {"source_id": source_id, "definitions": to_definitions(manifest)},
         index_elements=["source_id"],
     )
-    await _update_descriptions(conn, manifest)
+    await _update_descriptions(conn, manifest, previous)
+
+
+def _utc(value: datetime) -> datetime:
+    """``value`` comparable with another: a database may hand a stored instant back naive."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+async def _store_node_run(
+    conn: Any, source_id: str, generated_at: datetime, result: NodeResult
+) -> None:
+    held = (
+        await conn.execute_core(
+            select(dbt_node_runs.c.generated_at, dbt_node_runs.c.built_at).where(
+                dbt_node_runs.c.source_id == source_id,
+                dbt_node_runs.c.unique_id == result.unique_id,
+            )
+        )
+    ).fetchone()
+    if held is not None and _utc(held.generated_at) >= _utc(generated_at):
+        return  # a document no newer than what is known of the node says nothing new of it
+    built_now = result.status == SUCCESS and result.completed_at is not None
+    await conn.upsert(
+        dbt_node_runs,
+        {
+            "source_id": source_id,
+            "unique_id": result.unique_id,
+            "status": result.status,
+            "generated_at": generated_at,
+            "built_at": result.completed_at if built_now else (held.built_at if held else None),
+        },
+        index_elements=["source_id", "unique_id"],
+    )
+
+
+async def store_run_results(conn: Any, source_id: str, results: RunResults) -> None:
+    """Add what ``results`` says of the nodes dbt builds to what is known of ``source_id``'s."""
+    for result in results.results:
+        if result.builds:
+            await _store_node_run(conn, source_id, results.generated_at, result)
+
+
+async def model_freshness_token(conn: Any, source_id: str, unique_id: str) -> str | None:
+    """The version of the node's rows: when dbt last built it. None while the node has never been
+    built or its latest run did not build it, so its freshness is unknown (REQ-858)."""
+    row = (
+        await conn.execute_core(
+            select(dbt_node_runs.c.status, dbt_node_runs.c.built_at).where(
+                dbt_node_runs.c.source_id == source_id, dbt_node_runs.c.unique_id == unique_id
+            )
+        )
+    ).fetchone()
+    if row is None or row.status != SUCCESS or row.built_at is None:
+        return None
+    return _utc(row.built_at).isoformat()
+
+
+async def dbt_model_tables(conn: Any) -> dict[tuple[str, str, str], tuple[str, str]]:
+    """Each model of every dbt source, as ``(warehouse, schema, relation): (source, unique id)``."""
+    rows = (
+        await conn.execute_core(
+            select(dbt_manifests.c.source_id, dbt_manifests.c.definitions).order_by(
+                dbt_manifests.c.source_id
+            )
+        )
+    ).fetchall()
+    warehouses = await warehouse_rows(conn)
+    out: dict[tuple[str, str, str], tuple[str, str]] = {}
+    for row in rows:
+        manifest = from_definitions(row.definitions)
+        for model in manifest.models:
+            warehouse = warehouse_for(manifest.adapter, model.database, warehouses)
+            if warehouse is not None:
+                out[(warehouse, model.schema, model.relation)] = (row.source_id, model.unique_id)
+    return out
+
+
+def model_probe(state: Any, source: Any, table: Any) -> Any:
+    """The token transport of a table dbt builds, from its run results; None for any other."""
+    held = (getattr(state, "dbt_model_tables", None) or {}).get(
+        (source.id, table.schema_name, table.table_name)
+    )
+    if held is None:
+        return None
+    source_id, unique_id = held
+
+    async def probe() -> str | None:
+        async with state.model_db.acquire() as conn:
+            return await model_freshness_token(conn, source_id, unique_id)
+
+    return probe
 
 
 async def lineage_views(conn: Any) -> list[dict]:
@@ -158,6 +310,17 @@ async def lineage_views(conn: Any) -> list[dict]:
     return out
 
 
+async def _require_code_source(pool: Any, source_id: str) -> None:
+    from provisa.codesource.languages import CODE_SOURCE_TYPES
+
+    async with pool.acquire() as conn:
+        row = (
+            await conn.execute_core(select(sources.c.type).where(sources.c.id == source_id))
+        ).fetchone()
+    if row is None or row.type not in CODE_SOURCE_TYPES:
+        raise TargetRefused(f"the connector {source_id!r} is not a registered code source")
+
+
 async def command_target(pool: Any, source_id: str, name: str) -> tuple[str, dict[str, Any]]:
     """Where ``name`` runs: the kind of command it is, and its binding."""
     async with pool.acquire() as conn:
@@ -176,6 +339,15 @@ async def command_target(pool: Any, source_id: str, name: str) -> tuple[str, dic
         )
     mapping = row.mapping or {}
     try:
+        connector = mapping.get("connector") or {}
+        if connector.get("source_id"):
+            await _require_code_source(pool, connector["source_id"])
+            return "code_command", connector_binding(
+                command,
+                source_id=connector["source_id"],
+                code_command=connector.get("command", ""),
+                invocation_argument=connector.get("invocation_argument") or INVOCATION_ARGUMENT,
+            )
         if mapping.get("spec") == SPEC_CLOUD:
             cloud = mapping.get("cloud") or {}
             return "http", cloud_binding(
