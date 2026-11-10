@@ -263,12 +263,64 @@ async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # 
     except EntitlementClaimError:
         return
     key = (current_org.get(), current_env.get(), identity.user_id)
-    if _recorded_idp_lists.get(key) == lists:
+    if _recorded_idp_lists.get(key) != lists:
+        async with db_pool.acquire() as conn:
+            await store.mirror_idp(conn, identity.user_id, lists)
+        state.idp_entitlements = {**state.idp_entitlements, identity.user_id: lists}
+        _recorded_idp_lists[key] = lists
+    await _attach_pending_entitlements(db_pool, identity, lists)
+
+
+# REQ-2219: (org, environment, user, email) whose waiting grants this process has attached.
+_attached_pending: set[tuple[str | None, str | None, str, str]] = set()
+
+
+@on_forget(size=lambda: len(_attached_pending))
+def _forget_attached_pending(org_id: str) -> None:
+    for key in [k for k in _attached_pending if k[0] == org_id]:
+        _attached_pending.discard(key)
+
+
+async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> None:  # REQ-2219
+    """Attach the grants waiting on this sign-in token's email to its principal, through the write
+    API's own write, after the token's lists are mirrored: where the token sends a list for the
+    grant's role and kind, the grant is refused as the write API refuses it. Each outcome goes to
+    the org's administrative trail, as set by whoever granted it."""
+    from provisa.api.app import state
+    from provisa.core.org_membership import record_admin_action
+    from provisa.core.request_context import current_env, current_org
+    from provisa.entitlements import pending, store
+
+    if not identity.email:
+        return
+    key = (
+        current_org.get(),
+        current_env.get(),
+        identity.user_id,
+        pending.normalize_email(identity.email),
+    )
+    if key in _attached_pending:
         return
     async with db_pool.acquire() as conn:
-        await store.mirror_idp(conn, identity.user_id, lists)
-    state.idp_entitlements = {**state.idp_entitlements, identity.user_id: lists}
-    _recorded_idp_lists[key] = lists
+        async with conn.transaction():
+            outcomes = await pending.attach(conn, identity.user_id, identity.email, lists)
+        if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
+            state.held_entitlements = await store.load_held(conn)
+    for grant, outcome in outcomes:
+        await record_admin_action(
+            db_pool,
+            action=f"entitlements.pending_{outcome}",
+            actor_id=grant.set_by,
+            subject_id=identity.user_id,
+            detail={
+                "email": grant.email,
+                "role_id": grant.role_id,
+                "kind": grant.kind,
+                "identifiers": list(grant.identifiers),
+                "reason": grant.reason,
+            },
+        )
+    _attached_pending.add(key)
 
 
 def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337

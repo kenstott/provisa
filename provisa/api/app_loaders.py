@@ -1667,6 +1667,9 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     tracked_functions, tracked_webhooks = commands.functions, commands.webhooks
     not_defined, undefined = commands.not_defined, commands.undefined
     state.column_transforms = commands.column_transforms
+    from provisa.dbt.store import dbt_model_tables
+
+    state.dbt_model_tables = await dbt_model_tables(conn)  # REQ-2228
 
     # The prefixed alias MUST match the GraphQL field name the schema generator emits
     # (actions_schema), which takes the domain's alias from domain_alias_map over the same domains
@@ -1735,6 +1738,19 @@ def _drop_data_surface(state, role_id: str) -> None:
     from provisa.api.role_surface import install_surface
 
     install_surface(state._active_runtime(), role_id, None)
+
+
+def _install_cloned_surfaces(runtime: Any, prod_surfaces: dict) -> None:
+    """Copy a PROD runtime's compiled surfaces into a cloned env's runtime (REQ-2006, J1157b).
+
+    Called by ``_install_cloned_env_schema`` for a sandbox env whose model is identical to its
+    PROD's: installs each role surface from PROD through ``install_surface`` so the build stays
+    the single writer of surfaces (architecture guard: test_role_surface.py).
+    """
+    from provisa.api.role_surface import install_surface
+
+    for role_id, surface in prod_surfaces.items():
+        install_surface(runtime, role_id, surface)
 
 
 def schema_input_for(

@@ -420,12 +420,18 @@ _CREATE_ONLY = {
     "data_product_commands": "product_id command_name",
     "data_product_tables": "product_id table_id",
     "data_products": "id domain_id name",
+    "dbt_manifests": "source_id definitions updated_at",
+    "dbt_node_runs": "source_id unique_id status generated_at built_at",
     "domains": "id description",
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
     "entitlement_expiries": (
         "id rule_key principal role_id ends_at ends removed reason set_by valid_from recorded_at"
+    ),
+    "entitlement_pending": (
+        "id email role_id kind identifiers expires_at outcome principal reason set_by valid_from "
+        "recorded_at"
     ),
     "entitlements": (
         "id source principal role_id kind capability identifiers removed reason set_by valid_from "

@@ -77,6 +77,13 @@
         <p>
           It is built the way an operating system is built, on the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
+        <figure class="shot">
+          <div class="shot-frame"><a href="/assets/architecture.54b2f4c874.jpg">
+            <img src="/assets/architecture.54b2f4c874.jpg" width="1536" height="1024" loading="lazy"
+                 alt="Provisa architecture. Consumers reach generated access surfaces: SQL over the PostgreSQL wire, GraphQL, REST, gRPC, Arrow Flight, Cypher and MCP. These feed the Provisa control plane, where the semantic model and the query compiler and planner apply governance and send each query to execution engines and warehouses, which read the data sources. Governance is compiled into every query, and observability is stored as queryable tables.">
+          </a></div>
+          <figcaption>One model, compiled into governed queries for every interface and run on the engines you already have. Select the diagram to open it full size.</figcaption>
+        </figure>
 
         <h2 id="lineage">Where the design comes from</h2>
         <p>

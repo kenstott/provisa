@@ -158,13 +158,13 @@ def make_source_probe(state: Any, loaders: dict[str, Any], sources: list[Any]) -
     """``(source, table) -> probe | None``: the token transport a source's own adapter gives for
     a table (``probes.loader_probe``), run with the vault of the org the sources are registered
     in bound -- the probe dials the source with the source's own credential (REQ-1695)."""
-    from provisa.events.probes import loader_probe
+    from provisa.events.probes import source_transport
     from provisa.federation.source_vault import org_vault
 
     wiring = wired_for()
 
     def source_probe(src: Any, tbl: Any) -> Any:
-        transport = loader_probe(loaders, src, tbl)
+        transport = source_transport(state, loaders, src, tbl)
         if transport is None:
             return None
 

@@ -786,6 +786,7 @@
   "ja/capabilityHelp.json::capabilityHelp.table_registration": "Register tables from a source, and change or remove them.",
   "ja/capabilityHelp.json::capabilityHelp.usage": "Run queries on governed data.",
   "ja/capabilityHelp.json::capabilityHelp.user_management": "Manage the organization's users and their roles.",
+  "ja/capabilityHelp.json::capabilityHelp.assign_entitlements": "Set and remove the allow-list and deny-list entries Provisa holds for a member, within the access user_management confers.",
   "ja/capabilityHelp.json::capabilityHelp.view_governance": "See the catalog's governance columns: who can read a column, its masks and view SQL.",
   "ja/capabilityHelp.json::capabilityHelp.write": "Write data, where the role has a write grant.",
   "ja/catalogsTab.json::catalogsTab.addCatalog": "+ Catalog",

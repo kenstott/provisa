@@ -136,6 +136,14 @@ def _egress_ip() -> str:
         return resp.read().decode().strip()
 
 
+def _run_tags() -> list[dict[str, str]]:
+    """The run's tag (tests/integration/cloud_run_tag.py), as Redshift Serverless takes tags: the
+    cloud audit keeps a namespace or workgroup only while its run is in progress."""
+    from tests.integration.cloud_run_tag import run_tags
+
+    return [{"key": k, "value": v} for k, v in run_tags().items()]
+
+
 def _stamp_of(name: str) -> datetime | None:
     """The UTC creation time encoded in a ``provisa-e2e[-wg]-<YYYYmmddHHMMSS>`` name.
 
@@ -341,6 +349,7 @@ def redshift_cluster():
         dbName=_DB,
         adminUsername=_ADMIN_USER,
         adminUserPassword=password,
+        tags=_run_tags(),
     )
     prior = {k: os.environ.get(k) for k in _ENV_KEYS}
     authorized: list[tuple[str, int, str]] = []  # (group, port, cidr): revoked at teardown
@@ -354,6 +363,7 @@ def redshift_cluster():
             namespaceName=namespace,
             baseCapacity=_BASE_CAPACITY_RPU,
             publiclyAccessible=True,
+            tags=_run_tags(),
         )
         wg = _wait_available(rss, workgroup)
         endpoint = wg["endpoint"]["address"]

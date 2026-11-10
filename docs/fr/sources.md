@@ -42,7 +42,7 @@ Provisa enregistre **78** types de sources, ceux que propose le formulaire Sourc
 | 49–53 | [Fondées sur des fichiers](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilité et autres](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS d'entreprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [Sources API](#api-sources) | `openapi`, `dbt`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 65–72 | [Sources API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
 | 73 | [GovData](#govdata) | `govdata` |
 | 74–75 | [Vérificateurs de qualité des données](#data-quality-checkers) | `soda`, `great_expectations` |
 | 76 | [Profileur de données](#data-profiler) | `data_profiler` |
@@ -909,6 +909,30 @@ Elles sont appliquées à la spécification au moment de son chargement : la lis
 Une exclusion qui nomme une opération ou un argument que la spécification n'a pas fait échouer le chargement de la spécification de cette source et nomme chaque entrée périmée : une liste qui ne correspond plus à une spécification plus récente ne passe donc pas inaperçue.
 
 Une source de marque livre ses propres exclusions dans le cadre de sa curation, et celles d'un opérateur s'y ajoutent. La source Stripe exclut l'intégration de paiement dépréciée de Stripe fondée sur les jetons et les sources : créer un débit, les API Tokens et Sources, ajouter une carte ou un compte bancaire à un client à partir d'un jeton, ainsi que les arguments `source`, `card`, `bank_account` et `default_card` des écritures de clients et de paiements de factures. Les paiements passent par les Payment Intents, les Payment Methods et les Setup Intents, que la source offre. La lecture et la suppression des sources de paiement qu'un compte possède déjà restent proposées.
+
+### dbt
+
+Une source dbt laisse votre projet dbt où il est, et dbt continue de le construire. Provisa lit le `manifest.json` du projet pour ses définitions et ne copie jamais ni ligne ni projet.
+
+| Le manifeste vient | Défini sur la source |
+| --- | --- |
+| D'une URL ou d'un emplacement d'artefact | `location` |
+| D'un téléversement | `content` |
+| De l'API de dbt Cloud | `host`, `account_id`, `job_id` et un jeton d'API, conservé comme l'identifiant de toute source |
+
+Chaque modèle est proposé comme table, et l'ajout de la source n'enregistre rien. Lorsqu'un intendant enregistre un modèle, celui-ci est lu via la source d'entrepôt correspondant à l'adaptateur du manifeste et à la base de données du modèle. Le manifeste ne contient aucun identifiant et le fichier de profils de dbt n'est pas lu ; si aucune source enregistrée ne correspond, le formulaire de configuration propose d'en créer une. La traçabilité d'un modèle provient de son SQL compilé.
+
+**Commandes.** Chaque modèle, test, snapshot et seed est proposé comme commande de mutation, de même que `build`, `source freshness` et chaque macro du projet et de ses paquets installés via `run-operation`. Une commande ne s'exécute que lorsqu'un appel, un déclencheur ou une planification l'exécute. Elle s'exécute là où dbt s'exécute déjà :
+
+| Cible | Mode d'exécution | Défini sur la source |
+| --- | --- | --- |
+| dbt Cloud | Exécute la tâche via l'API des tâches, avec la commande pour unique étape | `spec: cloud` |
+| Un script | Exécute `dbt` sur une ligne de commande que Provisa peut atteindre | `command_line` |
+| Un connecteur exploité par l'opérateur | Appelle un `@command` d'une [source de code](code-sources.md), avec l'invocation de dbt comme argument fixe qu'un appelant ne peut pas modifier | `connector_source`, `connector_command`, `connector_invocation_argument` (par défaut `invocation`) |
+
+**Fraîcheur.** Le `run_results.json` de dbt indique quand chaque modèle a été construit pour la dernière fois. Fournissez-le via `run_results`, faites pointer `run_results_location` vers son lieu de publication, ou laissez une source dbt Cloud le lire depuis la dernière exécution réussie de la tâche. Actualiser la source le relit, et un téléversement peut apporter des résultats d'exécution sans nouveau manifeste. Pour l'utiliser, configurez la table du modèle avec le signal de changement `probe` ou `ttl_probe` et `probe_type: hash`. La table devient obsolète dès que dbt a reconstruit le modèle. Un modèle dont la dernière exécution a échoué ou a été ignorée a une fraîcheur inconnue et n'est jamais considéré comme frais.
+
+**Un nouveau manifeste** met à jour les commandes proposées, la traçabilité et les descriptions des modèles enregistrés. Une description modifiée par un intendant reste telle que l'intendant l'a laissée, champ par champ.
 
 ### GovData
 

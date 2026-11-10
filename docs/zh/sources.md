@@ -42,7 +42,7 @@ Provisa 注册了 **78** 种数据源类型，即 Sources 表单所提供的类�
 | 49–53 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
 | 54–55 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
 | 56–64 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–72 | [API 数据源](#api-sources) | `openapi`、`dbt`、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
+| 65–72 | [API 数据源](#api-sources) | `openapi`、[`dbt`](#dbt)、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
 | 73 | [GovData](#govdata) | `govdata` |
 | 74–75 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
 | 76 | [数据剖析器](#data-profiler) | `data_profiler` |
@@ -909,6 +909,30 @@ sources:
 如果排除项指定了规范中不存在的操作或参数，该数据源的规范加载会失败，并列出每个过期条目，因此与较新规范不再匹配的列表会被发现。
 
 品牌数据源在其策划中自带排除项，操作员的排除项会追加到其上。Stripe 数据源排除了 Stripe 已弃用的令牌和来源（source）支付集成：创建 charge、Tokens 和 Sources API、凭令牌向客户添加银行卡或银行账户，以及客户和发票支付写入操作中的 `source`、`card`、`bank_account` 和 `default_card` 参数。收款通过 Payment Intents、Payment Methods 和 Setup Intents 完成，数据源提供这些接口。读取和删除账户已有的支付来源仍然可用。
+
+### dbt {: #dbt }
+
+dbt 数据源让您的 dbt 项目留在原处，并由 dbt 继续构建。Provisa 读取项目的 `manifest.json` 以获取定义，绝不复制任何行或项目本身。
+
+| 清单来自 | 在数据源上设置 |
+| --- | --- |
+| URL 或制品位置 | `location` |
+| 上传 | `content` |
+| dbt Cloud 的 API | `host`、`account_id`、`job_id` 和 API 令牌，令牌的保存方式与任何数据源的凭据相同 |
+
+每个模型都作为表提供，添加数据源不会注册任何内容。数据管家注册模型时，会通过与清单的适配器和模型的数据库相匹配的仓库数据源读取它。清单不包含凭据，也不读取 dbt 的 profiles 文件，因此如果没有匹配的已注册数据源，设置表单会提供创建一个的选项。模型的血缘来自其编译后的 SQL。
+
+**命令。** 每个模型、测试、快照和 seed 都作为变更命令提供，`build`、`source freshness` 以及通过 `run-operation` 调用的项目及其已安装包的每个宏也是如此。只有调用、触发器或调度运行命令时，命令才会运行。它在 dbt 已经运行的地方运行：
+
+| 目标 | 运行方式 | 在数据源上设置 |
+| --- | --- | --- |
+| dbt Cloud | 通过作业 API 运行作业，命令作为其唯一步骤 | `spec: cloud` |
+| 脚本 | 在 Provisa 可访问的命令行上运行 `dbt` | `command_line` |
+| 由运维方运行的连接器 | 调用[代码数据源](code-sources.md)的 `@command`，dbt 调用作为调用方无法更改的固定参数 | `connector_source`、`connector_command`、`connector_invocation_argument`（默认 `invocation`） |
+
+**新鲜度。** dbt 的 `run_results.json` 说明每个模型最后一次构建的时间。可将其作为 `run_results` 提供，将 `run_results_location` 指向其发布位置，或让 dbt Cloud 数据源从作业最近一次成功运行中读取。刷新数据源时会重新读取，上传也可以只带来运行结果而不带新清单。要使用它，请将模型的表设置为 `probe` 或 `ttl_probe` 变更信号，并设置 `probe_type: hash`。一旦 dbt 再次构建该模型，该表即为过期。最近一次运行失败或被跳过的模型，其新鲜度未知，绝不会被视为新鲜。
+
+**新清单**会更新提供的命令、血缘以及已注册模型的描述。数据管家更改过的描述会逐字段保持数据管家留下的样子。
 
 ### GovData {: #govdata }
 

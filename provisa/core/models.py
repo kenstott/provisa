@@ -127,11 +127,12 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
-    # worker; their tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a
+    # sandboxed worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
     go = "go"
+    rust = "rust"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -3838,7 +3839,7 @@ class ConnectorConfig(BaseModel):  # REQ-2221
     path: str = ""
     build_command: str = ""
     # REQ-2221: the source type it becomes, read from the project's standard files when it is built.
-    language: Literal["node", "python", "go"]
+    language: Literal["node", "python", "go", "rust"]
     image: str
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     # What a paired host is held to: the hash of the code the image at ``digest`` was built from.

@@ -21,6 +21,9 @@ of the organisation, for a source's own code and for its dependencies:
 - Go module proxies (REQ-2200), each with an address (its GOPROXY URL) and a credential, the
   ``user:password`` the go command logs in with. Go modules have no scope. One may be the default
   proxy every Go install goes through, in place of the public one.
+- Cargo registries (REQ-2227), each with an address (its index URL as cargo names it,
+  ``sparse+https://...``) and a credential, the token cargo sends. Crates have no scope. One may
+  be the default registry every Rust install goes through, in place of crates.io.
 - Git hosts, each with a host -- with its port and a path prefix where the server has them
   (``bitbucket.acme.com:7990/bitbucket``) -- and a credential: a token, or ``user:token``.
 
@@ -37,7 +40,7 @@ npm registry needs no entry.
 An organisation reads and writes only its own: every call names the organisation.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2088, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2088, REQ-2200, REQ-2227
 from __future__ import annotations
 
 import uuid
@@ -55,8 +58,9 @@ if TYPE_CHECKING:
 NPM = "npm"
 PYPI = "pypi"
 GOPROXY = "goproxy"
+CARGO = "cargo"
 GIT = "git"
-KINDS = (NPM, PYPI, GOPROXY, GIT)
+KINDS = (NPM, PYPI, GOPROXY, CARGO, GIT)
 
 
 class PackageRegistryRefused(ValueError):
@@ -139,7 +143,7 @@ async def put(
     ``ca_bundle`` is kept as entered too; None or empty holds none.
 
     Refused by name: an unknown kind; an empty address or credential; a scope on a PyPI index, a
-    Go module proxy or a Git host; a Go module proxy's credential entered as a value that is not
+    Go module proxy, a Cargo registry or a Git host; a Go module proxy's credential entered as a value that is not
     ``user:password``; the mirror on a Git host; a certificate authority entered as a value that holds no
     PEM certificate; a second mirror of the same kind; a scope another npm
     registry has; a host another Git host entry has."""
@@ -166,6 +170,10 @@ async def put(
     if kind == GOPROXY and scope is not None:
         raise PackageRegistryRefused(
             "goproxy_scope", "A Go module proxy has no scope: Go modules have none", address=address
+        )
+    if kind == CARGO and scope is not None:
+        raise PackageRegistryRefused(
+            "cargo_scope", "A Cargo registry has no scope: crates have none", address=address
         )
     if kind == GIT and mirror:
         raise PackageRegistryRefused(

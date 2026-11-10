@@ -642,6 +642,26 @@ ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
+-- REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
+-- Append-only, keyed by (email, role_id, kind): the last row is the grant's state. outcome is NULL
+-- while it waits, and ended, attached or refused once it does not; principal names whom a sign-in
+-- with that email attached it to, or was refused for, because the identity provider sends that list.
+CREATE TABLE IF NOT EXISTS entitlement_pending (
+    id           BIGSERIAL PRIMARY KEY,
+    email        TEXT NOT NULL,
+    role_id      TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    identifiers  JSONB NOT NULL DEFAULT '[]',
+    expires_at   TIMESTAMPTZ,
+    outcome      TEXT CHECK (outcome IN ('ended', 'attached', 'refused')),
+    principal    TEXT,
+    reason       TEXT NOT NULL,
+    set_by       TEXT NOT NULL,
+    valid_from   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS entitlement_pending_email_idx ON entitlement_pending (email);
+
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
@@ -1326,6 +1346,17 @@ CREATE TABLE IF NOT EXISTS dbt_manifests (
     source_id   TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
     definitions TEXT NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- REQ-2228, REQ-858: what dbt's run results last said of each node it builds. built_at is when dbt
+-- last built it, kept through a later run that failed.
+CREATE TABLE IF NOT EXISTS dbt_node_runs (
+    source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    unique_id    TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL,
+    built_at     TIMESTAMPTZ,
+    PRIMARY KEY (source_id, unique_id)
 );
 
 CREATE TABLE IF NOT EXISTS api_endpoints (
