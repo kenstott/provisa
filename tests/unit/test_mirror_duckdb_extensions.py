@@ -125,7 +125,9 @@ class _FakeDuckDB:
         if sql.startswith("SET extension_directory"):
             self.ext_dir = Path(sql.split("'")[1])
         elif sql.startswith("CREATE EXTENSION REPOSITORY"):
-            repo = sql.split()[5]
+            repo = re.fullmatch(
+                r"CREATE EXTENSION REPOSITORY (?:IF NOT EXISTS )?(\w+) WITH PREFIX '[^']*'", sql
+            ).group(1)
             (self.repos / f"{repo}.duckdb_extension.repo.json").write_text("{}")
         elif sql.startswith("INSTALL"):
             name, repo = re.fullmatch(r"INSTALL (\w+) FROM (\w+)", sql).groups()
