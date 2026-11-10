@@ -34,7 +34,11 @@ from provisa.pgwire.catalog_route import addressed_statement
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.security.rights import Capability, has_capability
-from provisa.transpiler.metadata_settings import set_statement, statement_settings
+from provisa.transpiler.metadata_settings import (
+    CLIENT_ROLE,
+    set_statement,
+    statement_settings,
+)
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
@@ -190,6 +194,18 @@ def plane_engine(held: Any) -> Engine:
             "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
         )
     return engine
+
+
+def grant_catalog_client(engine: Engine) -> None:
+    """REQ-2190: what the product's seed grants the client role (startup_seed._seed_catalog_client)
+    on the views this plane carries. The admin terminal runs every client statement as that role
+    (``SET LOCAL ROLE``); without USAGE on the org schema and SELECT on the views, PostgreSQL
+    refuses the read ("permission denied for schema org_default"). The full seed also grants the
+    ontology and ops relations, which a plane built off the template does not hold."""
+    views = ", ".join(f"{_SCHEMA}.{name}" for name in (*NEUTRAL_VIEW_NAMES, *CATALOG_VIEW_NAMES))
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"GRANT USAGE ON SCHEMA {_SCHEMA} TO {CLIENT_ROLE}")
+        conn.exec_driver_sql(f"GRANT SELECT ON {views} TO {CLIENT_ROLE}")
 
 
 class Plane:

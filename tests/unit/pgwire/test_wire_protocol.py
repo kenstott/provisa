@@ -19,6 +19,9 @@ The auth provider is stubbed so no real bcrypt/DB is needed.
 
 from __future__ import annotations
 
+import asyncio
+import socket
+import struct
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -319,6 +322,84 @@ async def test_a_simple_query_of_transaction_control_then_a_catalog_select(
     # The last statement's own completion tag: the catalog SELECT returned its rows.
     assert status.startswith("SELECT ") and int(status.split()[1]) >= 1
     assert "pg_catalog" in names
+
+
+_BEGIN_THEN_SELECT = b"BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY; SELECT 1 AS a;"
+
+
+def _read_messages(sock: socket.socket, pending: bytearray) -> list[tuple[bytes, bytes]]:
+    """Backend messages off ``sock`` up to and including the next ReadyForQuery ('Z') or
+    AuthenticationCleartextPassword request: (type byte, body)."""
+    messages: list[tuple[bytes, bytes]] = []
+    while True:
+        while len(pending) >= 5:
+            size = struct.unpack("!i", pending[1:5])[0]
+            if len(pending) < 1 + size:
+                break
+            kind, body = bytes(pending[:1]), bytes(pending[5 : 1 + size])
+            del pending[: 1 + size]
+            messages.append((kind, body))
+            if kind == b"Z" or (kind == b"R" and body[:4] == struct.pack("!i", 3)):
+                return messages
+        chunk = sock.recv(65536)
+        assert chunk, f"server closed the connection after {messages!r}"
+        pending.extend(chunk)
+
+
+def _simple_query_messages(port: int, query: bytes) -> list[tuple[bytes, bytes]]:
+    """The backend messages one simple-Query message is answered with, through its ReadyForQuery:
+    on a thread of its own, as the server answers on the test's loop."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=30)
+    pending = bytearray()
+    try:
+        startup = b"user\x00alice\x00database\x00provisa\x00\x00"
+        sock.sendall(struct.pack("!ii", 8 + len(startup), 196608) + startup)
+        if _read_messages(sock, pending)[-1][0] == b"R":  # cleartext password asked for
+            password = b"secret\x00"
+            sock.sendall(b"p" + struct.pack("!i", 4 + len(password)) + password)
+            assert _read_messages(sock, pending)[-1] == (b"Z", b"I")
+        sock.sendall(b"Q" + struct.pack("!i", 5 + len(query)) + query + b"\x00")
+        return _read_messages(sock, pending)
+    finally:
+        sock.close()
+
+
+@pytest.mark.asyncio
+async def test_a_simple_query_answers_begin_and_then_its_select(pgwire_server, mock_state):
+    """REQ-883: one simple-Query message of a BEGIN and a SELECT answers each statement in order:
+    the BEGIN (a transaction no-op) with its CommandComplete, then the SELECT with its
+    RowDescription, DataRow and CommandComplete: every message read, not only the last tag."""
+    port = pgwire_server
+    provider = _stub_auth_provider("alice", "secret")
+    governed: list[str] = []
+
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None, *, deliver, as_of=None):
+        governed.append(sql)
+        return EngineResult(rows=[(1,)], column_names=["a"])
+
+    async def _stub_describe(sql, role_id, *, as_of=None):
+        from provisa.pgwire._pipeline import _Described
+
+        return _Described([("a", "INT")], None)
+
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
+        patch("provisa.api.app.state", mock_state),
+        patch("provisa.pgwire._pipeline.govern_pgwire_plan", _stub_pipeline),
+        patch("provisa.pgwire._pipeline.describe_pgwire_statement", _stub_describe),
+    ):
+        messages = await asyncio.to_thread(_simple_query_messages, port, _BEGIN_THEN_SELECT)
+
+    assert [kind for kind, _ in messages] == [b"C", b"T", b"D", b"C", b"Z"], messages
+    assert messages[0][1] == b"BEGIN\x00"
+    row_description = messages[1][1]
+    assert struct.unpack("!h", row_description[:2]) == (1,)  # one column ...
+    assert row_description[2:4] == b"a\x00"  # ... named a
+    assert messages[2][1] == struct.pack("!hi", 1, 1) + b"1"  # one row: a = 1
+    assert messages[3][1] == b"SELECT 1\x00"
+    assert messages[4][1] == b"T"  # the BEGIN left the session in a transaction block
+    # The BEGIN is answered by the transaction intercept, never governed as a query.
+    assert [s.strip().rstrip(";") for s in governed] == ["SELECT 1 AS a"]
 
 
 @pytest.mark.asyncio
