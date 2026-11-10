@@ -81167,7 +81167,10 @@
     NO LOOSE ROW TYPES:) Maintainer 2026-11-09: in every language (REQ-1993, REQ-2200) a table''s row type
     is declared. A function whose row type is loose (any, unknown, a Record, a dict) is refused by name
     when the code is loaded: its author converts to a typed array. There is no preview. A single field of
-    a typed row may still be loose, as a json column.'
+    a typed row may still be loose, as a json column. (Amended 2026-11-10, TYPES FROM CODE OR FROM A RUNTIME
+    CATALOG:) Maintainer 2026-11-10: a code resolver''s row types come either from its code or from its
+    @catalog (REQ-2221), in a named native type system; rows from @rows are checked against them. Neither
+    is a loose row type.'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -92465,7 +92468,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and ticks what the service answered. The steward can change any box. Provisa pushes down only what is
     ticked; the rest runs on the engine. (Amended 2026-11-10, SIX FEATURES:) Maintainer 2026-11-10: the
     checkboxes are six: $orderby, $count, $expand, $apply, inserts, and updates with deletes. Filters ($filter),
-    paging ($top, $skip, nextLink) and $select are the baseline every OData source gets and have no checkbox.'
+    paging ($top, $skip, nextLink) and $select are the baseline every OData source gets and have no checkbox.
+    (Amended 2026-11-10, BUILT AS A CODE RESOLVER:) Maintainer 2026-11-10: the OData connector is a code
+    resolver using @catalog and @rows (REQ-2221): @catalog reads the service''s $metadata and declares its
+    entity sets with their Edm types, keys, navigation properties and the six features the Probe found;
+    @rows reads an entity set with the baseline $filter, paging and $select, and the ticked features. Actions
+    and functions are its commands.'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
@@ -94097,7 +94105,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     it fails on a later restart of a joined host, the source stays and shows as unhealthy. (Amended 2026-11-09,
     SETUP VALUES REACH THE HOST:) Maintainer 2026-11-09: Provisa delivers a connector''s setup values to
     the host it paired with, over the paired TLS connection. Each @requires secret is resolved at delivery
-    and the read is audited; the host holds it only in memory, never on disk.'
+    and the read is audited; the host holds it only in memory, never on disk. (Amended 2026-11-10, A CATALOG
+    DISCOVERED AT RUNTIME:) Maintainer 2026-11-10: a code resolver whose tables are known only at runtime
+    (a service read through its own metadata) may declare two more tags beside the lifecycle tags. @catalog
+    is a function returning the resolver''s tables: for each, its columns with their types written in a
+    native type system the resolver names once (edm, postgres, arrow and the like), its keys and relationships,
+    and for a source with optional features the features it supports. Provisa reads it at registration,
+    maps each native type through the type mapping it already has for that system, and refuses by name a
+    type the system does not define. @rows is a function returning the rows of one of those tables as an
+    untyped list, given the table, its columns, its filters and its limit; every batch is checked against
+    the registered columns and a value that does not fit is refused naming the table and column. A resolver
+    may use the same native types to check its own rows. The catalog is read again the way a database''s
+    schema is. A resolver with no @catalog works as before, its tables typed in code.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
