@@ -149,8 +149,9 @@ jobs:
           retention-days: 1
 
   # REQ-2194: provisa's wheels. provisa carries provisa._encoders, Provisa's Rust encoders compiled
-  # by setuptools-rust, so it is one cp312 wheel per platform a `pip install provisa` runs on, each
-  # with the UI built above, the config and buenavista. Linux wheels come from the Dockerfile's
+  # by setuptools-rust, so it is one cp312 wheel per supported platform (REQ-294: macOS arm64,
+  # Linux x86_64 and Windows x86_64; Linux arm64 is not supported and gets no wheel), each with the
+  # UI built above, the config and buenavista. The Linux wheel comes from the Dockerfile's
   # provisa-wheel stage (manylinux_2_28, zig-linked); macOS (arm64 only: Intel Macs are not
   # supported) and Windows from `python -m build` on the runner. Each wheel is checked and imported
   # on its own platform before it is uploaded. The linux-x86_64 row also builds the sdist, and proves a wheel builds from it with
@@ -165,7 +166,6 @@ jobs:
       matrix:
         include:
           - { label: linux-x86_64, runner: ubuntu-latest, arch: x64, tag: manylinux_2_28_x86_64, sdist: true }
-          - { label: linux-aarch64, runner: ubuntu-24.04-arm, arch: arm64, tag: manylinux_2_28_aarch64 }
           - { label: macos-arm64, runner: macos-15, arch: arm64, tag: 'macosx_\d+_\d+_arm64' }
           - { label: windows-x64, runner: windows-latest, arch: x64, tag: win_amd64 }
     defaults:

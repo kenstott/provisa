@@ -10,11 +10,12 @@
 
 """Provisa's Rust encoders are compiled into the provisa package itself (REQ-2194): one extension
 module, provisa._encoders, whose submodules are the encoders (pgwire now). provisa is released as
-four platform wheels (macOS arm64, Linux amd64 and arm64, Windows x64), each carrying the module, its licence notices and the UI built once; there
+three platform wheels (macOS arm64, Linux x86_64, Windows x64; REQ-294: Linux arm64 is not a
+supported platform), each carrying the module, its licence notices and the UI built once; there
 is no separate PyPI project. Every installer and image builds provisa with the module in it and
 imports it, so an artifact without it is never built."""
 
-# Requirements: REQ-2194
+# Requirements: REQ-2194, REQ-294
 
 from __future__ import annotations
 
@@ -37,10 +38,10 @@ PGWIRE = REPO / "rust" / "pgwire"
 NOTICES = REPO / "provisa" / "_encoders.THIRD_PARTY_NOTICES"
 #: The Rust toolchain every recipe uses.
 RUST = "1.95.0"
-#: The four platforms of provisa's wheels (no Intel Mac): label -> (runner, platform tag pattern).
+#: The three supported platforms of provisa's wheels (REQ-294: no Intel Mac, no Linux arm64):
+#: label -> (runner, platform tag pattern).
 PLATFORMS = {
     "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
-    "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
     "macos-arm64": ("macos-15", r"macosx_\d+_\d+_arm64"),
     "windows-x64": ("windows-latest", "win_amd64"),
 }
@@ -452,9 +453,21 @@ def test_a_macos_wheel_is_tagged_for_the_one_architecture_its_module_is_built_fo
     assert '"-C--build-option=--plat-name=macosx-${MACOSX_DEPLOYMENT_TARGET}-${arch}"' in build
 
 
+def test_a_linux_wheel_is_built_for_x86_64_only():
+    """REQ-294: Linux arm64 is not a supported platform; build-wheel.sh refuses it by name,
+    naming the three supported platforms."""
+    build = (REPO / "scripts/build-wheel.sh").read_text()
+    assert "x86_64) platform=linux/amd64 ;;" in build
+    assert "platform=linux/arm64" not in build
+    assert "is not a supported platform (supported: macOS arm64, Linux x86_64, Windows x86_64)" in (
+        build
+    )
+
+
 def test_every_image_builds_provisa_in_one_linux_recipe_and_imports_its_encoders():
     """The Dockerfile's provisa-wheel stage is the one Linux recipe: the images, every Linux wheel
-    (build-wheel.sh), the release's arm64 wheelhouse and the cloud push all build it."""
+    (build-wheel.sh) and the cloud push all build it. REQ-294: the release builds no Linux arm64
+    wheel; its linux/arm64 provisa image is the macOS container tier's."""
     dockerfile = (REPO / "Dockerfile").read_text()
     stage = dockerfile[dockerfile.index("FROM --platform=$BUILDPLATFORM rust:") :]
     stage = stage[: stage.index("FROM scratch AS provisa-wheel")]
@@ -469,10 +482,12 @@ def test_every_image_builds_provisa_in_one_linux_recipe_and_imports_its_encoders
         assert "import pgwire_encoder_rs" not in text, path
     # The runtime runs /app/provisa, so the module is copied into that tree.
     assert "COPY --from=installer /encoders/ ./provisa/" in dockerfile
-    prebuilt = _jobs("release-prebuilt.yml")["pull-images-core"]
-    run = _steps(prebuilt)["Build provisa wheels for linux/arm64"]["run"]
-    assert run.index("--target provisa-wheel") < run.index("pip wheel")
-    assert "--tag manylinux_2_28_aarch64" in run and "import provisa._encoders.pgwire" in run
+    prebuilt = (WORKFLOWS / "release-prebuilt.yml").read_text()
+    assert "--target provisa-wheel" not in prebuilt
+    assert "manylinux_2_28_aarch64" not in prebuilt
+    assert "name: provisa-wheels" not in prebuilt
+    core = _runs(_jobs("release-prebuilt.yml")["pull-images-core"])
+    assert "docker build --platform linux/arm64 -t provisa/provisa:local ." in core
     image = _jobs("docker-image.yml")["image"]
     assert 'python -c "import provisa._encoders.pgwire"' in _runs(image)
     cloud = (REPO / "scripts/deploy-cloud.sh").read_text()

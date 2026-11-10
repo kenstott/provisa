@@ -78,8 +78,8 @@ if [ "$wheel" = 1 ]; then
   if [ "$(uname -s)" = "Linux" ]; then
     case "$(uname -m)" in
       x86_64) platform=linux/amd64 ;;
-      aarch64 | arm64) platform=linux/arm64 ;;
-      *) echo "[build-wheel] ERROR: no Linux wheel for $(uname -m)" >&2; exit 1 ;;
+      # REQ-294: the supported platforms are macOS arm64, Linux x86_64 and Windows x86_64.
+      *) echo "[build-wheel] ERROR: Linux $(uname -m) is not a supported platform (supported: macOS arm64, Linux x86_64, Windows x86_64)" >&2; exit 1 ;;
     esac
     echo "[build-wheel] docker build --target provisa-wheel (${platform})"
     docker build --platform "$platform" --target provisa-wheel \

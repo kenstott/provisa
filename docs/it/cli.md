@@ -11,7 +11,8 @@ pip install 'provisa[embedded]'
 
 **Requisiti di piattaforma.** `provisa run` richiede Python 3.12 e una piattaforma con una wheel
 pgserver: linux x86_64, macOS o Windows x86_64. Linux aarch64 non ha una wheel pgserver né una
-distribuzione sorgente, quindi il livello embedded non funziona lì. Usa il livello container su aarch64.
+distribuzione sorgente, quindi il livello embedded non funziona lì. Linux arm64 non è una piattaforma supportata
+(supportate: macOS arm64, Linux x86_64 e Windows x86_64).
 
 ---
 

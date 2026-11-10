@@ -11,7 +11,8 @@ pip install 'provisa[embedded]'
 
 **平台要求。** `provisa run` 需要 Python 3.12 以及具有 pgserver wheel 的平台：
 linux x86_64、macOS 或 Windows x86_64。Linux aarch64 既没有 pgserver wheel 也没有源码分发包，
-因此嵌入式层无法在该平台上运行。在 aarch64 上请使用容器层级。
+因此嵌入式层无法在该平台上运行。Linux arm64 不是受支持的平台
+（受支持的平台：macOS arm64、Linux x86_64 和 Windows x86_64）。
 
 ---
 
