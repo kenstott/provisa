@@ -18438,7 +18438,10 @@
     to Maven Central when a bundle changes. One stage command for the DMG, AppImage, Windows and pip installs
     runs once at install or first launch, using the machine''s configured package index, and a directory
     already filled is used without fetching. The container image is built with these assets inside it; it
-    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08).'
+    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08). (Amended 2026-11-10, LINUX
+    ARM64 HAS NO PGWIRE CONNECTORS:) Maintainer 2026-11-10: Linux arm64 receives the DuckDB extension parts
+    but no pgwire connector bundles; a pgwire connector there is refused by name, naming the platforms that
+    have it. The release build''s probe on Linux arm64 expects that refusal rather than a bundle.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
