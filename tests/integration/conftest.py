@@ -654,7 +654,18 @@ def pgwire_pg_backend(docker_postgres):
     )
     state.tenant_db = tenant_db
     state.record_db = state.tenant_db
-    state.model_db = state.tenant_db
+    # REQ-883: DuckDB's postgres extension opens its catalog scan with a batch that includes
+    # catalog queries (pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint).
+    # Those route to source_id="provisa-admin" and read from state.model_db via _execute_plan.
+    # The audit-only tenant_db has no meta.* views; a real control plane is required so that
+    # meta.catalog_pg_namespace and siblings resolve.
+    from tests.pg_control_plane import fresh_control_plane
+    from tests.unit.pgwire.catalog_plane import plane_engine, write_model as _write_catalog_model
+
+    _cp = fresh_control_plane()
+    _cp_engine = plane_engine(_cp)
+    _write_catalog_model(_cp_engine, "admin", state)
+    state.model_db = Database(_cp_engine, name="model")
     # The audit row's tenant_id is `current_org.get() or state.org_id`, and nothing binds the
     # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
     # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
@@ -691,6 +702,7 @@ def pgwire_pg_backend(docker_postgres):
             }
         finally:
             server.shutdown()
+            _cp.close()
 
             async def _drop_audit() -> None:
                 async with tenant_db.acquire() as conn:
