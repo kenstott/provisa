@@ -713,6 +713,17 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- J1158: uniqueness constraints removed from rls_rules (commit 78be70ea) survive on planes
+-- built before the removal.  A role may now have multiple rules on the same target — one per
+-- rights set — so these keys must go.  The "_right_" variants are from an intermediate column
+-- name that predates the current "rights" column; both spellings are dropped unconditionally.
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_table_id_role_id_key;
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_table_id_role_id_right_key;
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_action_name_role_id_key;
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_action_name_role_id_right_key;
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_tag_role_key;
+ALTER TABLE rls_rules DROP CONSTRAINT IF EXISTS rls_rules_domain_role_key;
+
 -- REQ-1373/REQ-1375: org-level tag registry — USER tags only. The three system tags
 -- (technical/pii/deprecated) are code-defined intrinsics (provisa.core.models.SYSTEM_TAGS),
 -- present in every install and never stored, so no rows are seeded here.
@@ -856,6 +867,10 @@ DO $$ BEGIN
         ON tag_assignments (base_tag_id, object_key);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- J1158: the original UNIQUE (tag_id, object_key) was replaced by UNIQUE (base_tag_id, object_key)
+-- (commit 333860e7) but the old key survives on planes built before the change.
+ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_tag_id_object_key_key;
 
 -- REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time. One row per
 -- (export target, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
@@ -1139,6 +1154,8 @@ ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS definition_version TEXT;
 ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS input_version TEXT;
 ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS input_version_kind TEXT;
 ALTER TABLE mv_refresh_log ADD COLUMN IF NOT EXISTS trace_id TEXT;
+-- J1158: FK on mv_id removed (commit c43e33c3); mv_refresh_log is a state store with no FK.
+ALTER TABLE mv_refresh_log DROP CONSTRAINT IF EXISTS mv_refresh_log_mv_id_fkey;
 
 -- REQ-877: opt-in per-MV ROW-LEVEL delta ledger (append-only; store-independent, never stamped on
 -- the target). One event per changed key per refresh version: change_type, row_key, the row hashes
@@ -1158,6 +1175,8 @@ CREATE TABLE IF NOT EXISTS mv_delta_ledger (
     new_values         JSONB,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- J1158: FK on mv_id removed (commit c43e33c3); mv_delta_ledger is a state store with no FK.
+ALTER TABLE mv_delta_ledger DROP CONSTRAINT IF EXISTS mv_delta_ledger_mv_id_fkey;
 
 -- Column-Level Masking (Phase Q) — masking rules are inline on table_columns.
 
@@ -1871,6 +1890,8 @@ CREATE TABLE IF NOT EXISTS file_source_mtimes (
     source_mtime DOUBLE PRECISION NOT NULL,
     synced_at    DOUBLE PRECISION NOT NULL
 );
+-- J1158: FK on table_id removed (commit c43e33c3); file_source_mtimes is a state store with no FK.
+ALTER TABLE file_source_mtimes DROP CONSTRAINT IF EXISTS file_source_mtimes_table_id_fkey;
 
 -- REQ-1349: per-org settings overrides. The deployment config file is the BASE for every setting;
 -- a row here narrows one top-level config key for the org whose schema this table lives in. Only
