@@ -429,6 +429,10 @@ _CREATE_ONLY = {
     "entitlement_expiries": (
         "id rule_key principal role_id ends_at ends removed reason set_by valid_from recorded_at"
     ),
+    "entitlement_pending": (
+        "id email role_id kind identifiers expires_at outcome principal reason set_by valid_from "
+        "recorded_at"
+    ),
     "entitlements": (
         "id source principal role_id kind capability identifiers removed reason set_by valid_from "
         "recorded_at"

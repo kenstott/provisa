@@ -180,6 +180,9 @@ on:
         required: false
       FABRIC_CAPACITY_NAME:
         required: false
+      # the workspace the run's own Fabric capacity is assigned (scripts/fabric_e2e.py)
+      FABRIC_WORKSPACE_ID:
+        required: false
       # the Azure service principal Fabric's capacity and SQL endpoint are reached as
       AZURE_CLIENT_ID:
         required: false
@@ -363,6 +366,7 @@ jobs:
           FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
           FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
           FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
