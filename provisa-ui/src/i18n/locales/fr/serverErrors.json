@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "Aucun rôle nommé {{role}} n’existe."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} n'est pas proposé comme produit de données : son manifeste ne le marque pas comme public avec un contrat appliqué.",
+        "not_registered": "Enregistrez {{model}} en tant que table avant de l'accepter comme produit de données.",
+        "columns_missing": "La table ne contient pas les colonnes du contrat : {{columns}}.",
+        "id_taken": "Le produit de données {{data_product}} existe déjà.",
+        "already_a_product": "{{model}} est déjà membre du produit de données {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "Ce n’est pas une façon de choisir des boîtes aux lettres : {{error}}",
       "scope_not_delegated": "Le compte de service Google de l’organisation n’est pas autorisé pour {{scopes}}. Un super-administrateur ajoute son ID client avec ce champ d’application dans la console d’administration Google, sous Sécurité › Contrôle des accès et des données › Commandes des API › Gérer la délégation au niveau du domaine ; une nouvelle autorisation peut prendre jusqu’à 24 heures.",
