@@ -67,8 +67,9 @@ def _model() -> tuple[CompilationContext, GovernanceContext]:
     gov = GovernanceContext()
     gov.table_map = {"orders": 1, "customers": 2, "visits": 3}
     gov.all_columns = {tid: [(c, "integer") for c in cols] for tid, cols in _COLUMNS.items()}
-    # As the build states every table it serves (stage2): each served whole. A table with no entry
-    # is refused by the column check (fail closed).
+    # As the build states every table it serves (stage2): each served whole (None means "all
+    # columns visible"). A table with no entry is refused by the column check (fail closed,
+    # REQ-039): V003 for every column reference.
     gov.visible_columns = {tid: None for tid in _COLUMNS}
     return ctx, gov
 

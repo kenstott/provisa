@@ -234,6 +234,8 @@ class OrgRuntime:
     # REQ-2219: user id -> the entitlement lists Provisa holds for that member; the data products
     # (id, domain id) a list can name; the masks computed for this runtime's requests.
     held_entitlements: dict[str, HeldEntitlements] = field(default_factory=dict)
+    # REQ-2219: user id -> the lists their identity provider last sent, per role and kind.
+    idp_entitlements: dict[str, dict[str, dict[str, tuple[str, ...]]]] = field(default_factory=dict)
     data_product_refs: tuple[tuple[str, str], ...] = ()
     entitlement_masks: MaskCache = field(default_factory=MaskCache)
     # role id -> everything the role is served through, from ONE build (api/role_surface.py):
@@ -313,6 +315,8 @@ class OrgRuntime:
     # REQ-2131: its registered column transforms (``code_columns`` commands), by name: applied in a
     # projection, never called on their own, so on no surface as commands.
     column_transforms: dict[str, dict] = field(default_factory=dict)
+    # REQ-2228: each dbt model, by the (warehouse source, schema, relation) it is built at.
+    dbt_model_tables: dict[tuple[str, str, str], tuple[str, str]] = field(default_factory=dict)
     tracked_webhooks: dict[str, dict] = field(default_factory=dict)
     # REQ-1942: command name -> why it is not defined here: a command of a source bound to a synthetic store
     # in a Test (synthetic) environment. A call to one is refused saying so.

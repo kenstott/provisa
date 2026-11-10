@@ -14,17 +14,20 @@ Every lineage read answers with the fields its caller is served and nothing else
 column shows when the caller is served it; a native field shows when the registered column it feeds
 shows; a physical column nobody registered never shows, since nobody reads it through the model. A
 view's internal step (a CTE or command-call column, not a field) shows only when every field it
-feeds shows, so a hidden view's logic goes with it. A hidden node's neighbours join directly
-(A→B→C reads A→C), and the joined edge carries no transform; an edge into a node that also had a
-hidden parent loses its transform too, since the expression names that parent. Nothing marks what
-was cut.
+feeds shows, so a hidden view's logic goes with it. A job an OpenLineage event reported, and a
+dataset outside the model, show when any registered field they touch shows, or when they touch
+none: a job's name says nothing of a column it also touches. A hidden node's neighbours join directly
+(A→B→C reads A→C), and the joined edge carries no transform but keeps its origin; an edge into a
+node that also had a hidden parent loses its transform too, since the expression names that parent.
+Nothing marks what was cut.
 """
 
-# Requirements: REQ-1161, REQ-2116
+# Requirements: REQ-1161, REQ-2116, REQ-2229
 
 from __future__ import annotations
 
 from provisa.lineage.graph import Edge, LineageGraph
+from provisa.lineage.reported import REPORTED_KINDS
 
 NATIVE = "native"
 
@@ -69,8 +72,29 @@ def readable_graph(
                     stack.append(child)
         return found
 
+    def fields_touched(nid: str) -> set[str]:
+        """The fields a reported node reaches, either way, through other reported nodes: a job's
+        outside output goes with the job, whichever of its tables the caller reads."""
+        found: set[str] = set()
+        seen = {nid}
+        stack = [nid]
+        while stack:
+            at = stack.pop()
+            for neighbour in [*(e.source for e in up.get(at, [])), *down.get(at, [])]:
+                if neighbour in seen or neighbour not in graph.nodes:
+                    continue
+                seen.add(neighbour)
+                if is_field(neighbour):
+                    found.add(neighbour)
+                elif graph.nodes[neighbour].kind in REPORTED_KINDS:
+                    stack.append(neighbour)
+        return found
+
     def shown(nid: str) -> bool:
         node = graph.nodes[nid]
+        if node.kind in REPORTED_KINDS:
+            touched = fields_touched(nid)
+            return not touched or bool(touched & readable)
         if node.kind == NATIVE:
             return any(c in readable and is_field(c) for c in down.get(nid, []))
         if is_field(nid):
@@ -109,7 +133,9 @@ def readable_graph(
             if e.source in keep:
                 joined.add(e.source)
                 result.add_edge(
-                    e if not hidden_parent else Edge(e.source, target, "", _visible_ops(e.ops))
+                    e
+                    if not hidden_parent
+                    else Edge(e.source, target, "", _visible_ops(e.ops), origin=e.origin)
                 )
         for e in parents:
             if e.source in keep:
@@ -117,6 +143,6 @@ def readable_graph(
             for ancestor in shown_ancestors(e.source):
                 if ancestor not in joined:
                     joined.add(ancestor)
-                    result.add_edge(Edge(ancestor, target, "", ()))
+                    result.add_edge(Edge(ancestor, target, "", (), origin=e.origin))
     result.outputs = [o for o in graph.outputs if o in keep]
     return result

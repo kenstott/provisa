@@ -127,11 +127,12 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
-    # worker; their tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a
+    # sandboxed worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
     go = "go"
+    rust = "rust"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -155,6 +156,9 @@ class SourceType(str, Enum):
     prometheus = "prometheus"
     graphql_remote = "graphql_remote"
     openapi = "openapi"
+    # REQ-2228: a dbt project: its manifest offers its models as tables and everything dbt can run
+    # as commands; the rows are read through the warehouse source the manifest names.
+    dbt = "dbt"
     grpc_remote = "grpc_remote"
     airport = "airport"  # Arrow Flight server — DuckDB airport community extension (REQ-899)
     # Push receiver — external services POST JSON events (Phase AS)
@@ -1713,6 +1717,10 @@ def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
     return data
 
 
+#: ``Table.read_wait``: a read with nothing landed does not wait for it (REQ-2224).
+READ_WAIT_NO_ROWS = 0
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
@@ -1789,6 +1797,10 @@ class Table(
     # REQ-2062: a SQL predicate over the table's own columns, applied when its replica lands; the
     # replica holds only the rows that pass it.
     landing_filter: str | None = None
+    # REQ-2224: what a read does while nothing has landed. None: waits as long as the request
+    # allows; N > 0: waits up to N seconds, in place of the request timeout; READ_WAIT_NO_ROWS:
+    # answers no rows, with the table's columns, and asks for the landing.
+    read_wait: int | None = Field(default=None, ge=READ_WAIT_NO_ROWS)
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     # REQ-924/926/927: the single watermark column (an existing column). Set → append landing +
     # incremental refresh (WHERE wm > cursor) + poll-path subscription (insert/update grain, no
@@ -1865,6 +1877,11 @@ class Table(
     # "hive"), read from the source when the table is registered, never set by a steward. It
     # decides the writes the table takes (``executor/write_capability``).
     table_format: str | None = None
+    # REQ-2230: the statement that defines the table in its source, where the source reports one
+    # (a Snowflake Dynamic Table's), read when the table is registered, never set by a steward.
+    # What it reads joins the lineage graph (``lineage/source_definitions``). "" is read and none
+    # reported; None is not read.
+    source_definition: str | None = None
     # REQ-1954: a ServiceNow table bound to one of the instance's import sets: the staging table
     # of the transform map (targeting this table) its inserts go through, by the instance's Import
     # Set API. None: its inserts are written to the table directly. Updates and deletes are always
@@ -3684,6 +3701,221 @@ class ReferenceLibraryConfig(BaseModel):  # REQ-2185
     retrieval: Literal["passage", "graph"] = "passage"
 
 
+class ConnectorRequirement(BaseModel):  # REQ-2221
+    """A named value a connector needs from whoever sets it up: a ``@requires`` tag in its code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    secret: bool = False
+    # From the project's standard file (connector.yaml). A secret takes none of these: its value is
+    # the organization's, and the block is committed with the model.
+    multiline: bool = False  # REQ-2225: entered as multi-line text
+    # REQ-2225: this value is the annotated script the host serves: its tags are the source's tables
+    # and commands, read from it at join rather than from the image.
+    script: bool = False
+    default_value: str | None = None
+    fixed_value: str | None = None
+
+    @model_validator(mode="after")
+    def _one_value_and_no_secret_value(self) -> "ConnectorRequirement":
+        if self.default_value is not None and self.fixed_value is not None:
+            raise ValueError(f"{self.name} has both a default and a fixed value")
+        if self.secret and (
+            self.multiline
+            or self.script
+            or self.default_value is not None
+            or self.fixed_value is not None
+        ):
+            raise ValueError(f"{self.name} is a secret: it takes no value and is not multi-line")
+        if self.script and not self.multiline:
+            raise ValueError(f"{self.name} is a script: it is entered as multi-line text")
+        return self
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _bad_cache_ttl(value: object) -> str | None:
+    from provisa.core.cache_ttl import cache_ttl_refusal
+
+    return "is a whole number of seconds" if not _is_int(value) else cache_ttl_refusal(value)  # type: ignore[arg-type]
+
+
+def _bad_change_signal(value: object) -> str | None:
+    from provisa.core.change_signal import resolve
+
+    if not isinstance(value, str):
+        return "is a change signal's name"
+    try:
+        resolve(None, value)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+def _bad_zone(value: object) -> str | None:
+    from zoneinfo import ZoneInfo
+
+    if not isinstance(value, str):
+        return "is a time zone's name"
+    try:
+        ZoneInfo(value)
+    except (KeyError, ValueError, OSError):
+        return f"names no time zone: {value}"
+    return None
+
+
+def _flag(value: object) -> str | None:
+    return None if isinstance(value, bool) else "is true or false"
+
+
+def _text(value: object) -> str | None:
+    return None if isinstance(value, str) else "is text"
+
+
+#: The standard source settings a connector's file may set (REQ-2221), each a source field of that
+#: name, with what says a value will not do.
+CONNECTOR_SETTINGS: dict[str, Any] = {
+    "cache_enabled": _flag,
+    "cache_ttl": _bad_cache_ttl,
+    "replicate": lambda v: None if _is_int(v) and v >= -1 else "is -1, 0 or a whole number above 0",
+    "change_signal": _bad_change_signal,
+    "load_protected": _flag,
+    "off_peak_window": lambda v: (
+        None
+        if isinstance(v, str) and re.fullmatch(r"\d{2}:\d{2}-\d{2}:\d{2}", v)
+        else "is HH:MM-HH:MM"
+    ),
+    "off_peak_tz": _bad_zone,
+    "sentinel_path": _text,
+    "max_live_concurrency": lambda v: None if _is_int(v) and v >= 1 else "is a whole number from 1",
+    "freshness_gate": _flag,
+}
+
+
+class ConnectorSetting(BaseModel):  # REQ-2221
+    """A standard source setting a connector's file sets: a default a steward can change, or a
+    fixed value that no save may change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    default_value: bool | int | str | None = None
+    fixed_value: bool | int | str | None = None
+
+    @model_validator(mode="after")
+    def _one_valid_value(self) -> "ConnectorSetting":
+        check = CONNECTOR_SETTINGS.get(self.name)
+        if check is None:
+            raise ValueError(
+                f"{self.name} is not a source setting; one of {', '.join(CONNECTOR_SETTINGS)}"
+            )
+        if (self.default_value is None) == (self.fixed_value is None):
+            raise ValueError(f"{self.name} has a default or a fixed value, and not both")
+        problem = check(self.fixed_value if self.default_value is None else self.default_value)
+        if problem:
+            raise ValueError(f"{self.name} {problem}")
+        return self
+
+
+#: How large an icon the block may carry, encoded: it travels with the model and to every browser.
+CONNECTOR_ICON_MAX = 128 * 1024
+
+
+class ConnectorConfig(BaseModel):  # REQ-2221
+    """A connector the organization offers: where its code is, and the image built from it. The
+    operator's own deployment runs the image; Provisa pairs with it (REQ-2098)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    git: str
+    ref: str = Field(min_length=1)
+    commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    # Where the standard project is in the repository, once any build_command has run. Build
+    # settings: the CLI reads these two, the server never does.
+    path: str = ""
+    build_command: str = ""
+    # REQ-2221: the source type it becomes, read from the project's standard files when it is built.
+    language: Literal["node", "python", "go", "rust"]
+    image: str
+    digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    # What a paired host is held to: the hash of the code the image at ``digest`` was built from.
+    code_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # An image is built for one architecture, so a rebuild has to be told which.
+    arch: Literal["amd64", "arm64"]
+    requires: list[ConnectorRequirement] = Field(default_factory=list)
+    # From the project's standard file (connector.yaml): what the connector store shows, and the
+    # standard source settings it sets. A project with no file has none of these.
+    description: str = ""
+    icon: str = ""  # a data: URI, so the block is the whole of what is shown
+    settings: list[ConnectorSetting] = Field(default_factory=list)
+
+    @field_validator("icon")
+    @classmethod
+    def _icon_is_an_image(cls, value: str) -> str:
+        if value and not re.match(
+            r"^data:image/(svg\+xml|png|jpeg|webp);base64,[A-Za-z0-9+/=]+$", value
+        ):
+            raise ValueError("icon is a base64 data: URI of an SVG, PNG, JPEG or WebP image")
+        if len(value) > CONNECTOR_ICON_MAX:
+            raise ValueError(f"icon is over {CONNECTOR_ICON_MAX} bytes encoded")
+        return value
+
+    @field_validator("git")
+    @classmethod
+    def _git_carries_no_credential(cls, value: str) -> str:
+        # The block is committed with the model. A credential belongs to the git of whoever runs
+        # the build; the message leaves the address out, since the address is what holds it.
+        if re.match(r"^https?://[^/]*@", value):
+            raise ValueError("the git address carries a credential; give it to git instead")
+        if not value:
+            raise ValueError("a connector names its git project")
+        return value
+
+    @field_validator("ref")
+    @classmethod
+    def _ref_is_not_a_commit(cls, value: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{40}", value):
+            raise ValueError(f"ref {value} is a commit; ref names the branch or tag to follow")
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def _path_stays_in_the_repository(cls, value: str) -> str:
+        if value.startswith("/") or ".." in value.split("/"):
+            raise ValueError(f"path {value!r} is not a path within the repository")
+        return value
+
+    @field_validator("image")
+    @classmethod
+    def _image_is_a_repository(cls, value: str) -> str:
+        host, slash, repository = value.partition("/")
+        if not slash or not repository or not ("." in host or ":" in host or host == "localhost"):
+            raise ValueError(f"image {value!r} is a registry host and a repository")
+        if "@" in repository or ":" in repository:
+            raise ValueError(f"image {value!r} names no tag or digest; digest holds the digest")
+        return value
+
+    @model_validator(mode="after")
+    def _requires_are_unique(self) -> "ConnectorConfig":
+        names = [r.name for r in self.requires]
+        if len(set(names)) != len(names):
+            raise ValueError(f"connector {self.name}: a required value is named more than once")
+        settings = [s.name for s in self.settings]
+        if len(set(settings)) != len(settings):
+            raise ValueError(f"connector {self.name}: a source setting is named more than once")
+        return self
+
+
+def repeated_connector_names(connectors: list[ConnectorConfig]) -> list[str]:  # REQ-2221
+    """The names used by more than one connector, sorted."""
+    names = [c.name for c in connectors]
+    return sorted({n for n in names if names.count(n) > 1})
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3700,6 +3932,15 @@ class ProvisaConfig(BaseModel):
     def written(self) -> "ProvisaConfig":
         """The config as written. A config built in code is what it was built with."""
         return self if self._written is None else self._written
+
+    # REQ-1634: the names that identify a seeded table, which the store holds and ``tables`` does
+    # not. Only the metadata export model carries them (publishing._model_for_export), read from
+    # the store; a file cannot state them, so it cannot excuse a member name that names nothing.
+    _seeded_table_names: frozenset[str] = PrivateAttr(default_factory=frozenset)
+
+    @property
+    def seeded_table_names(self) -> frozenset[str]:
+        return self._seeded_table_names
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     # REQ-1921/1922: the platform's physical regions (a deployment key: a node reads them before
@@ -3797,6 +4038,15 @@ class ProvisaConfig(BaseModel):
     # into the store once (repositories.kafka_source) and read from it after; each topic is also a
     # table of its source (config_loader.kafka_topics_as_tables).
     kafka_sources: list[dict[str, Any]] = Field(default_factory=list)
+    # REQ-2221: the connectors this organization offers, built by `provisa connector build`.
+    connectors: list[ConnectorConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _connector_names_are_unique(self) -> "ProvisaConfig":
+        repeated = repeated_connector_names(self.connectors)
+        if repeated:
+            raise ValueError(f"connector names used more than once: {repeated}")
+        return self
 
     @model_validator(mode="after")
     def _assignments_source_fits_the_tenancy(self) -> "ProvisaConfig":

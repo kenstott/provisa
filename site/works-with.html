@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compare — Provisa</title>
-  <meta name="description" content="Most data tools are bound to an engine or sit beside your systems after the fact. Provisa is a data kernel that keeps them in sync from one model, or runs alone. See where each category fits." />
+  <title>Works with — Provisa</title>
+  <meta name="description" content="Provisa works with the catalogs, engines, virtualization, semantic layers and API layers you already run, and adds the model that connects them." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="canonical" href="https://provisa.dev/compare" />
+  <link rel="canonical" href="https://provisa.dev/works-with" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -47,59 +43,72 @@
   <main id="main" class="doc">
     <div class="container">
       <div class="doc-head">
-        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Compare</span></p>
-        <h1>Where Provisa fits</h1>
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Works with</span></p>
+        <h1>Keep your tools. Add the part that connects them.</h1>
         <p class="lead">
-          Most data tools are bound to one engine, or sit beside your systems
-          after the data already exists. That is how architectures end up fragmented and hand-integrated. Each tool describes or governs a slice of the picture, and nothing keeps the slices in sync. Provisa is a data kernel, a compiler and runtime for your data control plane. You declare the model once, and APIs, governance, catalog entries and semantic definitions are generated from that declaration, so nothing exists outside the model to drift.
-        </p>
-        <p class="lead">
-          You can also skip the platform-selection project and its months of meetings to pick the one engine everything must live in. Use the best engine for each job, keep the ones you already have, and switch when a choice turns out wrong.
+          Each of these products does its part well. The hard part sits between them: keeping meaning and access rules aligned across all of them. Provisa is a compiler and runtime for your data control plane. You declare the model once, and APIs, governance, catalog entries and semantic definitions are generated from that declaration and reach the tools you already run.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>The categories</h2>
+        <h2>What each does, and what Provisa adds</h2>
         <div class="cmp-wrap">
           <table class="cmp">
             <thead>
-              <tr><th>Category</th><th>Examples</th><th>What it does with the mess</th></tr>
+              <tr><th>What you run</th><th>Examples</th><th>What it does well</th><th>What Provisa adds</th></tr>
             </thead>
             <tbody>
               <tr>
                 <th>Catalogs and governance</th>
                 <td>Atlan, Collibra, Alation, DataHub</td>
-                <td>Describes it after the fact, which helps you see it but doesn't stop it forming.</td>
+                <td>Browse, search, classify and document data across every system.</td>
+                <td>Publishes every governed table, column, term and lineage edge to your catalog on each model change, so it shows what is actually enforced.</td>
               </tr>
               <tr>
                 <th>Engines and lakehouses</th>
                 <td>Starburst, Databricks, Snowflake, Microsoft Fabric</td>
-                <td>Centralises it in one platform. Each offers some reach beyond itself (federated queries, external tables, mirroring or shortcuts) and its own governance tools, and each has its pros and cons. All of them want your data moved in, and most leave you on their cloud. You don't have to choose one. Use the best one for each job, and if a choice turns out wrong, switch.</td>
+                <td>Run your queries at scale, with their own governance tools.</td>
+                <td>Registers each as an engine, alongside others or embedded DuckDB, and adds GraphQL, Cypher and more protocols over the same data under one set of rules.</td>
               </tr>
               <tr>
                 <th>Data virtualisation</th>
                 <td>Denodo</td>
-                <td>Queries sources live through virtual SQL views. The virtualisation platform is the engine.</td>
+                <td>Queries sources live through virtual SQL views, with a mature optimizer and connector library.</td>
+                <td>Registers those views as governed tables over JDBC, and adds GraphQL, Cypher and governed agent access.</td>
               </tr>
               <tr>
                 <th>Semantic layers</th>
                 <td>dbt Semantic Layer, Cube, AtScale</td>
-                <td>Defines metrics once for analytics, typically over one SQL warehouse.</td>
+                <td>Define metrics once for analytics.</td>
+                <td>Imports their models through Apache Ossie, each as a proposal you review, so the same definitions reach every protocol and agent under the same rules.</td>
               </tr>
               <tr>
                 <th>API layers</th>
                 <td>Hasura, PostgREST</td>
-                <td>GraphQL APIs over one or more databases, built for transactional workloads. Has its own governance, which is hard to integrate with governance spread across other systems. Works well for a focused transactional environment; other languages and workloads need something else alongside it.</td>
-              </tr>
-              <tr>
-                <th class="is-us">Provisa</th>
-                <td class="is-us" colspan="2">Stops the mess from forming, or freezes it and lets you unwind it issue by issue. Declares the model once, covering sources, governance, semantics and APIs, and keeps the others in sync, or runs alone.</td>
+                <td>Instant APIs over your databases, built for transactional workloads.</td>
+                <td>Adds SQL, Cypher and more protocols over one governed model, across all your sources.</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <h2>Detailed comparisons</h2>
+        <h2 id="in-charge">You stay in charge</h2>
+        <p>
+          Your meaning and your access rules live in the model, above any one product. So you can
+          use the best engine for each job, change a choice you've outgrown, recover from one that
+          didn't work out, or scale back a product that isn't earning its place. Nothing has to
+          move on day one, and every one of those decisions stays yours.
+        </p>
+        <p>
+          Over time you may find you can do without some of them. A data catalog, dbt or Airflow
+          can each become optional once the model is doing that job. If yours keeps earning its
+          place, keep it.
+        </p>
+        <p>
+          You can also skip the platform-selection project and its months of meetings to pick the one engine everything must live in.
+        </p>
+
+        <h2>Working with each</h2>
         <div class="grid grid-3" style="margin-top: 18px;">
           <a class="card" href="/vs/catalogs" style="text-decoration: none;">
             <h4>Catalogs and governance</h4>
@@ -107,11 +116,11 @@
           </a>
           <a class="card" href="/vs/starburst" style="text-decoration: none;">
             <h4>Engines and lakehouses</h4>
-            <p>Starburst, Databricks, Snowflake, Microsoft Fabric. Keep the one you have and register it as an engine in Provisa, alongside others or embedded DuckDB, so no single platform becomes the place your data has to live.</p>
+            <p>Starburst, Databricks, Snowflake, Microsoft Fabric. Keep the one you have and register it as an engine in Provisa, alongside others or embedded DuckDB.</p>
           </a>
           <a class="card" href="/vs/denodo" style="text-decoration: none;">
             <h4>Data virtualisation</h4>
-            <p>Denodo shares the premise of governed access over distributed data without duplicating it. The two differ on which engine runs the query.</p>
+            <p>Keep Denodo for SQL virtualization. Provisa registers its views as governed tables and adds more ways in.</p>
           </a>
           <a class="card" href="/vs/hasura" style="text-decoration: none;">
             <h4>API layers</h4>
@@ -120,8 +129,7 @@
           <div class="card">
             <h4>Semantic layers</h4>
             <p>
-              dbt Semantic Layer, Cube, AtScale. Provisa imports models from these tools through Apache Ossie, the open standard for describing what metrics mean. Each import is a proposal you review before it registers. You can use
-              Provisa alongside your semantic layer, or let the model replace it over time.
+              dbt Semantic Layer, Cube, AtScale. Provisa imports models from these tools through Apache Ossie, the open standard for describing what metrics mean. Each import is a proposal you review before it registers. Use Provisa alongside your semantic layer, and scale it back over time if the model covers what you need.
             </p>
           </div>
         </div>
@@ -149,7 +157,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -158,12 +166,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

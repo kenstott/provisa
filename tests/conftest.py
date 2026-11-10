@@ -254,6 +254,8 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_ldap": ["openldap"],
     # REQ-1265: the identity provider the SAML auth provider signs in through.
     "requires_saml_idp": ["saml-idp"],
+    # REQ-2219, REQ-122: the identity provider real entitlement claims are issued by.
+    "requires_keycloak": ["keycloak"],
     # REQ-1873: an operator's own Postgres, one with a major a bundle is built for and one without.
     "requires_pg_ext_targets": ["pg-ext-target-16", "pg-ext-target-15"],
 }
@@ -408,6 +410,7 @@ _ITEST_PORT_ENV = [
     "DATAHUB_GMS_PORT",
     "LDAP_PORT",
     "SAML_IDP_PORT",
+    "KEYCLOAK_PORT",
     # Not a container's port: the test's own service-provider server binds it. It is leased
     # here because the identity provider is told this address when its container starts.
     "SAML_SP_PORT",

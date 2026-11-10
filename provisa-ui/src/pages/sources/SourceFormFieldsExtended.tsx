@@ -34,6 +34,7 @@ import {
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { DbtFormSection } from "./DbtFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
@@ -47,6 +48,8 @@ import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES } from "./codeSource";
+import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
+import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
@@ -83,6 +86,8 @@ export function SourceFormFieldsExtended({
   setAuthType,
   authFields,
   setAuthFields,
+  connector,
+  heldBy,
   editingSourceId,
   essential,
   cdc,
@@ -125,6 +130,7 @@ export function SourceFormFieldsExtended({
   setOpenapiBaseUrl,
   openapiCacheTtl,
   setOpenapiCacheTtl,
+  dbt,
   openapiPreview,
   openapiPreviewing,
   openapiPreviewError,
@@ -669,13 +675,23 @@ export function SourceFormFieldsExtended({
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
-      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+      {connector && (
+        <ConnectorSetupFields
+          connector={connector}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
+      )}
+      {!connector && CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
         <CodeSourceFields
           type={form.type}
           fields={authFields}
           setFields={setAuthFields}
           sourceId={editingSourceId ?? undefined}
         />
+      )}
+      {heldBy && (
+        <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
@@ -699,6 +715,9 @@ export function SourceFormFieldsExtended({
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
       {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
       {form.type === "quickbooks" && <QuickBooksFields {...typed} /> /* REQ-2197 */}
+      {form.type === "dbt" && ( // REQ-2228
+        <DbtFormSection dbt={dbt} sourceId={form.id} saved={Boolean(editingSourceId)} />
+      )}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}
@@ -885,7 +904,11 @@ export function SourceFormFieldsExtended({
           whose tables land must state its Cache TTL. */}
       {(!essential || landsWithTtl) && (
         <FormSection id="load">
-          <SourceLoadManagementPanel form={form} setForm={setForm} />
+          <SourceLoadManagementPanel
+            form={form}
+            setForm={setForm}
+            fixed={fixedFormKeys(connector ?? heldBy)}
+          />
         </FormSection>
       )}
       {!essential && (

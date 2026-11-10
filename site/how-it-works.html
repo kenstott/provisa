@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>How it works — Provisa</title>
-  <meta name="description" content="Provisa is a data kernel: a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose." />
+  <meta name="description" content="Provisa is a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works" aria-current="page">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -67,7 +63,7 @@
 
         <h2 id="mechanism">The mechanism</h2>
         <p>
-          Provisa is a data kernel: a compiler and runtime for building your data control plane.
+          Provisa is a compiler and runtime for building your data control plane.
         </p>
         <p>
           The primitives are sources, tables, relationships, terms, roles, capabilities, grants, scope, products, and contracts. Declare them and the whole governed API follows: the query endpoints, the legal join paths, the access rules, and the audit trail.
@@ -81,6 +77,13 @@
         <p>
           It is built the way an operating system is built, on the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
+        <figure class="shot">
+          <div class="shot-frame"><a href="/assets/architecture.54b2f4c874.jpg">
+            <img src="/assets/architecture.54b2f4c874.jpg" width="1536" height="1024" loading="lazy"
+                 alt="Provisa architecture. Consumers reach generated access surfaces: SQL over the PostgreSQL wire, GraphQL, REST, gRPC, Arrow Flight, Cypher and MCP. These feed the Provisa control plane, where the semantic model and the query compiler and planner apply governance and send each query to execution engines and warehouses, which read the data sources. Governance is compiled into every query, and observability is stored as queryable tables.">
+          </a></div>
+          <figcaption>One model, compiled into governed queries for every interface and run on the engines you already have. Select the diagram to open it full size.</figcaption>
+        </figure>
 
         <h2 id="lineage">Where the design comes from</h2>
         <p>
@@ -235,7 +238,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -244,12 +247,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

@@ -1,0 +1,15 @@
+{
+  "connectorSetup": {
+    "identity": "Conector {{name}}, sigue {{ref}}.",
+    "missing": "Indique el host, el puerto, el código de emparejamiento del conector y todos los valores que requiera.",
+    "image": "Imagen",
+    "imageHint": "La imagen que ejecuta su despliegue. Provisa comprueba el host con ella al conectarse.",
+    "host": "Host",
+    "hostHint": "El host que ejecuta la imagen, tal como Provisa lo alcanza.",
+    "port": "Puerto",
+    "pairing": "Código de emparejamiento",
+    "pairingHint": "La línea que el contenedor imprimió en su primer inicio, después de \"pairing code:\". Se usa una vez y no se conserva.",
+    "secretHint": "El secreto de la organización que se va a usar. Su valor nunca se introduce aquí.",
+    "fixedHint": "Definido por este conector. No se puede cambiar."
+  }
+}

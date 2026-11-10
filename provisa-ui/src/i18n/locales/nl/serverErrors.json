@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} wordt niet aangeboden als dataproduct: het manifest markeert het niet als openbaar met een afgedwongen contract.",
+        "not_registered": "Registreer {{model}} als tabel voordat u het als dataproduct accepteert.",
+        "columns_missing": "De tabel bevat de kolommen van het contract niet: {{columns}}.",
+        "id_taken": "Dataproduct {{data_product}} bestaat al.",
+        "already_a_product": "{{model}} is al lid van dataproduct {{data_product}}."
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "Zo kunnen geen postvakken worden gekozen: {{error}}",
       "scope_not_delegated": "Het Google-serviceaccount van de organisatie is niet geautoriseerd voor {{scopes}}. Een superbeheerder voegt de client-ID ervan met dat bereik toe in de Google Beheerdersconsole, onder Beveiliging › Toegangs- en gegevenscontrole › API-beheer › Domeinbrede delegatie beheren; een nieuwe autorisatie kan tot 24 uur duren.",

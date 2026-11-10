@@ -22,7 +22,7 @@ fails, an archive whose hash is not the recorded one, or an archive without the 
 executable raises ``RuntimeUnavailable``. There is no unpinned or unchecked fallback.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227
 from __future__ import annotations
 
 import hashlib
@@ -251,6 +251,124 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "go1.27.3.windows-amd64.zip",
                 "f26081f438319757f8a1b46d7d0b2c5ec7583d4038e485e0aa725cfde7885fff",
                 "go/bin/go.exe",
+            ),
+        },
+    ),
+    # REQ-2227: the Rust toolchain a Rust source's host is compiled with, as the components
+    # static.rust-lang.org publishes (each sum its .sha256): the compiler, cargo, and the standard
+    # library of the platform the build runs on. One version per release of Provisa; a crate whose
+    # rust-version is newer is refused. A component's file named here is its manifest.in, there in
+    # every component, which marks the extraction complete.
+    "rustc": RuntimePin(
+        "rustc",
+        "1.95.0",
+        "https://static.rust-lang.org/dist/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "rustc-1.95.0-aarch64-apple-darwin.tar.gz",
+                "64f20ce6864040b822b8fbdb7dbfd892e5b04828ca8cbd1e6accef9694da3ebb",
+                "rustc-1.95.0-aarch64-apple-darwin/rustc/bin/rustc",
+            ),
+            LINUX_X64: Asset(
+                "rustc-1.95.0-x86_64-unknown-linux-gnu.tar.gz",
+                "fef749c4abb4b4bde5ebf773bec550003ce5b4410579cecd69a365e5c0c5106a",
+                "rustc-1.95.0-x86_64-unknown-linux-gnu/rustc/bin/rustc",
+            ),
+            LINUX_ARM64: Asset(
+                "rustc-1.95.0-aarch64-unknown-linux-gnu.tar.gz",
+                "f488f7eced24d2fed2e4745f3dbccf1ffe24bfe02720e5415406195ceaf45f7a",
+                "rustc-1.95.0-aarch64-unknown-linux-gnu/rustc/bin/rustc",
+            ),
+        },
+    ),
+    "cargo": RuntimePin(
+        "cargo",
+        "1.95.0",
+        "https://static.rust-lang.org/dist/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "cargo-1.95.0-aarch64-apple-darwin.tar.gz",
+                "0421d71bd676f0d38e318bf3eb7cd1a9ca33cf5ccf70f49644950a91fa046de7",
+                "cargo-1.95.0-aarch64-apple-darwin/cargo/bin/cargo",
+            ),
+            LINUX_X64: Asset(
+                "cargo-1.95.0-x86_64-unknown-linux-gnu.tar.gz",
+                "47ebc468721a6ff3fb27dff33e632a4cb6246d0ea061814bcd4fe601d18c69a8",
+                "cargo-1.95.0-x86_64-unknown-linux-gnu/cargo/bin/cargo",
+            ),
+            LINUX_ARM64: Asset(
+                "cargo-1.95.0-aarch64-unknown-linux-gnu.tar.gz",
+                "f37440984c4c06d38487138adae2c5c80ec4ddfbdfe57ae387357995bfa502e9",
+                "cargo-1.95.0-aarch64-unknown-linux-gnu/cargo/bin/cargo",
+            ),
+        },
+    ),
+    "rust-std": RuntimePin(
+        "rust-std",
+        "1.95.0",
+        "https://static.rust-lang.org/dist/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "rust-std-1.95.0-aarch64-apple-darwin.tar.gz",
+                "c64f139c2a4f973b3d8b26482673909043545db14f0b1255ed743844e9f9ce99",
+                "rust-std-1.95.0-aarch64-apple-darwin/rust-std-aarch64-apple-darwin/manifest.in",
+            ),
+            LINUX_X64: Asset(
+                "rust-std-1.95.0-x86_64-unknown-linux-gnu.tar.gz",
+                "edbd20f8fc0a617f85ffb79fa6c22aa6def0e570de3f94be1a6e5ab1f77f763c",
+                "rust-std-1.95.0-x86_64-unknown-linux-gnu/rust-std-x86_64-unknown-linux-gnu/manifest.in",
+            ),
+            LINUX_ARM64: Asset(
+                "rust-std-1.95.0-aarch64-unknown-linux-gnu.tar.gz",
+                "a68e71b09f4e09f7071c650ec38ee1845ddfe66c46917c0ccf0b1636994b01c6",
+                "rust-std-1.95.0-aarch64-unknown-linux-gnu/rust-std-aarch64-unknown-linux-gnu/manifest.in",
+            ),
+        },
+    ),
+    # REQ-2227: the standard library a Rust source's host links on Linux, one pin per machine (the
+    # server's, or an image's), the same file whatever platform the build runs on: musl, linked
+    # self-contained by rust-lld, so the host is one static binary needing no C library beside it.
+    "rust-std-x86_64-unknown-linux-musl": RuntimePin(
+        "rust-std-x86_64-unknown-linux-musl",
+        "1.95.0",
+        "https://static.rust-lang.org/dist/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "rust-std-1.95.0-x86_64-unknown-linux-musl.tar.gz",
+                "ff2564c0a8d85ae355ee9aa4b3e0378e19f82e2407ed3c19480dab7714842364",
+                "rust-std-1.95.0-x86_64-unknown-linux-musl/rust-std-x86_64-unknown-linux-musl/manifest.in",
+            ),
+            LINUX_X64: Asset(
+                "rust-std-1.95.0-x86_64-unknown-linux-musl.tar.gz",
+                "ff2564c0a8d85ae355ee9aa4b3e0378e19f82e2407ed3c19480dab7714842364",
+                "rust-std-1.95.0-x86_64-unknown-linux-musl/rust-std-x86_64-unknown-linux-musl/manifest.in",
+            ),
+            LINUX_ARM64: Asset(
+                "rust-std-1.95.0-x86_64-unknown-linux-musl.tar.gz",
+                "ff2564c0a8d85ae355ee9aa4b3e0378e19f82e2407ed3c19480dab7714842364",
+                "rust-std-1.95.0-x86_64-unknown-linux-musl/rust-std-x86_64-unknown-linux-musl/manifest.in",
+            ),
+        },
+    ),
+    "rust-std-aarch64-unknown-linux-musl": RuntimePin(
+        "rust-std-aarch64-unknown-linux-musl",
+        "1.95.0",
+        "https://static.rust-lang.org/dist/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "rust-std-1.95.0-aarch64-unknown-linux-musl.tar.gz",
+                "03fd4be4c4a504cc7d14482b1f1563807b08dfb037f776526d58be7f5dca4b59",
+                "rust-std-1.95.0-aarch64-unknown-linux-musl/rust-std-aarch64-unknown-linux-musl/manifest.in",
+            ),
+            LINUX_X64: Asset(
+                "rust-std-1.95.0-aarch64-unknown-linux-musl.tar.gz",
+                "03fd4be4c4a504cc7d14482b1f1563807b08dfb037f776526d58be7f5dca4b59",
+                "rust-std-1.95.0-aarch64-unknown-linux-musl/rust-std-aarch64-unknown-linux-musl/manifest.in",
+            ),
+            LINUX_ARM64: Asset(
+                "rust-std-1.95.0-aarch64-unknown-linux-musl.tar.gz",
+                "03fd4be4c4a504cc7d14482b1f1563807b08dfb037f776526d58be7f5dca4b59",
+                "rust-std-1.95.0-aarch64-unknown-linux-musl/rust-std-aarch64-unknown-linux-musl/manifest.in",
             ),
         },
     ),

@@ -109,6 +109,73 @@ def test_each_runtime_reads_the_same_tables_commands_and_streams(runtime, cache,
     assert manifest.export("cancel").returns is None
 
 
+def test_the_lifecycle_tags_are_read_from_jsdoc(cache, compiler, tmp_path):
+    """REQ-2221: a hyphenated tag reaches the manifest whole."""
+    (tmp_path / "index.d.ts").write_text(
+        """
+        /** @on-start */
+        export declare function connect(values: Record<string, string>): Promise<void>;
+        /** @on-stop */
+        export declare function close(): void;
+        /** @health */
+        export declare function check(): Promise<string>;
+        """
+    )
+    executable = CodeRuntimeResolver(cache_root=cache).resolve("node")
+    manifest = read_bundle(
+        runtime="node", executable=executable, compiler=compiler, bundle=tmp_path
+    )
+    assert {e.name: e.kind for e in manifest.exports} == {
+        "connect": "on-start",
+        "close": "on-stop",
+        "check": "health",
+    }
+
+
+def test_a_loose_row_type_is_refused_by_name(cache, compiler, tmp_path):
+    (tmp_path / "index.d.ts").write_text(
+        """
+        export interface Row { id: number; payload: Record<string, unknown>; }
+        /** @table */
+        export declare function anything(): any[];
+        /** @table */
+        export declare function mystery(): Promise<unknown[]>;
+        /** @table */
+        export declare function mapped(): Record<string, number>[];
+        /** @stream */
+        export declare function feed(): AsyncGenerator<Record<string, unknown>>;
+        /** @table */
+        export declare function typed(): Row[];
+        """
+    )
+    executable = CodeRuntimeResolver(cache_root=cache).resolve("node")
+    with pytest.raises(ManifestRefused) as refused:
+        read_bundle(runtime="node", executable=executable, compiler=compiler, bundle=tmp_path)
+    assert refused.value.problems == [
+        f"{name}: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+        for name in ("anything", "mystery", "mapped", "feed")
+    ]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose(cache, compiler, tmp_path):
+    (tmp_path / "index.d.ts").write_text(
+        """
+        export interface Row { id: number; payload: Record<string, unknown>; }
+        /** @table */
+        export declare function typed(): Row[];
+        """
+    )
+    executable = CodeRuntimeResolver(cache_root=cache).resolve("node")
+    manifest = read_bundle(
+        runtime="node", executable=executable, compiler=compiler, bundle=tmp_path
+    )
+    assert manifest.types["Row"].fields == (
+        Field("id", Scalar("double"), False),
+        Field("payload", Scalar("json"), False),
+    )
+
+
 def test_a_bundle_that_breaks_the_rules_is_refused_with_every_problem(cache, compiler, tmp_path):
     (tmp_path / "index.d.ts").write_text(
         """

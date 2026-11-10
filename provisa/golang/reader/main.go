@@ -41,8 +41,8 @@ import (
 )
 
 var (
-	tagLine     = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)$`)
-	tagArgument = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$`)
+	tagLine     = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_-]*)$`)
+	tagArgument = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_-]*)\s+(\S+)$`)
 )
 
 type node = map[string]any

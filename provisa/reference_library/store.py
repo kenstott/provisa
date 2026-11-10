@@ -33,10 +33,10 @@ from __future__ import annotations
 import zlib
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Select, delete, func, insert, select, text, update
+from sqlalchemy import Select, delete, func, insert, or_, select, text, update
 
 from provisa.core import pgvector
 
@@ -58,6 +58,11 @@ KEPT = "kept"
 STATUSES = (PROPOSED, KEPT)
 FILE = "file"
 URL = "url"
+#: A document's index status (ADD NOW, INDEX IN THE BACKGROUND): being read and indexed, usable, or
+#: stopped with a reason and a retry.
+INDEXING = "indexing"
+READY = "ready"
+FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -74,6 +79,12 @@ class DocumentRow:
     added_at: datetime
     refreshed_at: datetime | None
     replaced_at: datetime | None
+    index_status: str
+    index_error: str | None
+    index_step: str | None
+    index_done: int | None
+    index_total: int | None
+    terms_note: str | None
     domains: tuple[str, ...]
     passages: int
 
@@ -114,6 +125,12 @@ _DOCUMENT_COLUMNS = (
     documents_t.c.added_at,
     documents_t.c.refreshed_at,
     documents_t.c.replaced_at,
+    documents_t.c.index_status,
+    documents_t.c.index_error,
+    documents_t.c.index_step,
+    documents_t.c.index_done,
+    documents_t.c.index_total,
+    documents_t.c.terms_note,
 )
 
 
@@ -143,10 +160,17 @@ async def _passage_counts(conn: Connection, ids: Collection[int]) -> dict[int, i
 
 
 async def documents(
-    conn: Connection, *, ids: Collection[int] | None = None, status: str | None = None
+    conn: Connection,
+    *,
+    ids: Collection[int] | None = None,
+    status: str | None = None,
+    ready: bool = False,
 ) -> list[DocumentRow]:
-    """The library's documents (those of ``ids``, of ``status``), newest first."""
+    """The library's documents (those of ``ids``, of ``status``, only the ``ready`` ones), newest
+    first."""
     query = select(*_DOCUMENT_COLUMNS).order_by(documents_t.c.added_at.desc(), documents_t.c.id)
+    if ready:
+        query = query.where(documents_t.c.index_status == READY)
     if ids is not None:
         query = query.where(documents_t.c.id.in_(list(ids)))
     if status is not None:
@@ -217,6 +241,172 @@ async def insert_document(
     await set_domains(conn, document_id, domains)
     await _write_passages(conn, document_id, passages)
     return document_id
+
+
+async def insert_pending(
+    conn: Connection,
+    *,
+    title: str,
+    source_kind: str,
+    source: str,
+    media_type: str,
+    content_sha256: str,
+    pending: bytes | None,
+    status: str,
+    added_by: str | None,
+    domains: Collection[str],
+    launch: str,
+) -> int:
+    """A document that exists from now on, with no passages yet: its background job reads and
+    indexes it. A URL document's digest and media type are empty until the job has fetched it."""
+    result = await conn.execute_core(
+        insert(documents_t)
+        .values(
+            title=title,
+            source_kind=source_kind,
+            source=source,
+            media_type=media_type,
+            content_sha256=content_sha256,
+            status=status,
+            embedding_model="",
+            added_by=added_by,
+            index_status=INDEXING,
+            index_launch=launch,
+            index_progress_at=func.now(),
+            pending_content=pending,
+        )
+        .returning(documents_t.c.id)
+    )
+    document_id = int(result.fetchone()[0])
+    await set_domains(conn, document_id, domains)
+    return document_id
+
+
+async def pending_content(conn: Connection, document_id: int) -> bytes | None:
+    """The uploaded bytes a document not yet ready is waiting to have read."""
+    result = await conn.execute_core(
+        select(documents_t.c.pending_content).where(documents_t.c.id == document_id)
+    )
+    row = result.fetchone()
+    return None if row is None or row[0] is None else bytes(row[0])
+
+
+async def record_index_progress(
+    conn: Connection,
+    document_id: int,
+    *,
+    step: str,
+    done: int | None = None,
+    total: int | None = None,
+) -> bool:
+    """What the job is doing, if the document is still indexing. False when it no longer is (it was
+    removed or given up on), and the job stops there."""
+    result = await conn.execute_core(
+        update(documents_t)
+        .where(documents_t.c.id == document_id, documents_t.c.index_status == INDEXING)
+        .values(index_step=step, index_done=done, index_total=total, index_progress_at=func.now())
+        .returning(documents_t.c.id)
+    )
+    return result.fetchone() is not None
+
+
+async def finish_indexing(
+    conn: Connection,
+    document_id: int,
+    *,
+    title: str,
+    media_type: str,
+    content_sha256: str,
+    embedding_model: str,
+    passages: Sequence[StoredPassage],
+) -> bool:
+    """The document made ready with ``passages``, its uploaded bytes dropped. False when it is no
+    longer indexing, and nothing is written."""
+    result = await conn.execute_core(
+        update(documents_t)
+        .where(documents_t.c.id == document_id, documents_t.c.index_status == INDEXING)
+        .values(
+            title=title,
+            media_type=media_type,
+            content_sha256=content_sha256,
+            embedding_model=embedding_model,
+            index_status=READY,
+            index_error=None,
+            index_step=None,
+            index_done=None,
+            index_total=None,
+            pending_content=None,
+        )
+        .returning(documents_t.c.id)
+    )
+    if result.fetchone() is None:
+        return False
+    await _write_passages(conn, document_id, passages)
+    return True
+
+
+async def fail_indexing(conn: Connection, document_id: int, reason: str) -> None:
+    """The document's job has stopped, for ``reason``; a retry can run it again."""
+    await conn.execute_core(
+        update(documents_t)
+        .where(documents_t.c.id == document_id, documents_t.c.index_status == INDEXING)
+        .values(index_status=FAILED, index_error=reason, index_step=None)
+    )
+
+
+async def begin_retry(conn: Connection, document_id: int, launch: str) -> bool:
+    """A failed document back to indexing, in ``launch``. False when it is not a failed one."""
+    result = await conn.execute_core(
+        update(documents_t)
+        .where(documents_t.c.id == document_id, documents_t.c.index_status == FAILED)
+        .values(
+            index_status=INDEXING,
+            index_error=None,
+            index_step=None,
+            index_done=None,
+            index_total=None,
+            index_launch=launch,
+            index_progress_at=func.now(),
+            terms_note=None,
+        )
+        .returning(documents_t.c.id)
+    )
+    return result.fetchone() is not None
+
+
+async def fail_indexing_left_behind(conn: Connection, launch: str, reason: str) -> int:
+    """Fail the documents indexing in an earlier launch, whose server is gone; how many."""
+    result = await conn.execute_core(
+        update(documents_t)
+        .where(
+            documents_t.c.index_status == INDEXING,
+            or_(documents_t.c.index_launch.is_(None), documents_t.c.index_launch != launch),
+        )
+        .values(index_status=FAILED, index_error=reason, index_step=None)
+        .returning(documents_t.c.id)
+    )
+    return len(result.fetchall())
+
+
+async def fail_indexing_stalled(conn: Connection, after: timedelta, reason: str) -> int:
+    """Fail the documents whose job has not moved on for ``after``; how many."""
+    result = await conn.execute_core(
+        update(documents_t)
+        .where(
+            documents_t.c.index_status == INDEXING,
+            documents_t.c.index_progress_at < datetime.now(UTC) - after,
+        )
+        .values(index_status=FAILED, index_error=reason, index_step=None)
+        .returning(documents_t.c.id)
+    )
+    return len(result.fetchall())
+
+
+async def set_terms_note(conn: Connection, document_id: int, note: str | None) -> None:
+    """Why the document's terms were not looked for; None when they were."""
+    await conn.execute_core(
+        update(documents_t).where(documents_t.c.id == document_id).values(terms_note=note)
+    )
 
 
 async def set_domains(conn: Connection, document_id: int, domains: Collection[str]) -> None:

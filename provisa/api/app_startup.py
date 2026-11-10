@@ -621,6 +621,11 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     change_events.start()
 
+    # REQ-2221: each process polls the health of the connector hosts it serves.
+    from provisa.codesource import lifecycle
+
+    spawn_long_lived(lifecycle.run(state), name="code-source-health")
+
     # REQ-1120: airport Flight service (opt-in via PROVISA_AIRPORT_PORT). Serves the DuckDB
     # `airport` community-extension protocol over the governed query pipeline. Isolated hook.
     try:

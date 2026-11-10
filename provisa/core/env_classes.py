@@ -84,6 +84,8 @@ CARRIED: frozenset[str] = frozenset(
         # holding the model it was copied from, so it is seeded too; like ``roles``, only when
         # an environment is created.
         "model_seed",
+        # REQ-2221: the connectors an org offers: a version runs where the model's branches say.
+        "connectors",
         # REQ-1921/1922: the regions an org selects travel with its model; the stores they name
         # are bindings (IDENTITY_ONLY).
         "org_regions",
@@ -127,6 +129,8 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         # to grant or to widen a right, the escalation REQ-1539 closed for roles.
         "entitlements",
         "entitlement_expiries",
+        # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
+        "entitlement_pending",
     }
 )
 
@@ -215,6 +219,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "judgment_findings",
         # REQ-2129: derived from its own compiled views by its own model build.
         "lineage_edges",
+        # REQ-2229: what the tools pointed at this environment reported to it.
+        "openlineage_run_datasets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
         # REQ-194: its own names table and refused clashes, from its own model build.
@@ -225,6 +231,13 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
         "profiler_sensitive_scans",
         "profiler_sensitive_hints",
+        # REQ-2228: what this environment's dbt source last read from its own manifest. The
+        # manifest comes through the source's binding and states the databases and schemas of the
+        # dbt target that built it, so like catalog_bindings it addresses this environment's
+        # warehouse; another environment reads its own.
+        "dbt_manifests",
+        # REQ-2228, REQ-858: what this environment's dbt runs last built.
+        "dbt_node_runs",
     }
 )
 

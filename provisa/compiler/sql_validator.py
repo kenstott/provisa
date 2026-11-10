@@ -838,8 +838,8 @@ def _unqualified_column_refused(  # REQ-039, REQ-2190
     if holders:
         return False
     # Refuse when any table in scope is governed (key present in visible_columns) OR has no
-    # governance data at all (key absent = fail closed, REQ-2226).  The only safe case is every
-    # table explicitly marked "all visible" (key present, value None).
+    # governance data at all (key absent = fail closed, REQ-039, REQ-2226).  The only safe case
+    # is every table explicitly marked "all visible" (key present, value None).
     return any(
         gov_ctx.visible_columns.get(tid) is not None or tid not in gov_ctx.visible_columns
         for tid in am.values()
@@ -1200,7 +1200,11 @@ def _check_masked_in_xmltable(  # REQ-040, REQ-2167
                     )
                 for tid in tids:
                     vis = gov_ctx.visible_columns.get(tid)
-                    if vis is not None and registered_name(gov_ctx, tid, col.name) not in vis:
+                    # Refuse when no governance data (key absent = fail closed) OR when the role's
+                    # visible set exists and excludes this column (REQ-039).
+                    if (tid not in gov_ctx.visible_columns) or (
+                        vis is not None and registered_name(gov_ctx, tid, col.name) not in vis
+                    ):
                         violations.append(
                             ValidationViolation(
                                 "V003", f"Column {written} is not visible to this role"

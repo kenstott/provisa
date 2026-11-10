@@ -824,6 +824,10 @@
       "duckdb_threads": {
         "label": "Threads DuckDB de la source de code",
         "help": "Les threads sur lesquels la DuckDB d'une source de code répond à ses instructions."
+      },
+      "health_poll_interval": {
+        "label": "Intervalle d'interrogation de l'état des connecteurs",
+        "help": "Fréquence à laquelle chaque processus Provisa interroge l'hôte d'un connecteur sur son état et affiche le résultat sur la source. Un hôte redémarré est détecté à l'interrogation suivante, qui relance sa fonction on-start."
       }
     },
     "config": {

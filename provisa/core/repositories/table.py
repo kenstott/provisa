@@ -644,6 +644,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "file_glob": getattr(table, "file_glob", None),  # REQ-788
         "source_file_column": getattr(table, "source_file_column", None),  # REQ-788
         "table_format": getattr(table, "table_format", None),  # REQ-1981
+        "source_definition": getattr(table, "source_definition", None),  # REQ-2230
         "import_set": getattr(table, "import_set", None),  # REQ-1954
         "delta": _delta.model_dump()
         if (_delta := getattr(table, "delta", None))
@@ -653,6 +654,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "pagination": paging_row(table.pagination),  # REQ-318
         "arguments": dict(table.arguments) or None,  # REQ-2061
         "landing_filter": table.landing_filter,  # REQ-2062
+        "read_wait": table.read_wait,  # REQ-2224
         # REQ-1919: every setting a configuration can give a table is the store's to hold.
         "approval_hook": table.approval_hook,
         "hot": table.hot,
@@ -710,6 +712,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "file_glob",  # REQ-788
         "source_file_column",  # REQ-788
         "table_format",  # REQ-1981
+        # REQ-2230: read from the source at registration only, so a save that did not read it
+        # (None: a configuration applied again) keeps what is held.
+        *(["source_definition"] if getattr(table, "source_definition", None) is not None else []),
         "import_set",  # REQ-1954
         "delta",  # REQ-874
         "cache_ttl",  # REQ-1865
@@ -717,6 +722,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "pagination",  # REQ-318
         "arguments",  # REQ-2061
         "landing_filter",  # REQ-2062
+        "read_wait",  # REQ-2224
         "approval_hook",  # REQ-1919
         "hot",
         "promotions",

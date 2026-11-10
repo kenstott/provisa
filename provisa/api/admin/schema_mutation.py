@@ -2573,6 +2573,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
         from provisa.core.repositories import source as _source_repo
+        from provisa.api.admin._connector_values import settle_on_create
+
+        # REQ-2221: first, so every rule below judges the values the source will have.
+        _connector_refusal = await settle_on_create(input)
+        if _connector_refusal is not None:
+            return _connector_refusal
 
         # REQ-1907: a ttl / ttl_probe signal needs a cache_ttl on the source or on each table
         # already registered under this id.
@@ -2720,8 +2726,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
         if _profiler_refusal is not None:
             return _profiler_refusal
-        from provisa.api.admin._code_source_registration import record_code
+        from provisa.api.admin._code_source_registration import join_connector, record_code
 
+        _join_refusal = await join_connector(input.id, input.type, _mapping)  # REQ-2221
+        if _join_refusal is not None:
+            return _join_refusal
         _code_refusal = await record_code(input.id, input.type, _mapping)  # REQ-1984, REQ-1993
         if _code_refusal is not None:
             return _code_refusal
@@ -3109,7 +3118,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if _profiler_refusal is not None:
                 return _profiler_refusal
             from provisa.api.admin._code_source_registration import record_code
+            from provisa.api.admin._connector_values import fixed_refusal, input_settings
 
+            _fixed_refusal = await fixed_refusal(  # REQ-2221
+                _conn, input.id, existing["mapping"], input_settings(input), _stored_mapping
+            )
+            if _fixed_refusal is not None:
+                return _fixed_refusal
             _code_refusal = await record_code(  # REQ-1984, REQ-1993
                 input.id, input.type, _stored_mapping
             )
@@ -4312,9 +4327,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     from provisa.api.app import state as _app_state
 
                     # REQ-1981: its format, from the source, decides the writes it takes.
-                    from provisa.api.admin.introspect import record_table_format
+                    from provisa.api.admin.introspect import (
+                        record_source_definition,
+                        record_table_format,
+                    )
 
                     await record_table_format(model, _app_state.source_types.get(model.source_id))
+                    # REQ-2230: its definition, from the source, contributes its lineage.
+                    await record_source_definition(
+                        model, _app_state.source_types.get(model.source_id)
+                    )
                     if _app_state.source_types.get(model.source_id) == "jira":
                         # REQ-2069: a form's project and issue type, and each column's field, from the
                         # account's form and field lists -- the steward picks a form and its columns.
@@ -5340,6 +5362,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            from provisa.api.admin._connector_values import fixed_refusal_by_id
+
+            _fixed = await fixed_refusal_by_id(  # REQ-2221
+                conn, source_id, {"cache_enabled": cache_enabled, "cache_ttl": cache_ttl}
+            )
+            if _fixed is not None:
+                return _fixed
             _sig = await conn.execute_core(
                 select(
                     sources.c.change_signal,
@@ -5538,6 +5567,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return invalid
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            from provisa.api.admin._connector_values import fixed_refusal_by_id
+
+            _fixed = await fixed_refusal_by_id(  # REQ-2221
+                conn, source_id, {"replicate": replicate}
+            )
+            if _fixed is not None:
+                return _fixed
             _row = await conn.execute_core(
                 select(
                     sources.c.change_signal,
@@ -5813,6 +5849,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            from provisa.api.admin._connector_values import fixed_refusal_by_id
+
+            _fixed = await fixed_refusal_by_id(  # REQ-2221
+                conn,
+                source_id,
+                {
+                    "load_protected": load_protected,
+                    "off_peak_window": off_peak_window,
+                    "off_peak_tz": off_peak_tz,
+                },
+            )
+            if _fixed is not None:
+                return _fixed
             _res = await conn.execute_core(
                 select(
                     sources.c.cache_ttl,

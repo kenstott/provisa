@@ -1,0 +1,15 @@
+{
+  "connectorSetup": {
+    "identity": "連接器 {{name}}，跟隨 {{ref}}。",
+    "missing": "請填寫連接器的主機、連接埠、配對碼以及所有必需的值。",
+    "image": "映像",
+    "imageHint": "您的部署所執行的映像。Provisa 在連線時據此檢查主機。",
+    "host": "主機",
+    "hostHint": "執行該映像的主機，即 Provisa 存取它所用的位址。",
+    "port": "連接埠",
+    "pairing": "配對碼",
+    "pairingHint": "容器首次啟動時在 \"pairing code:\" 後列印的那一行。只使用一次，不會保留。",
+    "secretHint": "要使用的組織密鑰。其值絕不在此處輸入。",
+    "fixedHint": "由此連接器設定，無法更改。"
+  }
+}

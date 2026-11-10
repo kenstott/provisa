@@ -32,8 +32,8 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 - a ``@command`` or ``@query`` parameter typed ``TableRef`` of a row type takes a governed table,
   and the row type's fields are the input columns it declares (REQ-2226); a loose row type, or a
   ``TableRef`` anywhere else, is a problem by name;
-- the columns are the row type's fields, or -- when the row type is loose (``any``, ``unknown``
-  or a ``Record``) -- found by a preview;
+- the columns are the row type's fields; a row type that is loose (``any``, ``unknown``, a
+  ``Record`` or a ``dict``) is a problem by name, though a single field of a typed row may be;
 - every type a tagged function refers to is mapped (string -> text, number -> double, bigint ->
   bigint, boolean -> boolean, Date -> timestamp, ``T | null`` / ``T | undefined`` / an optional
   field -> nullable ``T``, arrays -> lists, interfaces and object types -> named object types, a
@@ -43,16 +43,22 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2226
+# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221, REQ-2226, REQ-2227
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
 
 TABLE, COMMAND, QUERY, STREAM, COLUMNS = "table", "command", "query", "stream", "columns"
-PROVISA_TAGS = frozenset({TABLE, COMMAND, QUERY, STREAM, COLUMNS})
+#: REQ-2221: a connector's lifecycle tags, each on at most one function of its code.
+ON_START, ON_STOP, HEALTH = "on-start", "on-stop", "health"
+LIFECYCLE_TAGS = frozenset({ON_START, ON_STOP, HEALTH})
+PROVISA_TAGS = frozenset({TABLE, COMMAND, QUERY, STREAM, COLUMNS}) | LIFECYCLE_TAGS
 #: REQ-2226: what is called as a command. A @query differs from a @command only in its kind.
 COMMANDS = frozenset({COMMAND, QUERY})
 
@@ -94,6 +100,10 @@ PYTHON_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 #: Provisa's is unknown; a stream is an iterator function yielding a row and an error
 #: (``iter.Seq2[T, error]``), which Go has no async counterpart of.
 GO_RULES = Rules(standard_tags=frozenset(), sync_streams=True, stream_errors=True)
+#: Rust (REQ-2227): a doc comment has no standard tag beginning with ``@``, so every one but
+#: Provisa's is unknown; a stream is an iterator, of rows or of rows each in a Result, which a
+#: Rust source has no async counterpart of.
+RUST_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 
 
 # -- shapes -----------------------------------------------------------------------------------------
@@ -140,8 +150,10 @@ class TableOf:
 
 Shape = Scalar | ListOf | Named | Anonymous | EnumOf | TableOf
 
-#: Loose: a value of any shape, served as json (and, as a row type, typed by a preview).
+#: Loose: a value of any shape, served as json. A field may be; a row type may not.
 LOOSE = Scalar("json")
+#: The reader's kinds for a value of no declared shape.
+LOOSE_KINDS = ("any", "unknown", "record")
 
 
 @dataclass(frozen=True)
@@ -180,8 +192,6 @@ class Export:
     #: A table's or stream's row type; a command's result (None: it returns nothing); a
     #: ``@columns`` function's result row, whose fields are its output columns.
     returns: Shape | None
-    #: Whether the columns are found by a preview: the row type is loose.
-    preview: bool = False
     #: A command's result: rows (a collection) or one value.
     many: bool = False
     #: REQ-2100: a ``@loader`` table, called with a join's keys in batches, in its read context.
@@ -207,13 +217,34 @@ READ_CONTEXT = "ReadContext"
 WRITE_TAGS = ("insert", "update", "delete")
 
 
+#: REQ-2221: ``@requires NAME`` for a plain value, ``@requires NAME:secret`` for a secret. One
+#: argument, so each language's reader carries it as it carries any tag's.
+REQUIRES = "requires"
+_REQUIRES_ARGUMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(:secret)?$")
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """REQ-2221: a named value the code needs from whoever sets it up."""
+
+    name: str
+    secret: bool = False
+
+
 @dataclass(frozen=True)
 class Manifest:
     exports: tuple[Export, ...]
     types: dict[str, ObjectType]
+    #: REQ-2221: what the code declares it needs, across its exports, by name.
+    requires: tuple[Requirement, ...] = ()
 
     def export(self, name: str) -> Export:
         return next(e for e in self.exports if e.name == name)
+
+    def lifecycle(self, tag: str) -> Export | None:
+        """REQ-2221: the function tagged ``tag`` (:data:`ON_START`, :data:`ON_STOP` or
+        :data:`HEALTH`), or None when the code tags none."""
+        return next((e for e in self.exports if e.kind == tag), None)
 
 
 # -- kept with a built source (REQ-2098) -----------------------------------------------------------
@@ -295,7 +326,6 @@ def manifest_json(manifest: Manifest) -> dict:
                     for p in e.parameters
                 ],
                 "returns": _shape_json(e.returns),
-                "preview": e.preview,
                 "many": e.many,
                 "loader": e.loader,
                 "loader_batch": e.loader_batch,
@@ -308,7 +338,15 @@ def manifest_json(manifest: Manifest) -> dict:
             name: {"name": t.name, "fields": [_field_json(f) for f in t.fields]}
             for name, t in manifest.types.items()
         },
+        "requires": [{"name": r.name, "secret": r.secret} for r in manifest.requires],
     }
+
+
+def manifest_hash(raw: dict) -> str:
+    """REQ-2221: what names a manifest (:func:`manifest_json`'s form): the SHA-256 of its one
+    canonical JSON text, which an image's label carries and a host's handshake is checked by."""
+    text = json.dumps(raw, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def manifest_from_json(raw: dict) -> Manifest:
@@ -329,7 +367,6 @@ def manifest_from_json(raw: dict) -> Manifest:
                 e["description"],
                 tuple(parameters),
                 _shape(e["returns"]),
-                e["preview"],
                 e["many"],
                 e["loader"],
                 e["loader_batch"],
@@ -341,7 +378,9 @@ def manifest_from_json(raw: dict) -> Manifest:
         name: ObjectType(t["name"], tuple(_field(f) for f in t["fields"]))
         for name, t in raw["types"].items()
     }
-    return Manifest(tuple(exports), types)
+    # A manifest kept before REQ-2221 was read when no code could declare one.
+    requires = tuple(Requirement(r["name"], r["secret"]) for r in raw.get("requires", ()))
+    return Manifest(tuple(exports), types, requires)
 
 
 class ManifestRefused(BundleRefused):
@@ -408,7 +447,7 @@ class _Mapper:
         if kind == "number":
             # A Python int is an integer; a JavaScript number, and a Python float, a double.
             return Scalar("bigint" if node.get("integer") else "double")
-        if kind in ("any", "unknown", "record"):
+        if kind in LOOSE_KINDS:
             return LOOSE
         if kind == "literal":
             if isinstance(node["value"], str):
@@ -449,14 +488,18 @@ def _unwrap_promise(node: dict) -> dict:
     return node["value"] if node["kind"] == "promise" else node
 
 
-def _rows(mapper: _Mapper, export: str, element: dict) -> tuple[Shape, bool]:
-    """The row type of a table or stream, and whether its columns come from a preview."""
-    if element["kind"] in ("any", "unknown", "record"):
-        return LOOSE, True
+def _rows(mapper: _Mapper, export: str, element: dict) -> Shape:
+    """The row type of a table or stream; a loose one is a problem by name."""
+    if element["kind"] in LOOSE_KINDS:
+        return mapper.fail(
+            export,
+            "its row type is loose (any, unknown, a Record or a dict); declare a typed row whose "
+            "fields are its columns",
+        )
     shape, _ = mapper.shape(element, f"{export} (row)")
     if not isinstance(shape, (Named, Anonymous)):
         mapper.fail(export, "its rows are not objects; a row is an object whose fields are columns")
-    return shape, False
+    return shape
 
 
 def _table_parameter(mapper: _Mapper, name: str, parameter: dict) -> Parameter:
@@ -493,7 +536,7 @@ def _columns_export(
         mapper.fail(name, "@columns returns a list holding one result per input row")
         return None
     element = result["element"]
-    if element["kind"] in ("any", "unknown", "record"):
+    if element["kind"] in LOOSE_KINDS:
         mapper.fail(name, "@columns declares its output columns: its result is a typed object")
         return None
     row, _ = mapper.shape(element, f"{name} (result)")
@@ -592,6 +635,57 @@ def _read_signature(
     return parameters, shape
 
 
+def _read_requires(
+    name: str, entry: dict, requires: dict[str, Requirement], problems: list[str]
+) -> None:
+    """REQ-2221: an export's ``@requires`` tags, added to what the code requires by name. A value
+    is one thing across the code: declared a secret in one place and plain in another is refused."""
+    arguments = [t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == REQUIRES]
+    # Node's reader lists every tag with its text, empty when it has none; Python's and Go's list
+    # a tag with no argument under "tags" alone.
+    if "" in arguments or entry["tags"].count(REQUIRES) > len(arguments):
+        problems.append(f"{name}: @requires names a value: @requires NAME or NAME:secret")
+    for text in filter(None, arguments):
+        match = _REQUIRES_ARGUMENT.match(text)
+        if match is None:
+            problems.append(f"{name}: @requires {text}: write NAME or NAME:secret")
+            continue
+        found = Requirement(match[1], match[2] is not None)
+        if requires.setdefault(found.name, found) != found:
+            problems.append(f"{name}: @requires {found.name} is a secret in one place only")
+
+
+def _lifecycle_export(
+    mapper: _Mapper, name: str, kind: str, entry: dict, signature: dict
+) -> Export | None:
+    """REQ-2221: a lifecycle function, its signature held to its tag's rules: ``@on-start`` takes
+    nothing or the setup values, a mapping of name to value; ``@on-stop`` and ``@health`` take
+    nothing; ``@health`` returns a text status."""
+    given = signature["parameters"]
+    if any(p["rest"] for p in given):
+        mapper.problems.append(f"{name}: @{kind} takes no rest parameter")
+        return None
+    if kind == ON_START:
+        if len(given) > 1 or (given and given[0]["type"]["kind"] not in LOOSE_KINDS):
+            mapper.problems.append(
+                f"{name}: @on-start takes nothing, or the setup values as one mapping of name "
+                "to value"
+            )
+            return None
+    elif given:
+        mapper.problems.append(f"{name}: @{kind} takes no parameters")
+        return None
+    parameters = tuple(Parameter(p["name"], LOOSE, False, True) for p in given)
+    returns: Shape | None = None
+    if kind == HEALTH:
+        status, _ = mapper.shape(_unwrap_promise(signature["returns"]), f"{name} (status)")
+        if status != Scalar("text") and not isinstance(status, EnumOf):
+            mapper.problems.append(f"{name}: @health returns its status as text")
+            return None
+        returns = status
+    return Export(name, kind, entry["description"], parameters, returns)
+
+
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     """The bundle's tables, commands and streams, from the reader's output, under its language's
     ``rules``; refused with every problem when any rule is broken."""
@@ -600,6 +694,8 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     for diagnostic in raw.get("diagnostics", []):
         problems.append(f"the declarations do not type-check: {diagnostic}")
     exports: list[Export] = []
+    requires: dict[str, Requirement] = {}
+    lifecycle: dict[str, str] = {}  # REQ-2221: each lifecycle tag's function, seen so far
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
         binds = tuple(
@@ -608,10 +704,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             if t["tag"] in WRITE_TAGS and t["text"]
         )
         for tag in tags:
-            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER}:
+            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER, REQUIRES}:
                 problems.append(f"{name}: unknown tag @{tag}")
         for argued in entry.get("tag_arguments", []):
-            known = PROVISA_TAGS | rules.standard_tags | {LOADER, *WRITE_TAGS}
+            known = PROVISA_TAGS | rules.standard_tags | {LOADER, REQUIRES, *WRITE_TAGS}
             if argued["text"] and argued["tag"] not in known:
                 problems.append(f"{name}: unknown tag @{argued['tag']}")
         kinds = sorted(PROVISA_TAGS.intersection(tags))
@@ -621,6 +717,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             problems.append(f"{name}: tagged {', '.join('@' + k for k in kinds)}; an export is one")
             continue
         kind = kinds[0]
+        _read_requires(name, entry, requires, problems)
         signatures = entry["signatures"]
         if len(signatures) != 1:
             problems.append(
@@ -640,6 +737,17 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             # REQ-2100: a loader batches a table's keys; any other kind declaring one would have
             # it ignored, so it is refused by name.
             problems.append(f"{name}: @loader batches a table's keys, and a @{kind} takes none")
+        if kind in LIFECYCLE_TAGS:
+            first = lifecycle.setdefault(kind, name)
+            if first != name or tags.count(kind) > 1:
+                problems.append(
+                    f"{name}: @{kind} is on {first} already; a lifecycle tag is used once"
+                )
+                continue
+            found = _lifecycle_export(mapper, name, kind, entry, signature)
+            if found is not None:
+                exports.append(found)
+            continue
         if kind in (TABLE, STREAM):
             read = _read_signature(mapper, name, kind, signature)
             if read is None:
@@ -666,7 +774,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             else:
                 problems.append(f"{name}: @table returns a single value, not a collection of rows")
                 continue
-            row, preview = _rows(mapper, name, element)
+            row = _rows(mapper, name, element)
             loader, batch = _loader(mapper, name, entry, takes)
             exports.append(
                 Export(
@@ -675,7 +783,6 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     entry["description"],
                     tuple(parameters),
                     row,
-                    preview,
                     loader=loader,
                     loader_batch=batch,
                     takes=takes,
@@ -697,11 +804,9 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                     else f"{name}: @stream is an async generator (returns AsyncGenerator<T>)"
                 )
                 continue
-            row, preview = _rows(mapper, name, returns["element"])
+            row = _rows(mapper, name, returns["element"])
             exports.append(
-                Export(
-                    name, kind, entry["description"], tuple(parameters), row, preview, takes=takes
-                )
+                Export(name, kind, entry["description"], tuple(parameters), row, takes=takes)
             )
         else:
             result = _unwrap_promise(returns)
@@ -726,4 +831,4 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             )
     if problems:
         raise ManifestRefused(problems)
-    return Manifest(tuple(exports), mapper.types)
+    return Manifest(tuple(exports), mapper.types, tuple(requires.values()))

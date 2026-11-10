@@ -64,6 +64,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
     USER_MANAGEMENT = "user_management"
+    # REQ-2219: set a principal's entitlement lists, per role grant and kind. Scoped by the roles
+    # kind: roles [dev] reaches dev and the roles with dev as an ancestor.
+    ASSIGN_ENTITLEMENTS = "assign_entitlements"
     MASKING_CONFIG = "masking_config"
     VIEW_GOVERNANCE = (
         "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
@@ -136,6 +139,8 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # promises (REQ-2157).
     DQ_READ = "dq_read"
     DQ_RW = "dq_rw"
+    # REQ-2229: send OpenLineage run events to the receiver, for a tool's service account.
+    LINEAGE_REPORT = "lineage_report"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The right the wire surfaces read off a role's list by name. A member here so that the

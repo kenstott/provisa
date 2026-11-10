@@ -1102,8 +1102,9 @@ export async function setFederationEngine(
 }
 
 // --- Per-org engine lane (REQ-1412) ---
-// Which coordinator the ACTING org's queries land on. Separate from the deployment-wide engine
-// KIND above: this one is org_settings, so an org administrator owns it in either tenancy mode.
+// Which coordinator an org's queries land on. Separate from the deployment-wide engine KIND above:
+// the org's own administrator reads and saves it on org_settings, and an operator can set it for a
+// named org on the deployment check.
 
 export type OrgEngineMode = "shared" | "isolated" | "external";
 
@@ -1164,20 +1165,49 @@ export async function fetchOrgEngine(): Promise<OrgEngineState> {
   return resp.json();
 }
 
-export async function setOrgEngine(body: {
+export interface OrgEngineSave {
   mode: OrgEngineMode;
   engine_kind?: string | null;
   external_host?: string | null;
   external_port?: number | null;
   external_url?: string | null;
-}): Promise<{ success: boolean; mode: OrgEngineMode }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`, {
+}
+
+export interface OrgEngineSaved {
+  success: boolean;
+  mode: OrgEngineMode;
+}
+
+async function putOrgEngine(path: string, body: OrgEngineSave): Promise<OrgEngineSaved> {
+  const resp = await fetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw httpError("Org engine update", resp.status);
   return resp.json();
+}
+
+// REQ-1412: the acting org's administrator, saving the org's own lane.
+export function setOrgEngine(body: OrgEngineSave): Promise<OrgEngineSaved> {
+  return putOrgEngine(`${API_BASE_RAW}/admin/org-engine`, body);
+}
+
+// REQ-1412, REQ-1327: the platform administrator's, naming the org.
+const platformOrgEnginePath = (orgId: string) =>
+  `${API_BASE_RAW}/admin/platform/orgs/${encodeURIComponent(orgId)}/engine`;
+
+export async function fetchPlatformOrgEngine(orgId: string): Promise<OrgEngineState> {
+  const resp = await fetch(platformOrgEnginePath(orgId));
+  if (!resp.ok) throw httpError("Org engine fetch", resp.status);
+  return resp.json();
+}
+
+export function setPlatformOrgEngine(
+  orgId: string,
+  body: OrgEngineSave,
+): Promise<OrgEngineSaved> {
+  return putOrgEngine(platformOrgEnginePath(orgId), body);
 }
 
 // --- The org's own encryption key (REQ-1574) ---

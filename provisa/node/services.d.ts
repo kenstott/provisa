@@ -103,3 +103,4 @@ export declare function metric(
   kind?: string,
   attributes?: Record<string, unknown>,
 ): Promise<void>;
+export declare function audit(event: string, fields?: Record<string, unknown>): Promise<void>;

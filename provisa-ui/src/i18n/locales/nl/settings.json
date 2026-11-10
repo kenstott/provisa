@@ -824,6 +824,10 @@
       "duckdb_threads": {
         "label": "DuckDB-threads van de codebron",
         "help": "De threads waarop de DuckDB van een codebron zijn statements beantwoordt."
+      },
+      "health_poll_interval": {
+        "label": "Pollinterval voor connectorstatus",
+        "help": "Hoe vaak elk Provisa-proces de host van een connector naar zijn status vraagt en het resultaat bij de bron toont. Een herstarte host wordt bij de volgende poll opgemerkt, waarna zijn on-start-functie opnieuw wordt uitgevoerd."
       }
     },
     "config": {

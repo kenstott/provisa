@@ -244,6 +244,11 @@ async def register_table(
     from provisa.api.admin._table_ops import land_transform_view
 
     land_transform_view(input)  # REQ-2131
+    from provisa.api.admin._dbt_table_registration import read_through_warehouse
+
+    _dbt_refused = await read_through_warehouse(input)  # REQ-2228
+    if _dbt_refused is not None:
+        return _dbt_refused
     from provisa.api.admin.capabilities import require_capability
 
     if input.view_sql or input.view_metrics is not None:
@@ -348,10 +353,12 @@ async def register_table(
 
     default_mail_watermark(model, _reg_state.source_types.get(input.source_id))
 
-    from provisa.api.admin.introspect import record_table_format
+    from provisa.api.admin.introspect import record_source_definition, record_table_format
 
     # REQ-1981: its format, from the source, decides the writes it takes.
     await record_table_format(model, _reg_state.source_types.get(input.source_id))
+    # REQ-2230: its definition, from the source, contributes its lineage.
+    await record_source_definition(model, _reg_state.source_types.get(input.source_id))
 
     from provisa.federation.replica_routing import NO_REPLICA_TYPES
 

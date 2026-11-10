@@ -6,7 +6,7 @@ Governed from the first query.
 
 ---
 
-Provisa is a data kernel, a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
+Provisa is a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
 
 It is built the way an operating system is built. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling, command bindings answer other tools' calls, and clients connect over standard protocols.
 
@@ -124,7 +124,7 @@ These are the connection protocols. SQL, GraphQL and Cypher ride over them, and 
 
 ### Data Sources
 
-- **77 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **78 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
 - **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
 - **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
 - **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.

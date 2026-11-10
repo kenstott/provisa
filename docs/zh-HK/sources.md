@@ -26,7 +26,7 @@
 
 ## 所有數據來源 {: #all-sources }
 
-Provisa 註冊了 **77** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 77 種；索引即為計數。
+Provisa 註冊了 **78** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 78 種；索引即為計數。
 
 | # | 群組 | 數據來源類型 |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa 註冊了 **77** 種數據來源類型，即 Sources 表單所提供的�
 | 49–53 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [數據剖析器](#data-profiler) | `data_profiler` |
-| 76 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
+| 65–72 | [API 數據來源](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [數據剖析器](#data-profiler) | `data_profiler` |
+| 77 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
 
 Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器。
 
@@ -909,6 +909,30 @@ sources:
 若排除項指明了規格中沒有的操作或引數，該數據來源的規格載入會失敗，並列出每個過時的項目，因此與較新規格不再相符的清單不會被忽略。
 
 品牌數據來源在其策劃中自帶排除項，營運者的排除項會加在其上。Stripe 數據來源排除了 Stripe 已棄用的權杖與來源（source）付款整合：建立 charge、Tokens 與 Sources API、憑權杖為客戶新增信用卡或銀行帳戶，以及客戶與發票付款寫入操作中的 `source`、`card`、`bank_account` 與 `default_card` 引數。收款經 Payment Intents、Payment Methods 與 Setup Intents 進行，數據來源提供這些介面。讀取與刪除帳戶已有的付款來源仍然可用。
+
+### dbt
+
+dbt 數據來源讓您的 dbt 項目留在原處，並由 dbt 繼續建置。Provisa 讀取項目的 `manifest.json` 以取得定義，絕不複製任何資料列或項目本身。
+
+| 清單來自 | 在數據來源上設定 |
+| --- | --- |
+| URL 或製品位置 | `location` |
+| 上載 | `content` |
+| dbt Cloud 的 API | `host`、`account_id`、`job_id` 和 API 權杖，權杖的保存方式與任何數據來源的憑證相同 |
+
+每個模型都作為表提供，新增數據來源不會註冊任何內容。數據管家註冊模型時，會透過與清單的適配器和模型的資料庫相符的倉庫數據來源讀取。清單不包含憑證，也不讀取 dbt 的 profiles 檔案，因此如果沒有相符的已註冊數據來源，設定表單會提供建立一個的選項。模型的血緣來自其編譯後的 SQL。
+
+**命令。** 每個模型、測試、快照和 seed 都作為變更命令提供，`build`、`source freshness` 以及透過 `run-operation` 呼叫的項目及其已安裝套件的每個巨集也是如此。只有呼叫、觸發器或排程執行命令時，命令才會執行。它在 dbt 已經執行的地方執行：
+
+| 目標 | 執行方式 | 在數據來源上設定 |
+| --- | --- | --- |
+| dbt Cloud | 透過作業 API 執行作業，命令作為其唯一步驟 | `spec: cloud` |
+| 指令碼 | 在 Provisa 可存取的命令列上執行 `dbt` | `command_line` |
+| 由營運方執行的連接器 | 呼叫[程式碼數據來源](code-sources.md)的 `@command`，dbt 呼叫作為呼叫方無法更改的固定參數 | `connector_source`、`connector_command`、`connector_invocation_argument`（預設 `invocation`） |
+
+**新鮮度。** dbt 的 `run_results.json` 說明每個模型最後一次建置的時間。可將其作為 `run_results` 提供，將 `run_results_location` 指向其發佈位置，或讓 dbt Cloud 數據來源從作業最近一次成功執行中讀取。重新整理數據來源時會重新讀取，上載也可以只帶來執行結果而不帶新清單。要使用它，請將模型的表設定為 `probe` 或 `ttl_probe` 變更訊號，並設定 `probe_type: hash`。一旦 dbt 再次建置該模型，該表即為過期。最近一次執行失敗或被略過的模型，其新鮮度未知，絕不會被視為新鮮。
+
+**新清單**會更新提供的命令、血緣以及已註冊模型的描述。數據管家更改過的描述會逐欄位保持數據管家留下的樣子。
 
 ### GovData
 

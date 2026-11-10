@@ -450,6 +450,40 @@ def test_shutdown_reports_records_it_could_not_write(store, caplog):
 # ------------------------------------------------------------------ against a real store
 
 
+def test_hot_counts_straddle_bucket_boundary_gives_fractional_not_exact_count():
+    """Regression: HotCounts without a fixed clock can return values < 1.0 when
+    add() and counts() use different time buckets (bucket = int(t // interval)).
+
+    This is the root cause of the non-deterministic failure in
+    test_write_audit_lands_one_row_in_the_tenant_database: the writer thread calls
+    add() using r.time(), and the test thread calls counts() with a later r.time().
+    When those two calls straddle a 60-second boundary the carried fraction is
+    1 - ε/interval rather than 1.0, so the assertion == {7: 1.0, 9: 1.0, ...} fails.
+    """
+    from provisa.federation.replica_hot import HotCounts
+
+    interval = 60
+    k = 150_001  # arbitrary bucket; boundary is at k * interval seconds
+    boundary = k * interval
+
+    t: list[float] = [boundary - 0.001]  # just before the boundary → bucket k-1
+    counts = HotCounts(None, clock=lambda: t[0])
+
+    counts.add({("seam-scope:prod", 7): 1, ("seam-scope:prod", 9): 1}, interval)
+    t[0] = boundary + 0.001  # advance past the boundary → bucket k
+
+    result = counts.counts("seam-scope:prod", [7, 9, 11], interval)
+
+    # Both keys were written in bucket k-1 and are now read in bucket k as
+    # "previous bucket" hits: value = carried * 1 where carried < 1.0.
+    expected_carried = 1.0 - 0.001 / interval  # ≈ 0.9999833
+    assert result[7] < 1.0, "boundary did not cause fractional value for table 7"
+    assert result[9] < 1.0, "boundary did not cause fractional value for table 9"
+    assert abs(result[7] - expected_carried) < 1e-9
+    assert abs(result[9] - expected_carried) < 1e-9
+    assert result[11] == 0.0
+
+
 def _logged(db, *columns: str) -> list[tuple]:
     from sqlalchemy import select
 
@@ -475,7 +509,10 @@ def test_write_audit_lands_one_row_in_the_tenant_database(
 
     org = f"audit-seam-{uuid.uuid4().hex}"
     bind_org(org)  # the statement's org, bound as its surface binds it (REQ-1266)
-    counts = HotCounts(None)
+    # Pin the clock to a fixed value far from any 60-second boundary (bucket =
+    # int(t // 60) = 150_000). Without this, add() on the writer thread and
+    # counts() on the test thread can straddle a boundary and return < 1.0.
+    counts = HotCounts(None, clock=lambda: 9_000_000.0)
     state = SimpleNamespace(
         record_db=record_db,
         model_db=record_db,  # REQ-2077: the org's grants, marked used

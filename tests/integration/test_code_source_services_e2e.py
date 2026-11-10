@@ -9,11 +9,11 @@
 # permission from the copyright holder.
 
 """Integration: a sandboxed worker uses Provisa's services through the module always present in it
-(REQ-2106): provisa_services in Python, @provisa/services in Node.
+(REQ-2106): provisa_services in Python and Go, @provisa/services in Node.
 
 The ``test`` instance, as the code sources e2e runs it. The source declares a setting; its table's
-function reads it, caches it, reads it back from the cache, writes a log line and a metric point,
-and returns what it read -- through the egress proxy, with nothing on the allow-list."""
+function reads it, caches it, reads it back from the cache, writes a log line, a metric point and
+an audit event, and returns what it read -- through the egress proxy, with nothing on the allow-list."""
 
 # Requirements: REQ-2106
 
@@ -69,6 +69,7 @@ def services_read(inputs: UsedInputs) -> list[Used]:
     cached = ps.cache.get(f"region-{name}")
     ps.log("read the region", level="info", name=name)
     ps.metric("reads", 1, source_name=name)
+    ps.audit("read.region", name=name, region=region)
     return [Used(name, region, cached)]
 ''',
 }
@@ -76,7 +77,7 @@ def services_read(inputs: UsedInputs) -> list[Used]:
 _NODE = {
     "uses/package.json": json.dumps({"name": "uses", "type": "module", "main": "index.js"}),
     "uses/index.js": """
-import { settings, cache, log, metric } from "@provisa/services";
+import { settings, cache, log, metric, audit } from "@provisa/services";
 
 export async function services_read({ name }) {
   const region = await settings.get("region");
@@ -84,6 +85,7 @@ export async function services_read({ name }) {
   const cached = await cache.get(`region-${name}`);
   await log("read the region", "info", { name });
   await metric("reads", 1, "counter", { source_name: name });
+  await audit("read.region", { name, region });
   return [{ name, setting: region, cached }];
 }
 """,
@@ -99,12 +101,67 @@ export declare function services_read(inputs: UsedInputs): Promise<Used[]>;
 }
 
 
+_GO = {
+    "uses/go.mod": "module example.com/uses\n\ngo 1.23\n",
+    "uses/uses.go": """
+package uses
+
+import (
+	"context"
+
+	ps "provisa_services"
+)
+
+type Used struct {
+	Name    string `json:"name"`
+	Setting string `json:"setting"`
+	Cached  string `json:"cached"`
+}
+
+type UsedInputs struct {
+	Name string `json:"name"`
+}
+
+// What the services answer, read through the module.
+//
+// @table
+func Services_read(ctx context.Context, in UsedInputs) ([]Used, error) {
+	region, err := ps.Settings.Get(ctx, "region")
+	if err != nil {
+		return nil, err
+	}
+	if err := ps.Cache.Set(ctx, "region-"+in.Name, region, 60); err != nil {
+		return nil, err
+	}
+	cached, err := ps.Cache.Get(ctx, "region-"+in.Name)
+	if err != nil {
+		return nil, err
+	}
+	if err := ps.Log(ctx, "read the region", "info", map[string]any{"name": in.Name}); err != nil {
+		return nil, err
+	}
+	if err := ps.Metric(ctx, "reads", 1, "counter", map[string]any{"source_name": in.Name}); err != nil {
+		return nil, err
+	}
+	if err := ps.Audit(ctx, "read.region", map[string]any{"name": in.Name, "region": region}); err != nil {
+		return nil, err
+	}
+	return []Used{{in.Name, region.(string), cached.(string)}}, nil
+}
+""",
+}
+
+_CODE = {"python": _PYTHON, "node": _NODE, "go": _GO}
+#: A table is named for its function, and a Go function that is exported starts with a capital.
+_TABLE = {"python": "services_read", "node": "services_read", "go": "Services_read"}
+
+
 @pytest.fixture(scope="module")
 def runtime_cache(tmp_path_factory):
     return tmp_path_factory.mktemp("runtime-deps")
 
 
-@pytest.fixture(scope="module", params=["python", "node"])
+@pytest.fixture(scope="module", params=["python", "node", "go"])
 def server(tmp_path_factory, runtime_cache, request):
     from tests.integration.isolated_server import IsolatedServer
 
@@ -134,13 +191,13 @@ def uses(server):
     upload = httpx.post(
         f"{server.base_url}/admin/orgs/{server.org_id}/code-uploads/archive",
         params={"filename": "uses.zip"},
-        content=_archive(_PYTHON if language == "python" else _NODE),
+        content=_archive(_CODE[language]),
         headers={"X-Provisa-Role": _ROLE, "Content-Type": "application/octet-stream"},
         timeout=server.request_timeout + 30,
     )
     assert upload.status_code == 200, upload.text
     mapping = {
-        "runtime": "python" if language == "python" else "node",
+        "runtime": language,
         "code": {"kind": "upload", "upload": upload.json()["content_hash"]},
         "settings": {"region": "eu-west"},
     }
@@ -152,7 +209,7 @@ def uses(server):
     registered = _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
-        f'schemaName: "default", tableName: "services_read", cacheTtl: 0, '
+        f'schemaName: "default", tableName: "{_TABLE[language]}", cacheTtl: 0, '
         f"columns: [{_column('name', 'text')}, {_column('setting', 'text')}, "
         f"{_column('cached', 'text')}, {_parameter('name', 'text', required=True)}]}})",
     )
@@ -163,3 +220,23 @@ def uses(server):
 def test_the_code_reads_its_setting_and_its_cache_through_the_module(server, uses):
     (row,) = _rows(_sql(server, "SELECT setting, cached FROM services_read WHERE _nf_name = 'a'"))
     assert row == {"setting": "eu-west", "cached": "eu-west"}
+
+
+def test_the_codes_audit_event_is_in_the_orgs_trail(server, uses):
+    from sqlalchemy import text
+
+    from provisa.codesource.service_ops import CODE_AUDIT
+    from provisa.core.environments import org_schema
+
+    _rows(_sql(server, "SELECT setting FROM services_read WHERE _nf_name = 'audited'"))
+    trail = f'"{org_schema(server.org_id)}".admin_audit_log'
+    with server.plane.engine().connect() as conn:
+        written = conn.execute(
+            text(f"SELECT actor_id, subject_id, detail FROM {trail} WHERE action = :action"),
+            {"action": CODE_AUDIT},
+        ).fetchall()
+    (row,) = [w for w in written if w.detail["fields"].get("name") == "audited"]
+    assert row.actor_id == f"source:{uses}" and row.subject_id == "read.region"
+    assert row.detail["source"] == uses
+    assert row.detail["fields"] == {"name": "audited", "region": "eu-west"}
+    assert "trace_id" in row.detail

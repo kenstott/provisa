@@ -2669,6 +2669,13 @@ main {
   min-height: 0;
   display: flex;
 }
+/* The shell's last row (components/LicenseBadge.tsx): #root is a flex column, so this row takes its
+   height from .app-body and every page ends above it. Absent when there is nothing to show. */
+.app-status-bar {
+  flex: none;
+  display: flex;
+  padding: 0.25rem 0.5rem;
+}
 /* The one vertical menu (components/VerticalNav.tsx; the Admin rail is the same over route links):
    items left-aligned down a column that scrolls on its own, the chosen one filled. */
 .vertical-nav {

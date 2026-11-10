@@ -368,8 +368,9 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
     try:
         # REQ-1882: the deadline watchdog cancels an in-flight blocking statement at _timeout;
         # wait_for alone cannot fire while inline driver work holds the request thread.
-        with request_deadline.within(_timeout):
-            return await _asyncio.wait_for(_execute_plan(plan, state), timeout=_timeout)
+        with request_deadline.within(_timeout) as deadline:
+            async with request_deadline.timing_out(deadline):
+                return await _execute_plan(plan, state)
     except _asyncio.TimeoutError:
         # REQ-1905: names the transport and the setting its timeout came from.
         setting = request_timeout_setting("cypher_http")

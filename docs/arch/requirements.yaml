@@ -18438,7 +18438,25 @@
     to Maven Central when a bundle changes. One stage command for the DMG, AppImage, Windows and pip installs
     runs once at install or first launch, using the machine''s configured package index, and a directory
     already filled is used without fetching. The container image is built with these assets inside it; it
-    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08).'
+    is not an installer. Built on the DuckDB 2.0 upgrade (maintainer 2026-11-08). (Amended 2026-11-10, LINUX
+    ARM64 HAS NO PGWIRE CONNECTORS:) Maintainer 2026-11-10: [SUPERSEDED by REQ-294, 2026-11-10 -- Linux
+    arm64 is not a supported platform. Kept here for history; do not implement against it.] Linux arm64
+    receives the DuckDB extension parts but no pgwire connector bundles; a pgwire connector there is refused
+    by name, naming the platforms that have it. The release build''s probe on Linux arm64 expects that refusal
+    rather than a bundle. [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS NOT SUPPORTED:) Maintainer
+    2026-11-10: [SUPERSEDED by REQ-294, 2026-11-10 -- Linux arm64 is fully supported; the macOS container
+    tier is Linux arm64. Kept here for history; do not implement against it.] Linux arm64 is not a supported
+    platform. The release builds, publishes and probes nothing for it: no DuckDB extension parts and no
+    pgwire connector bundles. The supported platforms are macOS arm64, Linux x86_64 and Windows x86_64.
+    [END SUPERSEDED BLOCK] (Amended 2026-11-10, LINUX ARM64 IS FULLY SUPPORTED:) Maintainer 2026-11-10:
+    Linux arm64 is a fully supported platform, because Docker on Apple silicon runs Linux arm64 and the
+    macOS container tier is a Linux arm64 install. The release builds, publishes and probes everything for
+    it as for the other platforms: the Provisa wheel, the DuckDB extension parts and every pgwire connector
+    bundle. The supported platforms are macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64. (Amended
+    2026-11-10, THE ENGINE RELEASE BUILDS THE BUNDLES:) Maintainer 2026-11-10: the pgwire connector bundles,
+    including the files they share, are built, signed and published by the calcite engine release, which
+    holds the signing key and repository credentials, for every supported platform. Provisa builds no bundle;
+    it reads the bundles the engine release published at the engine version it pins.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -31382,27 +31400,32 @@
   type: structural
   description: 'The materialization estate is DATA-MODEL-DRIVEN, not process-driven. That is the key differentiator.
     You declare the authoritative, governed data you want represented (each MV as SQL) and the RULES for
-    processing/reprocessing (expected-events freshness contract REQ-961, calendar/grain REQ-962,
-    deadline/debounce REQ-959/REQ-963, preprocess REQ-957); the system DERIVES the process — lineage
-    from SQL (REQ-939), fan-out, scheduling, and failover — with nothing hand-orchestrated. This inverts
-    the imperative pipeline model (dbt/Airflow author the process; the data model is emergent) and
-    yields a single, almost- PROVABLE data estate: a deterministic function of (governed sources, SQL
-    definitions, rules). "Almost" is bounded by five explicit PROOF OBLIGATIONS, each pushable toward
-    mechanical enforcement: [SUPERSEDED by REQ-964, 2026-10-21 -- in part: a preflight that imports
-    provisa_services is excluded. Kept here for history; do not implement against it.] (1) transform
-    determinism: MV SQL and preprocess must be pure (reject now()/random at registration; sandbox from
-    wall-clock); [END SUPERSEDED BLOCK] (2) source freshness accuracy: the one irreducible trust
-    boundary, "trusted" is relative to what a source reports; (3) land idempotency on the window key:
-    exactly-one-effect under the store/queue two-database split rests on this + ownership CAS (REQ-960),
-    not a distributed transaction; (4) temporal-join correctness: the barrier guarantees input
-    availability, not point-in- time-correct (SCD-2) joins, which are the SQL author''s obligation
-    (lintable); (5) calendar immutability: replay fidelity requires holiday/fiscal data
-    immutable-per-window (REQ-962). Close 1/3/5 mechanically, lint 4, and the estate is provable except
-    where a source lies. That is the strongest guarantee a federated estate can make. (Amended
-    2026-10-21, SERVICES PREFLIGHTS:) A preflight that imports provisa_services (REQ-957, REQ-1165,
-    REQ-2133) is excluded from replay determinism: its verdict is the state at refresh time (a
-    checker''s latest run, say), and a replay may reach another. It gates landing only and feeds no
-    content hash, so it does not make a landed result non-deterministic; it can only hold one back.'
+    processing/reprocessing (expected-events freshness contract REQ-961, calendar/grain REQ-962, deadline/debounce
+    REQ-959/REQ-963, preprocess REQ-957); the system DERIVES the process — lineage from SQL (REQ-939), fan-out,
+    scheduling, and failover — with nothing hand-orchestrated. [SUPERSEDED by REQ-964, 2026-11-09 -- dbt
+    is not imperative; its models are declared SELECTs. Kept here for history; do not implement against
+    it.] This inverts the imperative pipeline model (dbt/Airflow author the process; the data model is emergent)
+    [END SUPERSEDED BLOCK] and yields a single, almost- PROVABLE data estate: a deterministic function of
+    (governed sources, SQL definitions, rules). "Almost" is bounded by five explicit PROOF OBLIGATIONS,
+    each pushable toward mechanical enforcement: [SUPERSEDED by REQ-964, 2026-10-21 -- in part: a preflight
+    that imports provisa_services is excluded. Kept here for history; do not implement against it.] (1)
+    transform determinism: MV SQL and preprocess must be pure (reject now()/random at registration; sandbox
+    from wall-clock); [END SUPERSEDED BLOCK] (2) source freshness accuracy: the one irreducible trust boundary,
+    "trusted" is relative to what a source reports; (3) land idempotency on the window key: exactly-one-effect
+    under the store/queue two-database split rests on this + ownership CAS (REQ-960), not a distributed
+    transaction; (4) temporal-join correctness: the barrier guarantees input availability, not point-in-
+    time-correct (SCD-2) joins, which are the SQL author''s obligation (lintable); (5) calendar immutability:
+    replay fidelity requires holiday/fiscal data immutable-per-window (REQ-962). Close 1/3/5 mechanically,
+    lint 4, and the estate is provable except where a source lies. That is the strongest guarantee a federated
+    estate can make. (Amended 2026-10-21, SERVICES PREFLIGHTS:) A preflight that imports provisa_services
+    (REQ-957, REQ-1165, REQ-2133) is excluded from replay determinism: its verdict is the state at refresh
+    time (a checker''s latest run, say), and a replay may reach another. It gates landing only and feeds
+    no content hash, so it does not make a landed result non-deterministic; it can only hold one back. (Amended
+    2026-11-09, DBT IS NOT THE IMPERATIVE CASE:) Maintainer 2026-11-09: this inverts the imperative pipeline
+    model, where a tool such as Airflow authors the process and the data model is emergent. dbt is not that
+    case: its models are declared SELECTs and it derives their order. The difference from dbt is that a
+    dbt run happens when something invokes it, while here each view''s freshness rules say when it is rebuilt
+    and under what limits.'
   use_case: 'Governance and reproducibility are structural properties of the estate, not process hygiene:
     because lineage is derived (cannot drift), outputs are addressable and deterministically replayable,
     and trust is explicit via the freshness contract, the whole data estate is auditable as a function
@@ -32242,7 +32265,7 @@
   - tests/unit/test_live_regen_snapshots.py
   competitive_position:
     status: ahead
-    rationale: dbt/Airflow snapshots are imperative jobs with no distinction between derivable and frozen
+    rationale: A dbt snapshot or an Airflow snapshot task is a job that captures history as it runs, with no distinction between derivable and frozen
       point-in-time data; Provisa makes the frozen case an explicit, why-tagged departure that self-documents
       as retireable-vs-permanent in the distance-from-NRT ledger.
   related_reqs:
@@ -48208,9 +48231,15 @@
     alongside isolated_available so the tab disables the lane the org cannot buy rather than failing the
     save. The shared and external lanes are ungated: shared is where every org starts, and an external engine
     is the org''s own compute. A deployment with no commercial plugin, and an org with no billing row, gate
-    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) Maintainer 2026-11-09 (REQ-1327): saving
-    an org''s engine lane is the platform''s, on the deployment check, naming the org. org_settings keeps
-    the page read-only, with its report.'
+    no lane. (Amended 2026-11-09, THE PLATFORM SAVES THE LANE:) [SUPERSEDED by REQ-1412, 2026-11-09 -- on
+    SaaS an org admin changes its own engine lane. Kept here for history; do not implement against it.]
+    Maintainer 2026-11-09 (REQ-1327): saving an org''s engine lane is the platform''s, on the deployment
+    check, naming the org. org_settings keeps the page read-only, with its report. [END SUPERSEDED BLOCK]
+    (Amended 2026-11-09, THE ORG ADMIN CHANGES ITS LANE:) Maintainer 2026-11-09: on SaaS an org admin changes
+    its own org''s engine lane, on org_settings, on the org page. The platform''s route stays, on the deployment
+    check, so an operator can set it for a named org. (Amended 2026-11-09, A PLAN DECIDES ITS LANE:) Maintainer
+    2026-11-09: an org on a plan changes its engine by changing its plan, and the page points there; the
+    org admin''s direct save applies to an org with no plan.'
   use_case: An org with its own Trino cluster points Provisa at it; an org needing isolation from other
     tenants requests a dedicated SaaS coordinator; either returns to the shared lane.
   code:
@@ -83503,6 +83532,7 @@
   status: complete
   tests:
   - tests/integration/test_streaming_demo.py
+  - tests/unit/test_streaming_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83615,6 +83645,8 @@
   tests:
   - tests/integration/test_retail_demo.py
   - tests/integration/test_retail_regions_tier_e2e.py
+  - tests/unit/test_retail_demo.py
+  - tests/unit/test_start_ui_install_named_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83736,6 +83768,8 @@
   status: complete
   tests:
   - tests/integration/test_insurance_demo.py
+  - tests/unit/test_insurance_glossary.py
+  - tests/unit/test_demo_bundle_setup.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85130,6 +85164,8 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   status: complete
   tests:
   - tests/integration/test_provisioning_demo.py
+  - tests/unit/test_provisioning_demo_consumer.py
+  - tests/unit/test_provisioning_setup_pulls.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -89359,22 +89395,28 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: roles-and-capabilities-domain-access
   priority: MUST
   type: behavioral
-  description: 'Registering a table grants read on every one of its columns to the role the registrant is
-    acting as and to the standard Viewer role (REQ-2155), written into each column''s grant list where they
-    can be seen and changed. Registration never grants write; write is an explicit grant (REQ-868). An empty
-    grant list means no role, in every domain. A column is made sensitive by removing Viewer from its grant
-    list. A role cannot remove its own read on a column; to keep a column''s values from itself it adds
-    a mask rule for itself, which keeps the column''s name so the role can still administer it. The last
-    role holding read on a column cannot lose it, so every column has a reader. If no role can read a column,
-    re-registering the table from its source recovers it: registration shows the raw schema (REQ-2152) and
-    sets new grants. Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A
-    REQUIREMENT DEFECT:) This corrects a defect in the access model''s requirements, not a feature: the
-    earlier rules let a capability or a default reveal or reach more than a role''s grants. It is resolved
-    before the product is declared green. (Amended 2026-10-28, A ROLE SERVED NO TABLES IS NOT REFUSED:)
-    A role whose grants serve it no table is not refused as such: its data surface is simply empty. A statement
-    naming a table answers as for any role that is not served that table, and statements that need no table
-    (a graph-session CREATE, MATCH or MERGE of ephemeral objects, literals, catalog reads) run as for any
-    role.'
+  description: '[SUPERSEDED by REQ-2154, 2026-11-10 -- the default applies only to a column registered with
+    no grant named. Kept here for history; do not implement against it.] Registering a table grants read
+    on every one of its columns to the role the registrant is acting as and to the standard Viewer role
+    (REQ-2155), written into each column''s grant list where they can be seen and changed. [END SUPERSEDED
+    BLOCK] Registration never grants write; write is an explicit grant (REQ-868). An empty grant list means
+    no role, in every domain. A column is made sensitive by removing Viewer from its grant list. A role
+    cannot remove its own read on a column; to keep a column''s values from itself it adds a mask rule for
+    itself, which keeps the column''s name so the role can still administer it. The last role holding read
+    on a column cannot lose it, so every column has a reader. If no role can read a column, re-registering
+    the table from its source recovers it: registration shows the raw schema (REQ-2152) and sets new grants.
+    Seeds and demo configurations state their grants explicitly. (Amended 2026-10-25, A REQUIREMENT DEFECT:)
+    This corrects a defect in the access model''s requirements, not a feature: the earlier rules let a capability
+    or a default reveal or reach more than a role''s grants. It is resolved before the product is declared
+    green. (Amended 2026-10-28, A ROLE SERVED NO TABLES IS NOT REFUSED:) A role whose grants serve it no
+    table is not refused as such: its data surface is simply empty. A statement naming a table answers as
+    for any role that is not served that table, and statements that need no table (a graph-session CREATE,
+    MATCH or MERGE of ephemeral objects, literals, catalog reads) run as for any role. (Amended 2026-11-10,
+    A NAMED GRANT IS USED AS GIVEN:) Maintainer 2026-11-10: a column registered with a grant list named
+    is granted exactly that list. Only a column registered with no grant named gets the default, read for
+    the role the registrant is acting as and the standard Viewer role (REQ-2155), written into its grant
+    list where it can be seen and changed. Tables now match metrics, commands and MCP tools, which already
+    use a named list as given.'
   scenario: 'Given a steward acting as data_steward registers table claims
 
     Then every column of claims grants read to data_steward and viewer and grants no write
@@ -91038,7 +91080,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
     is not drawn as its own box: the input''s column links straight to the table''s column, and the link
     names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
-    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08).'
+    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
+    2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
+    on that product alone, its member tables, their columns and the terms grounded on them, with a control
+    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -92229,6 +92274,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_jdbc_source_e2e.py
+  - tests/unit/jdbc_source/test_jdbc_source.py
+  - tests/unit/jdbc_source/test_jdbc_source_attach.py
+  - tests/unit/jdbc_source/test_jdbc_source_detect.py
+  - tests/unit/jdbc_source/test_jdbc_source_floor.py
   since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
@@ -92799,6 +92848,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   status: complete
   tests:
   - tests/integration/test_banksecrecy_demo.py
+  - tests/unit/test_term_scan_carry.py
+  - tests/unit/test_demo_template_scans.py
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -93926,7 +93977,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-07). (Amended 2026-11-08, HOW THE LISTS ARE NAMED IN A TOKEN:) The claim that carries the nested
     form is named per identity provider, in that provider''s settings, which the admin UI edits; with no
     name set, that provider sends no nested lists. The flat form is provisa:<role>:<kind>:<id>, and an empty
-    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)'
+    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)
+    (Amended 2026-11-09, ONE API, THREE WAYS TO USE IT:) Maintainer 2026-11-09: one write API sets a principal''s
+    lists, with reason, expiry and audit, and the UI is a client of it. A large enterprise integrates through
+    the API or its identity provider''s claims and sees the UI read-only; a mid-size organization with an
+    identity provider manages lists in the UI; a small one manages everything for local accounts in the
+    UI. No mode is chosen: where the identity provider sends a list for a role and kind, that list wins
+    and the UI shows it read-only. The UI''s picker finds people through one search by name or email, over
+    local accounts and known members of the org, returning the principal the sign-in token carries, with
+    name and email for display only. A person not yet seen is granted by typed email, shown as pending,
+    and the grant attaches when a sign-in token''s email matches. Directory lookup in an identity provider
+    is added per provider, behind one interface, as customers need it.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -94020,7 +94081,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     returns a status; Provisa calls it periodically and shows the result on the source in Sources. There
     are no per-statement or error tags: a function''s own code covers those. (Amended 2026-11-09, WHEN ON-START
     FAILS:) Maintainer 2026-11-09: when @on-start fails at a first join, the join is refused by name. When
-    it fails on a later restart of a joined host, the source stays and shows as unhealthy.'
+    it fails on a later restart of a joined host, the source stays and shows as unhealthy. (Amended 2026-11-09,
+    SETUP VALUES REACH THE HOST:) Maintainer 2026-11-09: Provisa delivers a connector''s setup values to
+    the host it paired with, over the paired TLS connection. Each @requires secret is resolved at delivery
+    and the read is audited; the host holds it only in memory, never on disk.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
@@ -94183,7 +94247,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from Spark: @on-start submits a streaming job that writes to a Kafka topic, @on-stop stops it, @health
     reports it (REQ-2221), and Provisa''s Kafka source serves subscriptions from the topic, so one Spark
     job serves every subscriber. A @stream in the script also works, one Spark streaming query per subscription,
-    which needs a cluster sized for the subscribers.'
+    which needs a cluster sized for the subscribers. (Amended 2026-11-09, HOW IT IS OFFERED AND WHAT THE
+    IMAGE HOLDS:) Maintainer 2026-11-09: the connector is offered to every organization through a platform
+    block file in the package, written by the release build and read beside the org''s own connectors; Sources
+    shows nothing until a release fills it. The image holds a thin Spark Connect client, not Spark: the
+    cluster value is a Spark Connect address, and the customer''s cluster does the work.'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
@@ -94230,14 +94298,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     argument set. A @command is a mutation. (Amended 2026-11-09, A LISTENER FOR MINTED TOKENS:) Maintainer
     2026-11-09: the scoped pgwire session is a dedicated pgwire listener that accepts only minted tokens,
     each scoped to one call and bound to the calling role. A sandbox may reach that one port, and a remote
-    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.'
+    host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
+    (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on REQ-1921 and REQ-1922: a materialized
+    view''s build runs as the org''s admin role, so that is the calling role when a build reads a table
+    through a command.'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
     And a materialized view over that command with a governed table as its input
 
 
-    When the view is built as a role that cannot see a column of the input
+    When the view is built, its build running as a role that cannot see a column of the input
 
 
     Then the code reads the table as that role and the column is not available to it
@@ -94256,14 +94327,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
-    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
-    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
-    the same manifest from the code's exported functions and types, a host program that speaks the worker
-    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
-    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
-    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
-    detects it from the project's standard files.
+  description: 'Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build image
+    (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints the same
+    manifest from the code''s exported functions and types, a host program that speaks the worker protocol
+    and returns rows as Arrow, package fetch and install through the organisation''s registries, the runtime
+    (a static binary compiled once per code hash with the code linked in and cached like an install), the
+    sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221) detects it
+    from the project''s standard files. (Amended 2026-11-10, A C LINKER IN THE IMAGE:) Maintainer 2026-11-10:
+    a Rust source is prepared on the server like any other code source; the product image carries gcc and
+    libc6-dev, because build scripts and procedural macros (serde among them) are compiled and linked on
+    the build machine.'
   scenario: 'Given a Rust code source whose exported functions return rows
 
 
@@ -94327,7 +94401,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to connect to: the manifest and run results are files, uploaded or read from where the team publishes
     them, and commands run where dbt is installed. (Amended 2026-11-09, EVERYTHING THAT CAN BE A COMMAND
     IS ONE:) Maintainer 2026-11-09: anything dbt can run is surfaced as a command: beside models, tests,
-    snapshots and seeds, also build, source freshness, and each macro through run-operation.'
+    snapshots and seeds, also build, source freshness, and each macro through run-operation. (Amended 2026-11-09,
+    A PUBLIC MODEL IS A CANDIDATE DATA PRODUCT:) Maintainer 2026-11-09: [SUPERSEDED by REQ-2228, 2026-11-09
+    -- public models are registered in bulk from Register Table. Kept here for history; do not implement
+    against it.] a model the manifest marks public with an enforced contract is offered as a candidate data
+    product, its schema promise, tests, owner and version carried from the manifest. A steward decides whether
+    it becomes one. [END SUPERSEDED BLOCK] (Amended 2026-11-09, TARGETS, DESCRIPTIONS AND MACROS:) Maintainer
+    2026-11-09: on an operator-run connector a dbt command is a code source @command taking the dbt invocation
+    as a fixed argument. A new manifest updates a description only if no steward has changed it. Each macro
+    means the project''s and its installed packages'' macros, not dbt''s own internal dbt and dbt_* macros.
+    (Amended 2026-11-09, DBT IS A CHECKER:) Maintainer 2026-11-09: dbt is a third checker type under REQ-1443:
+    a steward registers a results table per tested model and each new run results file appends rows in the
+    fixed schema, with the data quality tag, product panels and export assertions. (Amended 2026-11-09,
+    REGISTER THE PUBLIC MODELS AS PRODUCTS:) Maintainer 2026-11-09: on Register Table a dbt source offers,
+    beside picking tables, to register all its public models with enforced contracts and generate data products,
+    after a preview, as drafts a steward reviews. One product per dbt group; a project with no groups gets
+    one product. Each carries its schema promise, tests, owner and version from the manifest. Register Table
+    stays for picking individual models as plain tables. (Amended 2026-11-10, UNGROUPED PUBLIC MODELS:)
+    Maintainer 2026-11-10: in a project with groups, a public contracted model in no group joins no generated
+    product; the preview lists it and it is registered by picking it as a table.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
@@ -94415,3 +94507,78 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the Dynamic Table is refreshed and the call is recorded'
   stakeholders:
   - data-engineer
+- id: REQ-2231
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing page with no in-process interface to unit test. Verified by rendering it.
+  description: 'Maintainer 2026-11-09. The provisa.dev home page serves one reader, a developer with one
+    job, and moves them to trying the product. It has five parts: a hero whose primary action opens a
+    live demo with no login; six job cards, each linking to its quick start; one statement of the single
+    model with the pains it removes and a same-query, two-roles proof; a short row of sources; and
+    download with a short FAQ. Depth lives on the why, start, compare and docs pages, and each pain a
+    why page answers opens that page.'
+- id: REQ-2232
+  value: A named demo shows a dbt project working with Provisa, with dbt still building.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-09. A named demo integrates a dbt project through the dbt source type
+    (REQ-2228). The project is built by dbt, unchanged; the demo reads its manifest and shows the tables
+    dbt built governed by role, lineage running through its models and on to a consumer, freshness and test
+    results from its run, and a model run from Provisa through its command. (Amended 2026-11-09, POINT TO
+    OPENLINEAGE:) Maintainer 2026-11-09: the demo''s words also say that a team with Flink, Airflow or another
+    tool that emits OpenLineage can bring its lineage in through the OpenLineage receiver (REQ-2229). (Amended
+    2026-11-09, DBT BUILDS IT, PROVISA DELIVERS IT:) Maintainer 2026-11-09: the demo''s main thread is that
+    dbt builds a model and Provisa delivers it as a governed data product. (Amended 2026-11-09, A PRODUCT
+    INHERITS THE DOORS AND THE RULES:) Maintainer 2026-11-09: the demo shows that the data product built
+    from a dbt model inherits every access method Provisa offers (the APIs, the SQL drivers and the rest)
+    and every access control, with nothing added in dbt. (Amended 2026-11-09, IT ENDS WITH THE AGENT YOU
+    CHOOSE:) Maintainer 2026-11-09: the demo closes by joining the data product with the ontology and the
+    policies in the Library (REQ-2185), through Provisa''s MCP tool, used with whichever agent the visitor
+    chooses, the agent seeing only what its role can see.'
+  scenario: 'Given the dbt demo
+
+
+    When a visitor follows its tour
+
+
+    Then the tables dbt built are served with less to a restricted role
+
+
+    And lineage runs through the dbt models to what consumes them
+
+
+    And the run''s freshness and test results are shown
+
+
+    When the visitor runs a model through its command
+
+
+    Then dbt builds that model and the call is recorded'
+  stakeholders:
+  - data-engineer
+- id: REQ-2233
+  status: proposed
+  target: 2027-Q1
+  group: 11. Platform, Infrastructure & Delivery
+  category: Commercial Website
+  feature: commercial-website
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: Static marketing pages with no in-process interface to unit test. Verified by rendering them.
+  description: 'Maintainer 2026-11-09. The site presents Provisa as additive and solving a problem. Its
+    pages about other products say what each does well and how Provisa works with and extends it, and do
+    not list that product''s shortcomings; the page is named Works with. They also state, as the customer''s
+    own choice, that the model lets you change or recover from a choice you have outgrown and scale back
+    a product that is not delivering value.'

@@ -38,6 +38,7 @@ import {
   EMPTY_DATASET_COLUMN,
   OPERATION_SCHEMA,
   CODE_SCHEMA,
+  isSnowflakeOperation,
 } from "./types";
 import type { FormState } from "./types";
 import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
@@ -169,7 +170,9 @@ export function CommandFormFields({
     ? (OPERATION_SCHEMA[selectedSource.type] ?? CODE_SCHEMA[selectedSource.type])
     : undefined;
   const isSourceOperation =
-    form.implKind === "source_operation" || form.implKind === "code_columns";
+    form.implKind === "source_operation" ||
+    form.implKind === "code_columns" ||
+    isSnowflakeOperation(selectedSource?.type, form.functionName); // REQ-2230
   // REQ-2001: a statement command's statement declares its kind, its written table and its
   // output, so the form asks for none of them.
   const isStatement = form.implKind === "statement";

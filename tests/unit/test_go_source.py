@@ -34,13 +34,18 @@ from provisa.codesource.manifest import (
     read_manifest,
 )
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
+from provisa.golang.build import build_module
+from provisa.golang.install import check_lockfile
 from provisa.golang.reader import (
     READER,
+    SERVICES,
+    SERVICES_MODULE,
     check_go_line,
     ensure_reader,
     go_environment,
     read_code,
     reader_key,
+    services_go_mod,
 )
 
 pytestmark = pytest.mark.unit
@@ -84,6 +89,40 @@ def _code(tmp_path: Path, source: str) -> Path:
 # -- reading ------------------------------------------------------------------------------------
 
 
+def test_the_lifecycle_tags_are_read_from_a_doc_comment(reader, go, tmp_path):
+    """REQ-2221: Go reads @on-start, @on-stop and @health like every other language."""
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import "context"
+
+        // Connect.
+        //
+        // @on-start
+        func Connect(ctx context.Context, values map[string]string) error { return nil }
+
+        // Close.
+        //
+        // @on-stop
+        func Close() error { return nil }
+
+        // Check.
+        //
+        // @health
+        func Check() (string, error) { return "ok", nil }
+        """,
+    )
+    manifest = _read(reader, go, code, tmp_path)
+    assert {e.name: e.kind for e in manifest.exports} == {
+        "Connect": "on-start",
+        "Close": "on-stop",
+        "Check": "health",
+    }
+    assert [p.name for p in manifest.lifecycle("on-start").parameters] == ["values"]
+
+
 def test_the_codes_tables_commands_and_streams_are_read_from_doc_comments_and_types(
     reader, go, tmp_path
 ):
@@ -117,7 +156,7 @@ def test_the_codes_tables_commands_and_streams_are_read_from_doc_comments_and_ty
         Field("lines", ListOf(Named("Line")), False),
         Field("note", Scalar("text"), True, "Note is what the customer wrote."),
     )
-    assert manifest.export("Many").preview  # map rows: typed by a preview
+    assert manifest.export("Many").returns == Named("Counted")
     # The call's context.Context is no input of the function's.
     assert [p.name for p in manifest.export("Placed").parameters] == ["region"]
     assert manifest.export("Forever").parameters == ()
@@ -157,6 +196,62 @@ def test_a_fields_name_is_the_one_encoding_json_gives_it(reader, go, tmp_path):
     )
     manifest = _read(reader, go, code, tmp_path)
     assert [f.name for f in manifest.types["Row"].fields] == ["region", "id", "Plain", "-"]
+
+
+def test_a_loose_row_type_is_refused_by_name(reader, go, tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import "iter"
+
+        type Row struct {
+            ID      int64          `json:"id"`
+            Payload map[string]any `json:"payload"`
+        }
+
+        // @table
+        func Mapped() []map[string]any { return nil }
+
+        // @table
+        func Anything() []any { return nil }
+
+        // @stream
+        func Feed() iter.Seq2[map[string]any, error] { return nil }
+
+        // @table
+        func Typed() []Row { return nil }
+        """,
+    )
+    with pytest.raises(ManifestRefused) as refused:
+        _read(reader, go, code, tmp_path)
+    assert sorted(refused.value.problems) == [
+        f"{name}: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+        for name in ("Anything", "Feed", "Mapped")
+    ]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose(reader, go, tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        type Row struct {
+            ID      int64          `json:"id"`
+            Payload map[string]any `json:"payload"`
+        }
+
+        // @table
+        func Typed() []Row { return nil }
+        """,
+    )
+    assert _read(reader, go, code, tmp_path).types["Row"].fields == (
+        Field("id", Scalar("bigint"), False),
+        Field("payload", Scalar("json"), False),
+    )
 
 
 def test_code_that_breaks_the_rules_is_refused_with_every_problem(reader, go, tmp_path):
@@ -435,6 +530,90 @@ def test_a_go_command_reaches_no_network_and_inherits_nothing(tmp_path, monkeypa
         "GOENV": "off",
         "CGO_ENABLED": "0",
     }
+
+
+def _services_lines(go_mod: Path) -> list[str]:
+    return [line.strip() for line in go_mod.read_text().splitlines() if SERVICES_MODULE in line]
+
+
+def test_the_module_is_provided_whatever_the_codes_go_mod_says(tmp_path):
+    """REQ-2106: a go.mod silent about provisa_services gets it; one that names it, for the
+    author's own stub outside Provisa, gets Provisa's in place of the stub."""
+    shipped = f"{SERVICES_MODULE} => {SERVICES}"
+    for text in (
+        "module example.com/rows\n\ngo 1.23\n",
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n\n"
+        "replace provisa_services => ./mock\n",
+        "module example.com/rows\n\ngo 1.23\n\nrequire (\n\tprovisa_services v0.0.0\n)\n\n"
+        "replace (\n\tprovisa_services v0.0.0 => ./mock\n)\n",
+    ):
+        code = tmp_path / "code"
+        code.mkdir(exist_ok=True)
+        (code / "go.mod").write_text(text)
+        (code / "go.sum").write_text("example.com/x v1.0.0 h1:abc=\n")
+        made = services_go_mod(code, tmp_path / "scratch")
+        assert (code / "go.mod").read_text() == text  # the code's own is never changed
+        assert made.with_suffix(".sum").read_text() == "example.com/x v1.0.0 h1:abc=\n"
+        assert sorted(_services_lines(made)) == sorted(
+            [f"replace {shipped}", f"require {SERVICES_MODULE} v0.0.0"]
+        )
+        assert "module example.com/rows" in made.read_text()
+
+
+def test_the_module_needs_no_go_sum_and_any_other_requirement_still_does(tmp_path):
+    """REQ-2106: requiring only provisa_services is not requiring something to check."""
+    (tmp_path / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n"
+    )
+    check_lockfile(tmp_path)
+    (tmp_path / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire (\n\tprovisa_services v0.0.0\n"
+        "\texample.com/other v1.2.3\n)\n"
+    )
+    with pytest.raises(BundleRefused, match="carries no go.sum"):
+        check_lockfile(tmp_path)
+
+
+def test_the_host_build_replaces_the_module_with_provisas_not_the_codes(tmp_path):
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "go.mod").write_text(
+        "module example.com/rows\n\ngo 1.23\n\nrequire provisa_services v0.0.0\n\n"
+        "replace provisa_services => ./mock\n"
+    )
+    into = tmp_path / "into"
+    into.mkdir()
+    build_module(code, ".", ["Rows"], into)
+    assert sorted(_services_lines(into / "go.mod")) == sorted(
+        [f"{SERVICES_MODULE} => {SERVICES}", f"{SERVICES_MODULE} v0.0.0"]
+    )
+
+
+def test_code_importing_the_module_is_read(reader, go, tmp_path):
+    """REQ-2106: its go.mod says nothing of provisa_services, and the reader type-checks it."""
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import (
+            "context"
+
+            ps "provisa_services"
+        )
+
+        type Row struct {
+            Key string `json:"key"`
+        }
+
+        // @table
+        func Rows(ctx context.Context) ([]Row, error) {
+            key, err := ps.Secrets.Get(ctx, "key")
+            return []Row{{key}}, err
+        }
+        """,
+    )
+    assert [e.name for e in _read(reader, go, code, tmp_path).exports] == ["Rows"]
 
 
 def test_a_failing_go_command_is_refused_with_its_error(tmp_path):

@@ -1,0 +1,15 @@
+{
+  "connectorSetup": {
+    "identity": "连接器 {{name}}，跟随 {{ref}}。",
+    "missing": "请填写连接器的主机、端口、配对码以及所有必需的值。",
+    "image": "镜像",
+    "imageHint": "您的部署运行的镜像。Provisa 在连接时据此检查主机。",
+    "host": "主机",
+    "hostHint": "运行该镜像的主机，即 Provisa 访问它所用的地址。",
+    "port": "端口",
+    "pairing": "配对码",
+    "pairingHint": "容器首次启动时在 \"pairing code:\" 后打印的那一行。只使用一次，不会保留。",
+    "secretHint": "要使用的组织密钥。其值绝不在此处输入。",
+    "fixedHint": "由此连接器设定，无法更改。"
+  }
+}

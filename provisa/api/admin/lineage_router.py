@@ -28,6 +28,13 @@ from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
 from provisa.lineage.read_rights import readable_graph
+from provisa.lineage.reported import (
+    RegisteredTable,
+    ReportedJob,
+    add_reported_lineage,
+    reported_jobs,
+    reported_seeds,
+)
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import data_product as data_product_repo
 
@@ -244,8 +251,11 @@ async def _fetch_view_rows(state) -> list[dict]:
     speaks the names the user defined (``<domain>.<table>``, e.g. ``pet_store.test``)."""
     if getattr(state, "model_db", None) is None:
         return []
+    from provisa.dbt.store import lineage_views
+
     async with state.model_db.acquire() as conn:
-        return await _view_rows(conn)
+        # REQ-2228: a dbt model's compiled SQL is read as a view's definition is.
+        return [*await _view_rows(conn), *await lineage_views(conn)]
 
 
 async def _view_rows(conn) -> list[dict]:
@@ -264,7 +274,35 @@ async def _view_rows(conn) -> list[dict]:
             registered_tables.c.view_sql.is_not(None),
         )
     )
-    return [dict(r._mapping) for r in res.fetchall()]
+    return [dict(r._mapping) for r in res.fetchall()] + await _source_definition_views(conn)
+
+
+async def _source_definition_views(conn) -> list[dict]:
+    """REQ-2230: each table defined in its source (a Snowflake Dynamic Table), as a view over what
+    its definition reads. Every table of those sources is read, since each may be one it reads."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as t
+    from provisa.core.schema_org import sources, table_columns
+    from provisa.lineage.source_definitions import definition_views
+
+    defined = select(t.c.source_id).where(t.c.source_definition.is_not(None))
+    res = await conn.execute_core(
+        select(
+            t.c.source_id,
+            sources.c.database,
+            t.c.domain_id,
+            t.c.schema_name,
+            t.c.table_name,
+            t.c.source_definition,
+            table_columns.c.column_name,
+            table_columns.c.alias,
+        )
+        .join(sources, sources.c.id == t.c.source_id)
+        .join(table_columns, table_columns.c.table_id == t.c.id)
+        .where(t.c.source_id.in_(defined))
+    )
+    return definition_views([dict(r._mapping) for r in res.fetchall()])
 
 
 async def _fetch_registry_columns(state) -> list[dict]:
@@ -302,6 +340,57 @@ async def _registry_columns(conn) -> list[dict]:
         )
     )
     return [dict(r._mapping) for r in res.fetchall()]
+
+
+async def _reported_lineage(
+    state, column_rows: list[dict]
+) -> tuple[list[ReportedJob], list[RegisteredTable]]:
+    """What OpenLineage events reported (REQ-2229), and every registered table a dataset can name,
+    with the source it is read from."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import openlineage_run_datasets, registered_tables, sources
+
+    if getattr(state, "model_db", None) is None:
+        return [], []
+    async with state.model_db.acquire() as conn:
+        reported = await conn.execute_core(select(openlineage_run_datasets))
+        rows = [dict(r._mapping) for r in reported.fetchall()]
+        if not rows:
+            return [], []
+        located = await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.domain_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                sources.c.type,
+                sources.c.host,
+                sources.c.port,
+                sources.c.database,
+            ).select_from(
+                registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
+            )
+        )
+        table_rows = [dict(r._mapping) for r in located.fetchall()]
+    columns: dict[int, dict[str, str]] = {}
+    for row in column_rows:
+        columns.setdefault(row["table_id"], {})[row["column_name"].lower()] = sql_column_name(row)
+    tables = [
+        RegisteredTable(
+            relation=_relation_of(t["domain_id"], t["table_name"]),
+            source_type=t["type"],
+            host=t["host"],
+            port=t["port"],
+            database=t["database"],
+            schema=t["schema_name"],
+            table=t["table_name"],
+            columns=columns[t["id"]],
+        )
+        for t in table_rows
+        if t["id"] in columns
+    ]
+    return reported_jobs(rows), tables
 
 
 async def store_lineage_edges(conn, rows: list[dict]) -> None:
@@ -417,6 +506,8 @@ def _view_relation(row: dict) -> str:
     ``pet_store``), so a statement's reference to the view stitches to this same node id."""
     from provisa.compiler.naming import domain_to_sql_name
 
+    if "relation" in row:  # REQ-2228: a dbt model already knows the relation it is served as
+        return row["relation"]
     return f"{domain_to_sql_name(row['domain_id'])}.{row['table_name']}"
 
 
@@ -513,6 +604,11 @@ async def federation_graph(
         or merged.graph.nodes.get(s) is None
         or merged.graph.nodes[s].relation not in registered
     }
+    # REQ-2229: what OpenLineage reported joins after the seeds too, so a lens narrows it as it
+    # narrows the model; a job's outside output, downstream of its seeds, is seeded by report.
+    jobs, reported_tables = await _reported_lineage(state, column_rows)
+    add_reported_lineage(merged.graph, jobs, reported_tables)
+    seeds |= reported_seeds(merged.graph, seeds, unscoped=not domain_filter and not role_filter)
     # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
     natives = await _native_tables(state)
     with_native_hop(merged.graph, natives)

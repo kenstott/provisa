@@ -151,6 +151,7 @@
     "hopsFrom": "{{focus}} से हॉप",
     "hopsFromMatches": "मिलानों से हॉप",
     "relatedTables": "संबंधित टेबल",
+    "restOfModel": "मॉडल का शेष भाग दिखाएँ",
     "lateral": "पार्श्व किनारे",
     "grounding_grounded": "आधारित",
     "grounding_grounded_pending": "आधारित, ड्राफ़्ट के माध्यम से"

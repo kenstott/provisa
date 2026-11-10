@@ -363,12 +363,14 @@ export type RemoteSeed =
       importPaths: string;
       cacheTtl: string;
       auth: RemoteAuth;
-    };
+    }
+  | ({ kind: "dbt" } & import("./dbt").DbtSeed); // REQ-2228
 
 const REMOTE_LISTS: Record<string, string> = {
   graphql_remote: "/admin/sources/graphql-remote",
   openapi: "/admin/openapi/list",
   grpc_remote: "/admin/grpc-remote/list",
+  dbt: "/admin/dbt/list", // REQ-2228
 };
 
 /** Whether a source of this type keeps settings in a registration of its own. */
@@ -388,6 +390,18 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
   const reg = regs.find((x) => x.source_id === s.id);
   if (!reg) {
     throw new Error(i18n.t("sourcesPage.registrationMissing", { list: url, source: s.id }));
+  }
+  if (s.type === "dbt") {
+    const cloud = (reg.cloud as Record<string, string> | undefined) ?? {};
+    return {
+      kind: "dbt",
+      spec: reg.spec as "location" | "upload" | "cloud",
+      location: String(reg.location ?? ""),
+      commandLine: String(reg.command_line ?? ""),
+      host: cloud.host ?? "",
+      accountId: cloud.account_id ?? "",
+      jobId: cloud.job_id ?? "",
+    };
   }
   const ttl = String(reg.cache_ttl);
   if (s.type === "graphql_remote") {

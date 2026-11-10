@@ -26,6 +26,13 @@ from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
 
 
+def connector_error() -> type[Exception]:  # REQ-2230
+    """The base class of every error the connector raises for a statement it ran."""
+    from snowflake.connector.errors import Error
+
+    return Error
+
+
 class SnowflakeDriver(DirectDriver):  # REQ-988
     def __init__(self) -> None:
         self._conn: Any = None

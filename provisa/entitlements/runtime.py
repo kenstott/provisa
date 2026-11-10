@@ -25,14 +25,14 @@ A transport that authenticates a person binds them once per call
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from provisa.entitlements.index import Finding, build_index, check_lists
+from provisa.entitlements.index import Finding, build_index, check_lists, matches
 from provisa.entitlements.lists import (
     HeldEntitlements,
     IdpLists,
@@ -42,6 +42,7 @@ from provisa.entitlements.lists import (
     parse_idp_entitlements,
 )
 from provisa.entitlements.mask import EntitlementMask, MemberInput, compute_mask
+from provisa.security.rights import role_ids_from_claims
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class EntitlementRequest:
     user_id: str
     idp: IdpLists
     idp_hash: str
+    acting_roles: tuple[str, ...] = ()
 
 
 _current: ContextVar[EntitlementRequest | None] = ContextVar("provisa_entitlements", default=None)
@@ -65,7 +67,8 @@ def bind_entitlements(identity: Any) -> Token:
     """Bind ``identity``'s lists for the call being served in this context. A token whose lists
     cannot be read raises :class:`~provisa.entitlements.lists.EntitlementClaimError`."""
     idp = parse_idp_entitlements(identity.raw_claims, identity.entitlements_claim)
-    return _current.set(EntitlementRequest(identity.user_id, idp, idp_lists_hash(idp)))
+    acting = tuple(role_ids_from_claims(getattr(identity, "acting_roles", None) or ()))
+    return _current.set(EntitlementRequest(identity.user_id, idp, idp_lists_hash(idp), acting))
 
 
 def reset_entitlements(token: Token) -> None:
@@ -117,7 +120,7 @@ def _role_context(state: Any, role_id: str) -> Any:
     return None if surface is None else surface.context
 
 
-def _role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
+def role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
     """The role's default lists. Defaults naming exactly the domains the role is offered to are
     the role itself, so a plain role grant is unchanged; they narrow nothing."""
     defaults = dict(role.get("default_entitlements") or {})
@@ -160,7 +163,7 @@ def _compute(
         role = state.roles.get(member)
         if member_context is None or role is None:
             continue  # a qualifier with no schema of its own reaches nothing
-        lists = effective_lists(member, request.idp, held, _role_defaults(role))
+        lists = effective_lists(member, request.idp, held, role_defaults(role))
         findings.extend(check_lists(member, role, lists, model_index))
         expiries = tuple(r for r in held.expiries if r.role_id == member)
         members.append(MemberInput(member, lists, index_of(member, member_context), expiries))
@@ -185,7 +188,7 @@ def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
         not request.idp
         and not held.lists
         and not held.expiries
-        and not any(_role_defaults(state.roles.get(member, {})) for member in _members(role_id))
+        and not any(role_defaults(state.roles.get(member, {})) for member in _members(role_id))
     ):
         return None  # a plain role grant: nothing narrows it and nothing needs computing
     version = (state.schema_boot_id, state.schema_version)
@@ -199,6 +202,29 @@ def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
         return mask
 
     return state.entitlement_masks.get_or_build(key, build, now=now)
+
+
+def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
+    """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
+    that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
+    with it as an ancestor; a role with no ``roles`` list reaches every role. Raises when no person
+    is bound: this answers an authorization question, and no person cannot be read as anyone."""
+    request = _current.get()
+    if request is None:
+        raise RuntimeError("no person is bound to this call: who may reach a role cannot be read")
+    chain = state.role_chains.get(target_role, [target_role])
+    paths = tuple((role.lower(),) for role in chain)
+    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
+    wanted = set(capabilities)
+    for role_id in request.acting_roles:
+        for member in _members(role_id):
+            role = state.roles.get(member)
+            if role is None or not wanted & set(role.get("capabilities") or ()):
+                continue
+            listed = effective_lists(member, request.idp, held, role_defaults(role)).get("roles")
+            if listed is None or any(matches(i, paths) for i in listed.identifiers):
+                return True
+    return False
 
 
 def warnings(state: Any, role_id: str) -> tuple[Finding, ...]:

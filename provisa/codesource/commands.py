@@ -8,22 +8,29 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A code source's ``@command`` or ``@query``, registered as a command (REQ-2226).
+"""A code source's ``@command`` or ``@query``, registered as a command (REQ-2226, REQ-2228).
 
 What it is follows from the function's declaration, not from a form: a ``@command`` is a mutation
 and a ``@query`` a query, with what that kind already means (REQ-1156, REQ-1928). A parameter
 typed ``TableRef`` of a row type is a ``table_ref`` argument (REQ-885) carrying the input columns
 that row type declares, and the function's result rows are its output contract, so the command is
 a lineage node like any other (REQ-1160).
+
+A command may instead be bound to a source's ``@command`` with some of its arguments fixed
+(REQ-2228): the binding names the source and the command, and what it fixes the registration
+decided, which a caller can neither change nor see as an argument. A dbt command on an
+operator-run connector is one: the connector's ``@command`` takes the dbt invocation, and the
+invocation is fixed for each command the manifest offers.
 """
 
-# Requirements: REQ-2226
+# Requirements: REQ-885, REQ-2226, REQ-2228
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
+from provisa.api.errors import ApiError
 from provisa.otel_compat import MintedSession
 from provisa.codesource.manifest import (
     COMMAND,
@@ -179,3 +186,68 @@ async def run(state: Any, command: dict, payload: dict, session: MintedSession) 
             prepared.worker().command, function, args, names, schema=schema
         )
     return _rows(value, export, prepared.manifest)
+
+
+def _answer_rows(answer: Any) -> list[dict]:
+    """A bound command's answer as rows: nothing is none, an object one row, a list of objects
+    its rows, and anything else one row holding it, as a script's plain-text answer is."""
+    if answer is None:
+        return []
+    if isinstance(answer, dict):
+        return [answer]
+    if isinstance(answer, list) and all(isinstance(a, dict) for a in answer):
+        return answer
+    return [{"output": answer}]
+
+
+def _refused_argument(source_id: str, command: str, names: list[str]) -> ApiError:
+    return ApiError(
+        422,
+        "functions.code_command_argument_unknown",
+        f"Command {command!r} of source {source_id!r} takes no argument {', '.join(names)}",
+        source_id=source_id,
+        command=command,
+        arguments=", ".join(names),
+    )
+
+
+async def call_command(
+    state: Any, source_id: str, command: str, fixed: dict[str, Any], given: dict[str, Any]
+) -> list[dict]:
+    """Call ``source_id``'s ``@command`` ``command`` with ``fixed`` and the caller's ``given``
+    (REQ-2228)."""
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+    from provisa.codesource.worker import ABSENT
+
+    overridden = sorted(set(fixed) & set(given))
+    if overridden:
+        raise ApiError(
+            422,
+            "functions.fixed_argument_given",
+            f"Command {command!r} fixes {', '.join(overridden)}: a call cannot give it",
+            command=command,
+            arguments=", ".join(overridden),
+        )
+    prepared = await _prepared(state, source_id, command)
+    export = next(
+        (e for e in prepared.manifest.exports if e.name == command and e.kind == COMMAND), None
+    )
+    if export is None:
+        raise ApiError(
+            422,
+            "functions.code_command_unknown",
+            f"Source {source_id!r} declares no @command {command!r}",
+            source_id=source_id,
+            command=command,
+        )
+    names = [p.name for p in export.parameters]
+    unknown = sorted((set(fixed) | set(given)) - set(names))
+    if unknown:
+        raise _refused_argument(source_id, command, unknown)
+    values = {**given, **fixed}
+    args = [values.get(n, ABSENT) for n in names]
+    schema = schema_text(row_schema(prepared.manifest, export)) if export.many else None
+    worker = prepared.worker()
+    return _answer_rows(
+        await asyncio.to_thread(worker.command, command, args, names, schema=schema)
+    )

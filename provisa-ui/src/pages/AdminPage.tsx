@@ -59,7 +59,6 @@ import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
 import { CatalogsTab } from "../components/admin/CatalogsTab";
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
@@ -113,7 +112,6 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
   "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
-  "/admin/reference-library": "Reference library", // REQ-2185: the documents assistants draw on
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
@@ -317,11 +315,9 @@ export function AdminPage() {
   // `main` already provides (the same `page-sticky-head` pattern the sticky-header list
   // pages use) instead of the plain block-flow the other admin tabs render into.
   const isGlossary = activeTab === "Glossary";
-  // The reference library's list and detail panel fill to the bottom of the viewport as well.
-  const fills = isGlossary || activeTab === "Reference library";
 
   return (
-    <div className={fills ? "page page-sticky-head" : "page"}>
+    <div className={isGlossary ? "page page-sticky-head" : "page"}>
       {activeTab !== "Glossary" && (
         <PageTitle icon={Settings} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
@@ -334,7 +330,7 @@ export function AdminPage() {
       <Stack
         gap="lg"
         data-tour="admin-content"
-        style={fills ? { flex: 1, minHeight: 0 } : undefined}
+        style={isGlossary ? { flex: 1, minHeight: 0 } : undefined}
       >
         {activeTab === "Dashboard" && (
           <>
@@ -579,7 +575,6 @@ export function AdminPage() {
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
         {activeTab === "Catalogs" && <CatalogsTab />}
-        {activeTab === "Reference library" && <ReferenceLibraryTab />}
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}

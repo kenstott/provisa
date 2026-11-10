@@ -239,6 +239,90 @@ async def _record_idp_attributes(db_pool, identity: AuthIdentity) -> None:  # RE
     _recorded_idp[key] = supplied
 
 
+_recorded_idp_lists: dict[tuple[str | None, str | None, str], dict] = {}
+
+
+@on_forget(size=lambda: len(_recorded_idp_lists))
+def _forget_recorded_idp_lists(org_id: str) -> None:
+    for key in [k for k in _recorded_idp_lists if k[0] == org_id]:
+        del _recorded_idp_lists[key]
+
+
+async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+    """Keep the lists this sign-in's token carries in the store, so a write for this person is
+    refused where the identity provider speaks. Written only when it differs from what this
+    process last wrote. A token whose lists cannot be read records nothing: the request is
+    refused where the lists are bound."""
+    from provisa.api.app import state
+    from provisa.core.request_context import current_env, current_org
+    from provisa.entitlements import store
+    from provisa.entitlements.lists import EntitlementClaimError, parse_idp_entitlements
+
+    try:
+        lists = parse_idp_entitlements(identity.raw_claims, identity.entitlements_claim)
+    except EntitlementClaimError:
+        return
+    key = (current_org.get(), current_env.get(), identity.user_id)
+    if _recorded_idp_lists.get(key) != lists:
+        async with db_pool.acquire() as conn:
+            await store.mirror_idp(conn, identity.user_id, lists)
+        state.idp_entitlements = {**state.idp_entitlements, identity.user_id: lists}
+        _recorded_idp_lists[key] = lists
+    await _attach_pending_entitlements(db_pool, identity, lists)
+
+
+# REQ-2219: (org, environment, user, email) whose waiting grants this process has attached.
+_attached_pending: set[tuple[str | None, str | None, str, str]] = set()
+
+
+@on_forget(size=lambda: len(_attached_pending))
+def _forget_attached_pending(org_id: str) -> None:
+    for key in [k for k in _attached_pending if k[0] == org_id]:
+        _attached_pending.discard(key)
+
+
+async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> None:  # REQ-2219
+    """Attach the grants waiting on this sign-in token's email to its principal, through the write
+    API's own write, after the token's lists are mirrored: where the token sends a list for the
+    grant's role and kind, the grant is refused as the write API refuses it. Each outcome goes to
+    the org's administrative trail, as set by whoever granted it."""
+    from provisa.api.app import state
+    from provisa.core.org_membership import record_admin_action
+    from provisa.core.request_context import current_env, current_org
+    from provisa.entitlements import pending, store
+
+    if not identity.email:
+        return
+    key = (
+        current_org.get(),
+        current_env.get(),
+        identity.user_id,
+        pending.normalize_email(identity.email),
+    )
+    if key in _attached_pending:
+        return
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            outcomes = await pending.attach(conn, identity.user_id, identity.email, lists)
+        if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
+            state.held_entitlements = await store.load_held(conn)
+    for grant, outcome in outcomes:
+        await record_admin_action(
+            db_pool,
+            action=f"entitlements.pending_{outcome}",
+            actor_id=grant.set_by,
+            subject_id=identity.user_id,
+            detail={
+                "email": grant.email,
+                "role_id": grant.role_id,
+                "kind": grant.kind,
+                "identifiers": list(grant.identifiers),
+                "reason": grant.reason,
+            },
+        )
+    _attached_pending.add(key)
+
+
 def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
     """The role definitions the platform plane's rights (cross_org) are read from, named as such:
     the deployment org's, where the platform grants live (AppState.platform_roles)."""
@@ -457,6 +541,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 update_columns=["email", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
+        await _record_idp_entitlements(self._db_pool, identity)
 
     async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
         """Read the user's role assignments from the tenant control plane scoped to the currently

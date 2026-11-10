@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **77** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 77; המספור הוא הספירה.
+Provisa רושמת **78** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 78; המספור הוא הספירה.
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa רושמת **77** סוגי מקור, אלה שטופס המקורות מ
 | 49–53 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 76 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 65–72 | [מקורות API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 77 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי.
 
@@ -909,6 +909,30 @@ sources:
 החרגה הנוקבת בפעולה או בארגומנט שאינם קיימים במפרט מכשילה את טעינת המפרט של אותו מקור ונוקבת בכל רשומה מיושנת, כך שרשימה שאינה תואמת עוד מפרט חדש יותר מתגלה.
 
 מקור ממותג נשלח עם החרגות משלו כחלק מהאצירה שלו, והחרגות המפעיל מתווספות אליהן. מקור Stripe מחריג את שילוב התשלומים המיושן של אסימונים ומקורות ב-Stripe: יצירת חיוב (charge), ממשקי Tokens ו-Sources, הוספת כרטיס או חשבון בנק ללקוח מתוך אסימון, והארגומנטים `source`, `card`, `bank_account` ו-`default_card` בכתיבות של לקוח ושל תשלום חשבונית. תשלומים נגבים דרך Payment Intents, Payment Methods ו-Setup Intents, שהמקור מציע. קריאה ומחיקה של מקורות תשלום שכבר יש לחשבון נשארות מוצעות.
+
+### dbt
+
+מקור dbt משאיר את פרויקט ה-dbt שלכם במקומו, ו-dbt ממשיך לבנות אותו. Provisa קורא את קובץ ה-`manifest.json` של הפרויקט לצורך ההגדרות, ולעולם אינו מעתיק שורות או את הפרויקט.
+
+| המניפסט מגיע מ | מוגדר במקור |
+| --- | --- |
+| כתובת URL או מיקום ארטיפקט | `location` |
+| העלאה | `content` |
+| ה-API של dbt Cloud | `host`, `account_id`, `job_id` ואסימון API, הנשמר כמו האישור של כל מקור |
+
+כל מודל מוצע כטבלה, והוספת המקור אינה רושמת דבר. כאשר Steward רושם מודל, הוא נקרא דרך מקור מחסן הנתונים התואם למתאם של המניפסט ולמסד הנתונים של המודל. המניפסט אינו מכיל אישורים וקובץ הפרופילים של dbt אינו נקרא, ולכן אם אף מקור רשום אינו תואם, טופס ההגדרה מציע ליצור אחד. ה-Data Lineage של מודל נובע מה-SQL המהודר שלו.
+
+**פקודות.** כל מודל, בדיקה, snapshot ו-seed מוצעים כפקודת מוטציה, וכך גם `build`, `source freshness` וכל מאקרו של הפרויקט ושל החבילות המותקנות שלו דרך `run-operation`. פקודה רצה רק כאשר קריאה, טריגר או תזמון מריצים אותה. היא רצה היכן ש-dbt כבר רץ:
+
+| יעד | אופן הריצה | מוגדר במקור |
+| --- | --- | --- |
+| dbt Cloud | מריץ את ה-job דרך ה-API של ה-jobs, כשהפקודה היא השלב היחיד בו | `spec: cloud` |
+| סקריפט | מריץ `dbt` בשורת פקודה ש-Provisa יכול להגיע אליה | `command_line` |
+| מחבר המופעל על ידי המפעיל | קורא ל-`@command` של [מקור קוד](code-sources.md), כשקריאת ה-dbt היא ארגומנט קבוע שקורא אינו יכול לשנות | `connector_source`, `connector_command`, `connector_invocation_argument` (ברירת מחדל `invocation`) |
+
+**עדכניות.** קובץ ה-`run_results.json` של dbt מציין מתי כל מודל נבנה לאחרונה. ספקו אותו כ-`run_results`, הפנו את `run_results_location` למקום שבו הוא מתפרסם, או אפשרו למקור dbt Cloud לקרוא אותו מהריצה המוצלחת האחרונה של ה-job. רענון המקור קורא אותו מחדש, והעלאה יכולה להביא תוצאות ריצה ללא מניפסט חדש. כדי להשתמש בו, הגדירו לטבלת המודל את אות השינוי `probe` או `ttl_probe` עם `probe_type: hash`. הטבלה מיושנת ברגע ש-dbt בנה את המודל מחדש. מודל שהריצה האחרונה שלו נכשלה או דולגה הוא בעל עדכניות לא ידועה, ולעולם אינו נחשב עדכני.
+
+**מניפסט חדש** מעדכן את הפקודות המוצעות, את ה-Data Lineage ואת התיאורים של מודלים רשומים. תיאור ש-Steward שינה נשאר כפי שה-Steward השאיר אותו, שדה אחר שדה.
 
 ### GovData
 

@@ -271,6 +271,8 @@ registered_tables = Table(
     Column("arguments", JSON(none_as_null=True)),
     # REQ-2062: a SQL predicate over the table's own columns, applied when its replica lands.
     Column("landing_filter", Text),
+    # REQ-2224: what a read does with nothing landed (provisa.core.models.Table.read_wait).
+    Column("read_wait", Integer),
     Column("gql_naming_convention", Text),
     Column("watermark_column", Text),
     Column("change_signal", Text),  # REQ-929: override source change signal; NULL = inherit
@@ -305,6 +307,9 @@ registered_tables = Table(
     # REQ-1981: the table's format where its source reports one (an Athena table: "iceberg" or
     # "hive"), recorded when it is registered; it decides the writes the table takes.
     Column("table_format", Text),
+    # REQ-2230: the statement that defines the table in its source (a Snowflake Dynamic Table's),
+    # recorded when it is registered; what it reads joins the lineage graph.
+    Column("source_definition", Text),
     # REQ-1954: a ServiceNow table's import set: the staging table of the transform map its
     # inserts go through. NULL = its inserts are written to the table directly.
     Column("import_set", Text),
@@ -558,11 +563,35 @@ entitlement_expiries = Table(
     Column("role_id", Text, nullable=False),
     Column("ends_at", DateTime(timezone=True), nullable=False),
     Column("ends", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("list_kind", Text),  # the list it was set with; re-setting that list withdraws it
     Column("removed", Boolean, nullable=False, server_default=false()),
     Column("reason", Text),
     Column("set_by", Text),
     Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
+# Append-only, keyed by (email, role_id, kind): the last row is the grant's state. ``outcome`` is
+# NULL while it waits; ``principal`` names whom a sign-in attached it to, or was refused for.
+entitlement_pending = Table(
+    "entitlement_pending",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("email", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("identifiers", JSON, nullable=False, default=list, server_default="[]"),
+    Column("expires_at", DateTime(timezone=True)),
+    Column("outcome", Text),
+    Column("principal", Text),
+    Column("reason", Text, nullable=False),
+    Column("set_by", Text, nullable=False),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "outcome IN ('ended', 'attached', 'refused')", name="entitlement_pending_outcome_check"
+    ),
 )
 
 # REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -985,6 +1014,34 @@ lineage_edges = Table(
     CheckConstraint("via_kind IN ('view', 'command')", name="lineage_edges_via_kind_check"),
 )
 
+# REQ-2229: what OpenLineage events reported: one row per dataset of a job's latest run. Kept apart
+# from lineage_edges, which each model build replaces whole.
+openlineage_run_datasets = Table(
+    "openlineage_run_datasets",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("job_namespace", Text, nullable=False),
+    Column("job_name", Text, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("dataset_namespace", Text, nullable=False),
+    Column("dataset_name", Text, nullable=False),
+    Column("column_lineage", JSON, nullable=False, default=dict, server_default="{}"),
+    CheckConstraint(
+        "direction IN ('input', 'output')", name="openlineage_run_datasets_direction_check"
+    ),
+    UniqueConstraint(
+        "job_namespace",
+        "job_name",
+        "run_id",
+        "direction",
+        "dataset_namespace",
+        "dataset_name",
+        name="openlineage_run_datasets_key",
+    ),
+)
+
 # REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
 # (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
 checker_targets = Table(
@@ -1058,6 +1115,30 @@ relationship_candidates = Table(
     ),
 )
 
+# REQ-2221: the connectors this organization offers: the model's ``connectors:`` block, promoted
+# with the model. path and build_command are the CLI's; the server keeps them and acts on neither.
+connectors = Table(
+    "connectors",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("git", Text, nullable=False),
+    Column("ref", Text, nullable=False),
+    Column("commit", Text, nullable=False, quote=True),
+    Column("path", Text, nullable=False, server_default=""),
+    Column("build_command", Text, nullable=False, server_default=""),
+    Column("language", Text, nullable=False),
+    Column("image", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    Column("arch", Text, nullable=False),
+    Column("requires", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
+    Column("description", Text, nullable=False, server_default=""),
+    Column("icon", Text, nullable=False, server_default=""),
+    Column("settings", JSON(none_as_null=True), nullable=False, default=list, server_default="[]"),
+    CheckConstraint("language IN ('node', 'python', 'go')", name="connectors_language_check"),
+    CheckConstraint("arch IN ('amd64', 'arm64')", name="connectors_arch_check"),
+)
+
 kafka_sources = Table(
     "kafka_sources",
     metadata,
@@ -1077,6 +1158,27 @@ kafka_sources = Table(
         "binding", Text, nullable=False, server_default="own"
     ),  # REQ-1942: own | copied | unbound
     CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="kafka_sources_binding_check"),
+)
+
+# REQ-2228: what is held of a dbt source's manifest: its definitions, never the document.
+dbt_manifests = Table(
+    "dbt_manifests",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("definitions", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-2228, REQ-858: what dbt's run results last said of each node it builds. built_at is when dbt
+# last built it, kept through a later run that failed.
+dbt_node_runs = Table(
+    "dbt_node_runs",
+    metadata,
+    Column("source_id", Text, ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("unique_id", Text, primary_key=True),
+    Column("status", Text, nullable=False),
+    Column("generated_at", DateTime(timezone=True), nullable=False),
+    Column("built_at", DateTime(timezone=True)),
 )
 
 kafka_topics = Table(
@@ -2215,6 +2317,21 @@ reference_documents = Table(
     Column("added_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("refreshed_at", DateTime(timezone=True), nullable=True),
     Column("replaced_at", DateTime(timezone=True), nullable=True),
+    # REQ-2185 (ADD NOW, INDEX IN THE BACKGROUND): the document's index status. A document exists
+    # from the moment it is added; extraction and indexing run in a background job and report here.
+    # The default is ready because a document written any other way has its passages already.
+    Column("index_status", Text, nullable=False, server_default="ready"),  # indexing|ready|failed
+    Column("index_error", Text, nullable=True),
+    Column("index_step", Text, nullable=True),  # reading | indexing
+    Column("index_done", Integer, nullable=True),
+    Column("index_total", Integer, nullable=True),
+    Column("index_launch", Text, nullable=True),
+    Column("index_progress_at", DateTime(timezone=True), nullable=True),
+    # The uploaded bytes, kept only until the document is ready, so a failed one can be retried:
+    # the library keeps a document's passages, not its file.
+    Column("pending_content", LargeBinary, nullable=True),
+    # Why terms were not looked for once it was ready (no term-finding model), else null.
+    Column("terms_note", Text, nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint("source_kind IN ('file', 'url')", name="reference_documents_kind_check"),
     CheckConstraint("status IN ('proposed', 'kept')", name="reference_documents_status_check"),

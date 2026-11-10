@@ -26,7 +26,7 @@ Fontes de **materialização** também não têm conector federado. O Provisa bu
 
 ## Todas as Fontes {: #all-sources }
 
-O Provisa registra **77** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 77; o índice é a contagem.
+O Provisa registra **78** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 78; o índice é a contagem.
 
 | # | Grupo | Tipos de fonte |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ O Provisa registra **77** tipos de fonte, os que o formulário de Fontes oferece
 | 49–53 | [Baseado em arquivo](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observabilidade e outros](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 65–71 | [Fontes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data profiler](#data-profiler) | `data_profiler` |
-| 76 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
+| 65–72 | [Fontes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data profiler](#data-profiler) | `data_profiler` |
+| 77 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
 
 Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" significa que consultas de fonte única são executadas contra a fonte nativamente (sub-100ms). "Nome do Conector" é o conector federado usado quando a fonte participa de JOINs multi-fonte.
 
@@ -909,6 +909,30 @@ Elas são aplicadas à especificação quando ela é carregada, de modo que a li
 Uma exclusão que nomeia uma operação ou um argumento que a especificação não tem faz o carregamento da especificação dessa fonte falhar e nomeia cada entrada obsoleta, de modo que uma lista que já não corresponde a uma especificação mais nova é notada.
 
 Uma fonte de marca traz suas próprias exclusões como parte de sua curadoria, e as do operador são somadas a elas. A fonte Stripe exclui a integração de pagamento descontinuada da Stripe baseada em token e source: criar uma cobrança (charge), as APIs Tokens e Sources, adicionar um cartão ou conta bancária a um cliente a partir de um token, e os argumentos `source`, `card`, `bank_account` e `default_card` das escritas de cliente e de pagamento de fatura. Os pagamentos são feitos por Payment Intents, Payment Methods e Setup Intents, que a fonte oferece. Ler e excluir as formas de pagamento que uma conta já tem continua disponível.
+
+### dbt
+
+Uma fonte dbt mantém o seu projeto dbt onde está e o dbt continua a construí-lo. O Provisa lê o `manifest.json` do projeto para obter as definições e nunca copia linhas nem o projeto.
+
+| O manifesto vem de | Definido na fonte |
+| --- | --- |
+| Uma URL ou local de artefato | `location` |
+| Um upload | `content` |
+| A API do dbt Cloud | `host`, `account_id`, `job_id` e um token de API, guardado como a credencial de qualquer fonte |
+
+Cada modelo é oferecido como tabela, e adicionar a fonte não registra nada. Quando um steward registra um modelo, ele é lido por meio da fonte de data warehouse que corresponde ao adaptador do manifesto e ao banco de dados do modelo. O manifesto não contém credenciais e o arquivo de perfis do dbt não é lido; portanto, se nenhuma fonte registrada corresponder, o formulário de configuração oferece a criação de uma. A linhagem de um modelo vem do seu SQL compilado.
+
+**Comandos.** Cada modelo, teste, snapshot e seed é oferecido como comando de mutação, assim como `build`, `source freshness` e cada macro do projeto e de seus pacotes instalados por meio de `run-operation`. Um comando só é executado quando uma chamada, um gatilho ou um agendamento o executa. Ele é executado onde o dbt já é executado:
+
+| Destino | Como é executado | Definido na fonte |
+| --- | --- | --- |
+| dbt Cloud | Executa o job pela API de jobs, com o comando como única etapa | `spec: cloud` |
+| Um script | Executa `dbt` em uma linha de comando que o Provisa consegue alcançar | `command_line` |
+| Um conector executado pelo operador | Chama um `@command` de uma [fonte de código](code-sources.md), com a invocação do dbt como argumento fixo que quem chama não pode alterar | `connector_source`, `connector_command`, `connector_invocation_argument` (padrão `invocation`) |
+
+**Atualidade.** O `run_results.json` do dbt informa quando cada modelo foi construído pela última vez. Forneça-o como `run_results`, aponte `run_results_location` para onde ele é publicado, ou deixe uma fonte dbt Cloud lê-lo da última execução bem-sucedida do job. Atualizar a fonte o lê novamente, e um upload pode trazer resultados de execução sem um novo manifesto. Para usá-lo, configure a tabela do modelo com o sinal de mudança `probe` ou `ttl_probe` e `probe_type: hash`. A tabela fica desatualizada assim que o dbt constrói o modelo novamente. Um modelo cuja última execução falhou ou foi ignorada tem atualidade desconhecida e nunca é considerado atual.
+
+**Um novo manifesto** atualiza os comandos oferecidos, a linhagem e as descrições dos modelos registrados. Uma descrição alterada por um steward permanece como o steward a deixou, campo por campo.
 
 ### GovData
 

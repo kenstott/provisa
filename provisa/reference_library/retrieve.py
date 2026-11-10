@@ -175,7 +175,7 @@ async def _readable_documents(
     when one was embedded by another model than ``embedder``'s."""
     documents = {
         d.id: d
-        for d in await store.documents(conn, status=store.KEPT)
+        for d in await store.documents(conn, status=store.KEPT, ready=True)
         if readable(allowed, frozenset(d.domains))
     }
     stale = sorted(d.title for d in documents.values() if d.embedding_model != embedder.model)

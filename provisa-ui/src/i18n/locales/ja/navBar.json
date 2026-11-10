@@ -80,7 +80,7 @@
     "itemContainerRegistries": "コンテナレジストリ",
     "itemSparql": "SPARQL",
     "itemCatalogs": "カタログ",
-    "itemReferenceLibrary": "参照ライブラリ",
+    "itemLibrary": "ライブラリ",
     "itemPlatformObservability": "プラットフォームのオブザーバビリティ"
   }
 }

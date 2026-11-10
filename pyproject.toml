@@ -1,7 +1,7 @@
 [project]
 name = "provisa"
 version = "0.1.0"
-description = "Provisa is a data kernel: a small set of semantic primitives, compiled and run as one data control plane."
+description = "Provisa is a compiler and runtime for building your data control plane."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -416,11 +416,11 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
 "provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
 # REQ-2155: the standard roles' definitions, read by provisa.core.db.
-"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml", "platform_connectors.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
-"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go"]
+"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go", "services/go.mod", "services/*.go"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
 "provisa.sparql" = ["reasoner/Reasoner.java"]
 
@@ -458,6 +458,7 @@ markers = [
     "requires_mongodb: requires MongoDB service (docker compose up mongodb)",
     "requires_ldap: requires the OpenLDAP directory service (docker compose up openldap)",
     "requires_saml_idp: requires the SAML identity provider (docker compose up saml-idp)",
+    "requires_keycloak: requires the Keycloak identity provider (docker compose up keycloak)",
     "requires_pg_ext_targets: requires the external Postgres 15/16 containers (docker compose up pg-ext-target-15 pg-ext-target-16)",
     "requires_mariadb: requires MariaDB service (docker compose up mariadb)",
     "requires_tidb: requires TiDB service (docker compose up tidb)",

@@ -48,6 +48,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "environment_management",
     "environment_data",
     "user_management",
+    "assign_entitlements", // REQ-2219
     "org_glossary_rw",
     "data_product_rw",
   ] as Capability[],
@@ -69,6 +70,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "approve_relationship",
     "access_config",
     "user_management",
+    "assign_entitlements", // REQ-2219
     "masking_config",
     "column_grant",
     "view_governance",
@@ -91,6 +93,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "data_product_rw", // REQ-1634
     "dq_read", // REQ-2155
     "dq_rw", // REQ-2155
+    "lineage_report", // REQ-2229
     "command_execution", // REQ-870
   ] as Capability[],
   // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.

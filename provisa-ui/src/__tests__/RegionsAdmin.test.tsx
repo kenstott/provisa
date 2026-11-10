@@ -319,6 +319,26 @@ describe("the Platform page", () => {
     );
   });
 
+  // REQ-1412: the engine lane's route is the commercial plugin's, and a lane applies at once.
+  it("offers each org's engine only with the plugin, without the restart note", async () => {
+    auth.billing = false;
+    const { unmount } = render(<PlatformRegionsTab />);
+    await screen.findByTestId("platform-region-row-eu");
+    expect(screen.queryByTestId("platform-section-engines")).not.toBeInTheDocument();
+    unmount();
+
+    auth.billing = true;
+    try {
+      fetchGrants.mockResolvedValue([{ id: "acme", regions: [] }]);
+      render(<PlatformRegionsTab />);
+      fireEvent.click(await screen.findByTestId("platform-section-engines"));
+      expect(await screen.findByTestId("platform-engine-org-pick")).toBeInTheDocument();
+      expect(screen.queryByTestId("platform-regions-restart")).not.toBeInTheDocument();
+    } finally {
+      auth.billing = false;
+    }
+  });
+
   it("adds a region with its description, purposes and data addresses", async () => {
     render(<PlatformRegionsTab />);
     fireEvent.click(await screen.findByTestId("platform-regions-add"));

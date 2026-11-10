@@ -824,6 +824,10 @@
       "duckdb_threads": {
         "label": "代码源 DuckDB 线程",
         "help": "代码源的 DuckDB 回答其语句所用的线程数。"
+      },
+      "health_poll_interval": {
+        "label": "连接器健康轮询间隔",
+        "help": "每个 Provisa 进程询问连接器主机状态并在数据源上显示结果的频率。重新启动的主机会在下一次轮询时被发现，并再次运行其 on-start 函数。"
       }
     },
     "config": {

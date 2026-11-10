@@ -8,15 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The Admin Reference library page's API (REQ-2185, MAINTAINED IN ADMIN).
+"""The Library page's API (REQ-2185, A TOP-LEVEL LIBRARY; ADD NOW, INDEX IN THE BACKGROUND).
 
-An admin lists the library's documents (title, source, status, domains, when each was added and
-last refreshed or replaced), adds one by file or URL, keeps or discards a proposed one, changes
-its domains, refreshes a URL document, uploads a new version of a file document, and removes one.
-The library is curated with the glossary -- term finding adds its documents as proposed -- so the
-page asks the glossary's curation right, ``glossary_rw`` (REQ-1327: each surface its own right). A file travels as base64 in a JSON
-body, as every admin upload does (import_router.py). The page also shows and changes the library's
-retrieval setting, passage or graph (GRAPH RETRIEVAL), held in the org's settings.
+Everyone browses what they may read: the list and a document's detail and citations ask
+``glossary_read`` and show only documents in the caller's domains. Changing the library is curated
+with the glossary -- term finding adds its documents as proposed -- so it asks the glossary's
+curation right, ``glossary_rw`` (REQ-1327: each surface its own right): adding by file or URL,
+keeping or discarding a proposed one, changing its domains, refreshing a URL document, uploading a
+new version of a file document, removing one and retrying a failed one.
+
+Adding is one step: the document exists at once, and a background job reads and indexes it and then
+looks for its terms. Its index status (indexing with progress, ready, failed with the reason) is
+a property of the document. A file travels as base64 in a JSON body, as every admin upload does
+(import_router.py). The page also shows and changes the library's retrieval setting, passage or
+graph (GRAPH RETRIEVAL), held in the org's settings.
 """
 
 # Requirements: REQ-2185
@@ -25,14 +30,21 @@ from __future__ import annotations
 
 import base64
 import binascii
+from collections.abc import Collection, Coroutine
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import (
+    acting_role_of_request,
+    allowed_domains_request,
+    require_capability_request,
+)
 from provisa.api.errors import ApiError
-from provisa.reference_library import library, store
+from provisa.core.connection_loop import spawn_background
+from provisa.reference_library import library, store, terms
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -52,6 +64,40 @@ def _pool() -> Database:
 def _guard(request: Request) -> str:
     require_capability_request(request, Capability.GLOSSARY_RW.value)
     return require_active_org_id(request)
+
+
+def _read_scope(request: Request) -> frozenset[str] | None:
+    """The domains whose documents this caller may read, ``None`` for every domain."""
+    require_capability_request(request, Capability.GLOSSARY_READ.value)
+    require_active_org_id(request)
+    return allowed_domains_request(request)
+
+
+def _may_read(scope: frozenset[str] | None, domains: Collection[str]) -> bool:
+    from provisa.reference_library.retrieve import readable
+
+    return readable(scope, frozenset(domains))
+
+
+async def _readable_terms(
+    conn: Connection, scope: frozenset[str] | None, term_ids: Collection[int]
+) -> set[int]:
+    """Those of ``term_ids`` a caller reading ``scope`` may read."""
+    from provisa.core.glossary import readable_term
+    from provisa.core.repositories.glossary import term_domains
+
+    held = await term_domains(conn)
+    return {t for t in term_ids if readable_term(scope, frozenset(held.get(t, set())))}
+
+
+def _acting_role(request: Request) -> str:
+    return acting_role_of_request(request)
+
+
+def _launch(work: Coroutine[Any, Any, None]) -> None:
+    """Run a document's job on a background worker: it outlives its request
+    (provisa.core.connection_loop)."""
+    spawn_background(work, name="library-index")
 
 
 def _refused(exc: library.LibraryRefused) -> ApiError:
@@ -87,7 +133,17 @@ def _iso(value: Any) -> str | None:
 
 def _document(d: store.DocumentRow, current_model: str | None = None) -> dict[str, Any]:
     return {
-        "needs_reembedding": current_model is not None and d.embedding_model != current_model,
+        "needs_reembedding": (
+            d.index_status == store.READY
+            and current_model is not None
+            and d.embedding_model != current_model
+        ),
+        "index_status": d.index_status,
+        "index_error": d.index_error,
+        "index_step": d.index_step,
+        "index_done": d.index_done,
+        "index_total": d.index_total,
+        "terms_note": d.terms_note,
         "id": d.id,
         "title": d.title,
         "source_kind": d.source_kind,
@@ -129,22 +185,34 @@ def _user_id(request: Request) -> str | None:
 
 @router.get("/documents")
 async def list_documents(request: Request) -> dict:
-    _guard(request)
+    scope = _read_scope(request)
     model = await _current_model()
     async with _pool().acquire() as conn:
         return {
             "embedding_model": model,
-            "documents": [_document(d, model) for d in await store.documents(conn)],
+            "documents": [
+                _document(d, model)
+                for d in await store.documents(conn)
+                if _may_read(scope, d.domains)
+            ],
         }
+
+
+async def _read_document(
+    conn: Connection, document_id: int, scope: frozenset[str] | None
+) -> store.DocumentRow:
+    """The document, if this caller may read it: one they may not is one that is not there."""
+    found = await store.document(conn, document_id)
+    if found is None or not _may_read(scope, found.domains):
+        raise _refused(library.DocumentNotFound(document_id))
+    return found
 
 
 @router.get("/documents/{document_id}")
 async def get_document(document_id: int, request: Request) -> dict:
-    _guard(request)
+    scope = _read_scope(request)
     async with _pool().acquire() as conn:
-        found = await store.document(conn, document_id)
-        if found is None:
-            raise _refused(library.DocumentNotFound(document_id))
+        found = await _read_document(conn, document_id, scope)
         passages = await store.passages(conn, document_id)
     return {
         **_document(found, await _current_model()),
@@ -154,38 +222,95 @@ async def get_document(document_id: int, request: Request) -> dict:
     }
 
 
+@router.get("/documents/{document_id}/cited-by")
+async def cited_by(document_id: int, request: Request) -> dict:
+    """What cites the document, among what the caller may read: each citation with its state, a
+    quote the document no longer holds flagged as drifted."""
+    scope = _read_scope(request)
+    async with _pool().acquire() as conn:
+        await _read_document(conn, document_id, scope)
+        citing = await terms.cited_by(conn, document_id)
+        readable = await _readable_terms(conn, scope, {c.term_id for c in citing})
+    shown = [c for c in citing if c.term_id in readable]
+    return {
+        "terms": [asdict(c) for c in shown],
+        "drifted": sum(c.state == terms.DRIFTED for c in shown),
+    }
+
+
+async def _job_embedder() -> library.Embedder:
+    """The org's vector model for a background job: an org without one fails the job by name."""
+    try:
+        return await _embedder()
+    except ApiError as exc:
+        raise library.LibraryRefused(str(exc.detail)) from None
+
+
+async def run_index(
+    pool: Database, document_id: int, org_id: str, role: str, started_by: str | None
+) -> None:
+    """A document's background job: read it, index it and, once it is ready, look for its terms."""
+    from provisa.api.admin import term_finding_router as finding
+
+    document = await library.index_pending(pool, document_id, _job_embedder, org_id)
+    if document is not None:
+        await finding.find_terms_in(pool, document, role, started_by)
+
+
+def _launch_id() -> str:
+    from provisa.api.admin import term_finding_router as finding
+
+    return finding.this_launch()
+
+
 @router.post("/documents")
 async def add_document(body: dict, request: Request) -> dict:
     """Add a document by ``url``, or by ``file_name`` with ``content_b64``; an admin's document
-    is kept."""
+    is kept. It exists at once, indexing; a background job reads it and looks for its terms."""
     org_id = _guard(request)
+    pool = _pool()
     try:
         if body.get("url") is not None and body.get("content_b64") is not None:
             raise library.LibraryRefused("a document is added by a URL or a file, not both")
-        async with _pool().acquire() as conn:
+        async with pool.acquire() as conn:
             domains = await _domains(conn, body.get("domains"))
             if body.get("url") is not None:
-                url = library.check_url(body["url"])
-                existing = await store.find_url(conn, url)
-                if existing is not None:
-                    raise library.AlreadyInLibrary(existing, url)
-                kind, content = store.URL, await library.fetch(url, org_id)
+                kind, source, content = store.URL, library.check_url(body["url"]), None
             else:
-                kind, content = store.FILE, _file(body)
-            document_id = await library.add(
+                content = _file(body)
+                kind, source = store.FILE, content.name
+            document_id = await library.add_pending(
                 conn,
-                content,
                 source_kind=kind,
+                source=source,
+                content=content,
                 domains=domains,
                 status=store.KEPT,
-                embedder=await _embedder(),
                 added_by=_user_id(request),
+                launch=_launch_id(),
                 title=body.get("title"),
             )
             found = await store.document(conn, document_id)
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
     assert found is not None
+    _launch(run_index(pool, document_id, org_id, _acting_role(request), _user_id(request)))
+    return _document(found, await _current_model())
+
+
+@router.post("/documents/{document_id}/retry")
+async def retry_document(document_id: int, request: Request) -> dict:
+    """Run a failed document's job again; a file is read from the bytes held for it."""
+    org_id = _guard(request)
+    pool = _pool()
+    try:
+        async with pool.acquire() as conn:
+            await library.retry(conn, document_id, _launch_id())
+            found = await store.document(conn, document_id)
+    except library.LibraryRefused as exc:
+        raise _refused(exc) from None
+    assert found is not None
+    _launch(run_index(pool, document_id, org_id, _acting_role(request), _user_id(request)))
     return _document(found, await _current_model())
 
 
@@ -310,7 +435,7 @@ async def put_settings(body: dict, request: Request) -> dict:
     graph embeds the glossary's in-service terms with the org's vector model now, so the first
     question does not wait on it."""
     from provisa.core.org_settings import write_org_overrides
-    from provisa.reference_library import retrieve, terms
+    from provisa.reference_library import retrieve
 
     _guard(request)
     unknown = sorted(set(body) - {"retrieval"})

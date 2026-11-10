@@ -9,21 +9,41 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { act, render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
+import { PlatformOrgEngine, PlatformOrgEngines } from "../components/admin/PlatformOrgEngine";
 import type { OrgEngineState } from "../api/admin";
 
 vi.mock("../api/admin", () => ({
   fetchOrgEngine: vi.fn(),
+  fetchPlatformOrgEngine: vi.fn(),
+  setPlatformOrgEngine: vi.fn(),
   setOrgEngine: vi.fn(),
 }));
 
-// REQ-1922: no regions, so the page is the one engine, as before.
-vi.mock("../components/admin/useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+vi.mock("../api/regions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/regions")>()),
+  fetchOrgGrants: vi.fn(),
+}));
 
-import { fetchOrgEngine, setOrgEngine } from "../api/admin";
-const mockFetch = vi.mocked(fetchOrgEngine);
-const mockSet = vi.mocked(setOrgEngine);
+// REQ-1922: no regions, so the page is the one engine, as before, unless a test grants some.
+const regionEngines = vi.hoisted(() => ({ current: { status: "none" } as unknown }));
+vi.mock("../components/admin/useRegionEngines", () => ({
+  useRegionEngines: () => regionEngines.current,
+}));
+
+import {
+  fetchOrgEngine,
+  fetchPlatformOrgEngine,
+  setOrgEngine,
+  setPlatformOrgEngine,
+} from "../api/admin";
+import { fetchOrgGrants } from "../api/regions";
+const mockOrgFetch = vi.mocked(fetchOrgEngine);
+const mockOrgSet = vi.mocked(setOrgEngine);
+const mockFetch = vi.mocked(fetchPlatformOrgEngine);
+const mockSet = vi.mocked(setPlatformOrgEngine);
+const mockGrants = vi.mocked(fetchOrgGrants);
 
 function state(overrides: Partial<OrgEngineState> = {}): OrgEngineState {
   return {
@@ -55,9 +75,13 @@ function state(overrides: Partial<OrgEngineState> = {}): OrgEngineState {
 
 describe("OrgEngineTab", () => {
   beforeEach(() => {
+    mockOrgFetch.mockReset();
+    mockOrgSet.mockReset();
+    mockOrgSet.mockResolvedValue({ success: true, mode: "external" });
     mockFetch.mockReset();
     mockSet.mockReset();
     mockSet.mockResolvedValue({ success: true, mode: "external" });
+    regionEngines.current = { status: "none" };
   });
 
   // REQ-1418: which address the org supplies follows the KIND it picked, as reported by the
@@ -66,7 +90,7 @@ describe("OrgEngineTab", () => {
     mockFetch.mockResolvedValue(
       state({ mode: "external", engine_kind: "databricks", external_url_set: true }),
     );
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     expect(await screen.findByTestId("org-engine-url")).toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-host")).not.toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-port")).not.toBeInTheDocument();
@@ -81,7 +105,7 @@ describe("OrgEngineTab", () => {
         external_port: 8443,
       }),
     );
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     expect(await screen.findByTestId("org-engine-host")).toBeInTheDocument();
     expect(screen.getByTestId("org-engine-port")).toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-url")).not.toBeInTheDocument();
@@ -91,12 +115,12 @@ describe("OrgEngineTab", () => {
     mockFetch.mockResolvedValue(
       state({ mode: "external", engine_kind: "databricks", external_url_set: false }),
     );
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     const url = await screen.findByTestId("org-engine-url");
     fireEvent.change(url, { target: { value: "databricks://token:T@dbx?http_path=/sql/1.0/w/x" } });
     fireEvent.click(screen.getByTestId("org-engine-save-button"));
     await waitFor(() => expect(mockSet).toHaveBeenCalled());
-    expect(mockSet.mock.calls[0][0]).toMatchObject({
+    expect(mockSet.mock.calls[0][1]).toMatchObject({
       mode: "external",
       engine_kind: "databricks",
       external_url: "databricks://token:T@dbx?http_path=/sql/1.0/w/x",
@@ -109,20 +133,20 @@ describe("OrgEngineTab", () => {
     mockFetch.mockResolvedValue(
       state({ mode: "external", engine_kind: "databricks", external_url_set: true }),
     );
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     await screen.findByTestId("org-engine-url");
     fireEvent.click(screen.getByTestId("org-engine-save-button"));
     await waitFor(() => expect(mockSet).toHaveBeenCalled());
     // Null, not an empty string: the server reads "unchanged" and keeps the DSN it holds, which
     // the tab could not resend — the GET never returns a value carrying a warehouse token.
-    expect(mockSet.mock.calls[0][0].external_url).toBeNull();
+    expect(mockSet.mock.calls[0][1].external_url).toBeNull();
   });
 
   // REQ-1412: the isolated lane is a coordinator the platform runs and bills for, so a plan that
   // does not include one cannot select it — refused at the choice, not at the save.
   it("disables the isolated lane when the org's plan does not include it", async () => {
     mockFetch.mockResolvedValue(state({ isolated_available: true, isolated_entitled: false }));
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     const isolated = await screen.findByTestId("org-engine-mode-isolated");
     expect(isolated).toBeDisabled();
     expect(screen.getByText(/part of the Pro plan/)).toBeInTheDocument();
@@ -130,13 +154,13 @@ describe("OrgEngineTab", () => {
 
   it("offers the isolated lane when the plan includes it", async () => {
     mockFetch.mockResolvedValue(state({ isolated_available: true, isolated_entitled: true }));
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     expect(await screen.findByTestId("org-engine-mode-isolated")).not.toBeDisabled();
   });
 
   it("blocks saving an external lane with no engine kind chosen", async () => {
     mockFetch.mockResolvedValue(state({ mode: "external", engine_kind: null }));
-    render(<OrgEngineTab />);
+    render(<PlatformOrgEngine orgId="acme" />);
     await waitFor(() => expect(screen.getByTestId("org-engine-save-button")).toBeDisabled());
     expect(screen.queryByTestId("org-engine-url")).not.toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-host")).not.toBeInTheDocument();
@@ -146,7 +170,7 @@ describe("OrgEngineTab", () => {
   // reports what the org runs on and offers no controls at all — absent, not disabled, because an
   // org-operated engine is sold on no hosted plan and is not something to offer and then refuse.
   it("reports the engine and offers no controls when the plan decides it", async () => {
-    mockFetch.mockResolvedValue(
+    mockOrgFetch.mockResolvedValue(
       state({
         mode: "isolated",
         plan: "pro_m",
@@ -175,7 +199,7 @@ describe("OrgEngineTab", () => {
   });
 
   it("names the Billing page as where a plan-decided engine is changed", async () => {
-    mockFetch.mockResolvedValue(
+    mockOrgFetch.mockResolvedValue(
       state({ mode: "shared", plan: "starter", plan_derived: true, isolated_engine: null }),
     );
     render(<OrgEngineTab />);
@@ -186,10 +210,164 @@ describe("OrgEngineTab", () => {
     expect(screen.queryByTestId("org-engine-hosted-state")).not.toBeInTheDocument();
   });
 
-  it("keeps the controls where nothing derives the lane", async () => {
-    mockFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+  it("points no one to Billing when the org is not on a plan", async () => {
+    mockOrgFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
     render(<OrgEngineTab />);
     expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/admin/billing"]')).toBeNull();
+  });
+
+  // REQ-1412 (A PLAN DECIDES ITS LANE): the regions the org holds do not change who decides its
+  // engine, so the page that shows them per region points to the plan as the single-engine page does.
+  describe("when the org uses regions", () => {
+    beforeEach(() => {
+      regionEngines.current = {
+        status: "regions",
+        sandbox: false,
+        save: null,
+        grant: {
+          stores: [{ id: "eu-engine", kind: "trino", url: "trino://eu.example.com:8443" }],
+          regions: [{ id: "eu", engine: "eu-engine" }],
+          platform_regions: [],
+          engine_kinds: ["trino"],
+        },
+      };
+    });
+
+    it("points an org on a plan to Billing", async () => {
+      mockOrgFetch.mockResolvedValue(state({ plan: "starter", plan_derived: true }));
+      render(<OrgEngineTab />);
+      expect(screen.getByTestId("federation-regions")).toBeInTheDocument();
+      const change = await screen.findByTestId("org-engine-hosted-change");
+      expect(change).toHaveTextContent(/Billing page/);
+      expect(change.querySelector("a")).toHaveAttribute("href", "/admin/billing");
+    });
+
+    it("points no one to Billing when the org is not on a plan", async () => {
+      mockOrgFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+      render(<OrgEngineTab />);
+      await waitFor(() => expect(mockOrgFetch).toHaveBeenCalled());
+      await act(async () => {
+        await mockOrgFetch.mock.results[0].value;
+      });
+      expect(screen.getByTestId("federation-regions")).toBeInTheDocument();
+      expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    });
+
+    it("shows the error when the plan cannot be read", async () => {
+      mockOrgFetch.mockRejectedValue(new Error("could not read the org's engine"));
+      render(<OrgEngineTab />);
+      expect(await screen.findByText(/could not read the org's engine/)).toBeInTheDocument();
+      expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the controls where nothing derives the lane", async () => {
+    mockFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+    render(<PlatformOrgEngine orgId="acme" />);
+    expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
     expect(screen.queryByTestId("org-engine-hosted")).not.toBeInTheDocument();
+  });
+
+  // REQ-1412 (THE ORG ADMIN CHANGES ITS LANE): the org reads and saves its own lane, on its own
+  // route. Nothing it does here may reach the route that names an org.
+  it("lets the org save its own lane through the org route", async () => {
+    mockOrgFetch.mockResolvedValue(
+      state({
+        mode: "external",
+        engine_kind: "trino-byo",
+        external_host: "trino.acme.example.com",
+        external_port: 8443,
+      }),
+    );
+    render(<OrgEngineTab />);
+    expect(await screen.findByTestId("org-engine-host")).toHaveValue("trino.acme.example.com");
+    expect(screen.getByTestId("org-engine-mode-shared")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("org-engine-save-button"));
+    await waitFor(() => expect(mockOrgSet).toHaveBeenCalled());
+    expect(mockOrgSet.mock.calls[0][0]).toMatchObject({
+      mode: "external",
+      engine_kind: "trino-byo",
+      external_host: "trino.acme.example.com",
+      external_port: 8443,
+      external_url: null,
+    });
+    expect(await screen.findByText("Engine updated.")).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("lets the org move itself to another lane", async () => {
+    mockOrgFetch.mockResolvedValue(
+      state({ mode: "external", engine_kind: "trino-byo", external_host: "h", external_port: 1 }),
+    );
+    render(<OrgEngineTab />);
+    fireEvent.click(await screen.findByTestId("org-engine-mode-shared"));
+    expect(screen.queryByTestId("org-engine-host")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("org-engine-save-button"));
+    await waitFor(() => expect(mockOrgSet).toHaveBeenCalled());
+    expect(mockOrgSet.mock.calls[0][0]).toMatchObject({
+      mode: "shared",
+      engine_kind: null,
+      external_host: null,
+      external_port: null,
+    });
+  });
+
+  it("shows the org the error when its save is refused", async () => {
+    mockOrgFetch.mockResolvedValue(state({ mode: "shared" }));
+    mockOrgSet.mockRejectedValue(new Error("refused by the server"));
+    render(<OrgEngineTab />);
+    fireEvent.click(await screen.findByTestId("org-engine-save-button"));
+    expect(await screen.findByText(/refused by the server/)).toBeInTheDocument();
+    expect(screen.queryByText("Engine updated.")).not.toBeInTheDocument();
+  });
+
+  it("says a DSN is on file without showing one", async () => {
+    mockOrgFetch.mockResolvedValue(
+      state({ mode: "external", engine_kind: "databricks", external_url_set: true }),
+    );
+    render(<OrgEngineTab />);
+    expect(await screen.findByTestId("org-engine-url")).toHaveValue("");
+    expect(screen.getByText(/URL is stored/)).toBeInTheDocument();
+  });
+
+  it("saves through the platform route, naming the org", async () => {
+    mockFetch.mockResolvedValue(state({ mode: "shared" }));
+    render(<PlatformOrgEngine orgId="globex" />);
+    fireEvent.click(await screen.findByTestId("org-engine-save-button"));
+    await waitFor(() => expect(mockSet).toHaveBeenCalled());
+    expect(mockFetch).toHaveBeenCalledWith("globex");
+    expect(mockSet.mock.calls[0][0]).toBe("globex");
+    expect(mockOrgFetch).not.toHaveBeenCalled();
+    expect(mockOrgSet).not.toHaveBeenCalled();
+    expect(await screen.findByText("Engine updated.")).toBeInTheDocument();
+  });
+
+  // The plan is changed on the org's own Billing page, which is not the page the platform
+  // administrator would land on from a link here.
+  it("shows the platform a plan-decided org with no controls and no Billing link", async () => {
+    mockFetch.mockResolvedValue(state({ mode: "shared", plan: "starter", plan_derived: true }));
+    render(<PlatformOrgEngine orgId="globex" />);
+    expect(await screen.findByTestId("org-engine-hosted")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-save-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+  });
+
+  it("lets the platform pick the org whose lane it sets", async () => {
+    mockGrants.mockResolvedValue([
+      { id: "acme", regions: [] },
+      { id: "globex", regions: [] },
+    ]);
+    mockFetch.mockResolvedValue(state());
+    render(<PlatformOrgEngines />);
+    const pick = await screen.findByTestId("platform-engine-org-pick");
+    fireEvent.click(pick);
+    await waitFor(() => expect(pick).toHaveAttribute("aria-controls"));
+    const list = document.getElementById(pick.getAttribute("aria-controls") as string);
+    fireEvent.click(within(list as HTMLElement).getByRole("option", { name: "globex", hidden: true }));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledWith("globex"));
+    expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
   });
 });

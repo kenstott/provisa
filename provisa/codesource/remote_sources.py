@@ -26,18 +26,29 @@ RE-PIN. A host that comes back with other code is refused naming the pinned and 
 (the worker's hello check) until a steward re-pins: the source then takes the host's code hash,
 once its exports are the ones the source has.
 
+A CONNECTOR KNOWN ONLY BY ITS IMAGE (REQ-2221, :func:`join_connector`). No dev-mode source comes
+first: the paired host hands over its manifest in the handshake, and Provisa holds it to the
+model's ``connectors`` block. The image the block's digest names, read from its registry, carries
+the code hash the block names and the hash of the manifest the host sent; the host's hello reports
+that code. The server builds nothing and reads no build setting.
+
 Provisa presents one identity -- a certificate and key, made once per organisation -- to every
 remote host of the organisation, kept encrypted in the organisation's own store.
 """
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2221
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import tempfile
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+import httpx
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.remote import Identity, RemoteWorker, new_identity, pair
@@ -132,7 +143,9 @@ def remote_of(mapping: dict) -> dict:
             f"a built source names its remote host; this one has no {', '.join(missing)}: "
             "connect it again",
         )
-    return remote
+    # REQ-2225: a script connector's host is held to its script's hash on every dial.
+    script_hash = mapping.get("script_hash")
+    return remote if not script_hash else {**remote, "script_hash": script_hash}
 
 
 async def _save_mapping(source_id: str, mapping: dict) -> None:
@@ -217,16 +230,42 @@ async def connect(state: Any, source_id: str, host: str, port: int, code: str) -
 
 
 def _check(
-    source_id: str, code_hash: str, host: str, port: int, pin: str, me: Identity, exports: list[str]
+    source_id: str,
+    code_hash: str,
+    host: str,
+    port: int,
+    pin: str,
+    me: Identity,
+    exports: list[str],
+    setup: Any = None,
+    *,
+    script_hash: str | None = None,
+    names: dict | None = None,
 ) -> None:
-    """Dial the host and check its hello: refused by name when it is not the source's code."""
-    from provisa.codesource.worker import WorkerFailed
+    """Dial the host and check its hello: refused by name when it is not the source's code. With
+    ``setup`` (REQ-2221), give it its setup values and wait for its @on-start:
+    :class:`~provisa.codesource.worker.OnStartFailed` when that fails. ``script_hash``
+    (REQ-2225): the hash of the script the host must hold, and ``names`` its name tables."""
+    from provisa.codesource.worker import OnStartFailed, WorkerFailed
 
     worker = RemoteWorker(
-        source_id, code_hash, address=host, port=port, pin=pin, identity=me, exports=exports
+        source_id,
+        code_hash,
+        address=host,
+        port=port,
+        pin=pin,
+        identity=me,
+        exports=exports,
+        setup=setup,
+        script_hash=script_hash,
+        names=names,
     )
     try:
         worker.start()
+        worker.ready()
+    except OnStartFailed:
+        worker.stop()
+        raise
     except WorkerFailed as failed:
         raise RemoteRefused("remote_refused", str(failed)) from None
     worker.stop()
@@ -235,6 +274,12 @@ def _check(
 async def to_dev(state: Any, source_id: str) -> dict:
     """Switch the source back to dev mode; its remote host is forgotten."""
     source = await _source(state, source_id)
+    if source.mapping.get("connector"):
+        raise RemoteRefused(
+            "connector_built_only",
+            "a connector's code runs only on the host its operator runs: it has no dev mode",
+            source=source_id,
+        )
     mapping = {k: v for k, v in source.mapping.items() if k not in ("mode", "remote")}
     await _save_mapping(source_id, mapping)
     return mapping
@@ -243,9 +288,11 @@ async def to_dev(state: Any, source_id: str) -> dict:
 async def status(state: Any, source_id: str) -> dict:
     """The source's mode and, built, whether its host answers: what it reports (its code hash and
     exports) or why it does not, as this process dials it."""
+    from provisa.api.org_runtime import runtime_key
+    from provisa.codesource import lifecycle
     from provisa.codesource.remote import RemoteWorker as _Remote
     from provisa.codesource.worker import WorkerFailed, pool
-    from provisa.core.request_context import require_current_org
+    from provisa.core.request_context import active_env, require_current_org
 
     source = await _source(state, source_id)
     mapping = source.mapping
@@ -287,6 +334,9 @@ async def status(state: Any, source_id: str) -> dict:
         "host": where,
         "pinned_hash": mapping.get("content_hash"),
         "pool": pool.remote_status(org_id, source_id),
+        # REQ-2221: what this process last found polling its @on-start and @health; None when the
+        # code has neither, or no poll has run yet.
+        "health": lifecycle.health(runtime_key(org_id, active_env()), source_id),
         **probed,
     }
 
@@ -307,6 +357,9 @@ async def repin(state: Any, source_id: str, code_hash: str) -> dict:
     if mode_of(mapping) != BUILT:
         raise RemoteRefused("not_built", "only a built source is re-pinned to its host's code")
     remote = remote_of(mapping)
+    connector = mapping.get("connector")
+    if connector:
+        await _hold_to_block(connector, code_hash, source_id)
     me = await identity(_org())
     await asyncio.to_thread(
         _check,
@@ -317,6 +370,7 @@ async def repin(state: Any, source_id: str, code_hash: str) -> dict:
         remote["pin"],
         me,
         remote["exports"],
+        script_hash=remote.get("script_hash"),
     )
     mapping["content_hash"] = code_hash
     await _save_mapping(source_id, mapping)
@@ -329,11 +383,352 @@ def _org() -> str:
     return require_current_org()
 
 
+# -- a connector known only by its image (REQ-2221) ------------------------------------------------
+
+
+async def _connector(name: str) -> dict:
+    from provisa.api.admin.schema_mutation import _get_pool
+    from provisa.core.repositories import connector as connector_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await connector_repo.get(conn, name)
+    if row is None:
+        raise RemoteRefused(
+            "connector_not_found", f"This model offers no connector {name!r}", connector=name
+        )
+    return row
+
+
+async def _hold_to_block(name: str, code_hash: str, source_id: str) -> None:
+    """A connector's source runs the code its block names, and no other: a new version comes with
+    a new block, promoted with the model."""
+    row = await _connector(name)
+    if row["code_hash"] != code_hash:
+        raise RemoteRefused(
+            "connector_other_code",
+            f"connector {name} names code {row['code_hash']}, not {code_hash}: "
+            "update its block in the model",
+            source=source_id,
+        )
+
+
+async def _registry_for(admin_db: Any, org_id: str, image: str, workdir: Path) -> tuple[Any, str]:
+    """The registry holding ``image`` and the repository in it, signed in with the organisation's
+    entry for it (REQ-2098) where it has one: anonymous otherwise, and the registry says whether
+    that will do. An entry whose address is a reference is not matched, since matching it would
+    resolve every such entry to read this one."""
+    from provisa.codesource.builds import _ca_file
+    from provisa.codesource.oci import Registry
+    from provisa.core import container_registries
+
+    host, _, repository = image.partition("/")
+    for entry in await container_registries.entries(admin_db, org_id):
+        kept_host, _, namespace = entry.address.partition("/")
+        if kept_host == host and repository.startswith(f"{namespace}/"):
+            found = await container_registries.resolved(admin_db, org_id, entry.id)
+            verify = _ca_file(found, workdir)
+            return (
+                Registry(found.host, found.username, found.credential, verify=verify),
+                repository,
+            )
+    return Registry(host), repository
+
+
+def _labels_at_digest(registry: Any, repository: str, digest: str, workdir: Path) -> dict[str, str]:
+    """The labels of the image ``digest`` names: every byte read is checked against the digest that
+    names it, so what comes back is what that digest says."""
+    from provisa.codesource.oci import ImageRefused
+
+    _, raw = registry.manifest(repository, digest)
+    if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+        raise ImageRefused(
+            f"{registry.host}/{repository}@{digest}: its manifest is not that digest"
+        )
+    config = json.loads(raw).get("config") or {}
+    if not config.get("digest"):
+        raise ImageRefused(f"{registry.host}/{repository}@{digest} names no image configuration")
+    out = workdir / "config.json"
+    registry.blob(repository, config["digest"], out)
+    return (json.loads(out.read_text()).get("config") or {}).get("Labels") or {}
+
+
+async def _image_labels(state: Any, org_id: str, name: str, row: dict) -> dict[str, str]:
+    from provisa.codesource.image_build import LABEL
+    from provisa.codesource.oci import ImageRefused
+    from provisa.core.container_registries import ContainerRegistryRefused
+
+    with tempfile.TemporaryDirectory(prefix="provisa-connector-") as scratch:
+        workdir = Path(scratch)
+        try:
+            registry, repository = await _registry_for(
+                state.admin_db, org_id, row["image"], workdir
+            )
+            labels = await asyncio.to_thread(
+                _labels_at_digest, registry, repository, row["digest"], workdir
+            )
+        except (ImageRefused, ContainerRegistryRefused, httpx.HTTPError, ValueError) as failed:
+            raise RemoteRefused(
+                "connector_image",
+                f"connector {name}: the image {row['image']}@{row['digest']} could not be read: "
+                f"{failed}",
+                connector=name,
+            ) from None
+    return {k.removeprefix(LABEL): v for k, v in labels.items() if k.startswith(LABEL)}
+
+
+def _held(code_hash: str, labels: dict[str, str], name: str) -> None:
+    """The image the block's digest names is the block's code."""
+    found = labels.get("code_hash")
+    if found != code_hash:
+        raise RemoteRefused(
+            "connector_digest_code",
+            f"connector {name}: its digest names an image of code {found}, not the "
+            f"{code_hash} its block names",
+            connector=name,
+        )
+
+
+def _manifest_of(paired: Any, labels: dict[str, str], name: str) -> Any:
+    """The manifest the host handed over, held to the image's own; the manifest, read."""
+    from provisa.codesource.manifest import manifest_from_json, manifest_hash
+
+    raw = paired.manifest
+    if raw is None:
+        raise RemoteRefused(
+            "connector_no_manifest",
+            f"connector {name}: its host sent no manifest as it paired: run an image built by "
+            "this Provisa version",
+            connector=name,
+        )
+    expected = labels.get("manifest_hash")
+    found = manifest_hash(raw)
+    if found != expected:
+        raise RemoteRefused(
+            "connector_manifest",
+            f"connector {name}: its host sent manifest {found}, not the {expected} its image "
+            "carries",
+            connector=name,
+        )
+    try:
+        return manifest_from_json(raw)
+    except (KeyError, TypeError, ValueError) as unread:
+        # The image's label names a manifest this Provisa cannot read: one built by another.
+        raise RemoteRefused(
+            "connector_manifest",
+            f"connector {name}: its host's manifest cannot be read ({type(unread).__name__}): "
+            "run an image built by this Provisa version",
+            connector=name,
+        ) from None
+
+
+#: REQ-2225: how long pairing waits while the host imports a script and reads its tags.
+SCRIPT_PAIR_TIMEOUT_S = 180.0
+
+
+def _script_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _script_of(row: dict, mapping: dict, name: str) -> str | None:
+    """REQ-2225: the script a script connector was given (its presence checked already by
+    :func:`_given_requires`), held to any hash the source's config records, before anything is
+    dialled so the one-time pairing code is not spent; None for any other connector."""
+    required = next((r for r in row["requires"] if r.get("script")), None)
+    if required is None:
+        return None
+    text = mapping["settings"][required["name"]]
+    recorded = mapping.get("script_hash")
+    if recorded and recorded != _script_hash(text):
+        raise RemoteRefused(
+            "connector_script_hash",
+            f"connector {name}: the script given has hash {_script_hash(text)}, not the "
+            f"{recorded} in the source's config",
+            connector=name,
+        )
+    return text
+
+
+def _script_manifest(
+    paired: Any, image_manifest: Any, text: str, name: str
+) -> tuple[Any, dict, list[str]]:
+    """REQ-2225: what the host read from the script it was given: its manifest (its own tables and
+    commands, requiring what the image's code requires), its name tables, and every public
+    function it offers, tagged or not. The image is proven by its digest and code hash; the
+    script by its own hash."""
+    import dataclasses
+
+    from provisa.codesource.manifest import PYTHON_RULES, read_manifest
+    from provisa.codesource.names import name_tables
+
+    given = paired.script
+    if not isinstance(given, dict) or not isinstance(given.get("document"), dict):
+        raise RemoteRefused(
+            "connector_script_missing",
+            f"connector {name}: its host answered with no script: run an image built for a "
+            "script connector",
+            connector=name,
+        )
+    if given.get("hash") != _script_hash(text):
+        raise RemoteRefused(
+            "connector_script_hash",
+            f"connector {name}: its host runs script {given.get('hash')}, not the "
+            f"{_script_hash(text)} in the source's config",
+            connector=name,
+        )
+    read = read_manifest(given["document"], PYTHON_RULES)
+    offered = {r.name for r in image_manifest.requires}
+    extra = sorted({r.name for r in read.requires} - offered)
+    if extra:
+        raise RemoteRefused(
+            "connector_script_requires",
+            f"connector {name}: its script requires {', '.join(extra)}, which the connector "
+            f"does not offer ({', '.join(sorted(offered))})",
+            connector=name,
+        )
+    merged = dataclasses.replace(read, requires=image_manifest.requires)
+    return merged, name_tables(merged), sorted(e["name"] for e in given["document"]["exports"])
+
+
+def _requires_of(row: dict) -> set[tuple[str, bool]]:
+    return {(r["name"], bool(r.get("secret"))) for r in row["requires"]}
+
+
+def _given_requires(row: dict, mapping: dict, name: str) -> None:
+    """Every value the connector requires has been given: a secret as a reference (never a value),
+    any other as a setting. Refused naming what is missing, before anything is dialled."""
+    from provisa.codesource.services import declared, declared_settings
+
+    secrets = declared(mapping.get("secrets"))
+    settings = declared_settings(mapping.get("settings"))
+    missing = sorted(
+        n for n, secret in _requires_of(row) if n not in (secrets if secret else settings)
+    )
+    if missing:
+        raise RemoteRefused(
+            "connector_requires_missing",
+            f"connector {name} requires {', '.join(missing)}",
+            connector=name,
+            missing=", ".join(missing),
+        )
+
+
+async def join_connector(state: Any, source_id: str, source_type: str, mapping: dict) -> None:
+    """A connector known only by its image becomes a source: ``mapping["connector_join"]`` names
+    the connector and the host running it. Pair with the host, take the manifest it hands over,
+    hold it and the host to the block (its digest and code hash), and fill in ``mapping`` as a
+    built source's, ``connector_join`` and its pairing code gone. The code is not fetched or read
+    here, and no build setting of the block is read."""
+    from provisa.codesource.languages import LANGUAGES
+    from provisa.codesource.lifecycle import setup_values
+    from provisa.codesource.manifest import ON_START, manifest_json
+    from provisa.codesource.worker import OnStartFailed
+    from provisa.core.request_context import require_current_org
+
+    join = mapping.pop("connector_join")
+    name, host, port, code = (join.get(k) for k in ("connector", "host", "port", "pairing_code"))
+    host = (host or "").strip()
+    if not name or not host or not code or not isinstance(port, int) or not 0 < port < 65536:
+        raise RemoteRefused(
+            "address", "a connector is joined by its name, host, port and pairing code"
+        )
+    row = await _connector(name)
+    if row["language"] != source_type:
+        raise RemoteRefused(
+            "connector_type",
+            f"connector {name} is a {row['language']} source, not a {source_type} one",
+            connector=name,
+        )
+    _given_requires(row, mapping, name)
+    script = _script_of(row, mapping, name)
+    org_id = require_current_org()
+    labels = await _image_labels(state, org_id, name, row)
+    _held(row["code_hash"], labels, name)
+    runtime = labels.get("runtime")
+    if runtime not in LANGUAGES[row["language"]].runtimes:
+        raise RemoteRefused(
+            "connector_image",
+            f"connector {name}: its image names runtime {runtime!r}, not one of "
+            f"{', '.join(LANGUAGES[row['language']].runtimes)}",
+            connector=name,
+        )
+    me = await identity(org_id)
+    pairing: dict[str, Any] = (
+        {} if script is None else {"script": script, "timeout": SCRIPT_PAIR_TIMEOUT_S}
+    )
+    try:
+        paired = await asyncio.to_thread(pair, host, port, code, me, duckdb_bounds(), **pairing)
+    except ValueError as refused:  # PairingRefused: the code, or the host's answer, named
+        raise RemoteRefused("pairing", str(refused)) from None
+    manifest = _manifest_of(paired, labels, name)
+    declares = {(r.name, r.secret) for r in manifest.requires}
+    if declares != _requires_of(row):
+        raise RemoteRefused(
+            "connector_requires",
+            f"connector {name}: its host's code requires {sorted(n for n, _ in declares)}, not "
+            f"the {sorted(n for n, _ in _requires_of(row))} its block names",
+            connector=name,
+        )
+    exports = sorted(e.name for e in manifest.exports)
+    names: dict | None = None
+    kept_manifest = paired.manifest
+    if script is not None:
+        manifest, names, exports = _script_manifest(paired, manifest, script, name)
+        kept_manifest = manifest_json(manifest)
+        mapping["script_hash"] = _script_hash(script)
+    setup = None
+    if script is not None or manifest.lifecycle(ON_START) is not None:
+        setup = setup_values(org_id, source_id, manifest, mapping, state.admin_db)
+    try:
+        await asyncio.to_thread(
+            _check,
+            source_id,
+            row["code_hash"],
+            host,
+            port,
+            paired.pin,
+            me,
+            exports,
+            setup,
+            script_hash=mapping.get("script_hash"),
+            names=names,
+        )
+    except OnStartFailed as failed:
+        raise RemoteRefused(
+            "connector_on_start",
+            f"connector {name}: {failed}",
+            connector=name,
+        ) from None
+    mapping.update(
+        mode=BUILT,
+        runtime=runtime,
+        code={"kind": "git", "repository": row["git"], "commit": row["commit"]},
+        content_hash=row["code_hash"],
+        connector=name,
+        remote={
+            "host": host,
+            "port": port,
+            "pin": paired.pin,
+            "certificate": paired.certificate,
+            "exports": exports,
+            "manifest": kept_manifest,
+            **({} if names is None else {"names": names}),
+        },
+    )
+
+
 def worker_for(
-    org_id: str, source_id: str, code_hash: str, remote: dict, me: Identity
+    org_id: str,
+    source_id: str,
+    code_hash: str,
+    remote: dict,
+    me: Identity,
+    *,
+    setup: Any = None,
 ) -> RemoteWorker:
     """A built source's worker: its remote host, dialled, its hello checked against the code hash
-    and exports the source is pinned to."""
+    and exports the source is pinned to. ``setup`` (REQ-2221) gives a host that has just started
+    its setup values."""
     return RemoteWorker(
         source_id,
         code_hash,
@@ -342,6 +737,9 @@ def worker_for(
         pin=remote["pin"],
         identity=me,
         exports=remote.get("exports"),
+        setup=setup,
+        script_hash=remote.get("script_hash"),
+        names=remote.get("names"),
     )
 
 
@@ -351,6 +749,7 @@ __all__ = [
     "RemoteRefused",
     "connect",
     "identity",
+    "join_connector",
     "mode_of",
     "remote_of",
     "repin",

@@ -40,6 +40,7 @@ import datetime
 import decimal
 import enum
 import importlib
+import importlib.util
 import inspect
 import itertools
 import json
@@ -59,11 +60,13 @@ _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
 _IR_KEY = b"provisa.ir"
-_WHOLE_ROW = "$row"
 #: REQ-2100: the field a loader call's row carries its key in.
 _KEY = "$key"
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
+#: REQ-2225: a connector's script, served in place of the entry module when this is set.
+SCRIPT_FILE_ENV = "PROVISA_SCRIPT_FILE"
+_SCRIPT_MODULE = "connector_script"
 #: How many connections the host makes to a socket path (provisa/codesource/worker.py).
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 
@@ -285,17 +288,13 @@ class Host:
     async def send_rows(self, call_id: int, rows: list, schema: typing.Any) -> None:
         """``rows`` as one Arrow IPC frame, against ``schema`` (a pyarrow Schema)."""
         pa = _arrow()
-        if schema.names == [_WHOLE_ROW]:
-            field = schema.field(_WHOLE_ROW)
-            values = [{_WHOLE_ROW: _for_field(row, field)} for row in rows]
-        else:
-            fields = [schema.field(i) for i in range(len(schema))]
-            values = []
-            for row in rows:
-                plain = _plain(row)
-                if not isinstance(plain, dict):
-                    raise TypeError(f"a {type(row).__name__} is not a row")
-                values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
+        fields = [schema.field(i) for i in range(len(schema))]
+        values = []
+        for row in rows:
+            plain = _plain(row)
+            if not isinstance(plain, dict):
+                raise TypeError(f"a {type(row).__name__} is not a row")
+            values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
         await self.send_batch(call_id, pa.RecordBatch.from_pylist(values, schema=schema))
 
     async def send_batch(self, call_id: int, batch: typing.Any) -> None:  # a pyarrow RecordBatch
@@ -527,6 +526,15 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
     # a built image alike. The host runs isolated (-I), so it is put on the path here.
     sys.path.insert(1, str(Path(__file__).resolve().parent / "services"))
     importlib.import_module("provisa_services")
+    script = os.environ.get(SCRIPT_FILE_ENV)
+    if script:
+        # REQ-2225: the script given at setup is the code; the image's own code is what it imports.
+        spec = importlib.util.spec_from_file_location(_SCRIPT_MODULE, script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_SCRIPT_MODULE] = module
+        spec.loader.exec_module(module)
+        return module
     return importlib.import_module(entry)
 
 
@@ -557,6 +565,11 @@ async def serve(
             raise Refused(message["message"])
         if op == "ping":
             await host.send({"op": "pong", "id": message["id"]})
+        elif op == "values":
+            # REQ-2225: the connector's setup values, held in this process's memory and nowhere
+            # else, for code that reads them (provisa_services.setup_value).
+            sys.modules["provisa_services"]._set_values(message["values"])
+            await host.send({"op": "end", "id": message["id"]})
         elif op == "cancel":
             task = host.running.get(message["id"])
             if task is not None:

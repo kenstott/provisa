@@ -125,6 +125,7 @@
         "redis_tls_required": "Redis deve usare TLS finché TLS è richiesto.",
         "price_entry_invalid": "Ogni voce è un id di modello e quattro prezzi per milione di token: input, output, lettura cache, scrittura cache ({{entry}}).",
         "retry_max_below_interval": "L'attesa massima non può essere inferiore all'intervallo di nuovo tentativo ({{other}}).",
+        "memory_below_thread_minimum": "Ogni thread DuckDB richiede almeno 16 MiB di memoria. Modificare questo valore o {{other}}.",
         "cannot_decrypt": "Impossibile decifrare un valore memorizzato con la chiave attuale.",
         "internal_tls_set_by_chart": "Il chart Helm lo imposta qui: modifica il valore del chart {{value}}.",
         "internal_tls_not_trino": "Il traffico tra i nodi del motore può essere cifrato solo su un motore Trino.",

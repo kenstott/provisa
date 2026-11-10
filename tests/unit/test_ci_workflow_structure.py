@@ -279,6 +279,7 @@ _WAREHOUSE_SECRETS = {
     "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
     "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
     "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
+    "FABRIC_WORKSPACE_ID",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
 }  # fmt: skip
 _LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
@@ -363,9 +364,11 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
             assert line.strip().startswith(("if [ -n", "printf '%s' \"$")), line
     assert "az login" not in prepare and "az login" not in after
     assert 'rm -rf "${RUNNER_TEMP:?}/lane-credentials"' in after
-    # The Fabric capacity is left paused whatever the lane's outcome -- by reading its state,
-    # not by a bare suspend, which is refused in every state but Active (run 38050265191).
-    assert "ensure_capacity_paused" in after and "suspend_capacity()" not in after
+    # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is the run's own --
+    # made by the prepare script, deleted (and read back gone) by the after-script whatever the
+    # lane's outcome.
+    assert "scripts/fabric_e2e.py up" in prepare
+    assert "scripts/fabric_e2e.py down" in after and "suspend_capacity()" not in after
     # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
     assert "stop_warehouse" in after and "suspend_warehouse" in after
     assert "it may be billing" in after
@@ -384,7 +387,7 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
     steps = {s.get("name"): s for s in job["steps"]}
     run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
     for name, call in (
-        ("Leave the Fabric capacity paused", "ensure_capacity_paused"),
+        ("Delete this run's Fabric capacity", "scripts/fabric_e2e.py down"),
         ("Leave the Databricks warehouse stopped", "stop_warehouse"),
         ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
     ):
@@ -392,6 +395,18 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
         assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
         assert step["if"] == "always()", name
         assert call in step["run"] and "exit 1" in step["run"], name
+
+
+def test_the_warehouse_lane_creates_its_own_fabric_capacity_before_any_test():
+    """Maintainer 2026-11-10 ("Paid cloud resources"): no standing Fabric capacity. The warehouse
+    job creates the run's own before the lane runs; the step after it deletes it (above)."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse"]
+    names = [s.get("name") for s in job["steps"]]
+    up = names.index("This run's Fabric capacity")
+    assert up < names.index("Run lane")
+    assert "scripts/fabric_e2e.py up" in job["steps"][up]["run"]
 
 
 def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test():
@@ -451,7 +466,12 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
 
 # The calls that stop the live compute every run shares (tests/integration/databricks_warehouse.py,
 # snowflake_warehouse.py, fabric_capacity.py), and the credentials that reach it.
-_SHARED_COMPUTE_STOPS = ("stop_warehouse", "suspend_warehouse", "ensure_capacity_paused")
+_SHARED_COMPUTE_STOPS = (
+    "stop_warehouse",
+    "suspend_warehouse",
+    "ensure_capacity_paused",
+    "scripts/fabric_e2e.py down",
+)
 _SHARED_COMPUTE_SECRETS = ("DATABRICKS_TOKEN", "SNOWFLAKE_PASSWORD", "FABRIC_CAPACITY_NAME")
 
 

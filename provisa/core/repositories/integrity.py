@@ -205,6 +205,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("tracked_functions", "source_id", "source", "command", "name"),
     _part("tag_assignments", "source_id", "source"),
     _part("provisa_sources", "source_id", "source"),
+    _part("dbt_manifests", "source_id", "source"),  # REQ-2228: a source's manifest goes with it
+    _part("dbt_node_runs", "source_id", "source"),  # REQ-858: and what its runs last built
     # REQ-1923: where a mail source's replicas were read to goes with the source.
     _part("mail_sync_state", "source_id", "source"),
     # REQ-1942: what a source was bound to before its synthetic store goes with the source.

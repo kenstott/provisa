@@ -102,8 +102,70 @@ def test_the_codes_tables_commands_and_streams_are_read_from_docstrings_and_hint
         Field("sku", Scalar("text"), False),
         Field("qty", Scalar("bigint"), False),
     )
-    assert manifest.export("many").preview  # dict rows: typed by a preview
+    assert manifest.export("many").returns == Named("Counted")
     assert manifest.export("cancel_order").many is False
+
+
+def test_a_loose_row_type_is_refused_by_name(tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        from typing import Any, Iterator, TypedDict
+
+        def plain() -> list[dict]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def mapped() -> list[dict[str, Any]]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def anything() -> list[Any]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def feed() -> Iterator[dict]:
+            \"\"\"@stream\"\"\"
+            yield {}
+
+        class Row(TypedDict):
+            id: int
+            payload: dict
+
+        def typed() -> list[Row]:
+            \"\"\"@table\"\"\"
+            return []
+        """,
+    )
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert sorted(refused.value.problems) == [
+        f"{name}: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+        for name in ("anything", "feed", "mapped", "plain")
+    ]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose(tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        from typing import TypedDict
+
+        class Row(TypedDict):
+            id: int
+            payload: dict
+
+        def typed() -> list[Row]:
+            \"\"\"@table\"\"\"
+            return []
+        """,
+    )
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert manifest.types["Row"].fields == (
+        Field("id", Scalar("bigint"), False),
+        Field("payload", Scalar("json"), False),
+    )
 
 
 def test_a_typed_dict_and_a_named_tuple_are_row_types(tmp_path):

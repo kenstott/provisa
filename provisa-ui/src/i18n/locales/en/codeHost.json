@@ -32,6 +32,8 @@
     "statusUnknown": "Checking the remote host...",
     "answering": "The remote host answers.",
     "notAnswering": "The remote host does not answer: {{error}}",
+    "health_healthy": "Healthy",
+    "health_unhealthy": "Unhealthy",
     "otherCode": "The remote host runs other code ({{reported}}) than this source is pinned to ({{pinned}}). Its reads are refused until you review the code and re-pin.",
     "repin": "Re-pin to the host's code",
     "refresh": "Check again",

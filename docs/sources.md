@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **77** source types, the ones the Sources form offers. The tables below cover all 77; the index is the count.
+Provisa registers **78** source types, the ones the Sources form offers. The tables below cover all 78; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registers **77** source types, the ones the Sources form offers. The tab
 | 49–53 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 54–55 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
 | 56–64 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 65–71 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data profiler](#data-profiler) | `data_profiler` |
-| 76 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 65–72 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 73 | [GovData](#govdata) | `govdata` |
+| 74–75 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 76 | [Data profiler](#data-profiler) | `data_profiler` |
+| 77 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 78 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -1013,6 +1013,30 @@ They are applied to the specification when it is loaded, so the registration lis
 An exclusion that names an operation or argument the specification does not have fails the load of that source's specification and names each stale entry, so a list that no longer matches a newer specification is noticed.
 
 A branded source ships its own exclusions as part of its curation, and an operator's are added to them. The Stripe source excludes Stripe's deprecated token and source payment integration: creating a charge, the Tokens and Sources APIs, adding a card or bank account to a customer from a token, and the `source`, `card`, `bank_account` and `default_card` arguments of customer and invoice-payment writes. Payments are taken through Payment Intents, Payment Methods and Setup Intents, which the source offers. Reading and deleting payment sources an account already has stays on offer.
+
+### dbt
+
+A dbt source keeps your dbt project where it is and goes on letting dbt build it. Provisa reads the project's `manifest.json` for definitions and never copies a row or the project.
+
+| The manifest comes from | Set on the source |
+| --- | --- |
+| A URL or artifact location | `location` |
+| An upload | `content` |
+| dbt Cloud's API | `host`, `account_id`, `job_id` and an API token, held as any source's credential is |
+
+Each model is offered as a table, and adding the source registers nothing. When a steward registers a model, it is read through the warehouse source that matches the manifest's adapter and the model's database. The manifest holds no credential and dbt's profiles file is not read, so if no registered source matches, the setup form offers to create one. A model's lineage comes from its compiled SQL.
+
+**Commands.** Each model, test, snapshot and seed is offered as a mutation command, as are `build`, `source freshness`, and each macro of the project and its installed packages through `run-operation`. A command runs only when a call, a trigger or a schedule runs it. It runs wherever dbt already runs:
+
+| Target | How it runs | Set on the source |
+| --- | --- | --- |
+| dbt Cloud | Runs the job through the jobs API with the command as its one step | `spec: cloud` |
+| A script | Runs `dbt` on a command line Provisa can reach | `command_line` |
+| An operator-run connector | Calls a `@command` of a [code source](code-sources.md), with the dbt invocation as a fixed argument a caller cannot change | `connector_source`, `connector_command`, `connector_invocation_argument` (default `invocation`) |
+
+**Freshness.** dbt's `run_results.json` says when each model was last built. Give it as `run_results`, point `run_results_location` at where it is published, or let a dbt Cloud source read it from the job's latest successful run. Refreshing the source reads it again, and an upload can bring run results without a new manifest. To use it, set the model's table to a `probe` or `ttl_probe` change signal with `probe_type: hash`. The table is stale once dbt has built the model again. A model whose latest run failed or was skipped has unknown freshness, and is never read as fresh.
+
+**A new manifest** updates the commands on offer, the lineage and the descriptions of registered models. A description a steward has changed stays as the steward left it, field by field.
 
 ### GovData
 
