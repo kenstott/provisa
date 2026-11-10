@@ -772,6 +772,139 @@ async def test_schema_sql_alone_restores_every_constraint_added_to_an_existing_t
     assert [c for c in _NOT_NULL_ONCE_EMPTY if _nullable(db, *c)] == []
 
 
+# --- constraints REMOVED from a CREATE that survive on older planes ---------------------------
+#
+# The inverse of the gap above: a constraint removed from the CREATE TABLE stays on a control
+# plane that was built before the removal. schema.sql must DROP it so it no longer blocks the
+# writes the design now allows.
+
+# SQL that reinstates each removed constraint on a fresh schema, reproducing the older plane.
+_OLDER_REMOVED_CONSTRAINTS = """
+-- rls_rules: uniqueness per target+role the design removed (a role may now have multiple rules
+-- on the same target, one per rights set). Commit 78be70ea removed them.
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_table_id_role_id_key
+    UNIQUE (table_id, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_action_name_role_id_key
+    UNIQUE (action_name, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_tag_role_key
+    UNIQUE (tag_id, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key
+    UNIQUE (domain_id, role_id);
+
+-- mv_refresh_log / mv_delta_ledger: state-store tables; FK into the model removed in c43e33c3.
+ALTER TABLE mv_refresh_log ADD CONSTRAINT mv_refresh_log_mv_id_fkey
+    FOREIGN KEY (mv_id) REFERENCES materialized_views(id) ON DELETE CASCADE;
+ALTER TABLE mv_delta_ledger ADD CONSTRAINT mv_delta_ledger_mv_id_fkey
+    FOREIGN KEY (mv_id) REFERENCES materialized_views(id) ON DELETE CASCADE;
+
+-- file_source_mtimes: state-store table; FK into the model removed in c43e33c3.
+ALTER TABLE file_source_mtimes ADD CONSTRAINT file_source_mtimes_table_id_fkey
+    FOREIGN KEY (table_id) REFERENCES registered_tables(id) ON DELETE CASCADE;
+
+-- tag_assignments: uniqueness was on tag_id before base_tag_id was introduced (333860e7).
+ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_tag_id_object_key_key
+    UNIQUE (tag_id, object_key);
+"""
+
+# Every constraint the script must drop, keyed by table.
+_REMOVED_CONSTRAINT_NAMES: dict[str, set[str]] = {
+    "rls_rules": {
+        "rls_rules_table_id_role_id_key",
+        "rls_rules_action_name_role_id_key",
+        "rls_rules_tag_role_key",
+        "rls_rules_domain_role_key",
+    },
+    "mv_refresh_log": {"mv_refresh_log_mv_id_fkey"},
+    "mv_delta_ledger": {"mv_delta_ledger_mv_id_fkey"},
+    "file_source_mtimes": {"file_source_mtimes_table_id_fkey"},
+    "tag_assignments": {"tag_assignments_tag_id_object_key_key"},
+}
+
+
+def _constraint_names_for(db, schema: str, tables: list[str]) -> dict[str, set[str]]:
+    """table_name -> set of its constraint names, for each of the given tables."""
+    with db.engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT t.relname, c.conname "
+                "FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                "WHERE n.nspname = :schema AND t.relname = ANY(:tables)"
+            ),
+            {"schema": schema, "tables": tables},
+        ).fetchall()
+    result: dict[str, set[str]] = {}
+    for table, name in rows:
+        result.setdefault(table, set()).add(name)
+    return result
+
+
+async def test_schema_sql_drops_constraints_removed_from_the_create(own_database):
+    """A control plane built from an older CREATE still carries constraints the design removed.
+    schema.sql must DROP them so the rows written today are accepted — including a second rule
+    the rls_rules design allows (same table+role, different rights).
+
+    # REQ-065: V1 no-migration policy — schema.sql handles all schema evolution in place.
+    """
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+
+    # Reinstate each old constraint so the plane looks like one built before the removal.
+    await _run_in_org_schema(db, _OLDER_REMOVED_CONSTRAINTS)
+    tables = list(_REMOVED_CONSTRAINT_NAMES)
+    before = _constraint_names_for(db, _SCHEMA, tables)
+    for table, names in _REMOVED_CONSTRAINT_NAMES.items():
+        assert names <= before.get(table, set()), (
+            f"{table}: expected {names!r} present before schema.sql, got {before.get(table)!r}"
+        )
+
+    # schema.sql running drops them.
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    after = _constraint_names_for(db, _SCHEMA, tables)
+    still_present = {
+        table: names & after.get(table, set())
+        for table, names in _REMOVED_CONSTRAINT_NAMES.items()
+        if names & after.get(table, set())
+    }
+    assert not still_present, f"constraints still present after schema.sql: {still_present}"
+
+    # A second run changes nothing.
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    after2 = _constraint_names_for(db, _SCHEMA, tables)
+    still_present2 = {
+        table: names & after2.get(table, set())
+        for table, names in _REMOVED_CONSTRAINT_NAMES.items()
+        if names & after2.get(table, set())
+    }
+    assert not still_present2, f"still present after second run: {still_present2}"
+
+    # The design allows multiple rules per (table_id, role_id); the old unique blocked a second.
+    async with db.acquire() as conn:
+        await conn.execute(f'SET search_path TO "{_SCHEMA}"')
+        await conn.execute("INSERT INTO sources (id, type) VALUES ('src_rls', 'postgres')")
+        await conn.execute(
+            "INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name) "
+            "VALUES ('src_rls', '', 'public', 'orders')"
+        )
+        await conn.execute("INSERT INTO roles (id) VALUES ('analyst_rls')")
+        tbl_id = (
+            await conn.fetchrow("SELECT id FROM registered_tables WHERE table_name = 'orders'")
+        )["id"]
+        # First rule — always accepted.
+        await conn.execute(
+            "INSERT INTO rls_rules (table_id, role_id, filter_expr, rights) "
+            "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'R')",
+            tbl_id,
+        )
+        # Second rule on the SAME (table_id, role_id) — refused by the old unique key.
+        await conn.execute(
+            "INSERT INTO rls_rules (table_id, role_id, filter_expr, rights) "
+            "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'U')",
+            tbl_id,
+        )
+
+
 async def test_constraints_reach_a_table_holding_rows_that_have_no_key(own_database):
     """Rows from before the key column have NULL in it and no value can be derived for them. They
     stay, what they block waits, and the writes of today work beside them; once they are gone the
