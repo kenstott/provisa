@@ -39,3 +39,8 @@ jobs:
 
       - name: a files source's connector server runs inside the image
         run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/files_connector_smoke.py
+
+      # REQ-2227: a Rust source is prepared inside the image. serde's derive and build script are
+      # compiled and linked by the image's own C compiler.
+      - name: a Rust source is prepared inside the image
+        run: docker run --rm -i -v "$PWD/tests/fixtures/rust_source:/fixture:ro" provisa/provisa:ci python - /fixture < scripts/ci/rust_source_smoke.py
