@@ -38,11 +38,11 @@ _DEST = _HERE / "provisa_duckdb_ext" / "_ext"
 _VERSION_DIR = re.compile(r"v\d+\.\d+\.\d+.*")
 
 #: The mirror matrix's labels (build-duckdb-extensions.yml) -> (the platform DuckDB names itself
-#: there, PRAGMA platform, which is the dir the runtime stages from; the wheel's platform tag).
+#: there, PRAGMA platform, which is the dir the runtime stages from; the wheel's platform tag). The
+#: supported platforms only (REQ-294, amended 2026-11-10): Linux arm64 is not one, so no wheel is built for it.
 PLATFORMS: dict[str, tuple[str, str]] = {
     "osx-arm64": ("osx_arm64", "macosx_11_0_arm64"),
     "linux-x64": ("linux_amd64", "manylinux_2_28_x86_64"),
-    "linux-arm64": ("linux_arm64", "manylinux_2_28_aarch64"),
     "windows-x64": ("windows_amd64", "win_amd64"),
 }
 

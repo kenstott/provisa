@@ -8,8 +8,8 @@ name: Build DuckDB Extensions
 # the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) come from the
 # third-party per-extension PyPI wheels the embedded extra pins, so they are not mirrored here.
 #
-# Broader matrix than Family B: DuckDB ships arm64-Linux + Windows wheels, so the standalone engine
-# (and thus its extensions) reach platforms the embedded-PG engine cannot.
+# The supported platforms only (REQ-294, amended 2026-11-10): macOS arm64, Linux x86_64 and Windows
+# x86_64. Linux arm64 is not supported: nothing is built, published or probed for it.
 
 on:
   workflow_dispatch:
@@ -33,7 +33,6 @@ jobs:
           # osx-x64 (Intel mac) dropped: unsupported target; the macos-13 hosted runner is being
           # retired by GitHub and queues indefinitely. Apple Silicon (osx-arm64) is the Mac target.
           - { runner: ubuntu-22.04,    label: linux-x64 }
-          - { runner: ubuntu-22.04-arm, label: linux-arm64 }
           - { runner: windows-latest,  label: windows-x64 }
     steps:
       - uses: actions/checkout@v4
