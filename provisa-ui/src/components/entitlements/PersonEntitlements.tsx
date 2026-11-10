@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: placeholder
+// Canary: d37115df-b0f8-44a6-9f18-65aa43a7fb06
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -371,6 +371,7 @@ function ListRow({
                 ff="monospace"
                 td="line-through"
                 title={t("entitlements.person.endedHint")}
+                data-testid={`person-list-${list.kind}-ended-${i}`}
               >
                 {i}
               </Badge>
