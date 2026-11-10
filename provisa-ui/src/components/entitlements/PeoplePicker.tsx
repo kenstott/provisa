@@ -13,7 +13,7 @@
 // sign-in token carries. A typed email that matches no one is offered as itself: the grant waits
 // on it and attaches when a sign-in token's email matches.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Select } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
@@ -25,6 +25,8 @@ const TYPED = "e:";
 
 export interface PeoplePickerProps {
   label: string;
+  /** Given by the FormField that places the picker. */
+  description?: ReactNode;
   value: Grantee | null;
   onChange: (grantee: Grantee | null) => void;
   onError: (e: unknown) => void;
@@ -38,6 +40,7 @@ function personLabel(p: PersonMatch): string {
 
 export function PeoplePicker({
   label,
+  description,
   value,
   onChange,
   onError,
@@ -93,6 +96,8 @@ export function PeoplePicker({
   return (
     <Select
       label={label}
+      description={description}
+      inputWrapperOrder={["label", "input", "description"]}
       placeholder={t("entitlements.people.placeholder")}
       searchable
       clearable

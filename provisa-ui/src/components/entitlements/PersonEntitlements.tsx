@@ -241,6 +241,13 @@ export function PersonEntitlements({
         </Alert>
       )}
 
+      {editable && roleId !== null && mode !== null && mode.type !== "end" && (
+        <Text fw={500} size="sm" data-testid="person-entitlements-form-title">
+          {mode.type === "edit"
+            ? t("entitlements.person.editList", { kind: t(`entitlements.kind.${mode.kind}`) })
+            : t("entitlements.person.addList")}
+        </Text>
+      )}
       {editable && roleId !== null && mode?.type === "edit" && (
         <EntitlementListForm
           key={`edit-${mode.kind}`}
@@ -404,6 +411,10 @@ function ListRow({
         <Badge
           variant="light"
           color={ORIGIN_COLOR[list.origin]}
+          tt="none"
+          // The origin is a few words: it wraps in a narrow panel rather than being cut.
+          h="auto"
+          styles={{ label: { whiteSpace: "normal", overflow: "visible" } }}
           data-testid={`person-list-${list.kind}-origin`}
         >
           {t(`entitlements.origin.${list.origin}`)}
