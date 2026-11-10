@@ -287,8 +287,38 @@ class _DbClone:
         yield _ConnClone(self._rows)
 
 
-def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace:
-    """Run _install_cloned_env_schema with minimal mocks; return _rt after the call."""
+#: Every field of an env runtime derived from its sources' bindings: what a full build sets from
+#: the env's own ``sources`` rows (types, catalogs, connections) and what it compiles from them.
+_BINDING_DEPENDENT = (
+    "surfaces",
+    "role_build_inputs",
+    "source_catalogs",
+    "source_types",
+    "source_dialects",
+    "source_cache",
+    "source_federation_hints",
+    "source_allowed_domains",
+    "tables",
+    "view_sql_map",
+    "pg_notify_tables",
+    "api_sources",
+    "api_endpoints",
+    "graphql_remote_sources",
+    "openapi_specs",
+    "replica_routes",
+    "unbound_sources",
+    "source_binding_env",
+    "runtime_sources",
+)
+
+
+def _run_install_cloned(
+    monkeypatch, source_rows: list[_Row], install_surfaces=lambda rt, surfs: None
+) -> SimpleNamespace:
+    """Run _install_cloned_env_schema with minimal mocks; return _rt after the call.
+
+    ``_rt.full_builds`` records each full build run (its ``converge``); the stubbed full build
+    sets every binding-dependent field to ``("full build", field)``, what it derives itself."""
     from provisa.api import app, app_loaders
 
     # _rt accumulates every attribute assigned inside _install_cloned_env_schema.
@@ -296,7 +326,7 @@ def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace
     # _active_runtime().model_db; after _active_runtime is patched to return this SimpleNamespace,
     # the assert / async with calls need model_db on it directly (the property getter follows
     # the patched _active_runtime, not the deployment runtime the monkeypatch setter wrote to).
-    _rt = SimpleNamespace(env="synthetic", model_db=_DbClone(source_rows))
+    _rt = SimpleNamespace(env="synthetic", model_db=_DbClone(source_rows), full_builds=[])
     # prod_rt supplies the PROD-compiled state; keep it simple.
     prod_rt = SimpleNamespace(
         surfaces={},
@@ -386,7 +416,7 @@ def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace
         return _default_routes
 
     monkeypatch.setattr(app, "_schema_version_guard", _SchemaVersionGuard())
-    monkeypatch.setattr(app_loaders, "_install_cloned_surfaces", lambda rt, surfs: None)
+    monkeypatch.setattr(app_loaders, "_install_cloned_surfaces", install_surfaces)
     monkeypatch.setattr(app.state, "_active_runtime", lambda: _rt)
     monkeypatch.setattr(app.state, "schema_version", 0)
     # Bug D (R508g2): _install_cloned_env_schema now rebuilds replica_routes via
@@ -402,14 +432,23 @@ def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace
     monkeypatch.setattr("provisa.grpc.field_numbering.persist_field_numbers", _noop)
     monkeypatch.setattr("provisa.api.admin.lineage_router.write_lineage_edges", _noop)
 
+    async def _full_build(*_a: object, converge: bool = True, **_kw: object) -> None:
+        _rt.full_builds.append(converge)
+        for field in _BINDING_DEPENDENT:
+            setattr(_rt, field, ("full build", field))
+
+    monkeypatch.setattr(app, "_rebuild_schemas", _full_build)
+    _rt.prod_rt = prod_rt
     asyncio.run(app._install_cloned_env_schema(prod_rt))
     return _rt
 
 
 def test_cloned_env_unbound_sources_excludes_synthetic_bindings(monkeypatch):
     """Bug A (R508g): a source bound to the synthetic store after generation is SYNTHETIC, not
-    UNBOUND; the clone path must not add it to unbound_sources or queries raise 409 (REQ-1942)."""
-    from provisa.core.env_classes import SYNTHETIC, UNBOUND
+    UNBOUND; it must not be among unbound_sources or queries raise 409 (REQ-1942). An env with
+    one is built in full (R508g3), whose source reconcile counts UNBOUND alone; an env without one
+    is cloned, and the clone counts UNBOUND alone too."""
+    from provisa.core.env_classes import COPIED, SYNTHETIC, UNBOUND
 
     rows = [
         _Row(id="sales-pg", binding=UNBOUND),
@@ -417,11 +456,19 @@ def test_cloned_env_unbound_sources_excludes_synthetic_bindings(monkeypatch):
         _Row(id="admin-db", binding="own"),
     ]
     _rt = _run_install_cloned(monkeypatch, rows)
-    assert "petstore" not in _rt.unbound_sources, (
-        "SYNTHETIC-bound source was in unbound_sources; queries would have been refused with 409"
+    assert _rt.full_builds == [False], "an env with a SYNTHETIC-bound source was not built in full"
+    assert _rt.unbound_sources == ("full build", "unbound_sources")
+
+    cloned = _run_install_cloned(
+        monkeypatch,
+        [
+            _Row(id="sales-pg", binding=UNBOUND),
+            _Row(id="petstore", binding=COPIED),
+            _Row(id="admin-db", binding="own"),
+        ],
     )
-    assert "sales-pg" in _rt.unbound_sources
-    assert "admin-db" not in _rt.unbound_sources
+    assert cloned.full_builds == []
+    assert cloned.unbound_sources == frozenset({"sales-pg"})
 
 
 def test_cloned_env_copies_source_catalogs_from_prod(monkeypatch):
@@ -434,11 +481,19 @@ def test_cloned_env_copies_source_catalogs_from_prod(monkeypatch):
     )
     assert _rt.source_types == {"sales_pg": "postgresql"}
     assert _rt.source_dialects == {"sales_pg": "postgresql"}
+    # R508g3: the env's maps are its own -- a source the env registers or reconciles later
+    # writes into them, and PROD's must not move with it.
+    for field in ("source_catalogs", "source_types", "source_dialects"):
+        assert getattr(_rt, field) is not getattr(_rt.prod_rt, field), (
+            f"{field} is PROD's own dict; a write in the env would change PROD's {field}"
+        )
 
 
 def test_cloned_env_applies_as_generated_on_synthetic_bound_tables(monkeypatch):
-    """Bug C (R508g): PROD's tables still carry native_filter_type on API columns; the clone path
-    must apply as_generated for every source bound to the env's synthetic store (REQ-1942)."""
+    """Bug C (R508g): PROD's tables still carry native_filter_type on API columns; an env bound to
+    its synthetic store reads them as_generated (REQ-1942). R508g3: that is the full build's
+    _rebuild_schemas_impl, which applies as_generated to the env's own tables -- the env is built
+    in full, and PROD's tables are not what it serves."""
     from provisa.core.env_classes import SYNTHETIC
 
     rows = [
@@ -454,13 +509,42 @@ def test_cloned_env_applies_as_generated_on_synthetic_bound_tables(monkeypatch):
         )
     ]
     _rt = _run_install_cloned(monkeypatch, rows)
-    pet_table = next(t for t in _rt.tables if t["table_name"] == "get_pet_by_id")
-    pet_id_col = next(c for c in pet_table["columns"] if c["column_name"] == "petId")
-    assert pet_id_col["native_filter_type"] is None, (
-        "native_filter_type was not cleared; API table would refuse queries with 400 "
+    assert _rt.full_builds == [False]
+    assert _rt.tables == ("full build", "tables"), (
+        "PROD's tables were installed; the API table would refuse queries with 400 "
         "'requires parameter'"
     )
-    assert pet_id_col["data_type"] == "bigint"
+
+
+def test_a_synthetic_bound_env_is_what_a_full_build_of_it_produces(monkeypatch):
+    """R508g3 (REQ-1942, REQ-2006): binding a source to the synthetic store changes its type to
+    the store's and its tables to their generated forms, and from those a build derives the env's
+    catalogs, types and dialects, its compiled surfaces and view SQL, its API sources, its routes,
+    its unbound set and its connections. PROD compiled none of them from that binding: an env
+    holding PROD's answered list_pets from the live API (5 rows, not the 10 generated) and named
+    PROD's catalog 'sales_pg', unknown to it. Every binding-dependent field of a SYNTHETIC-bound
+    env is the full build's, none PROD's; the full build runs once, leaving replica convergence
+    to the runtime build (converge=False)."""
+    from provisa.core.env_classes import COPIED, SYNTHETIC
+
+    installed: list[object] = []
+    rows = [
+        _Row(id="sales-pg", binding=COPIED),
+        _Row(
+            id="petstore",
+            binding=SYNTHETIC,
+            synthetic={"schema": "s", "tables": [], "parameters": {}, "model_type": "openapi"},
+        ),
+    ]
+    _rt = _run_install_cloned(
+        monkeypatch, rows, install_surfaces=lambda rt, surfs: installed.append(surfs)
+    )
+    assert _rt.full_builds == [False]
+    assert installed == [], "PROD's compiled surfaces were installed in a SYNTHETIC-bound env"
+    for field in _BINDING_DEPENDENT:
+        assert getattr(_rt, field) == ("full build", field), (
+            f"{field} is not what a full build of the env derives"
+        )
 
 
 def test_walk_registry_derived_source_not_in_catalogs_does_not_crash():

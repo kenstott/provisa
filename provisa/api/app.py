@@ -3075,6 +3075,12 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     compiled schema from ``prod_rt`` into the current env's runtime, reads env-specific source
     rows from the env's model DB, and skips the full ``_rebuild_schemas_impl`` (~6 s per env).
 
+    The copy holds only while the env's sources give the build what PROD's gave it. A source
+    bound to a synthetic store (REQ-1942) does not: its type is the store's and its tables are
+    their generated forms, and from those a build derives the env's catalogs, types and dialects,
+    its compiled surfaces and view SQL, its API sources, routes, unbound set and connections. An
+    env with one is built in full -- ``_rebuild_schemas``, the one function that derives them.
+
     Called from ``_build_org_runtime`` when ``model_cloned=True`` and ``env != PROD``.  The
     sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
     """
@@ -3096,6 +3102,12 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
 
         _synthetic_bound = await _synthetic_sources(conn)
 
+    if _synthetic_bound:
+        # R508g3: a SYNTHETIC binding changes what the schema is compiled from; nothing of PROD's
+        # compiled state is the env's. The runtime build starts the replica convergence.
+        await _rebuild_schemas(converge=False)
+        return
+
     env_runtime_sources = {r._mapping["id"]: dict(r._mapping) for r in _all_source_rows}
     # source_binding_env: only OWN-bound sources; SYNTHETIC binding is not OWN.
     env_source_binding_env = {
@@ -3111,20 +3123,14 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _install_cloned_surfaces(_rt, prod_rt.surfaces)
     _rt.role_build_inputs = prod_rt.role_build_inputs
     # R508e (4fbab161ec): copy catalog/type/dialect maps so the federation layer can resolve
-    # source catalogs (e.g. 'sales_pg') and '__derived__' has an entry.  Without these the
-    # native backend raised "unknown catalog" (400) or KeyError('__derived__').
-    _rt.source_catalogs = prod_rt.source_catalogs
-    _rt.source_types = prod_rt.source_types
-    _rt.source_dialects = prod_rt.source_dialects
-    # Copy PROD's compiled tables, then rewrite API tables that are generated in this env so
-    # their required parameters become ordinary columns (REQ-1942, Bug C).  PROD has no
-    # synthetic bindings so prod_rt.tables still has native_filter_type set on API columns;
-    # as_generated strips that for every source bound to this env's synthetic store.
+    # the catalogs PROD's compiled surfaces name (e.g. 'sales_pg') and '__derived__' has an
+    # entry.  Without these the native backend raised "unknown catalog" (400) or
+    # KeyError('__derived__').  Copies, not PROD's dicts (R508g3): a source the env registers or
+    # reconciles writes into its own maps, and PROD's must not move with them.
+    _rt.source_catalogs = dict(prod_rt.source_catalogs)
+    _rt.source_types = dict(prod_rt.source_types)
+    _rt.source_dialects = dict(prod_rt.source_dialects)
     _rt.tables = prod_rt.tables
-    if _synthetic_bound:
-        from provisa.synthetic.datasets import as_generated as _as_generated
-
-        _rt.tables = _as_generated(_rt.tables, _synthetic_bound)
     _rt.relationships = prod_rt.relationships
     _rt.roles = prod_rt.roles
     _rt.role_chains = prod_rt.role_chains
@@ -3188,8 +3194,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
 
     # --- Env-specific fields ---
     # Bug A fix: mirror _reconcile_sources (model_reload.py) — only UNBOUND sources block
-    # queries with 409.  SYNTHETIC-bound sources are served from their store; including them
-    # here caused "source has no connection" for every generated env (REQ-1942).
+    # queries with 409 (REQ-1942).
     _rt.unbound_sources = frozenset(
         r._mapping["id"] for r in _all_source_rows if r._mapping[BINDING_COLUMN] == UNBOUND
     )
