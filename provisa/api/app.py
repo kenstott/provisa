@@ -3078,7 +3078,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     Called from ``_build_org_runtime`` when ``model_cloned=True`` and ``env != PROD``.  The
     sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
     """
-    from provisa.core.env_classes import BINDING_COLUMN, OWN
+    from provisa.core.env_classes import BINDING_COLUMN, OWN, UNBOUND
     from provisa.core.schema_org import sources as _sources_t
 
     _rt = state._active_runtime()
@@ -3089,7 +3089,12 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     assert state.model_db is not None
     async with state.model_db.acquire() as conn:
         _all_source_rows = (await conn.execute_core(select(_sources_t))).fetchall()
-        env_unbound = await _unbound_sources(conn)
+        # REQ-1942: a source bound to a synthetic store is served from the store -- it is not
+        # unbound. Use UNBOUND only, mirroring _reconcile_sources (model_reload.py).  The old
+        # call to _unbound_sources also included SYNTHETIC, so generated envs got a 409.
+        from provisa.synthetic.datasets import synthetic_sources as _synthetic_sources
+
+        _synthetic_bound = await _synthetic_sources(conn)
 
     env_runtime_sources = {r._mapping["id"]: dict(r._mapping) for r in _all_source_rows}
     # source_binding_env: only OWN-bound sources; SYNTHETIC binding is not OWN.
@@ -3105,7 +3110,21 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
 
     _install_cloned_surfaces(_rt, prod_rt.surfaces)
     _rt.role_build_inputs = prod_rt.role_build_inputs
+    # R508e (4fbab161ec): copy catalog/type/dialect maps so the federation layer can resolve
+    # source catalogs (e.g. 'sales_pg') and '__derived__' has an entry.  Without these the
+    # native backend raised "unknown catalog" (400) or KeyError('__derived__').
+    _rt.source_catalogs = prod_rt.source_catalogs
+    _rt.source_types = prod_rt.source_types
+    _rt.source_dialects = prod_rt.source_dialects
+    # Copy PROD's compiled tables, then rewrite API tables that are generated in this env so
+    # their required parameters become ordinary columns (REQ-1942, Bug C).  PROD has no
+    # synthetic bindings so prod_rt.tables still has native_filter_type set on API columns;
+    # as_generated strips that for every source bound to this env's synthetic store.
     _rt.tables = prod_rt.tables
+    if _synthetic_bound:
+        from provisa.synthetic.datasets import as_generated as _as_generated
+
+        _rt.tables = _as_generated(_rt.tables, _synthetic_bound)
     _rt.relationships = prod_rt.relationships
     _rt.roles = prod_rt.roles
     _rt.role_chains = prod_rt.role_chains
@@ -3161,7 +3180,12 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.kafka_table_physical = prod_rt.kafka_table_physical
 
     # --- Env-specific fields ---
-    _rt.unbound_sources = frozenset(env_unbound)
+    # Bug A fix: mirror _reconcile_sources (model_reload.py) — only UNBOUND sources block
+    # queries with 409.  SYNTHETIC-bound sources are served from their store; including them
+    # here caused "source has no connection" for every generated env (REQ-1942).
+    _rt.unbound_sources = frozenset(
+        r._mapping["id"] for r in _all_source_rows if r._mapping[BINDING_COLUMN] == UNBOUND
+    )
     _rt.source_binding_env = env_source_binding_env
     _rt.runtime_sources = env_runtime_sources
     # REQ-1914: carry the same model stamp as PROD (same model).

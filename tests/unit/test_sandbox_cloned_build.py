@@ -16,7 +16,7 @@ registrations, about 270 tables and 2,700 columns -- arrives with the clone, reb
 schema. That build makes only what a schema holds of its own: the built-in views, and the catalog
 client's grants on them. Each statement went to a control plane on another machine."""
 
-# Requirements: REQ-2006
+# Requirements: REQ-2006, REQ-1942
 
 from __future__ import annotations
 
@@ -235,3 +235,250 @@ def test_an_environment_asked_for_cloned_is_built_cloned(monkeypatch):
         ("sbx0aef6d8dbe7d", "synthetic", True),
         ("sbx0aef6d8dbe7d", "synthetic", False),
     ]
+
+
+# ---------------------------------------------------------------------------
+# R508g: clone-path synthetic-env bug regression tests
+# Bugs A, B, C + R508e fix verified without containers.
+# ---------------------------------------------------------------------------
+
+
+class _Row:
+    """Thin row double: ``._mapping`` dict."""
+
+    def __init__(self, **values: object) -> None:
+        self._mapping = values
+
+
+class _ConnClone:
+    """DB double for _install_cloned_env_schema: answers SELECT sources and
+    SELECT … WHERE binding=SYNTHETIC."""
+
+    def __init__(self, source_rows: list[_Row]) -> None:
+        self._rows = source_rows
+
+    async def execute_core(self, stmt):
+        # Both queries in _install_cloned_env_schema read from the sources table.
+        # Distinguish by presence of a WHERE clause on the binding column.
+        try:
+            whereclause = stmt.whereclause
+        except AttributeError:
+            whereclause = None
+        if whereclause is not None:
+            # synthetic_sources() does ``for sid, where in bound.fetchall()``:
+            # return (id, synthetic) tuples, not _Row objects.
+            from provisa.core.env_classes import SYNTHETIC
+
+            synthetic = [
+                (r._mapping["id"], r._mapping.get("synthetic"))
+                for r in self._rows
+                if r._mapping.get("binding") == SYNTHETIC
+            ]
+            return SimpleNamespace(fetchall=lambda: synthetic)
+        return SimpleNamespace(fetchall=lambda: list(self._rows))
+
+
+class _DbClone:
+    def __init__(self, rows: list[_Row]) -> None:
+        self._rows = rows
+
+    @asynccontextmanager
+    async def acquire(self):
+        yield _ConnClone(self._rows)
+
+
+def _run_install_cloned(monkeypatch, source_rows: list[_Row]) -> SimpleNamespace:
+    """Run _install_cloned_env_schema with minimal mocks; return _rt after the call."""
+    from provisa.api import app, app_loaders
+
+    # _rt accumulates every attribute assigned inside _install_cloned_env_schema.
+    _rt = SimpleNamespace(env="synthetic")
+    # prod_rt supplies the PROD-compiled state; keep it simple.
+    prod_rt = SimpleNamespace(
+        surfaces={},
+        role_build_inputs=None,
+        source_catalogs={"__derived__": "mem", "sales_pg": "sales_pg_cat"},
+        source_types={"sales_pg": "postgresql"},
+        source_dialects={"sales_pg": "postgresql"},
+        tables=[
+            {
+                "source_id": "petstore",
+                "schema_name": "api",
+                "table_name": "get_pet_by_id",
+                "columns": [
+                    {"column_name": "id", "native_filter_type": None, "data_type": "integer"},
+                    {
+                        "column_name": "petId",
+                        "native_filter_type": "path_param",
+                        "data_type": None,
+                    },
+                ],
+            }
+        ],
+        relationships=None,
+        roles=None,
+        role_chains=None,
+        draft_table_ids=None,
+        view_context=None,
+        view_path_map=None,
+        names_table=None,
+        view_sql_map=None,
+        mv_registry=None,
+        bitemporal_view_reads=None,
+        stored_view_reads=None,
+        class_tables=None,
+        refused_classes=None,
+        class_bodies=None,
+        table_cache=None,
+        pg_notify_tables=None,
+        table_watermarks=None,
+        user_attributes=None,
+        masking_rules=None,
+        masked_columns=None,
+        tracked_functions=None,
+        tracked_webhooks=None,
+        column_transforms=None,
+        undefined_commands=None,
+        replica_routes=None,
+        metrics=None,
+        schema_build_cache=None,
+        api_sources=None,
+        api_endpoints=None,
+        table_approval_hooks=None,
+        source_approval_hooks=None,
+        pg_enum_types=None,
+        pg_source_enums=None,
+        graphql_remote_sources=None,
+        openapi_specs=None,
+        grpc_remote_sources=None,
+        ingest_engines=None,
+        ingest_tables=None,
+        websocket_sources=None,
+        rss_sources=None,
+        cdc_sources=None,
+        source_cache=None,
+        source_allowed_domains=None,
+        source_federation_hints=None,
+        kafka_windows=None,
+        kafka_bootstrap=None,
+        kafka_declared=None,
+        kafka_table_configs=None,
+        kafka_table_physical=None,
+        model_stamp="ms1",
+    )
+
+    class _SchemaVersionGuard:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a: object) -> None:
+            pass
+
+    monkeypatch.setattr(app, "_schema_version_guard", _SchemaVersionGuard())
+    monkeypatch.setattr(app_loaders, "_install_cloned_surfaces", lambda rt, surfs: None)
+    monkeypatch.setattr(app.state, "model_db", _DbClone(source_rows))
+    monkeypatch.setattr(app.state, "_active_runtime", lambda: _rt)
+    monkeypatch.setattr(app.state, "schema_version", 0)
+
+    # Field-number and lineage writes are side-effects not under test; stub them out.
+    async def _noop(*_a: object, **_kw: object) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    monkeypatch.setattr("provisa.grpc.field_numbering.load_field_number_allocator", _noop)
+    monkeypatch.setattr("provisa.grpc.field_numbering.persist_field_numbers", _noop)
+    monkeypatch.setattr("provisa.api.admin.lineage_router.write_lineage_edges", _noop)
+
+    asyncio.run(app._install_cloned_env_schema(prod_rt))
+    return _rt
+
+
+def test_cloned_env_unbound_sources_excludes_synthetic_bindings(monkeypatch):
+    """Bug A (R508g): a source bound to the synthetic store after generation is SYNTHETIC, not
+    UNBOUND; the clone path must not add it to unbound_sources or queries raise 409 (REQ-1942)."""
+    from provisa.core.env_classes import SYNTHETIC, UNBOUND
+
+    rows = [
+        _Row(id="sales-pg", binding=UNBOUND),
+        _Row(id="petstore", binding=SYNTHETIC),  # generated → served from store
+        _Row(id="admin-db", binding="own"),
+    ]
+    _rt = _run_install_cloned(monkeypatch, rows)
+    assert "petstore" not in _rt.unbound_sources, (
+        "SYNTHETIC-bound source was in unbound_sources; queries would have been refused with 409"
+    )
+    assert "sales-pg" in _rt.unbound_sources
+    assert "admin-db" not in _rt.unbound_sources
+
+
+def test_cloned_env_copies_source_catalogs_from_prod(monkeypatch):
+    """R508e (4fbab161ec, R508g): the clone path must copy source_catalogs/types/dialects from
+    PROD or the federation layer cannot resolve source catalog names (400 unknown catalog)."""
+    rows = [_Row(id="sales-pg", binding="own")]
+    _rt = _run_install_cloned(monkeypatch, rows)
+    assert _rt.source_catalogs == {"__derived__": "mem", "sales_pg": "sales_pg_cat"}, (
+        "source_catalogs not copied from PROD; unknown catalog errors would follow"
+    )
+    assert _rt.source_types == {"sales_pg": "postgresql"}
+    assert _rt.source_dialects == {"sales_pg": "postgresql"}
+
+
+def test_cloned_env_applies_as_generated_on_synthetic_bound_tables(monkeypatch):
+    """Bug C (R508g): PROD's tables still carry native_filter_type on API columns; the clone path
+    must apply as_generated for every source bound to the env's synthetic store (REQ-1942)."""
+    from provisa.core.env_classes import SYNTHETIC
+
+    rows = [
+        _Row(
+            id="petstore",
+            binding=SYNTHETIC,
+            synthetic={
+                "schema": "s",
+                "tables": [["api", "get_pet_by_id"]],
+                "parameters": {"api.get_pet_by_id": {"petId": "bigint"}},
+                "model_type": "openapi",
+            },
+        )
+    ]
+    _rt = _run_install_cloned(monkeypatch, rows)
+    pet_table = next(t for t in _rt.tables if t["table_name"] == "get_pet_by_id")
+    pet_id_col = next(c for c in pet_table["columns"] if c["column_name"] == "petId")
+    assert pet_id_col["native_filter_type"] is None, (
+        "native_filter_type was not cleared; API table would refuse queries with 400 "
+        "'requires parameter'"
+    )
+    assert pet_id_col["data_type"] == "bigint"
+
+
+def test_walk_registry_derived_source_not_in_catalogs_does_not_crash():
+    """Bug B (R508g): __derived__ has no catalog entry in a fresh clone; _attach_tbl must guard
+    _NO_REMOTE_SOURCE_IDS before accessing source_catalogs, or it raises KeyError (REQ-1942)."""
+    from provisa.federation.native_backend import NativeEngineBackend
+
+    attached: list = []
+    backend = NativeEngineBackend(SimpleNamespace(name="duckdb"))
+    backend._runtime = SimpleNamespace(attach_source=attached.append)
+    derived = SimpleNamespace(id="__derived__", type=SimpleNamespace(value="duckdb"))
+    config = SimpleNamespace(
+        sources=[derived],
+        tables=[
+            SimpleNamespace(
+                source_id="__derived__",
+                schema_name="views",
+                table_name="orders_view",
+                region=None,
+            )
+        ],
+    )
+    state = SimpleNamespace(
+        # __derived__ is intentionally absent — this is the pre-R508e clone-path state
+        source_catalogs={},
+        replica_routes=SimpleNamespace(kept_for_good=set()),
+        foreign_regions={},
+        tables=[],
+        runtime_sources={},
+        model_db=None,
+    )
+    # Before the fix this raised KeyError('__derived__'); after the fix it returns True.
+    result = backend._walk_registry(state, config)
+    assert result is True
+    assert attached == [], "__derived__ must never be attached as a live source"

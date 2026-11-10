@@ -544,6 +544,11 @@ class NativeEngineBackend(EngineBackend):
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
+            # Bug B fix: guard _NO_REMOTE_SOURCE_IDS BEFORE accessing source_catalogs.
+            # '__derived__' (and other virtual sources) have no catalog entry; the dict lookup
+            # crashed with KeyError before the original guard further down could fire (REQ-1942).
+            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
+                return
             key = (state.source_catalogs[src.id], src.id, schema_name, table_name)
             if key in tried or (src.id, schema_name, table_name) in native:
                 return
@@ -582,8 +587,6 @@ class NativeEngineBackend(EngineBackend):
             ):
                 return
             tried.add(key)
-            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
-                return
             # REQ-2191: a JDBC source attached live here is attached as the built-in type its URL
             # names, through that type's own connector.
             named = attach_type(src, self.engine)
