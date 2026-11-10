@@ -593,11 +593,13 @@ def test_a_direct_read_of_a_granted_column_is_served(server, ledger, reader, tab
 
 def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
     """The admin's access view of ``secret`` names only the role its registration named (and
-    that role's ancestors' grants never widen it to a sibling): no Viewer grant on it."""
+    that role's ancestors' grants never widen it to a sibling): no Viewer grant on it.
+    Each table is queried as the role that IS served ``secret`` (REQ-2162: the access view is
+    capped by the viewer's own read rights)."""
     for table, reader, other in (("orders", _ROLE, _ANALYST), ("vault", _ANALYST, _ROLE)):
         response = httpx.get(
             f"{server.base_url}/admin/tables/{ledger[table]}/access",
-            headers={"X-Provisa-Role": _ROLE},
+            headers={"X-Provisa-Role": reader},
             timeout=server.request_timeout + 120,
         )
         assert response.status_code == 200, response.text

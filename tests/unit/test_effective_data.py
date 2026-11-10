@@ -300,12 +300,12 @@ class _Pool:
 
 @pytest.fixture
 def wired(monkeypatch):
-    def wire(served, visible, governance=True):
+    def wire(served, visible):
         monkeypatch.setattr(roles_router, "_pool", lambda _r: _Pool())
         monkeypatch.setattr("provisa.api.app.state", _two_role_state())
         monkeypatch.setattr(
             "provisa.api.admin.catalog_scope.catalog_scope",
-            lambda _info: SimpleNamespace(whole=False, served=served, governance=governance),
+            lambda _info: SimpleNamespace(whole=False, served=served, governance=True),
         )
         monkeypatch.setattr(
             table_access_router, "role_definitions_visible", lambda *_a: lambda r: r in visible
@@ -322,7 +322,7 @@ def _request() -> Request:
 
 @pytest.mark.asyncio
 async def test_the_endpoint_lists_the_roles_the_caller_may_read_on_the_columns_it_reads(wired):
-    wired({1: {"diagnosis"}}, {"clinical_reviewer"}, governance=False)
+    wired({1: {"diagnosis"}}, {"clinical_reviewer"})
     access = await table_access_router.table_access_endpoint(1, _request())
     assert [c["name"] for c in access["columns"]] == ["diagnosis"]
     assert [a["role"] for a in access["columns"][0]["access"]] == ["clinical_reviewer"]
@@ -334,17 +334,6 @@ async def test_a_table_the_caller_reads_nothing_of_is_not_found(wired):
     with pytest.raises(ApiError) as refused:
         await table_access_router.table_access_endpoint(1, _request())
     assert refused.value.code == "schema.table_not_found"
-
-
-@pytest.mark.asyncio
-async def test_a_governance_caller_sees_all_columns_of_a_table_it_is_partially_served(wired):
-    """view_governance shows access for every column of a table the caller is served, including
-    those the caller cannot directly read (REQ-2162, REQ-2154)."""
-    # served has only "diagnosis"; governance=True → ALL three columns must appear
-    wired({1: {"diagnosis"}}, {"clinical_reviewer", "steward"})
-    access = await table_access_router.table_access_endpoint(1, _request())
-    column_names = {c["name"] for c in access["columns"]}
-    assert column_names == {"diagnosis", "amount", "ssn"}, access["columns"]
 
 
 def test_a_write_grant_outside_the_role_s_reach_is_not_its_write():
