@@ -110,6 +110,9 @@ on:
         required: false
       M365_TEST_MAILBOX_OUTSIDE:
         required: false
+      # Not passed by the caller: the microsoft_365 job reads it from the `live` environment.
+      GWS_TEST_MAILBOXES:
+        required: false
       BIGQUERY_LOCATION:
         required: false
       BIGQUERY_TEST_GCS_BUCKET:
@@ -988,6 +991,8 @@ jobs:
       M365_CLIENT_ID: ${{ secrets.M365_CLIENT_ID }}
       M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
       M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
+      # The calendar test's meeting attendee: the first address, an external mailbox.
+      GWS_TEST_MAILBOXES: ${{ secrets.GWS_TEST_MAILBOXES }}
       # Optional: the test of a mailbox the client may not read runs only when it is set.
       M365_TEST_MAILBOX_OUTSIDE: ${{ secrets.M365_TEST_MAILBOX_OUTSIDE }}
     steps:
@@ -1004,7 +1009,7 @@ jobs:
       - name: Credentials present
         run: |
           missing=""
-          for v in M365_TENANT_ID M365_CLIENT_ID M365_CLIENT_SECRET M365_TEST_MAILBOXES; do
+          for v in M365_TENANT_ID M365_CLIENT_ID M365_CLIENT_SECRET M365_TEST_MAILBOXES GWS_TEST_MAILBOXES; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then

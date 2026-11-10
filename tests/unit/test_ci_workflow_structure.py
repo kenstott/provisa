@@ -1141,11 +1141,19 @@ def test_focused_tests_passes_files_that_need_no_stack():
 def test_the_microsoft_365_lane_reads_its_secrets_from_the_live_environment_and_checks_them():
     """The repository is at GitHub's 100-secret cap: the live lanes' secrets move to the `live`
     environment (maintainer 2026-11-10). The microsoft_365 job names that environment, reads the
-    same secret names, and still fails by name, before the lane runs, when one is missing."""
+    same secret names, and still fails by name, before the lane runs, when one is missing.
+    GWS_TEST_MAILBOXES is one of them: its first address is the external attendee of the
+    calendar test's meeting (maintainer 2026-11-10)."""
     path = REPO / ".github" / "workflows" / "integration-suite-lanes.yml"
     job = yaml.safe_load(path.read_text())["jobs"]["microsoft_365"]
     assert job["environment"] == "live"
-    required = ("M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_TEST_MAILBOXES")
+    required = (
+        "M365_TENANT_ID",
+        "M365_CLIENT_ID",
+        "M365_CLIENT_SECRET",
+        "M365_TEST_MAILBOXES",
+        "GWS_TEST_MAILBOXES",
+    )
     for name in (*required, "M365_TEST_MAILBOX_OUTSIDE"):
         assert job["env"][name] == f"${{{{ secrets.{name} }}}}", name
     names = [s.get("name") for s in job["steps"]]

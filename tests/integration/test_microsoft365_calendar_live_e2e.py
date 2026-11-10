@@ -41,10 +41,15 @@ granted these application permissions, with admin consent:
   M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the licensed mailbox
   written to; only the first address is used).
 
+  GWS_TEST_MAILBOXES (the first address is the meeting's attendee; see below). The meeting test
+  fails by name when it is not set.
+
 A meeting needs a second person, and the tenant has no second licensed mailbox: the attendee is
-the tenant's shared mailbox invites@provisa.dev (:data:`ATTENDEE`), which needs no license and
-receives the invitation. Every assertion of the meeting test is on the organizer's side -- the
-refusal, the attendee row as written, which change is told -- so a shared mailbox suffices.
+an external mailbox, the Google Workspace test mailbox, the first address of GWS_TEST_MAILBOXES
+(maintainer 2026-11-10). It is not taken from M365_TEST_MAILBOXES, since every address there is
+read through Graph. Every assertion of the meeting test is on the organizer's side -- the refusal,
+the attendee row as written, which change is told -- so any address that receives mail serves;
+the invitation is sent to it.
 
 In CI it runs in the mail test's lane, microsoft_365, when a dispatch asks for it
 (include_microsoft_365); a credential that is not set fails it by name.
@@ -95,8 +100,16 @@ def _mailboxes() -> tuple[str, ...]:
 
 
 ADA = _mailboxes()[0] if _HAVE_CREDS else ""
-#: The meeting's attendee: the tenant's shared mailbox, which needs no license.
-ATTENDEE = "invites@provisa.dev"
+
+
+def _attendee() -> str:
+    """The meeting's attendee: the first address of GWS_TEST_MAILBOXES, an external mailbox."""
+    named = [a.strip().lower() for a in os.environ.get("GWS_TEST_MAILBOXES", "").split(",")]
+    named = [a for a in named if a]
+    assert named, "not set: GWS_TEST_MAILBOXES (its first address is the meeting's attendee)"
+    return named[0]
+
+
 ROOT = f"/users/{quote(ADA, safe='')}"
 
 
@@ -245,6 +258,7 @@ def test_a_series_is_one_rrule_with_one_occurrence_moved_and_another_cancelled(t
 
 
 def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, made):
+    attendee = _attendee()
     _run(
         token,
         "INSERT INTO events (calendar_id, title, start_at, end_at) VALUES ($1, $2, $3, $4)",
@@ -255,19 +269,19 @@ def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, ma
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], ATTENDEE],
+            [meeting["id"], attendee],
         )
     assert (
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], ATTENDEE],
+            [meeting["id"], attendee],
             send_updates=True,
         )
         == 1
     )
     people = [r for r in _rows(token, "event_attendees") if r["event_id"] == meeting["id"]]
-    assert [p["address"].lower() for p in people] == [ATTENDEE]
+    assert [p["address"].lower() for p in people] == [attendee]
     # Now a meeting: its own reminder changes silently, its title does not.
     assert (
         _run(token, "UPDATE events SET is_reminder_on = false WHERE id = $1", [meeting["id"]]) == 1
