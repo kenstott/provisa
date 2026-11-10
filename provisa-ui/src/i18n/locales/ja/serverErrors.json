@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} はデータプロダクトとして提供されていません。マニフェストで、コントラクトが強制された公開モデルとして指定されていません。",
+        "not_registered": "{{model}} をデータプロダクトとして承認する前に、テーブルとして登録してください。",
+        "columns_missing": "テーブルにコントラクトの列がありません: {{columns}}。",
+        "id_taken": "データプロダクト {{data_product}} はすでに存在します。",
+        "already_a_product": "{{model}} はすでにデータプロダクト {{data_product}} のメンバーです。"
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "その方法ではメールボックスを選択できません: {{error}}",
       "scope_not_delegated": "組織の Google サービス アカウントは {{scopes}} について承認されていません。特権管理者が、Google 管理コンソールの [セキュリティ] › [アクセスとデータ管理] › [API の制御] › [ドメイン全体の委任を管理] で、そのクライアント ID にこのスコープを追加します。新しい承認が反映されるまで最大 24 時間かかることがあります。",

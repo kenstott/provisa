@@ -88,7 +88,7 @@ async def _registered_of(conn: Any, source_id: str) -> list[Any]:
     ).fetchall()
 
 
-async def _model_tables(conn: Any, manifest: DbtManifest) -> list[tuple[DbtModel, Any]]:
+async def model_tables(conn: Any, manifest: DbtManifest) -> list[tuple[DbtModel, Any]]:
     """Each registered table that is a model of ``manifest``: its model and its registered row."""
     warehouses = await warehouse_rows(conn)
     out: list[tuple[DbtModel, Any]] = []
@@ -109,7 +109,7 @@ async def _model_tables(conn: Any, manifest: DbtManifest) -> list[tuple[DbtModel
 
 async def _update_descriptions(conn: Any, manifest: DbtManifest) -> None:
     """What the manifest says of each model already registered, over what the table carries."""
-    for model, row in await _model_tables(conn, manifest):
+    for model, row in await model_tables(conn, manifest):
         if model.description is not None:
             await conn.execute_core(
                 update(registered_tables)
@@ -149,7 +149,7 @@ async def lineage_views(conn: Any) -> list[dict]:
             (row.schema_name, row.table_name): (
                 f"{domain_to_sql_name(row.domain_id)}.{row.table_name}"
             )
-            for _, row in await _model_tables(conn, manifest)
+            for _, row in await model_tables(conn, manifest)
         }
         out.extend(
             {"relation": relation, "table_name": relation.rsplit(".", 1)[-1], "view_sql": sql}
