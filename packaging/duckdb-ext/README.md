@@ -11,8 +11,8 @@ where only PyPI/Maven/npm/NuGet are proxied (Artifactory), that host is unreacha
 tier breaks.
 
 This package embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so
-acquisition flows through PyPI instead. Each supported platform has its own wheel (macOS arm64, Linux x86_64,
-Windows x64; Linux arm64 is not supported), holding only that platform's extensions; pip picks the one for the machine.
+acquisition flows through PyPI instead. Each platform has its own wheel (macOS arm64, Linux x86_64
+and aarch64, Windows x64), holding only that platform's extensions; pip picks the one for the machine.
 There is no source distribution. The project is split across version parts (`<release>.<part>`), each
 under PyPI's 100 MB per-file limit. Provisa's stage command (`python -m provisa.runtime_deps.stage_assets`)
 fetches every part with `pip download` and lays the running platform's blobs out in the directory

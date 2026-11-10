@@ -94,6 +94,22 @@ def test_collect_refuses_a_mirror_of_another_platform(tmp_path, monkeypatch):
     assert collect.main(mirror, "linux-x64", 1) == 1
 
 
+def test_collect_lays_out_linux_arm64_where_duckdb_looks_for_it(tmp_path, monkeypatch):
+    # REQ-294 (amended 2026-11-10): Linux arm64 is supported, so its mirror leg collects into the
+    # dir DuckDB names linux_arm64 and its wheel is tagged manylinux_2_28_aarch64.
+    collect = _collect()
+    dest = tmp_path / "_ext"
+    monkeypatch.setattr(collect, "_DEST", dest)
+    version = collect._pinned_duckdb_version()
+    arm = tmp_path / "mirror" / "linux-arm64" / f"v{version}" / "linux_arm64"
+    arm.mkdir(parents=True)
+    (arm / "mssql.duckdb_extension").write_bytes(b"ARM")
+
+    assert collect.PLATFORMS["linux-arm64"] == ("linux_arm64", "manylinux_2_28_aarch64")
+    assert collect.main(tmp_path / "mirror", "linux-arm64", 1) == 0
+    assert (dest / f"v{version}/linux_arm64/mssql.duckdb_extension").read_bytes() == b"ARM"
+
+
 def test_collect_refuses_an_unknown_label_and_a_missing_mirror(tmp_path, monkeypatch):
     collect = _collect()
     monkeypatch.setattr(collect, "_DEST", tmp_path / "_ext")
@@ -289,6 +305,20 @@ def test_check_wheels_fails_a_missing_platform_and_a_universal_wheel(tmp_path, c
     err = capsys.readouterr().err
     assert "windows-x64 part 1: expected one *.1-py3-none-win_amd64.whl, found 0" in err
     assert "provisa_duckdb_ext-0.3.0.1-py3-none-any.whl: not a platform wheel" in err
+
+
+def test_check_wheels_fails_a_missing_linux_arm64_wheel_by_name(tmp_path, capsys):
+    # REQ-294: the release publishes a Linux arm64 wheel for every part; one missing fails the build.
+    collect = _collect()
+    sizes = _all_tags(collect, 1000)
+    del sizes["manylinux_2_28_aarch64"]
+    dist = _wheels(tmp_path / "dist", sizes)
+
+    assert collect.check_wheels(dist) == 1
+    assert (
+        "linux-arm64 part 1: expected one *.1-py3-none-manylinux_2_28_aarch64.whl, found 0"
+        in capsys.readouterr().err
+    )
 
 
 def test_the_100_mb_limit_is_pypis():

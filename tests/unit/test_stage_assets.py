@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -33,16 +33,6 @@ _BUILDS = (
     "packaging/linux/build-appimage.sh",
     "packaging/windows/build-sfx.ps1",
 )
-
-
-def _split_module() -> types.ModuleType:
-    path = _REPO / "scripts/ci/pgwire_maven_bundles.py"
-    spec = importlib.util.spec_from_file_location("pgwire_maven_bundles", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["pgwire_maven_bundles"] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 # ---- the stage command ---------------------------------------------------------------------------
@@ -233,31 +223,19 @@ def _unpacked(tmp_path: Path) -> dict[str, Path]:
     }
 
 
-def test_a_file_in_two_bundles_is_shared_and_one_alone_stays(tmp_path):
-    split = _split_module()
-    unpacked = _unpacked(tmp_path)
-    entries = split.split(unpacked)
-    assert sorted(e["path"] for e in entries["file"]) == ["jre/libjvm", "lib/calcite.jar"]
-    assert entries["file"] == entries["jira"]
-
-
-def test_shared_objects_keep_their_mode_in_their_name(tmp_path):
-    # A hard link shares its inode, so a mode differing across bundles must be a separate object.
-    split = _split_module()
-    file = _tree(tmp_path / "file", {"a": _JRE})
-    jira = _tree(tmp_path / "jira", {"a": _JRE})
-    (file / "a").chmod(0o755)
-    (jira / "a").chmod(0o644)
-    assert split.split({"file": file, "jira": jira}) == {"file": [], "jira": []}
-
-
 def _published(tmp_path: Path, version: str) -> Path:
-    """The Central layout of two connectors and the shared files, as the repository serves it."""
-    split = _split_module()
+    """The Maven layout of two connectors and the files they share, as the calcite engine release
+    publishes it (REQ-294): each shared file once under ``objects/<sha256>-<mode>`` in
+    ``pgwire-shared-<variant>``, and each connector's own files under ``<asset_stem>/`` with a
+    manifest naming the shared files to link back in."""
     unpacked = _unpacked(tmp_path / "src")
-    entries = split.split(unpacked)
+    shared_paths = ("jre/libjvm", "lib/calcite.jar")
     repo = tmp_path / "repo" / "io" / "simpleishard"
     variant = pgwire_bundles.bundle_variant()
+
+    def object_name(path: Path) -> str:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        return f"{digest}-{path.stat().st_mode & 0o777:o}"
 
     def publish(artifact: str, built: Path) -> None:
         base = repo / artifact / version
@@ -269,13 +247,24 @@ def _published(tmp_path: Path, version: str) -> Path:
         )
 
     shared = tmp_path / "shared.tar.gz"
-    split.write_shared(unpacked, entries, shared)
+    with tarfile.open(shared, "w:gz") as tar:
+        for rel in shared_paths:
+            source = unpacked["file"] / rel
+            tar.add(source, arcname=f"objects/{object_name(source)}")
     publish(f"pgwire-shared-{variant}", shared)
     for connector, root in unpacked.items():
+        stem = f"pgwire-{connector}-{version}-{variant}"
+        entries = [{"path": rel, "object": object_name(root / rel)} for rel in shared_paths]
         built = tmp_path / f"{connector}.tar.gz"
-        split.write_connector(
-            root, f"pgwire-{connector}-{version}-{variant}", entries[connector], built
-        )
+        with tarfile.open(built, "w:gz") as tar:
+            for path in sorted(root.rglob("*")):
+                rel = path.relative_to(root).as_posix()
+                if rel not in shared_paths:
+                    tar.add(path, arcname=f"{stem}/{rel}", recursive=False)
+            body = json.dumps(entries).encode()
+            info = tarfile.TarInfo(f"{stem}/{maven_bundles.SHARED_MANIFEST}")
+            info.size = len(body)
+            tar.addfile(info, io.BytesIO(body))
         publish(f"pgwire-{connector}-{variant}", built)
     return tmp_path / "repo"
 
@@ -372,25 +361,3 @@ def test_the_coordinates_are_per_connector_and_platform():
     assert maven_bundles.artifact_url("pgwire-file-macos-arm64", "0.1.0", "https://r") == (
         "https://r/io/simpleishard/pgwire-file-macos-arm64/0.1.0/pgwire-file-macos-arm64-0.1.0.tar.gz"
     )
-
-
-def test_a_central_directory_is_complete(tmp_path):
-    split = _split_module()
-    tarball = tmp_path / "x.tar.gz"
-    with tarfile.open(tarball, "w:gz"):
-        pass
-    split.central_dir("pgwire-file-macos-arm64", "0.1.0", tarball, "d", tmp_path / "out")
-    base = tmp_path / "out/pgwire-file-macos-arm64/io/simpleishard/pgwire-file-macos-arm64/0.1.0"
-    names = {p.name for p in base.iterdir()}
-    stem = "pgwire-file-macos-arm64-0.1.0"
-    assert {f"{stem}.tar.gz", f"{stem}.pom", f"{stem}-sources.jar", f"{stem}-javadoc.jar"} <= names
-    assert f"{stem}.pom.sha256" in names
-    pom = (base / f"{stem}.pom").read_text()
-    assert "<packaging>tar.gz</packaging>" in pom and "<groupId>io.simpleishard</groupId>" in pom
-
-
-def test_the_bundle_workflow_never_uploads_to_central():
-    text = (_REPO / ".github/workflows/pgwire-maven-bundles.yml").read_text()
-    assert "workflow_dispatch" in text
-    assert "central.sonatype.com" not in text and "SONATYPE" not in text
-    assert "scripts/ci/pgwire_maven_bundles.py" in text

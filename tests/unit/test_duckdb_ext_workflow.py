@@ -52,35 +52,39 @@ def test_a_wheel_per_mirrored_platform_each_tagged_for_it():
     assert {tag for _plat, tag in platforms.values()} == {
         "macosx_11_0_arm64",
         "manylinux_2_28_x86_64",
+        "manylinux_2_28_aarch64",
         "win_amd64",
     }
 
 
-def test_the_published_platforms_are_exactly_the_three_supported():
-    # REQ-294 (amended 2026-11-10): macOS arm64, Linux x86_64 and Windows x86_64 are supported; Linux
-    # arm64 is not, so the release builds, publishes and probes nothing for it.
+def test_the_published_platforms_are_exactly_the_four_supported():
+    # REQ-294 (amended 2026-11-10, LINUX ARM64 IS FULLY SUPPORTED): macOS arm64, Linux x86_64, Linux
+    # arm64 and Windows x86_64; the release builds, publishes and probes every one of them.
     legs = _jobs()["mirror"]["strategy"]["matrix"]["include"]
     assert {(leg["label"], leg["runner"]) for leg in legs} == {
         ("osx-arm64", "macos-15"),
         ("linux-x64", "ubuntu-22.04"),
+        ("linux-arm64", "ubuntu-22.04-arm"),
         ("windows-x64", "windows-latest"),
     }
     assert {plat for plat, _tag in _collect().PLATFORMS.values()} == {
         "osx_arm64",
         "linux_amd64",
+        "linux_arm64",
         "windows_amd64",
     }
-    assert not any(leg["runner"].endswith("-arm") for leg in legs)
 
 
 def test_the_duckdb_platforms_are_the_ones_pgwire_bundles_are_published_for():
-    # Both halves of the release cover the same three platforms (REQ-294): no platform gets the
-    # DuckDB extensions without the pgwire connectors, or the reverse.
+    # Both halves of the release cover the same four platforms (REQ-294): no platform gets the
+    # DuckDB extensions without the pgwire connectors, or the reverse. The bundles themselves are
+    # published by the calcite engine release; BUNDLE_VARIANTS is the set Provisa reads.
     from provisa.runtime_deps.pgwire_bundles import BUNDLE_VARIANTS
 
     as_bundle_variant = {
         "osx_arm64": "macos-arm64",
         "linux_amd64": "linux-x86_64",
+        "linux_arm64": "linux-aarch64",
         "windows_amd64": "windows-x86_64",
     }
     duckdb = {as_bundle_variant[plat] for plat, _tag in _collect().PLATFORMS.values()}

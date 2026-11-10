@@ -11,6 +11,8 @@ holding what is that connector's alone. The files the bundles have in common (th
 jars) are one artifact per platform, ``pgwire-shared-<variant>``, stored by content: every connector
 tarball carries a ``.provisa-shared.json`` naming the shared files it needs and where. A connector's
 files are then laid out with hard links into the shared store, so a machine holds each file once.
+The artifacts are built, signed and published by the calcite engine release (REQ-294, amended
+2026-11-10); Provisa builds none and reads them at the engine version it pins.
 
 The repository is the machine's: ``PROVISA_MAVEN_REPOSITORY``, else the mirror of ``central`` in
 ``~/.m2/settings.xml`` (an enterprise Artifactory), else Maven Central.

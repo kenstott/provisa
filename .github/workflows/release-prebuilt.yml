@@ -197,6 +197,28 @@ jobs:
           docker build --platform linux/arm64 -t provisa/provisa:local .
           docker save --platform linux/arm64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
+      # REQ-2071: provisa depends on provisa-notebook, which PyPI does not have until the release
+      # publishes it: its wheel is built first and found beside the others. REQ-2194: provisa's own
+      # wheel carries its compiled encoders, so it comes from the Dockerfile's provisa-wheel stage
+      # (cross-compiled on this runner, not under QEMU) and the rest are collected for it.
+      - name: Build provisa wheels for linux/arm64
+        run: |
+          mkdir -p provisa-wheels
+          docker build --platform linux/arm64 --target provisa-wheel \
+            --output type=local,dest=provisa-wheel .
+          python3 scripts/check-provisa-wheel.py provisa-wheel/provisa-*.whl --tag manylinux_2_28_aarch64
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/src:ro" \
+            -v "$PWD/provisa-wheel:/provisa-wheel:ro" \
+            -v "$PWD/provisa-wheels:/wheels" \
+            python:3.12-slim \
+            bash -c "cp -r /src /tmp/build && cd /tmp/build && pip install -q build \
+              && (cd provisa-notebook && python -m provisa_notebook.build > /dev/null) \
+              && python -m build --wheel provisa-notebook --outdir /wheels \
+              && pip wheel --no-cache-dir --find-links /wheels --wheel-dir /wheels /provisa-wheel/provisa-*.whl \
+              && pip install --no-deps --target /tmp/check /wheels/provisa-*.whl \
+              && cd /tmp/check && python -c 'import provisa._encoders.pgwire'"
+
       - name: Upload core image tarballs
         uses: actions/upload-artifact@v4
         with:
@@ -210,6 +232,14 @@ jobs:
         with:
           name: docker-images-trino
           path: trino-image/
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload provisa wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-wheels
+          path: provisa-wheels/
           retention-days: 1
           compression-level: 0
 

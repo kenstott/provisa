@@ -51,10 +51,13 @@ GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
 # where ``<ver>`` is the tag without its ``engine-v`` prefix. The variant names are the release
-# workflow's matrix; a platform absent here has no bundle and fails closed.
+# workflow's matrix; a platform absent here has no bundle and fails closed. The supported platforms
+# (REQ-294, amended 2026-11-10): macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64. The
+# calcite engine release builds, signs and publishes every bundle; Provisa only reads them.
 BUNDLE_VARIANTS: dict[tuple[str, str], str] = {
     ("Darwin", "arm64"): "macos-arm64",
     ("Linux", "x86_64"): "linux-x86_64",
+    ("Linux", "aarch64"): "linux-aarch64",
     ("Windows", "AMD64"): "windows-x86_64",
 }
 
