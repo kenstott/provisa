@@ -116,7 +116,8 @@ org_admin:
   # REQ-1573: creating or deleting an environment spends the plan ceiling and drops a schema;
   # REQ-1942: an environment's data choices; REQ-1592: the override over any term, whoever authored it;
   # REQ-2188: every data product, with no U or D rule.
-  capabilities: [environment_management, environment_data, user_management, org_glossary_rw, data_product_rw]
+  # REQ-2219: assign_entitlements sets a member's lists within what user_management confers.
+  capabilities: [environment_management, environment_data, user_management, assign_entitlements, org_glossary_rw, data_product_rw]
 
 sandbox:
   description: "A Try it Out visitor: what the product does, inside an environment that expires, but not members, environments or the organization glossary."

@@ -64,6 +64,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
     USER_MANAGEMENT = "user_management"
+    # REQ-2219: set a principal's entitlement lists, per role grant and kind. Scoped by the roles
+    # kind: roles [dev] reaches dev and the roles with dev as an ancestor.
+    ASSIGN_ENTITLEMENTS = "assign_entitlements"
     MASKING_CONFIG = "masking_config"
     VIEW_GOVERNANCE = (
         "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)

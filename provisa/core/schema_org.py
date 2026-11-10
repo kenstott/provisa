@@ -563,6 +563,7 @@ entitlement_expiries = Table(
     Column("role_id", Text, nullable=False),
     Column("ends_at", DateTime(timezone=True), nullable=False),
     Column("ends", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("list_kind", Text),  # the list it was set with; re-setting that list withdraws it
     Column("removed", Boolean, nullable=False, server_default=false()),
     Column("reason", Text),
     Column("set_by", Text),
