@@ -656,6 +656,15 @@
     "dbt_sources": {
       "unknown_role": "不存在名为 {{role}} 的角色。"
     },
+    "dbt": {
+      "candidate": {
+        "not_offered": "{{model}} 未作为数据产品提供：其清单未将其标记为契约已强制执行的公开模型。",
+        "not_registered": "请先将 {{model}} 注册为表，然后再接受为数据产品。",
+        "columns_missing": "该表不包含契约中的列：{{columns}}。",
+        "id_taken": "数据产品 {{data_product}} 已存在。",
+        "already_a_product": "{{model}} 已是数据产品 {{data_product}} 的成员。"
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "这不是选择邮箱的方式:{{error}}",
       "scope_not_delegated": "组织的 Google 服务账号未获得 {{scopes}} 的授权。超级用户在 Google 管理控制台的“安全性 › 访问权限和数据控件 › API 控件 › 管理全网域授权”下,为其客户端 ID 添加该范围;新的授权最长可能需要 24 小时才能生效。",
