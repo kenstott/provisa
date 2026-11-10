@@ -1708,6 +1708,19 @@ def _drop_data_surface(state, role_id: str) -> None:
     install_surface(state._active_runtime(), role_id, None)
 
 
+def _install_cloned_surfaces(runtime: Any, prod_surfaces: dict) -> None:
+    """Copy a PROD runtime's compiled surfaces into a cloned env's runtime (REQ-2006, J1157b).
+
+    Called by ``_install_cloned_env_schema`` for a sandbox env whose model is identical to its
+    PROD's: installs each role surface from PROD through ``install_surface`` so the build stays
+    the single writer of surfaces (architecture guard: test_role_surface.py).
+    """
+    from provisa.api.role_surface import install_surface
+
+    for role_id, surface in prod_surfaces.items():
+        install_surface(runtime, role_id, surface)
+
+
 def schema_input_for(
     state: Any, role: dict, tables: list[dict], metrics: list[dict]
 ) -> SchemaInput:

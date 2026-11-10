@@ -3100,7 +3100,10 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     # --- Copy compiled schema from PROD (model is identical for a cloned env) ---
     # LazySurface is safe to copy: its _build callback captures the PROD runtime's inputs,
     # which are identical for a cloned env (same model, data_refusal=None, kept={}).
-    _rt.surfaces = dict(prod_rt.surfaces)
+    # Install through app_loaders so the build stays the single writer of surfaces (REQ-213).
+    from provisa.api.app_loaders import _install_cloned_surfaces
+
+    _install_cloned_surfaces(_rt, prod_rt.surfaces)
     _rt.role_build_inputs = prod_rt.role_build_inputs
     _rt.tables = prod_rt.tables
     _rt.relationships = prod_rt.relationships
