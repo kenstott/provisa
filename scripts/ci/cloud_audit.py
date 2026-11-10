@@ -344,14 +344,34 @@ class AzureProvider:
     as the CI principal), each group listed by itself. A child resource (a type of more than one
     segment) goes with its parent. A resource group the subscription does not have holds nothing
     and is reported absent by name; any other failure to list a group fails the listing, naming
-    the group."""
+    the group.
+
+    A delete is sent with ``--no-wait`` and judged by reading the resource back until it is gone,
+    for at most ``bound_s``: waiting on the delete's own long-running operation polls an
+    operation-status endpoint at subscription scope (Microsoft.Synapse/locations/operationStatuses
+    for a Synapse workspace), which the CI principal -- Contributor on its resource groups only --
+    is refused (AuthorizationFailed) although the delete itself goes through. Its rights are never
+    widened for this."""
 
     name = "azure"
 
-    def __init__(self, scope: AzureScope, az: Callable[..., str]) -> None:
+    def __init__(
+        self,
+        scope: AzureScope,
+        az: Callable[..., str],
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        bound_s: float = 1200,
+        poll_s: float = 30,
+    ) -> None:
         self._scope = scope
         self._az = az
         self._absent: list[str] = []
+        self._sleep = sleep
+        self._clock = clock
+        self._bound_s = bound_s
+        self._poll_s = poll_s
 
     def scope(self) -> str:
         return f"{self._scope.subscription}/{','.join(self._scope.resource_groups)}"
@@ -400,7 +420,15 @@ class AzureProvider:
 
     def delete(self, resource: Resource) -> None:
         self._in_scope(resource)
-        self._az("resource", "delete", "--ids", resource.id)
+        self._az("resource", "delete", "--ids", resource.id, "--no-wait")
+        deadline = self._clock() + self._bound_s
+        while self.exists(resource):
+            if self._clock() >= deadline:
+                raise RuntimeError(
+                    f"{resource.kind} {resource.name} still there {self._bound_s:.0f} s "
+                    "after its delete"
+                )
+            self._sleep(self._poll_s)
 
     def exists(self, resource: Resource) -> bool:
         self._in_scope(resource)
@@ -618,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
     found = audit(providers, runs, time.time(), dry_run=args.dry_run)
     report.rows += found.rows
     report.errors += found.errors
+    report.absent += found.absent
     text = summary(report, dry_run=args.dry_run)
     print(text)
     target = env.get("GITHUB_STEP_SUMMARY")
