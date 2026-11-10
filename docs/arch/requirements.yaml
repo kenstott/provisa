@@ -94148,7 +94148,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     same parameters describe a table''s form for a @rows parameter on Register Table. Layout stays Provisa''s
     shared form layout. (Amended 2026-11-10, FIELD ORDER:) Maintainer 2026-11-10: @requires also takes order,
     a number placing the field among the form''s fields; fields without one follow, in the order their tags
-    appear.'
+    appear. (Amended 2026-11-10, FIELD COLUMN:) Maintainer 2026-11-10: @requires also takes column, how
+    many columns of the shared flow layout the field spans, so narrow fields sit side by side and a long
+    one takes the row.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
