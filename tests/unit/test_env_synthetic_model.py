@@ -222,31 +222,46 @@ def test_a_generated_table_is_read_as_an_ordinary_table_its_required_parameter_a
     assert generated["columns"][1]["native_filter_type"] == "path_param"
 
 
-def test_as_generated_preserves_camel_case_param_column_names_via_alias():
-    """Bug D (R508g2): as_generated must set ``alias`` on converted parameter columns so the SQL
-    name is the original column name, not apply_sql_name's snake_case version of it (REQ-1942).
+def test_a_generated_camel_case_parameter_column_is_read_by_the_name_the_store_holds():
+    """R508g4 (REQ-1942): a full build of a SYNTHETIC-bound environment compiles a generated API
+    table under the store's source type, its required parameter (``_nf_petId``) an ordinary
+    column of it, and the statement governance writes is lowered to the name the generated table
+    holds the column under -- the model's physical name, which ``run._write_table`` lands it as.
+    Governance reads a base column by its convention name and lowering maps a published name
+    back to the physical one; an ``alias`` on that column (R508g2) made its published name the
+    physical one, so lowering had no entry for the convention name and the store was asked for
+    ``_nf_pet_id`` (Binder Error: Table "get_pet_by_id" does not have a column named
+    "_nf_pet_id", run 42890578734)."""
+    import duckdb
+    import sqlglot
 
-    When ``alias`` is absent, CompilationContext builds ``physical_to_sql`` as
-    ``apply_sql_name("_nf_petId")`` = ``"_nf_pet_id"``, but the generated table in the synthetic
-    store holds the column as ``"_nf_petId"``.  DuckDB then raises:
-        Binder Error: Table "get_pet_by_id" does not have a column named "_nf_pet_id"
-        Candidate bindings: "_nf_petId"
-    Setting ``alias`` makes ``sql_name = col.get("alias") = "_nf_petId"`` so no rename is
-    applied and DuckDB finds the column."""
+    from provisa.compiler.context import build_context
+    from provisa.compiler.introspect import ColumnMetadata
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
     from provisa.synthetic.datasets import as_generated
 
-    table = {
+    role = {"id": "tester", "capabilities": ["query_development"], "domain_access": ["*"]}
+    model = {
+        "id": 1,
         "source_id": "petstore",
+        "domain_id": "sales",
         "schema_name": "default",
         "table_name": "get_pet_by_id",
         "columns": [
-            {"column_name": "id", "native_filter_type": None, "data_type": "integer"},
+            {"column_name": "id", "visible_to": ["tester"], "native_filter_type": None},
             {
                 "column_name": "_nf_petId",
+                "visible_to": ["tester"],
                 "native_filter_type": "path_param",
-                "data_type": None,
+                "native_filter_required": True,
             },
         ],
+        "write_ops": [],
+        "write_returns_rows": False,
+        "write_refused_forms": [],
     }
     bound = {
         "petstore": {
@@ -256,16 +271,44 @@ def test_as_generated_preserves_camel_case_param_column_names_via_alias():
             "model_type": "openapi",
         }
     }
-    (result,) = as_generated([table], bound)
-    param_col = next(c for c in result["columns"] if c["column_name"] == "_nf_petId")
-    assert param_col["native_filter_type"] is None
-    assert param_col["data_type"] == "bigint"
-    # ``alias`` must be set so CompilationContext uses the original column name as the SQL name,
-    # not the apply_sql_name result (which lowercases and underscores it, changing its value).
-    assert param_col.get("alias") == "_nf_petId", (
-        "alias not set on converted parameter column; apply_sql_name would change the name "
-        "and DuckDB would not find the column in the generated table"
+    tables = as_generated([model], bound)
+    si = SchemaInput(
+        tables=tables,
+        relationships=[],
+        column_types={
+            1: [
+                ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+                ColumnMetadata(column_name="_nf_petId", data_type="bigint", is_nullable=True),
+            ]
+        },
+        naming_rules=[],
+        role=role,
+        domains=[{"id": "sales", "description": "Sales"}],
+        # The full build's: the bound source's type is the store's (env_data.bind_synthetic).
+        source_types={"petstore": "duckdb"},
+        source_catalogs={"petstore": "syn"},
     )
+    ctx = build_context(si)
+    gov = build_governance_context("tester", RLSContext(rules={}), {}, ctx, tables, role, [])
+    # The generated table as _write_table lands it: under the model's column names.
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS syn")
+    con.execute('CREATE SCHEMA syn."default"')
+    con.execute('CREATE TABLE syn."default".get_pet_by_id (id INTEGER, "_nf_petId" BIGINT)')
+    con.execute('INSERT INTO syn."default".get_pet_by_id SELECT i, i % 5 + 1 FROM range(20) t(i)')
+
+    def read(sql: str) -> list[tuple]:
+        governed = apply_governance(make_semantic_sql(sql, ctx), gov)
+        lowered = lower_to_catalog_physical(governed, ctx)
+        return con.execute(
+            sqlglot.transpile(lowered, read="postgres", write="duckdb")[0]
+        ).fetchall()
+
+    assert read(
+        'SELECT COUNT(*) AS n, MIN("_nf_petId") AS lo, MAX("_nf_petId") AS hi '
+        'FROM sales.get_pet_by_id WHERE "_nf_petId" BETWEEN 2 AND 4'
+    ) == [(12, 2, 4)]
+    assert read('SELECT COUNT(*) AS n FROM sales.get_pet_by_id WHERE "_nf_petId" = 3') == [(4,)]
 
 
 def test_each_reason_a_table_has_no_generated_rows_is_said_as_itself():

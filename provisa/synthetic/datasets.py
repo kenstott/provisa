@@ -177,17 +177,12 @@ def as_generated(tables: list[dict], bound: dict[str, dict]) -> list[dict]:
             if c["native_filter_type"] is None:
                 columns.append(c)
             elif c["column_name"] in typed:
-                # REQ-1942: set alias so CompilationContext keeps the original column name as
-                # the SQL name (col.get("alias") or apply_sql_name(phys)); without it, a
-                # camelCase parameter column is snake-cased and not found in the generated
-                # table (Binder Error: … does not have a column named "_nf_pet_id").
+                # Published as any column is, by its own name: the generated table holds it under
+                # that name (run._write_table), which lowering reads it by from its source -- of
+                # the store's type, no API (R508g4: an alias made the published name the physical
+                # one, and the store was asked for the convention name "_nf_pet_id").
                 columns.append(
-                    {
-                        **c,
-                        "native_filter_type": None,
-                        "data_type": typed[c["column_name"]],
-                        "alias": c["column_name"],
-                    }
+                    {**c, "native_filter_type": None, "data_type": typed[c["column_name"]]}
                 )
         out.append({**t, "columns": columns})
     return out
