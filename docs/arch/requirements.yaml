@@ -94390,7 +94390,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     beside picking tables, to register all its public models with enforced contracts and generate data products,
     after a preview, as drafts a steward reviews. One product per dbt group; a project with no groups gets
     one product. Each carries its schema promise, tests, owner and version from the manifest. Register Table
-    stays for picking individual models as plain tables.'
+    stays for picking individual models as plain tables. (Amended 2026-11-10, UNGROUPED PUBLIC MODELS:)
+    Maintainer 2026-11-10: in a project with groups, a public contracted model in no group joins no generated
+    product; the preview lists it and it is registered by picking it as a table.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
