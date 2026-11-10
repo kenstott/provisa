@@ -46,13 +46,34 @@ export function HostedEngineReport({
         {t("orgEngineTab.hostedIntro")}
       </Text>
       <LaneFacts state={state} />
-      {billingLink && (
-        <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
-          <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
-        </Alert>
-      )}
+      {billingLink && <PlanChangeLink />}
     </Stack>
   );
+}
+
+/** REQ-1412 (A PLAN DECIDES ITS LANE): where an org on a plan changes its engine (REQ-1510). */
+function PlanChangeLink() {
+  const { t } = useTranslation();
+  return (
+    <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
+      <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
+    </Alert>
+  );
+}
+
+/** The same pointer on the per-region page, which otherwise reads nothing about the org's plan. */
+function RegionPlanChangeLink() {
+  const [state, setState] = useState<OrgEngineState | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchOrgEngine()
+      .then(setState)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  if (error) return <Alert color="red">{error}</Alert>;
+  return state?.plan_derived ? <PlanChangeLink /> : null;
 }
 
 function LaneFacts({ state }: { state: OrgEngineState }) {
@@ -114,7 +135,12 @@ export function OrgEngineTab() {
   if (regions.status === "error") return <Alert color="red">{regions.text}</Alert>;
   if (regions.status === "loading") return <Text>{t("orgEngineTab.loading")}</Text>;
   if (regions.status === "none") return <OrgEngineLane />;
-  return <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />;
+  return (
+    <Stack gap="md">
+      <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />
+      <RegionPlanChangeLink />
+    </Stack>
+  );
 }
 
 // REQ-1412 (THE ORG ADMIN CHANGES ITS LANE): the org's own lane, saved on org_settings.

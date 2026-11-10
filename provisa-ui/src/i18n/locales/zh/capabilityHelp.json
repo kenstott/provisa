@@ -12,6 +12,7 @@
     "create_view": "创建视图。",
     "column_grant": "授予列的访问权限。",
     "user_management": "管理组织的用户及其角色。",
+    "assign_entitlements": "在 user_management 授予的访问权限范围内，设置和移除 Provisa 为成员持有的允许列表和拒绝列表条目。",
     "masking_config": "配置列掩码。",
     "view_governance": "查看目录的治理列：谁能读取列、列的掩码以及视图 SQL。",
     "platform_settings": "读取和更改整个部署的设置。",

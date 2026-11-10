@@ -94303,14 +94303,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
-    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build
-    image (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints
-    the same manifest from the code's exported functions and types, a host program that speaks the worker
-    protocol and returns rows as Arrow, package fetch and install through the organisation's registries,
-    the runtime (a static binary compiled once per code hash with the code linked in and cached like an
-    install), the sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221)
-    detects it from the project's standard files.
+  description: 'Maintainer 2026-11-09. A Rust code source is a further language for code sources (REQ-1984,
+    REQ-1993, REQ-2200), behind the same language-neutral worker protocol, manifest, sandbox and build image
+    (REQ-2098); nothing in the shared layer names Rust. As for Go, it adds a reader that prints the same
+    manifest from the code''s exported functions and types, a host program that speaks the worker protocol
+    and returns rows as Arrow, package fetch and install through the organisation''s registries, the runtime
+    (a static binary compiled once per code hash with the code linked in and cached like an install), the
+    sandbox profile on macOS and Linux, and the remote image. The connector build (REQ-2221) detects it
+    from the project''s standard files. (Amended 2026-11-10, A C LINKER IN THE IMAGE:) Maintainer 2026-11-10:
+    a Rust source is prepared on the server like any other code source; the product image carries gcc and
+    libc6-dev, because build scripts and procedural macros (serde among them) are compiled and linked on
+    the build machine.'
   scenario: 'Given a Rust code source whose exported functions return rows
 
 
@@ -94390,7 +94393,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     beside picking tables, to register all its public models with enforced contracts and generate data products,
     after a preview, as drafts a steward reviews. One product per dbt group; a project with no groups gets
     one product. Each carries its schema promise, tests, owner and version from the manifest. Register Table
-    stays for picking individual models as plain tables.'
+    stays for picking individual models as plain tables. (Amended 2026-11-10, UNGROUPED PUBLIC MODELS:)
+    Maintainer 2026-11-10: in a project with groups, a public contracted model in no group joins no generated
+    product; the preview lists it and it is registered by picking it as a table.'
   scenario: 'Given a dbt source whose manifest holds a table model, an incremental model, tests and a snapshot
 
 
