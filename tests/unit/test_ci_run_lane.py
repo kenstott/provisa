@@ -589,7 +589,9 @@ def test_a_live_lane_declares_its_secrets_and_fails_by_name_when_one_is_missing(
     for name in secrets:
         assert declared[name] == f"${{{{ secrets.{name} }}}}"
         assert name in checked
-    assert "repo secrets not set:$missing" in script and "exit 1" in script
+    # The microsoft_365 job reads its secrets from the `live` environment (maintainer 2026-11-10).
+    where = "secrets of environment live" if job == "microsoft_365" else "repo secrets"
+    assert f"{where} not set:$missing" in script and "exit 1" in script
 
 
 def test_the_cloudops_gcp_key_reaches_the_test_as_a_file_and_is_never_printed():

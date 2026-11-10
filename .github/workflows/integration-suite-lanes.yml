@@ -976,6 +976,10 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' && inputs.include_microsoft_365) && needs.plan.outputs.microsoft_365 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # The repository is at GitHub's 100-secret cap, so the live lanes' secrets are the `live`
+    # environment's (maintainer 2026-11-10). A job with an environment reads that environment's
+    # secret of a name before one its caller passes, so the names below are unchanged.
+    environment: live
     env:
       # A targeted run (inputs.tests) runs only its named tests; none runs the whole lane.
       PROVISA_LANE_TESTS: ${{ inputs.tests }}
@@ -1004,7 +1008,7 @@ jobs:
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
-            echo "::error::microsoft_365 lane cannot run; repo secrets not set:$missing"
+            echo "::error::microsoft_365 lane cannot run; secrets of environment live not set:$missing"
             exit 1
           fi
 
