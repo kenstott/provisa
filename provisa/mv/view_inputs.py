@@ -78,6 +78,10 @@ def table_refs(sql: str, dialect: str = "postgres") -> list[tuple[str, ...]]:
     ctes = {c.alias_or_name for c in tree.find_all(exp.CTE)}
     out: list[tuple[str, ...]] = []
     for t in tree.find_all(exp.Table):
+        # REQ-2226: a command's SQL uses FROM fn(...) AS alias — sqlglot parses the fn as
+        # exp.Table(this=exp.Anonymous).  Skip those: they are calls, not table references.
+        if not isinstance(t.this, exp.Identifier):
+            continue
         parts = tuple(
             p.name
             for p in (t.args.get("catalog"), t.args.get("db"), t.this)

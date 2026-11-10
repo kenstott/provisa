@@ -1953,6 +1953,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
+        # REQ-2226: the minted call this session was admitted for (None: an ordinary session). Set
+        # only by the minted-token listener; every statement then passes it.
+        self.call_scope: Any = None
         # Between BEGIN and COMMIT/ROLLBACK: ReadyForQuery reports 'T' (see _transaction_open).
         self.transaction_open = False
         # The deadline of the statement cycle in flight, for a CancelRequest from another
@@ -2068,6 +2071,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         continues from it instead of governing again); ``shape`` is the result shape that Describe
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        if self.call_scope is not None:  # REQ-2226
+            self.call_scope.admit(sql)
         self.queries += 1
         # REQ-2171: what runs the statement runs it in the session's zone. A SET in the statement
         # itself changes nothing an engine answers.
@@ -2091,6 +2096,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         A catalog statement (INTERCEPT) is answered in-process from the catalog emulation, as its
         Execute is."""
+        if self.call_scope is not None:  # REQ-2226
+            self.call_scope.admit(sql)
         return self._with_org(lambda: self._describe_bound(sql, params))
 
     def _with_source_enums(self, sql: str) -> str:
@@ -2373,7 +2380,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def _as_principal(self, fn: Callable[[], Any]) -> Any:
         """Run ``fn`` with the session principal's session variables bound (REQ-1682, REQ-1382),
-        as on every transport. A trust-mode session has no validated principal: none are."""
+        as on every transport. A trust-mode session has no validated principal: none are. A
+        minted session binds what its caller had bound (REQ-2226)."""
+        if self.call_scope is not None:
+            with self.call_scope.bound():
+                return fn()
         if self.identity is None:
             return fn()
         from provisa.api.app import state
@@ -4220,8 +4231,9 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         server_address: tuple[str, int],
         conn: ProvisaConnection,
         ssl_ctx: ssl.SSLContext | None = None,
+        handler: type["ProvisaHandler"] | None = None,
     ) -> None:
-        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore[arg-type]
+        socketserver.ThreadingTCPServer.__init__(self, server_address, handler or ProvisaHandler)  # type: ignore[arg-type]
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}

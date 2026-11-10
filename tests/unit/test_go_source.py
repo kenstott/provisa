@@ -30,6 +30,7 @@ from provisa.codesource.manifest import (
     ManifestRefused,
     Named,
     Scalar,
+    TableOf,
     read_manifest,
 )
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
@@ -663,3 +664,37 @@ def test_go_rules_take_an_iterator_yielding_errors_as_a_stream_and_no_standard_t
     )
     with pytest.raises(ManifestRefused, match="Doc: unknown tag @deprecated"):
         read_manifest(raw, GO_RULES)
+
+
+def test_a_query_takes_a_table_and_a_command_is_a_mutation(reader, go, tmp_path):  # REQ-2226
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        type TableRef[R any] struct {
+            Ref     string   `json:"ref"`
+            Columns []string `json:"columns"`
+        }
+
+        type Order struct {
+            ID     int64  `json:"id"`
+            Region string `json:"region"`
+        }
+
+        type Score struct {
+            Region string  `json:"region"`
+            Score  float64 `json:"score"`
+        }
+
+        // @query
+        func Scored(orders TableRef[Order]) ([]Score, error) { return nil, nil }
+
+        // @command
+        func Rescore(orders TableRef[Order]) ([]Score, error) { return nil, nil }
+        """,
+    )
+    manifest = _read(reader, go, code, tmp_path)
+    assert manifest.export("Scored").kind == "query"
+    assert manifest.export("Rescore").kind == "command"
+    assert manifest.export("Scored").parameters[0].shape == TableOf(Named("Order"))

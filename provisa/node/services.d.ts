@@ -41,6 +41,31 @@ export interface ReadContext {
   keys: Record<string, Record<string, unknown>> | null;
 }
 
+/**
+ * REQ-2226: a governed Provisa table given to a @command or @query, `Row` the input columns it
+ * declares. The function reads the table as the calling role, so what the role cannot see it
+ * cannot read.
+ */
+export interface TableRef<Row> {
+  kind: "table_ref";
+  /** The table, as the call named it. */
+  ref: string;
+  /** The input columns the function declares. */
+  columns: (keyof Row & string)[];
+  /** A PostgreSQL connection to the table; `password` is a token good for this call only. */
+  connection: {
+    host: string;
+    port: number;
+    user: string;
+    password: string;
+    database: string;
+    /** The TLS the listener requires of the connection. */
+    sslmode: "disable" | "require";
+  };
+  /** The statement that reads the declared columns. */
+  sql: string;
+}
+
 export declare class ServiceError extends Error {
   service: string;
   status: number;

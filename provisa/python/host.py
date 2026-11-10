@@ -171,6 +171,38 @@ def _inputs_and_context(
     return out
 
 
+def _is_table_ref(hint: typing.Any) -> bool:
+    origin = typing.get_origin(hint)
+    return getattr(origin, "__module__", "") == "provisa_services" and (
+        origin.__name__ == "TableRef"
+    )
+
+
+def _with_table_refs(fn: typing.Callable, args: list, keywords: dict) -> tuple[list, dict]:
+    """REQ-2226: each argument of a parameter annotated ``TableRef[Row]``, as the TableRef."""
+    hints = typing.get_type_hints(fn)
+    tables = {n for n in inspect.signature(fn).parameters if _is_table_ref(hints.get(n))}
+    if not tables:
+        return args, keywords
+    services = sys.modules["provisa_services"]
+
+    def made(name: str, value: typing.Any) -> typing.Any:
+        if name not in tables:
+            return value
+        return services.TableRef(
+            value["ref"],
+            tuple(value["columns"]),
+            services.TableConnection(**value["connection"]),
+            value["sql"],
+        )
+
+    names = list(inspect.signature(fn).parameters)
+    return (
+        [made(n, v) for n, v in zip(names, args, strict=False)],
+        {n: made(n, v) for n, v in keywords.items()},
+    )
+
+
 def _arrow() -> typing.Any:  # the pyarrow module
     lib = os.environ.get("PROVISA_HOST_LIB")
     # Set for the local worker only (python/source.py): a remote host's image installs pyarrow
@@ -362,6 +394,8 @@ class Host:
         keywords: dict,
         schema: typing.Any,  # the rows' pyarrow Schema; None for a single value
     ) -> None:
+        if kind == "command":
+            args, keywords = _with_table_refs(fn, args, keywords)
         if inspect.isasyncgenfunction(fn) or inspect.isgeneratorfunction(fn):
             result = fn(*args, **keywords)
         elif inspect.iscoroutinefunction(fn):

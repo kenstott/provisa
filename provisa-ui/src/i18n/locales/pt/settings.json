@@ -271,6 +271,10 @@
         "label": "Porta do protocolo PostgreSQL",
         "help": "A porta em que o servidor do protocolo PostgreSQL escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."
       },
+      "minted_pgwire_port": {
+        "label": "Porta wire do PostgreSQL para tokens emitidos",
+        "help": "A porta que o sandbox de uma fonte de código pode alcançar para ler a tabela que lhe foi dada, e o endereço informado a um host remoto. Aceita apenas tokens emitidos para uma chamada; 0 a mantém desligada, e um comando que recebe uma tabela é então recusado. Reinicialização necessária; protegida porque abre ou fecha um listener."
+      },
       "bolt_port": {
         "label": "Porta Bolt",
         "help": "A porta em que o servidor Bolt (Neo4j) escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."

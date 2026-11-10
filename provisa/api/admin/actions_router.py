@@ -245,6 +245,30 @@ async def _as_source_operation(body: FunctionInput) -> None:
         )
 
 
+async def _as_code_command(body: FunctionInput) -> None:  # REQ-2226
+    """A command registered on a code source that names one of its ``@command`` or ``@query``
+    functions is that function. What it is follows from the declaration -- a @command a mutation
+    and a @query a query, its arguments and its output columns -- and not from what the form
+    sent. Any other function is left to :func:`_as_column_transform`, which refuses it by name."""
+    from provisa.api.app import state
+    from provisa.codesource.commands import CODE_COMMAND, SCHEMA, registration
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
+    if source_type not in CODE_SOURCE_TYPES:
+        return
+    found = await registration(state, body.sourceId, body.functionName)
+    if found is None:
+        return
+    body.kind, body.arguments, body.outputColumns = found
+    body.implKind = CODE_COMMAND
+    body.schemaName = SCHEMA
+    body.returns = ""
+    body.binding = {}
+    body.materialize = False
+    body.writesTable = None
+
+
 async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
     """A command registered on a code source is one of its ``@columns`` functions, a batch column
     transform. What it is follows from the function's declaration -- its input columns as its
@@ -260,7 +284,7 @@ async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
     from provisa.codesource.source import CODE_SOURCE_TYPES
 
     source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
-    if source_type not in CODE_SOURCE_TYPES:
+    if source_type not in CODE_SOURCE_TYPES or body.implKind == "code_command":
         return
     try:
         arguments, outputs = await registration(state, body.sourceId, body.functionName)
@@ -495,6 +519,7 @@ async def create_function(
     require_capability_request(request, "table_registration")
     body.domainId = _saved_domain(request, body.name, body.domainId)
     await _as_source_operation(body)
+    await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
     _check_command_bindings(body)  # REQ-2168
@@ -559,6 +584,7 @@ async def update_function(
     refuse_host_code(name, body.implKind)  # REQ-2134
     body.domainId = _saved_domain(request, name, body.domainId)
     await _as_source_operation(body)
+    await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
     _check_command_bindings(body)  # REQ-2168

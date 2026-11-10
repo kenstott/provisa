@@ -271,6 +271,10 @@
         "label": "PostgreSQL wire port",
         "help": "The port the PostgreSQL-protocol server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
       },
+      "minted_pgwire_port": {
+        "label": "Minted-token PostgreSQL wire port",
+        "help": "The port a code source's sandbox may reach to read the table it was given, and the address a remote host is told. It accepts only tokens minted for one call; 0 leaves it off, and a command given a table is then refused. Restart required; guarded because it opens or closes a listener."
+      },
       "bolt_port": {
         "label": "Bolt port",
         "help": "The port the Bolt (Neo4j) server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."

@@ -271,6 +271,10 @@
         "label": "PostgreSQL wire-poort",
         "help": "De poort waarop de server voor het PostgreSQL-protocol luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
       },
+      "minted_pgwire_port": {
+        "label": "PostgreSQL-wire-poort voor uitgegeven tokens",
+        "help": "De poort die de sandbox van een codebron mag bereiken om de meegegeven tabel te lezen, en het adres dat een externe host krijgt. Accepteert alleen tokens die voor één aanroep zijn uitgegeven; 0 laat hem uit, en een opdracht die een tabel krijgt wordt dan geweigerd. Herstart vereist; beveiligd omdat hij een listener opent of sluit."
+      },
       "bolt_port": {
         "label": "Bolt-poort",
         "help": "De poort waarop de Bolt-server (Neo4j) luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."

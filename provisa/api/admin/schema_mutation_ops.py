@@ -617,8 +617,9 @@ async def register_table(
                 )
                 if _hiding_refusal is not None:
                     raise TableSaveRefused(_hiding_refusal)
-                # REQ-2154: a new table grants read on every column to the registrant's role and to
-                # Viewer, written into each grant list where it can be seen and changed. It is the
+                # REQ-2154: a new table's column registered with no grant named is read by the
+                # registrant's role and Viewer, written into its grant list where it can be seen and
+                # changed; a column with a grant list named keeps exactly that list. It is the
                 # registration's own grant, not the registrant's edit, so no hiding right is asked
                 # for it; a table already stored keeps the grants it has.
                 if await stored_table(_conn, model) is None:

@@ -43,7 +43,7 @@ _probe: contextvars.ContextVar[str | None] = contextvars.ContextVar("bg_probe", 
 
 
 @pytest.fixture(autouse=True)
-def _fresh_background():
+def fresh_background():
     shutdown_background(timeout=5)
     configure_background_workers(DEFAULT_BACKGROUND_WORKERS)
     yield
@@ -148,7 +148,7 @@ async def test_running_work_is_cancelled_and_has_ended_when_shutdown_returns():
     async def _long_build() -> None:
         started.set()
         try:
-            for _batch in range(10_000):
+            for _ in range(10_000):
                 await asyncio.sleep(0.01)  # one batch at a time, as a replica build streams
             events.append("finished")
         finally:
@@ -238,7 +238,7 @@ async def test_scheduled_jobs_run_on_a_worker_not_the_scheduler_loop():
         time.sleep(0.5)  # blocking, as a real refresh tick would be
 
     scheduler = background_scheduler()
-    scheduler.add_listener(lambda _e: executed.set(), EVENT_JOB_EXECUTED)
+    scheduler.add_listener(lambda _: executed.set(), EVENT_JOB_EXECUTED)
     scheduler.start()
     try:
         scheduler.add_job(_job, id="probe")
@@ -262,13 +262,11 @@ async def test_resizing_a_running_pool_is_refused():
     assert cl_mod._bg_workers == DEFAULT_BACKGROUND_WORKERS
 
 
-def test_run_on_own_thread_returns_result_on_a_separate_thread_in_parallel():
+async def test_run_on_own_thread_returns_result_on_a_separate_thread_in_parallel():
     """REQ-1882: fanned-out units each run on their own thread + loop, in parallel, and the
     future carries each unit's result or exception."""
     import asyncio
     import threading
-
-    import pytest
 
     from provisa.core.connection_loop import run_on_own_thread
 
@@ -282,13 +280,10 @@ def test_run_on_own_thread_returns_result_on_a_separate_thread_in_parallel():
     async def _boom() -> None:
         raise ValueError("unit failed")
 
-    async def _main() -> None:
-        a = run_on_own_thread(lambda: _unit(1), name="unit-a")
-        b = run_on_own_thread(lambda: _unit(2), name="unit-b")
-        (va, ta), (vb, tb) = await asyncio.gather(asyncio.wrap_future(a), asyncio.wrap_future(b))
-        assert (va, vb) == (1, 2)
-        assert ta != tb and caller not in (ta, tb)
-        with pytest.raises(ValueError, match="unit failed"):
-            await asyncio.wrap_future(run_on_own_thread(_boom, name="unit-boom"))
-
-    asyncio.run(_main())
+    a = run_on_own_thread(lambda: _unit(1), name="unit-a")
+    b = run_on_own_thread(lambda: _unit(2), name="unit-b")
+    (va, ta), (vb, tb) = await asyncio.gather(asyncio.wrap_future(a), asyncio.wrap_future(b))
+    assert (va, vb) == (1, 2)
+    assert ta != tb and caller not in (ta, tb)
+    with pytest.raises(ValueError, match="unit failed"):
+        await asyncio.wrap_future(run_on_own_thread(_boom, name="unit-boom"))

@@ -253,6 +253,9 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             # time — the service fetches them. The declared columns still travel as the contract the
             # service must honour; input-side enforcement happens only for the eager result_set kind.
             payload[name] = {"kind": "table_ref", "ref": value}
+            declared = columns_by_arg.get(name)
+            if declared:
+                payload[name]["columns"] = [c["name"] for c in declared]
             input_refs.append(str(value))
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
             declared = columns_by_arg.get(name)
@@ -353,8 +356,10 @@ _EXTERNAL_KINDS = frozenset({"http", "grpc"})
 _PASSED_THROUGH_KINDS = frozenset(
     {"source_procedure", "source_operation", "source_query", "statement"}  # REQ-2001
     | {"sql_expression", "builtin"}  # REQ-2168
-    | {"code_command"}  # REQ-2228
 )
+# A code_command is not passed through: its table arguments are prepared as table_ref references
+# the worker reads (REQ-2226). A command bound with fixed arguments (REQ-2228) takes the call's
+# arguments as given, by name, from ``args`` rather than the prepared payload.
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
 
@@ -534,6 +539,27 @@ def _rows_from_response(
     )
 
 
+async def _exec_code_command(
+    fn: dict, args: dict, state, payload: dict, session: MintedSession
+) -> list[dict]:
+    """A code source's command, called in its source's worker. A binding that names a
+    ``command`` is a registration bound to that ``@command`` with the arguments it fixes
+    (REQ-2228); a command with no such binding is the source's ``@command`` or ``@query`` of the
+    function's own name, its table arguments readable for the call (REQ-2226)."""
+    from provisa.codesource.commands import call_command, run
+
+    binding = fn.get("binding") or {}
+    if "command" not in binding:
+        return await run(state, fn, payload, session)
+    return await call_command(
+        state,
+        str(_require(binding, "source_id", "code_command")),
+        str(_require(binding, "command", "code_command")),
+        dict(binding.get("fixed_arguments") or {}),
+        _bind_arg_names(fn, args),
+    )
+
+
 async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> list[dict]:
     """REQ-2001: a Provisa SQL statement, run through the one pipeline as the caller's role."""
     from provisa.executor.statement_command import run
@@ -557,20 +583,6 @@ async def _exec_builtin(fn: dict, args: dict, state, _payload, session) -> list[
     return await implementation(spec)(_bind_arg_names(fn, args), state, session.role_id)
 
 
-async def _exec_code_command(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-2228: a code source's ``@command``, with the arguments its binding fixes."""
-    from provisa.codesource.commands import call_command
-
-    binding = fn["binding"]
-    return await call_command(
-        state,
-        str(_require(binding, "source_id", "code_command")),
-        str(_require(binding, "command", "code_command")),
-        dict(binding.get("fixed_arguments") or {}),
-        _bind_arg_names(fn, args),
-    )
-
-
 _EXECUTORS = {
     "source_procedure": _exec_source_procedure,
     "source_operation": _exec_source_operation,
@@ -582,7 +594,7 @@ _EXECUTORS = {
     "statement": _exec_statement,  # REQ-2001
     "sql_expression": _exec_sql_expression,  # REQ-2168
     "builtin": _exec_builtin,  # REQ-2168
-    "code_command": _exec_code_command,  # REQ-2228
+    "code_command": _exec_code_command,  # REQ-2226, REQ-2228
 }
 
 

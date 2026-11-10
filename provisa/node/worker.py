@@ -99,7 +99,7 @@ def host_command(
             egress=egress,
         )
     if runtime == "deno":
-        from provisa.codesource.sandbox import egress_proxy
+        from provisa.codesource.sandbox import _minted_ports, egress_proxy
         from provisa.codesource.services import SERVICES_ENV, SERVICES_HOST
 
         # Deno's npm packages were installed into the bundle's own cache (node/install.py).
@@ -129,7 +129,8 @@ def host_command(
             ]
             # The socket is a net address to Deno; the proxy, the services host and the
             # allow-list's hosts are the only others.
-            reach = [f"unix:{socket}", f"127.0.0.1:{proxy.port}", SERVICES_HOST, *egress]
+            minted = [f"127.0.0.1:{port}" for port in _minted_ports()]  # REQ-2226
+            reach = [f"unix:{socket}", f"127.0.0.1:{proxy.port}", SERVICES_HOST, *minted, *egress]
             argv.append(f"--allow-net={','.join(reach)}")
             return [*argv, str(HOST), str(socket), str(entry)]
 

@@ -65,6 +65,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1263: personal access tokens, the cross-surface credential. Platform plane, so
     # portable metadata only.
     "personal_access_tokens",
+    # REQ-2226: the minted call-scoped token a code source's worker reads its table with; retired
+    # when the call ends. Platform plane (a connection reaches any node), portable metadata only.
+    "minted_call_tokens",
     # REQ-2006: the demo sandboxes, each an org of its own; beside ``orgs`` on the platform plane.
     # Portable metadata only.
     "demo_sandboxes",

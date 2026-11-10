@@ -16,7 +16,7 @@ A launcher, run as ``python -m provisa.codesource.linux_sandbox``, restricts its
 - Landlock (Linux 6.7 or later, ABI 4): files are read only under the directories named (the
   code, the runtime, the host program, the system's libraries and certificates, the process's own
   ``/proc/self``), written nowhere but ``/dev/null``, and TCP connects only to the egress proxy's
-  port and binds nowhere. From ABI 6, abstract Unix sockets and signals outside the worker are
+  port and the minted-token listener's (REQ-2226), and binds nowhere. From ABI 6, abstract Unix sockets and signals outside the worker are
   refused too.
 - A seccomp filter: a new socket is refused unless it is TCP over IPv4 or IPv6, so there is no
   UDP (no DNS around the proxy), no raw or packet socket, no netlink, and no Unix socket (Landlock
@@ -333,9 +333,9 @@ def apply_socket_filter() -> None:
         raise SandboxUnavailable(f"the seccomp filter could not be installed: {exc}") from exc
 
 
-def confine(read: Sequence[str], proxy_port: int) -> int:
+def confine(read: Sequence[str], proxy_port: int, connect_ports: Sequence[int] = ()) -> int:
     """Both restrictions on this process; the Landlock ABI used."""
-    abi = apply_landlock([*read, *SYSTEM_READ], [proxy_port])
+    abi = apply_landlock([*read, *SYSTEM_READ], [proxy_port, *connect_ports])
     apply_socket_filter()
     return abi
 
@@ -344,13 +344,20 @@ def confine(read: Sequence[str], proxy_port: int) -> int:
 
 
 def launcher_argv(
-    python: str, *, read: Sequence[str], proxy_port: int, argv: Sequence[str]
+    python: str,
+    *,
+    read: Sequence[str],
+    proxy_port: int,
+    argv: Sequence[str],
+    connect_ports: Sequence[int] = (),
 ) -> list[str]:
     """How a worker is started inside the sandbox: Provisa's Python runs this module, which
     confines itself and ``exec``s ``argv``. Run by its file's path, not ``-m``: isolated (``-I``),
     the working directory is not on the path, and an image that runs Provisa from its source
     directory has no package to find (it imports only the standard library)."""
     out = [python, "-I", os.path.abspath(__file__), "--proxy-port", str(proxy_port)]
+    for port in connect_ports:
+        out += ["--connect-port", str(port)]
     for path in read:
         out += ["--read", path]
     return [*out, "--", *argv]
@@ -422,6 +429,7 @@ def main(args: Sequence[str]) -> int:
     if list(args) == ["--probe"]:
         return _probe()
     read: list[str] = []
+    connect_ports: list[int] = []
     proxy_port = None
     rest = list(args)
     while rest and rest[0] != "--":
@@ -430,12 +438,14 @@ def main(args: Sequence[str]) -> int:
             read.append(value)
         elif flag == "--proxy-port":
             proxy_port = int(value)
+        elif flag == "--connect-port":
+            connect_ports.append(int(value))
         else:
             raise SystemExit(f"unknown option {flag}")
     if proxy_port is None or not rest:
         raise SystemExit("usage: --proxy-port N [--read DIR]... -- ARGV")
     try:
-        confine(read, proxy_port)
+        confine(read, proxy_port, connect_ports)
     except SandboxUnavailable as exc:
         sys.stderr.write(f"code-source sandbox unavailable: {exc}\n")
         return 3

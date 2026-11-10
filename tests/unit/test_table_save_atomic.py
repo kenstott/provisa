@@ -222,8 +222,10 @@ async def test_a_hasura_spelling_of_a_convention_is_stored_as_the_preset_it_name
 
 
 async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
-    """REQ-2154: registering a table grants read on every column to the role the registrant acts
-    as and to Viewer, beside any grant the registration names; it never grants write."""
+    """REQ-2154 (amended 2026-11-10, A NAMED GRANT IS USED AS GIVEN): a column registered with no
+    grant named is read by the role the registrant acts as and Viewer; a column registered with a
+    grant list named is granted exactly that list, so a column named for one role is no other's.
+    Registration never grants write."""
     result = await _register(
         columns=[
             ColumnInput(name="id", data_type="integer", visible_to=[]),
@@ -244,8 +246,34 @@ async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
                 )
             ).fetchall()
         }
-    assert read == {"id": ["support", "viewer"], "status": ["analyst", "support", "viewer"]}
+    assert read == {"id": ["support", "viewer"], "status": ["analyst"]}
     assert grants == []
+
+
+async def test_a_named_grant_that_leaves_out_the_registrant_is_kept_as_given(plane):
+    """REQ-2154, REQ-2226: a column the registration grants to another role only is not the
+    registrant's, nor Viewer's: a sensitive column registered for one role reaches no other."""
+    result = await _register(
+        columns=[
+            ColumnInput(name="id", data_type="integer", visible_to=["analyst", "support"]),
+            ColumnInput(name="status", data_type="varchar", visible_to=["analyst"]),
+        ]
+    )
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None
+    async with plane.acquire() as conn:
+        read = {
+            r.column_name: sorted(r.visible_to)
+            for r in (
+                await conn.execute_core(
+                    select(table_columns.c.column_name, table_columns.c.visible_to).where(
+                        table_columns.c.table_id == table["id"]
+                    )
+                )
+            ).fetchall()
+        }
+    assert read == {"id": ["analyst", "support"], "status": ["analyst"]}
 
 
 async def test_registering_a_stored_table_again_keeps_its_grants(plane):

@@ -7089,6 +7089,8 @@
   "ja/settings.json::settings.server.grpc_port.label": "gRPC port",
   "ja/settings.json::settings.server.hostname.help": "The host name the deployment advertises to clients in the addresses it hands out. Restart required because servers started at boot carry it.",
   "ja/settings.json::settings.server.hostname.label": "Host name",
+  "ja/settings.json::settings.server.minted_pgwire_port.help": "The port a code source's sandbox may reach to read the table it was given, and the address a remote host is told. It accepts only tokens minted for one call; 0 leaves it off, and a command given a table is then refused. Restart required; guarded because it opens or closes a listener.",
+  "ja/settings.json::settings.server.minted_pgwire_port.label": "Minted-token PostgreSQL wire port",
   "ja/settings.json::settings.server.node_url.help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed.",
   "ja/settings.json::settings.server.node_url.label": "This node's address",
   "ja/settings.json::settings.server.pgwire_port.help": "The port the PostgreSQL-protocol server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener.",

@@ -22,7 +22,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from provisa.mv.models import MVDefinition
-from provisa.mv.view_inputs import ModelIndex, resolve_view_inputs
+from provisa.mv.view_inputs import ModelIndex, resolve_view_inputs, table_refs
 
 
 def _state(catalog: str) -> SimpleNamespace:
@@ -67,3 +67,12 @@ def test_the_engines_own_catalog_name_still_resolves():
         "v", ("org_sandbox__pet_store_sqlite", "pet_store", "pets")
     )
     assert resolved.table_id == 7
+
+
+def test_table_refs_ignores_function_call_tables():
+    # REQ-2226: a command's SQL reads a table via a function call: FROM read_whole('fx.vault') AS r.
+    # sqlglot parses the function call as exp.Table(this=exp.Anonymous), not a real table reference.
+    # table_refs must not return 'read_whole' as a table reference.
+    sql = "SELECT r.status, r.body FROM read_whole('fx.vault') AS r"
+    refs = table_refs(sql)
+    assert refs == [], f"function call treated as table ref: {refs}"

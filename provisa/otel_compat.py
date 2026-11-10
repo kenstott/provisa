@@ -738,7 +738,7 @@ TRANSPORT_BY_KIND: dict[str, str] = {
     "statement": "sql",  # REQ-2001: a Provisa SQL statement, through the one pipeline
     "sql_expression": "sql",  # REQ-2168: a SQL expression template, through the one pipeline
     "builtin": "builtin",  # REQ-2168: a command Provisa ships (the APOC set), in process
-    "code_command": "code",  # REQ-2228: a code source's @command
+    "code_command": "code",  # REQ-2226, REQ-2228: a code source's @command or @query, in its worker
 }
 
 
@@ -793,6 +793,17 @@ _current_udf_correlation: ContextVar[str | None] = ContextVar("udf_correlation",
 def current_udf_correlation_id() -> str | None:
     """The correlation id of the UDF invocation currently in scope, or None outside one (REQ-886)."""
     return _current_udf_correlation.get()
+
+
+@contextmanager
+def udf_correlation_scope(correlation_id: str) -> "Iterator[None]":
+    """Bind a UDF invocation's correlation id where the invocation's own context is not (a minted
+    pgwire session, REQ-2226), so an audit row written there joins back to its trace (REQ-886)."""
+    token = _current_udf_correlation.set(correlation_id)
+    try:
+        yield
+    finally:
+        _current_udf_correlation.reset(token)
 
 
 @dataclass

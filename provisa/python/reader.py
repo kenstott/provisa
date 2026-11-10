@@ -125,6 +125,11 @@ class _Reader:
                     "generator": generator,
                     "element": self.tree(args[0] if args else typing.Any),
                 }
+        if getattr(origin, "__module__", "") == "provisa_services" and (
+            origin.__name__ == "TableRef"
+        ):
+            # REQ-2226: a parameter taking a governed table, its row type the columns it declares.
+            return {"kind": "table_ref", "row": self.tree(args[0])}
         if isinstance(hint, type) and hint.__module__ == "provisa_services":
             # REQ-2100: Provisa's own types (the ReadContext) are named, never read: theirs are
             # no columns, and their names are no name of the code's.

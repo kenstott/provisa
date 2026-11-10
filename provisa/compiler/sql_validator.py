@@ -204,7 +204,10 @@ def _violations(
             constants=constants,
             primary_keys=registered_primary_keys(raw_tables),
         )
-    violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
+    # A table named by its field name (the domain-prefixed ``sa__orders``) is admitted by
+    # _check_registered_relations through ctx.tables; its columns are judged by the same rule.
+    field_named = {name: meta.table_id for name, meta in ctx.tables.items()}
+    violations += _check_column_visibility(tree, gov_ctx, cte_names_set, field_named)
     # On its own copy: it prunes joins in place, and the checks after it judge the statement as
     # written -- a pruned join's alias is still in scope, its columns still governed (REQ-039).
     violations += _check_dag(tree.copy(), gov_ctx, cte_names_set)
@@ -683,6 +686,7 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
+    field_named: dict[str, int] | None = None,
 ) -> list[ValidationViolation]:
     violations = []
     scopes = _relation_names_by_scope(tree)
@@ -724,12 +728,22 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                             )
                         )
                 else:
-                    tid = am.get(tbl_ref)
-                    if tid is None:
+                    named = _qualified_relation(col, gov_ctx, cte_names_set, field_named or {})
+                    if named is None:
+                        violations.append(
+                            ValidationViolation(
+                                "V003",
+                                f"Column {tbl_ref}.{col_name}: {tbl_ref!r} names no governed "
+                                "relation, so the column is not read",
+                            )
+                        )
                         continue
+                    if not isinstance(named, int):
+                        continue  # _DERIVED: a derived relation's own SELECT is checked where it is
+                    tid = named
                     vis = gov_ctx.visible_columns.get(tid)
                     # Refuse when no governance data (key absent = fail closed) OR when the role's
-                    # visible set exists and excludes this column (REQ-039).
+                    # visible set exists and excludes this column (REQ-2226, REQ-039).
                     if (tid not in gov_ctx.visible_columns) or (
                         vis is not None and registered_name(gov_ctx, tid, col_name) not in vis
                     ):
@@ -742,6 +756,63 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
         violations += _hidden_sort_keys(select, am, gov_ctx)
         violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
+
+
+#: What :func:`_qualified_relation` answers for a qualifier naming a derived relation: a CTE, a
+#: derived table, a row generator or table function, or the session's own temporary table.
+_DERIVED = object()
+
+
+#: The nodes that name a relation a column may be qualified by.
+_RELATIONS = (exp.Table, exp.Subquery, exp.Lateral, exp.Unnest, exp.Values)
+
+
+def _scope_relations(scope: exp.Expr) -> list[exp.Expr]:
+    """The relations ``scope`` itself names: its FROM items and joins at any depth of
+    parenthesised join groups (a BI tool's left-deep ``((a JOIN b) JOIN c)``), and a DML
+    statement's target -- not those of a SELECT nested in it, which is its own scope."""
+    return [
+        node
+        for node in scope.find_all(*_RELATIONS)
+        if node is not scope and _nearest_scope(node) is scope
+    ]
+
+
+def _nearest_scope(node: exp.Expr) -> exp.Expr | None:
+    return node.find_ancestor(*_SCOPES)
+
+
+def _qualified_relation(  # REQ-039, REQ-2226
+    col: exp.Column,
+    gov_ctx: GovernanceContext,
+    cte_names_set: frozenset[str],
+    field_named: dict[str, int],
+) -> int | object | None:
+    """The registered table a qualified column ``col`` reads, found by its qualifier in the
+    column's own SELECT and then each enclosing one (a correlated reference reads an outer
+    table); :data:`_DERIVED` for a qualifier naming a derived relation; None for one naming a
+    table no registered table resolves, or no relation at all. None is refused, never read as a
+    column there is nothing to check: unresolved, ``o.secret`` was served to a role whose grant
+    does not name it (REQ-2226)."""
+    select = _nearest_scope(col)
+    while select is not None:
+        for item in _scope_relations(select):
+            if item.alias_or_name != col.table:
+                continue
+            if not isinstance(item, exp.Table) or not isinstance(item.this, exp.Identifier):
+                return _DERIVED
+            if not item.db and (
+                item.name in cte_names_set
+                or names_a_cte_in_scope(item)
+                or item.name in temp_tables.names()
+            ):
+                return _DERIVED
+            tid = _resolve_table_id(item, gov_ctx)
+            if tid is None and not item.db:
+                tid = field_named.get(item.name)
+            return tid
+        select = _nearest_scope(select)
+    return None
 
 
 def _unqualified_column_refused(  # REQ-039, REQ-2190
@@ -767,8 +838,8 @@ def _unqualified_column_refused(  # REQ-039, REQ-2190
     if holders:
         return False
     # Refuse when any table in scope is governed (key present in visible_columns) OR has no
-    # governance data at all (key absent = fail closed, REQ-039).  The only safe case is every
-    # table explicitly marked "all visible" (key present, value None).
+    # governance data at all (key absent = fail closed, REQ-039, REQ-2226).  The only safe case
+    # is every table explicitly marked "all visible" (key present, value None).
     return any(
         gov_ctx.visible_columns.get(tid) is not None or tid not in gov_ctx.visible_columns
         for tid in am.values()

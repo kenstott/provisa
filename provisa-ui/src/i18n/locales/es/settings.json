@@ -271,6 +271,10 @@
         "label": "Puerto de PostgreSQL wire",
         "help": "El puerto en el que escucha el servidor del protocolo PostgreSQL; 0 lo deja desactivado. Requiere reinicio; requiere confirmación al guardar porque abre o cierra un listener."
       },
+      "minted_pgwire_port": {
+        "label": "Puerto wire de PostgreSQL para tokens emitidos",
+        "help": "El puerto al que puede acceder el entorno aislado de una fuente de código para leer la tabla que se le ha dado, y la dirección que se comunica a un host remoto. Solo acepta tokens emitidos para una llamada; 0 lo deja desactivado, y entonces se rechaza un comando que recibe una tabla. Requiere reinicio; protegido porque abre o cierra un agente de escucha."
+      },
       "bolt_port": {
         "label": "Puerto de Bolt",
         "help": "El puerto en el que escucha el servidor Bolt (Neo4j); 0 lo deja desactivado. Requiere reinicio; requiere confirmación al guardar porque abre o cierra un listener."

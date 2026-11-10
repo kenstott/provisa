@@ -241,6 +241,7 @@ sleep 1
 print_query_surfaces() {
   [ "${PROVISA_PGWIRE_PORT:-0}" != 0 ] && echo "  pgwire:  postgresql://admin:ignored@localhost:${PROVISA_PGWIRE_PORT}/provisa  (username = role)"
   [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ "${PROVISA_MINTED_PGWIRE_PORT:-0}" != 0 ] && echo "  minted:  postgresql://localhost:${PROVISA_MINTED_PGWIRE_PORT}/provisa  (tokens minted for one code-source call only)"
   echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
   echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"

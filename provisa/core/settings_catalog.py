@@ -837,6 +837,21 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="server.minted_pgwire_port",
+        card="network",
+        type="int",
+        effect="restart",  # a listener is bound when the server starts
+        # REQ-2226: the port a code source's sandbox may reach, and a remote host is given. It
+        # accepts only tokens minted for one call. 0 is not started: a command given a table is
+        # then refused, naming this setting.
+        req="REQ-2226",
+        env="PROVISA_MINTED_PGWIRE_PORT",
+        default=0,
+        min=0,
+        max=65535,
+        guard="confirm",
+    ),
+    Setting(
         key="server.bolt_port",
         card="network",
         type="int",

@@ -15,8 +15,9 @@ Every language's reader writes the same document (docs/arch/code-sources.md, sec
 (provisa/node/reader.mjs) writes every export of the bundle's entry module with its
 JSDoc tags and its signature's types as trees. This module applies REQ-1984's rules to that:
 
-- an export tagged ``@table`` is a table, ``@command`` a command, ``@stream`` a live table,
-  ``@columns`` a batch column transform (REQ-2131); untagged exports are ignored;
+- an export tagged ``@table`` is a table, ``@command`` a command, ``@query`` a command whose kind
+  is query (REQ-2226), ``@stream`` a live table, ``@columns`` a batch column transform (REQ-2131);
+  untagged exports are ignored;
 - a tag that is neither one of those nor a standard JSDoc tag is a problem named by the export
   and the tag;
 - a ``@table`` returns a collection (an array or an iterable, synchronous or asynchronous) whose
@@ -28,6 +29,9 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
   the output columns (REQ-2131); a parameter that is not a list, or a result that is not a list of
   objects, is a problem by name;
 - a non-optional parameter is required by the source; an optional one is not;
+- a ``@command`` or ``@query`` parameter typed ``TableRef`` of a row type takes a governed table,
+  and the row type's fields are the input columns it declares (REQ-2226); a loose row type, or a
+  ``TableRef`` anywhere else, is a problem by name;
 - the columns are the row type's fields; a row type that is loose (``any``, ``unknown``, a
   ``Record`` or a ``dict``) is a problem by name, though a single field of a typed row may be;
 - every type a tagged function refers to is mapped (string -> text, number -> double, bigint ->
@@ -39,7 +43,7 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221, REQ-2227
+# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221, REQ-2226, REQ-2227
 from __future__ import annotations
 
 import hashlib
@@ -50,11 +54,13 @@ from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
 
-TABLE, COMMAND, STREAM, COLUMNS = "table", "command", "stream", "columns"
+TABLE, COMMAND, QUERY, STREAM, COLUMNS = "table", "command", "query", "stream", "columns"
 #: REQ-2221: a connector's lifecycle tags, each on at most one function of its code.
 ON_START, ON_STOP, HEALTH = "on-start", "on-stop", "health"
 LIFECYCLE_TAGS = frozenset({ON_START, ON_STOP, HEALTH})
-PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM, COLUMNS}) | LIFECYCLE_TAGS
+PROVISA_TAGS = frozenset({TABLE, COMMAND, QUERY, STREAM, COLUMNS}) | LIFECYCLE_TAGS
+#: REQ-2226: what is called as a command. A @query differs from a @command only in its kind.
+COMMANDS = frozenset({COMMAND, QUERY})
 
 #: The standard JSDoc and TSDoc tags an export may carry beside Provisa's. Any other is unknown.
 STANDARD_TAGS = frozenset(
@@ -135,7 +141,14 @@ class EnumOf:
     values: tuple[str, ...]
 
 
-Shape = Scalar | ListOf | Named | Anonymous | EnumOf
+@dataclass(frozen=True)
+class TableOf:
+    """REQ-2226: a parameter taking a governed table, ``row`` the input columns it declares."""
+
+    row: "Shape"
+
+
+Shape = Scalar | ListOf | Named | Anonymous | EnumOf | TableOf
 
 #: Loose: a value of any shape, served as json. A field may be; a row type may not.
 LOOSE = Scalar("json")
@@ -239,8 +252,6 @@ class Manifest:
 # A source in built mode runs on a remote host and is not read on the server (its code may need
 # what the server does not have), so the manifest it was read with in dev mode is kept with it.
 
-_SHAPES = {"scalar": Scalar, "list": ListOf, "named": Named, "anonymous": Anonymous, "enum": EnumOf}
-
 
 def _shape_json(shape: Shape | None) -> Any:
     if shape is None:
@@ -253,6 +264,8 @@ def _shape_json(shape: Shape | None) -> Any:
         return {"kind": "named", "name": shape.name}
     if isinstance(shape, Anonymous):
         return {"kind": "anonymous", "fields": [_field_json(f) for f in shape.fields]}
+    if isinstance(shape, TableOf):
+        return {"kind": "table", "row": _shape_json(shape.row)}
     return {"kind": "enum", "name": shape.name, "values": list(shape.values)}
 
 
@@ -281,6 +294,10 @@ def _shape(raw: Any) -> Shape | None:
         return Anonymous(tuple(_field(f) for f in raw["fields"]))
     if kind == "enum":
         return EnumOf(raw["name"], tuple(raw["values"]))
+    if kind == "table":
+        row = _shape(raw["row"])
+        assert row is not None
+        return TableOf(row)
     raise ValueError(f"a kept manifest holds an unknown shape {kind!r}")
 
 
@@ -446,6 +463,8 @@ class _Mapper:
             return Anonymous(self._fields(node["fields"], where))
         if kind in ("promise", "iterable"):
             return self.fail(where, "a Promise or an iterable is a function's result only")
+        if kind == "table_ref":
+            return self.fail(where, "a TableRef is a parameter of a @command or a @query only")
         text = node.get("text", kind)
         return self.fail(where, f"the type {text} cannot be mapped")
 
@@ -481,6 +500,22 @@ def _rows(mapper: _Mapper, export: str, element: dict) -> Shape:
     if not isinstance(shape, (Named, Anonymous)):
         mapper.fail(export, "its rows are not objects; a row is an object whose fields are columns")
     return shape
+
+
+def _table_parameter(mapper: _Mapper, name: str, parameter: dict) -> Parameter:
+    """REQ-2226: a parameter taking a governed table: its row type's fields are the input columns
+    it declares, so a loose row type is a problem by name."""
+    where = f"{name}({parameter['name']})"
+    row = parameter["type"]["row"]
+    if row["kind"] in ("any", "unknown", "record"):
+        mapper.fail(where, "a TableRef declares its input columns: its row type is a typed object")
+        return Parameter(parameter["name"], TableOf(LOOSE), False, required=True)
+    shape, _ = mapper.shape(row, where)
+    if not isinstance(shape, (Named, Anonymous)):
+        mapper.fail(where, "a TableRef's row type is an object whose fields are its input columns")
+    if parameter["optional"]:
+        mapper.fail(where, "a TableRef is a required parameter")
+    return Parameter(parameter["name"], TableOf(shape), False, required=True)
 
 
 def _columns_export(
@@ -724,6 +759,9 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             for p in signature["parameters"]:
                 if p["rest"]:
                     problems.append(f"{name}: the rest parameter {p['name']} cannot be a parameter")
+                    continue
+                if kind in COMMANDS and p["type"]["kind"] == "table_ref":
+                    parameters.append(_table_parameter(mapper, name, p))
                     continue
                 shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
                 parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))

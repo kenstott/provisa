@@ -271,6 +271,10 @@
         "label": "Port PostgreSQL wire",
         "help": "Le port sur lequel le serveur de protocole PostgreSQL écoute ; 0 le désactive. Redémarrage requis ; confirmation demandée car cela ouvre ou ferme un listener."
       },
+      "minted_pgwire_port": {
+        "label": "Port wire PostgreSQL des jetons émis",
+        "help": "Le port que le bac à sable d'une source de code peut atteindre pour lire la table qui lui a été donnée, et l'adresse communiquée à un hôte distant. Il n'accepte que les jetons émis pour un seul appel ; 0 le laisse désactivé, et une commande recevant une table est alors refusée. Redémarrage requis ; protégé car il ouvre ou ferme un port d'écoute."
+      },
       "bolt_port": {
         "label": "Port Bolt",
         "help": "Le port sur lequel le serveur Bolt (Neo4j) écoute ; 0 le désactive. Redémarrage requis ; confirmation demandée car cela ouvre ou ferme un listener."

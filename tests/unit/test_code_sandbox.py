@@ -144,7 +144,7 @@ def test_the_launcher_confines_then_runs_the_host():
 
 
 def test_the_launcher_refuses_to_run_what_it_could_not_confine(monkeypatch, capsys):
-    def _no_landlock(read, proxy_port):
+    def _no_landlock(read, proxy_port, connect_ports=()):
         raise SandboxUnavailable("the kernel has no Landlock")
 
     ran: list = []

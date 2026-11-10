@@ -61,12 +61,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 __all__ = [
     "Filter",
     "Order",
     "ReadContext",
+    "TableConnection",
+    "TableRef",
     "ServiceError",
     "audit",
     "cache",
@@ -399,6 +401,35 @@ class Order:
     column: str
     descending: bool = False
     nulls_first: bool = False
+
+
+_Row = TypeVar("_Row")
+
+
+@dataclass(frozen=True)
+class TableConnection:
+    """REQ-2226: how a function reaches its table: a PostgreSQL connection, ``password`` a token
+    good for this call only. ``sslmode`` is the TLS the listener requires of it."""
+
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+    sslmode: str
+
+
+@dataclass(frozen=True)
+class TableRef(Generic[_Row]):
+    """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
+    with ``Row`` the input columns it declares. The function reads the table as the calling role,
+    so what the role cannot see it cannot read: run ``sql`` on a PostgreSQL connection made with
+    ``connection``."""
+
+    ref: str
+    columns: tuple[str, ...]
+    connection: TableConnection
+    sql: str
 
 
 @dataclass(frozen=True)
