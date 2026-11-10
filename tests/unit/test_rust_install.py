@@ -285,7 +285,7 @@ def test_a_crate_is_fetched_from_the_registrys_index_with_its_token(tmp_path):
         tar.addfile(info, io.BytesIO(data))
     asked: list[tuple[str, dict]] = []
 
-    def http(url, headers, _ca_bundle):
+    def http(url, headers):
         asked.append((url, headers))
         if url.endswith("config.json"):
             return json.dumps({"dl": "https://dl.acme.test/crates"}).encode()
