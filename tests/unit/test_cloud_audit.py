@@ -440,3 +440,38 @@ def test_a_provider_that_cannot_list_fails_the_audit_and_the_others_still_run():
     report = ca.audit([_Broken([]), healthy], runs, NOW, dry_run=False)
     assert healthy.deleted == ["x"]
     assert report.failed and "listing failed" in report.errors[0]
+
+
+# ------------------------------------------------------------------------------- the workflow
+
+
+def test_the_audit_runs_every_four_hours_and_on_demand_and_never_beside_a_live_lane():
+    import yaml
+
+    workflow = yaml.safe_load((_PATH.parents[2] / ".github/workflows/cloud-audit.yml").read_text())
+    triggers = workflow[True]
+    assert triggers["schedule"] == [{"cron": "0 */4 * * *"}]
+    assert "workflow_dispatch" in triggers
+    job = workflow["jobs"]["audit"]
+    # The live lanes' group: a resource a lane is making is never taken from under it.
+    assert job["concurrency"] == {"group": "live-cloud-warehouses", "queue": "max"}
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    audit_step = next(s for s in job["steps"] if s.get("name") == "Audit")
+    assert "scripts/ci/cloud_audit.py" in audit_step["run"]
+    # Credentials by the names the live tests already use: nothing new.
+    lanes = (_PATH.parents[2] / ".github/workflows/integration-suite-lanes.yml").read_text()
+    for name in job["env"]:
+        if name.startswith(("AZURE_", "REDSHIFT_", "GOOGLE_")):
+            assert f"secrets.{name}" in lanes, name
+
+
+def test_every_tag_value_fits_every_providers_label_rules():
+    """GCP labels are the strictest: lowercase letters, digits, - and _, at most 63."""
+    import re
+
+    from tests.integration import cloud_run_tag
+
+    for key, value in cloud_run_tag.run_tags(NOW).items():
+        for text in (key, value):
+            assert re.fullmatch(r"[a-z0-9_-]{1,63}", text), text
+    assert cloud_run_tag.run_tags(NOW)[ca.CREATED_KEY] == str(int(NOW))
