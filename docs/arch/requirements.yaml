@@ -94596,9 +94596,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   type: behavioral
   description: 'Maintainer 2026-11-10. Register Table lets a person pick several tables of a source at once,
     and every one of them is registered in one action with the defaults a single registration would apply:
-    its columns, names, types and read grants as discovery and the registration defaults give them. Each is
-    registered through the same registration path, with the same rights and checks, as registering it alone;
-    a table that one of those checks refuses is reported by name and the others are registered.'
+    its columns, names, types and read grants as discovery and the registration defaults give them. Each
+    is registered through the same registration path, with the same rights and checks, as registering it
+    alone; a table that one of those checks refuses is reported by name and the others are registered. (Amended
+    2026-11-10, ONLY TABLES THAT NEED NO INPUT:) Maintainer 2026-11-10: a table can be picked among several
+    only when discovery gives everything its registration needs, so it needs no input from the person: no
+    required parameter (an API table whose path or query parameters must be declared), no column left untyped
+    by discovery, no required argument of a code source. Discovery decides this for each table, not a list
+    of source types. A table that needs input is still shown, marked as needing it, and is registered on
+    its own as before.'
   scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them

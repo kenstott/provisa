@@ -26882,7 +26882,7 @@ Maintainer 2026-11-09. The site presents Provisa as additive and solving a probl
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-10. Register Table lets a person pick several tables of a source at once, and every one of them is registered in one action with the defaults a single registration would apply: its columns, names, types and read grants as discovery and the registration defaults give them. Each is registered through the same registration path, with the same rights and checks, as registering it alone; a table that one of those checks refuses is reported by name and the others are registered.
+Maintainer 2026-11-10. Register Table lets a person pick several tables of a source at once, and every one of them is registered in one action with the defaults a single registration would apply: its columns, names, types and read grants as discovery and the registration defaults give them. Each is registered through the same registration path, with the same rights and checks, as registering it alone; a table that one of those checks refuses is reported by name and the others are registered. (Amended 2026-11-10, ONLY TABLES THAT NEED NO INPUT:) Maintainer 2026-11-10: a table can be picked among several only when discovery gives everything its registration needs, so it needs no input from the person: no required parameter (an API table whose path or query parameters must be declared), no column left untyped by discovery, no required argument of a code source. Discovery decides this for each table, not a list of source types. A table that needs input is still shown, marked as needing it, and is registered on its own as before.
 
 **Code:** —
 
