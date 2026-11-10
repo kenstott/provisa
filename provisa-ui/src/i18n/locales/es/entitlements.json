@@ -26,14 +26,27 @@
       "everything": "Todo, incluido lo que se añada más adelante",
       "typedLabel": "Entradas",
       "typedPlaceholder": "Escriba una entrada y pulse Intro",
-      "filterLabel": "Buscar",
-      "filterPlaceholder": "Buscar por nombre",
       "noObjects": "El modelo aún no tiene nada de este tipo.",
       "otherValues": "También en la lista",
       "removeValue": "Quitar {{value}}",
-      "expand": "Expandir {{name}}",
-      "collapse": "Contraer {{name}}",
-      "includedByParent": "Incluido por la entrada superior"
+      "domains": {
+        "label": "Dominios",
+        "search": "Buscar dominios"
+      },
+      "tables": {
+        "label": "Tablas",
+        "search": "Buscar tablas de los dominios elegidos",
+        "searchAll": "Buscar todas las tablas",
+        "chooseAbove": "Los dominios elegidos no tienen tablas"
+      },
+      "columns": {
+        "label": "Columnas",
+        "search": "Buscar columnas de las tablas elegidas",
+        "chooseAbove": "Elija tablas para ver sus columnas"
+      },
+      "noMatch": "No hay coincidencias",
+      "more": "Se muestran {{shown}} de {{total}}. Escriba para acotar.",
+      "unknownValue": "El modelo no tiene esto. Se conserva hasta que lo quite."
     },
     "people": {
       "placeholder": "Buscar por nombre o correo electrónico",
@@ -49,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Seleccione un tipo",
       "entriesLabel": "Entradas",
-      "entriesHelp": "Lo que esta persona puede alcanzar de lo que el rol permite. Marcar una entrada incluye todo lo que hay debajo. Una lista vacía no alcanza nada de este tipo.",
+      "entriesHelp": "Lo que esta persona puede alcanzar de lo que permite el rol. Un dominio o una tabla elegidos sin nada elegido debajo incluyen todo su contenido. Una lista vacía no alcanza nada de este tipo.",
       "endsOnLabel": "Termina el",
       "endsOnHint": "Déjelo vacío para mantener la lista hasta que se finalice.",
       "reasonLabel": "Motivo",

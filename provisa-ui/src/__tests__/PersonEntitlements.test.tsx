@@ -161,16 +161,19 @@ describe("a person's entitlement lists", () => {
     expect(screen.queryByTestId("person-list-columns-edit")).toBeNull();
   });
 
-  it("edits a list with the tree picker and a reason, through the write API", async () => {
+  it("edits a list with the cascading pickers and a reason, through the write API", async () => {
     mockSet.mockResolvedValue(MIXED);
     render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
     await userEvent.click(await screen.findByTestId("person-list-tables-edit"));
     const save = screen.getByTestId("person-entitlements-form-save");
     expect(save).toBeDisabled();
+    // The listed table shows its domain chosen, so the tables offered are that domain's.
     await userEvent.click(
-      await screen.findByTestId("person-entitlements-form-picker-toggle-finance"),
+      await screen.findByTestId("person-entitlements-form-picker-tables-search"),
     );
-    await userEvent.click(screen.getByTestId("person-entitlements-form-picker-node-finance.costs"));
+    await userEvent.click(
+      await screen.findByTestId("person-entitlements-form-picker-tables-option-finance.costs"),
+    );
     await userEvent.type(screen.getByTestId("person-entitlements-form-reason"), "audit");
     await userEvent.click(save);
     await waitFor(() =>

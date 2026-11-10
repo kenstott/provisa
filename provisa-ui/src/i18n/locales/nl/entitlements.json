@@ -26,14 +26,27 @@
       "everything": "Alles, inclusief wat later wordt toegevoegd",
       "typedLabel": "Items",
       "typedPlaceholder": "Typ een item en druk op Enter",
-      "filterLabel": "Zoeken",
-      "filterPlaceholder": "Zoeken op naam",
       "noObjects": "Het model bevat nog niets van deze soort.",
       "otherValues": "Ook vermeld",
       "removeValue": "{{value}} verwijderen",
-      "expand": "{{name}} uitvouwen",
-      "collapse": "{{name}} samenvouwen",
-      "includedByParent": "Inbegrepen via het item erboven"
+      "domains": {
+        "label": "Domeinen",
+        "search": "Domeinen zoeken"
+      },
+      "tables": {
+        "label": "Tabellen",
+        "search": "Tabellen van de gekozen domeinen zoeken",
+        "searchAll": "Alle tabellen zoeken",
+        "chooseAbove": "De gekozen domeinen hebben geen tabellen"
+      },
+      "columns": {
+        "label": "Kolommen",
+        "search": "Kolommen van de gekozen tabellen zoeken",
+        "chooseAbove": "Kies tabellen om hun kolommen te tonen"
+      },
+      "noMatch": "Geen resultaten",
+      "more": "{{shown}} van {{total}} getoond. Typ om te verfijnen.",
+      "unknownValue": "Het model bevat dit niet. Het blijft bewaard tot u het verwijdert."
     },
     "people": {
       "placeholder": "Zoeken op naam of e-mail",
@@ -49,7 +62,7 @@
       "kindLabel": "Soort",
       "kindPlaceholder": "Selecteer een soort",
       "entriesLabel": "Items",
-      "entriesHelp": "Wat deze persoon mag bereiken van wat de rol toestaat. Een aangevinkt item omvat alles eronder. Een lege lijst bereikt niets van deze soort.",
+      "entriesHelp": "Wat deze persoon mag bereiken van wat de rol toestaat. Een gekozen domein of tabel zonder iets gekozen eronder omvat alles daarin. Een lege lijst bereikt niets van deze soort.",
       "endsOnLabel": "Eindigt op",
       "endsOnHint": "Laat leeg om de lijst te houden tot die wordt beëindigd.",
       "reasonLabel": "Reden",

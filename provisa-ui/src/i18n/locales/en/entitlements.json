@@ -26,14 +26,27 @@
       "everything": "Everything, including what is added later",
       "typedLabel": "Entries",
       "typedPlaceholder": "Type an entry and press Enter",
-      "filterLabel": "Find",
-      "filterPlaceholder": "Find by name",
       "noObjects": "The model has nothing of this kind yet.",
       "otherValues": "Also listed",
       "removeValue": "Remove {{value}}",
-      "expand": "Expand {{name}}",
-      "collapse": "Collapse {{name}}",
-      "includedByParent": "Included by the entry above it"
+      "domains": {
+        "label": "Domains",
+        "search": "Search domains"
+      },
+      "tables": {
+        "label": "Tables",
+        "search": "Search the chosen domains' tables",
+        "searchAll": "Search all tables",
+        "chooseAbove": "The chosen domains have no tables"
+      },
+      "columns": {
+        "label": "Columns",
+        "search": "Search the chosen tables' columns",
+        "chooseAbove": "Choose tables to list their columns"
+      },
+      "noMatch": "Nothing matches",
+      "more": "Showing {{shown}} of {{total}}. Type to narrow.",
+      "unknownValue": "The model does not have this. It is kept until you remove it."
     },
     "people": {
       "placeholder": "Search by name or email",
@@ -49,7 +62,7 @@
       "kindLabel": "Kind",
       "kindPlaceholder": "Select a kind",
       "entriesLabel": "Entries",
-      "entriesHelp": "What this person may reach of what the role allows. Checking an entry includes everything beneath it. An empty list reaches nothing of this kind.",
+      "entriesHelp": "What this person may reach of what the role allows. A domain or table picked with nothing chosen beneath it includes all of it. An empty list reaches nothing of this kind.",
       "endsOnLabel": "Ends on",
       "endsOnHint": "Leave empty to keep the list until it is ended.",
       "reasonLabel": "Reason",

@@ -10002,5 +10002,17 @@
   "zh-HK/writeGrants.json::writeGrants.sourceAcceptsNone": "The source accepts no writes (see the API tab), so no role can be granted any.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/entitlements.json::entitlements.picker.domains.label": "Domains",
+  "zh-HK/entitlements.json::entitlements.picker.domains.search": "Search domains",
+  "zh-HK/entitlements.json::entitlements.picker.tables.label": "Tables",
+  "zh-HK/entitlements.json::entitlements.picker.tables.search": "Search the chosen domains' tables",
+  "zh-HK/entitlements.json::entitlements.picker.tables.searchAll": "Search all tables",
+  "zh-HK/entitlements.json::entitlements.picker.tables.chooseAbove": "The chosen domains have no tables",
+  "zh-HK/entitlements.json::entitlements.picker.columns.label": "Columns",
+  "zh-HK/entitlements.json::entitlements.picker.columns.search": "Search the chosen tables' columns",
+  "zh-HK/entitlements.json::entitlements.picker.columns.chooseAbove": "Choose tables to list their columns",
+  "zh-HK/entitlements.json::entitlements.picker.noMatch": "Nothing matches",
+  "zh-HK/entitlements.json::entitlements.picker.more": "Showing {{shown}} of {{total}}. Type to narrow.",
+  "zh-HK/entitlements.json::entitlements.picker.unknownValue": "The model does not have this. It is kept until you remove it."
 }

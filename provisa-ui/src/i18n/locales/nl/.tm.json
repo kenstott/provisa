@@ -10005,5 +10005,17 @@
   "tour.json::tour.steps.customer360Systems.description": "<strong>stripe</strong> is Halyard's Stripe account, read through Stripe's published API. Like Salesforce, ServiceNow and Jira, it knows a customer only by its own id: <code>cus_…</code> here, <code>001…</code> in Salesforce, a company <code>sys_id</code> in ServiceNow, a typed name in Jira's Customer field. No id is shared.",
   "tour.json::tour.steps.customer360Systems.title": "Each system has its own ids",
   "tour.json::tour.steps.customer360Trust.description": "The answer is only as good as the hub's links. <strong>hub_match_rate</strong> re-derives each link from the evidence in the systems' own records and shows, month by month, the share it confirms. It fell after the bulk import.",
-  "tour.json::tour.steps.customer360Trust.title": "How far can you trust that answer?"
+  "tour.json::tour.steps.customer360Trust.title": "How far can you trust that answer?",
+  "nl/entitlements.json::entitlements.picker.domains.label": "Domains",
+  "nl/entitlements.json::entitlements.picker.domains.search": "Search domains",
+  "nl/entitlements.json::entitlements.picker.tables.label": "Tables",
+  "nl/entitlements.json::entitlements.picker.tables.search": "Search the chosen domains' tables",
+  "nl/entitlements.json::entitlements.picker.tables.searchAll": "Search all tables",
+  "nl/entitlements.json::entitlements.picker.tables.chooseAbove": "The chosen domains have no tables",
+  "nl/entitlements.json::entitlements.picker.columns.label": "Columns",
+  "nl/entitlements.json::entitlements.picker.columns.search": "Search the chosen tables' columns",
+  "nl/entitlements.json::entitlements.picker.columns.chooseAbove": "Choose tables to list their columns",
+  "nl/entitlements.json::entitlements.picker.noMatch": "Nothing matches",
+  "nl/entitlements.json::entitlements.picker.more": "Showing {{shown}} of {{total}}. Type to narrow.",
+  "nl/entitlements.json::entitlements.picker.unknownValue": "The model does not have this. It is kept until you remove it."
 }
