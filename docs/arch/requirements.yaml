@@ -92473,7 +92473,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     resolver using @catalog and @rows (REQ-2221): @catalog reads the service''s $metadata and declares its
     entity sets with their Edm types, keys, navigation properties and the six features the Probe found;
     @rows reads an entity set with the baseline $filter, paging and $select, and the ticked features. Actions
-    and functions are its commands.'
+    and functions are its commands. (Amended 2026-11-10, THE OFFICIAL CONNECTOR PROBES FOR ITSELF:) Maintainer
+    2026-11-10: the probe lives in the OData resolver: its @catalog reads the service''s Capabilities annotations
+    (or SAP''s V2 attributes) and, where they are silent, sends one small request per feature, and returns
+    the features the service answered. The source''s six checkboxes show what it returned and the steward
+    may change them; Probe reads @catalog again.'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
@@ -94120,7 +94124,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     A RESOLVER AND AN ENDPOINT MAKE AN INSTANCE:) Maintainer 2026-11-10: dynamic discovery cannot be static.
     One resolver serves many sources: each source composes the resolver with its own metadata endpoint,
     a setup value of that source (an OData service root, a spec URL). @catalog reads that source''s endpoint
-    when that source registers, so two sources built from the same resolver have their own tables.'
+    when that source registers, so two sources built from the same resolver have their own tables. (Amended
+    2026-11-10, THE CATALOG IS PLAIN DATA, NO LIBRARY:) Maintainer 2026-11-10: there is no SDK library.
+    @catalog returns plain data any language builds from its own lists and maps: types, the native type
+    system''s name; tables, each with name and columns, a column being a pair of its name and a native type
+    string; optional key (a list of column names), references (each a triple: column, table, column) and,
+    for a source with optional features, features (a list of feature names). Nothing else. Provisa checks
+    it and refuses a wrong field by name. @rows receives the table name, the column names, the filters and
+    the limit as plain values and returns a list of rows, each a list in the column order or a map by column
+    name.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
