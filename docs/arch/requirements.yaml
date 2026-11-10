@@ -3080,7 +3080,6 @@
   tests:
   - tests/unit/test_graphql_alias.py
   - tests/unit/test_naming.py
-  - tests/unit/test_customer360_demo_data.py
   since: 2026-01
   scenario: 'Given a column with and without an alias configured
 
@@ -83515,9 +83514,6 @@
 
 
     And no request leaves the demo for a live external account'
-  tests:
-  - tests/unit/test_customer360_demo_data.py
-  - tests/integration/test_customer360_demo.py
   related_reqs:
   - REQ-2006
   - REQ-2010
