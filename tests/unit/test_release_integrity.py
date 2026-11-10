@@ -20,6 +20,7 @@ build-dmg fails.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -51,10 +52,33 @@ _LEGS = {
 # PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
 # to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
 _PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+#: REQ-2225: the orchestrator's other publication, the Spark connector's image that
+#: platform-connectors built and kept in the run.
+_IMAGE_PUSH = "publish-connector-image"
 #: Build jobs whose names do not start with build-/package-: the platform connector block.
 _BUILDS_ALSO = frozenset({"platform-connectors"})
 #: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
+#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
+#: block names.
+_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _IMAGE_PUSH}}
+
+#: What leaves the run: a PyPI upload, a release attachment or undraft, an image push -- by
+#: docker, oras, skopeo or crane, or by `provisa connector` (`push`, or a `build`/`rebuild`, which
+#: pushes unless it writes an OCI layout), and any registry sign-in, which is only for a push.
+_PUBLISHES = re.compile(
+    r"pypi-publish|softprops/action-gh-release|gh release edit|twine upload"
+    r"|docker push|oras push|oras cp|skopeo copy|crane push|crane copy"
+    r"|provisa connector push|--registry-password-env|docker/login-action"
+)
+_CONNECTOR_BUILD = re.compile(r"provisa connector (build|rebuild)\b")
+
+
+def _publishes(step: dict) -> bool:
+    """Whether a workflow step sends anything out of the run."""
+    text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
+    if _PUBLISHES.search(text) or (step.get("with") or {}).get("push") is not None:
+        return True
+    return bool(_CONNECTOR_BUILD.search(text)) and "--oci-layout" not in text
 
 
 def _load(name: str) -> dict:
@@ -71,7 +95,7 @@ def test_build_dmg_publish_job_exists():
     assert {job: body["uses"] for job, body in orchestrator.items() if "uses" in body} == {
         job: f"./.github/workflows/{leg}" for job, leg in _LEGS.items()
     }
-    assert set(orchestrator) == set(_LEGS) | set(_PYPI)
+    assert set(orchestrator) == set(_LEGS) | set(_PYPI) | {_IMAGE_PUSH}
     assert "publish-release" in _load("release-publish.yml")["jobs"]
 
 
@@ -79,7 +103,10 @@ def test_build_dmg_publish_job_depends_on_all_builds():
     """Publishing waits for every build: the orchestrator's `publish` job needs every other leg,
     and each build job is a job of one of those legs."""
     orchestrator = _load("build-dmg.yml")["jobs"]
-    assert set(orchestrator["publish"]["needs"]) == (set(_LEGS) - {"publish"}) | set(_PYPI)
+    assert set(orchestrator["publish"]["needs"]) == (set(_LEGS) - {"publish"}) | set(_PYPI) | {
+        _IMAGE_PUSH
+    }
+    assert set(orchestrator[_IMAGE_PUSH]["needs"]) == set(_LEGS) - {"publish"}
     for job in _PYPI:
         assert set(orchestrator[job]["needs"]) == (set(_LEGS) - {"publish"}) | _PYPI_AFTER.get(
             job, set()
@@ -229,11 +256,6 @@ def test_no_publication_is_reachable_without_every_build():
     publish leg, which the orchestrator starts only after every other leg -- so each needs every
     job that builds or packages an artifact. On v0.1.0-alpha.478 the release was undrafted and
     the client was on PyPI while the server wheel's job had failed (run 37959190134)."""
-    import re
-
-    publishes = re.compile(
-        r"pypi-publish|softprops/action-gh-release|gh release edit|docker push|twine upload"
-    )
     where: dict[str, str] = {}
     builds: dict[str, str] = {}
     for leg, name in {**_LEGS, "orchestrator": "build-dmg.yml"}.items():
@@ -243,14 +265,13 @@ def test_no_publication_is_reachable_without_every_build():
             if builds_here and "uses" not in body:
                 builds[job] = leg
             for step in body.get("steps") or []:
-                text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
-                pushes = (step.get("with") or {}).get("push") is not None
-                if publishes.search(text) or pushes:
+                if _publishes(step):
                     where[job] = leg
     assert where == {
         "publish-pypi": "orchestrator",
         "publish-notebook-pypi": "orchestrator",
         "publish-provisa-pypi": "orchestrator",
+        _IMAGE_PUSH: "orchestrator",
         "publish-release": "publish",
         "publish-engine-image": "publish",
         "publish-zaychik-image": "publish",
@@ -261,9 +282,11 @@ def test_no_publication_is_reachable_without_every_build():
     assert legs_built == set(_LEGS) - {"publish"}
     # Every PyPI publication needs every build (provisa's also its pinned notebook package); the
     # publish leg needs them too, so the release is undrafted only after every wheel is on PyPI.
-    for job in _PYPI:
+    for job in (*_PYPI, _IMAGE_PUSH):
         assert set(orchestrator[job]["needs"]) == legs_built | _PYPI_AFTER.get(job, set()), job
-    assert set(orchestrator["publish"]["needs"]) == legs_built | set(_PYPI)
+    assert set(orchestrator["publish"]["needs"]) == legs_built | set(_PYPI) | {_IMAGE_PUSH}
+    # The image push is gated as the PyPI uploads are: never on a dry run.
+    assert orchestrator[_IMAGE_PUSH]["if"] == orchestrator["publish"]["with"]["publish"]
     # A dry run skips the two publications; the publish leg (the asset check) still runs, and
     # never after one that failed.
     ran = orchestrator["publish"]["if"]
@@ -274,6 +297,46 @@ def test_no_publication_is_reachable_without_every_build():
     assert "publish-release" in leg["publish-engine-image"]["needs"]
     ran = leg["publish-release"]["if"]
     assert "!cancelled()" in ran and "contains(needs.*.result, 'failure')" in ran
+
+
+@pytest.mark.parametrize(
+    ("step", "publishes"),
+    [
+        # The platform connector leg as J1166 landed it: built and pushed in the first leg.
+        (
+            {
+                "run": "uv run provisa connector build https://github.com/x/y.git --name spark "
+                "--image ghcr.io/x/spark --arch amd64 --registry-user bot "
+                "--registry-password-env REGISTRY_PASSWORD > block.yaml"
+            },
+            True,
+        ),
+        # A build with no sign-in still pushes (anonymously) unless it writes a layout.
+        ({"run": "provisa connector build g --name s --image r/s --arch amd64"}, True),
+        ({"run": "provisa connector rebuild --config model.yaml --write"}, True),
+        ({"run": "provisa connector push image --config c.yaml --name spark"}, True),
+        ({"run": "docker push ghcr.io/x/y:1"}, True),
+        ({"run": "oras push ghcr.io/x/y:1 a.tar"}, True),
+        ({"run": "skopeo copy oci:image docker://ghcr.io/x/y:1"}, True),
+        ({"run": "crane push image.tar ghcr.io/x/y:1"}, True),
+        ({"uses": "docker/login-action@v3"}, True),
+        ({"uses": "docker/build-push-action@v6", "with": {"push": False}}, True),
+        # Built into the run, nothing pushed.
+        (
+            {
+                "run": "uv run provisa connector build g --name spark --image ghcr.io/x/spark "
+                "--arch amd64 --oci-layout spark-connector-image > block.yaml"
+            },
+            False,
+        ),
+        ({"uses": "actions/upload-artifact@v4"}, False),
+        ({"run": "docker build --platform linux/amd64 --output type=local,dest=w ."}, False),
+    ],
+)
+def test_an_image_push_is_seen_as_a_publication(step, publishes):
+    """REQ-2225: a step that pushes an image leaves the run as surely as a PyPI upload, so it is
+    held to the same rule -- J1166's connector build pushed from the first leg and was not seen."""
+    assert _publishes(step) is publishes
 
 
 def test_pypi_is_published_from_the_orchestrator_never_a_reusable_workflow():
