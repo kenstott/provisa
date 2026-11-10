@@ -154,6 +154,27 @@ def _free_port() -> int:
     return port
 
 
+def _pyspark_home(python: Path) -> Path | None:
+    """Return the pyspark package directory inside the given venv, or None if absent.
+
+    ``pyspark-client`` is a Connect-only wheel that ships without a full Spark
+    distribution.  ``pyspark/__init__.py`` calls ``find_spark_home()`` at import
+    time, which looks for a ``spark-distribution`` subdirectory inside the package
+    or for a ``SPARK_HOME`` env-var pointing at a real install.  Neither is
+    present by default after an sdist install, so every ``import pyspark.sql``
+    fails with "Could not find valid SPARK_HOME" — even though the Connect server
+    is already running and no JVM is ever needed.
+
+    Callers must:
+    1. Create ``<pyspark_home>/spark-distribution/`` as an empty placeholder so
+       that ``find_spark_home()`` succeeds when SPARK_HOME is not set.
+    2. Pass ``SPARK_HOME=<pyspark_home>`` in subprocess environments so that any
+       pre-existing (and potentially wrong) SPARK_HOME on the runner is overridden.
+    """
+    dirs = sorted((python.parent.parent / "lib").glob("python*/site-packages/pyspark"))
+    return dirs[0] if dirs else None
+
+
 @pytest.fixture(scope="module")
 def client_python(tmp_path_factory) -> Path:
     """A Python holding the connector's locked dependencies: the real Spark Connect client."""
@@ -182,6 +203,13 @@ def client_python(tmp_path_factory) -> Path:
         ],
         check=True,
     )
+    # pyspark-client installed from sdist does not create spark-distribution/.
+    # Create the empty placeholder so pyspark's find_spark_home() does not raise
+    # even when SPARK_HOME is unset (belt) — callers also pass SPARK_HOME
+    # explicitly to override any wrong value already in the runner env (suspenders).
+    home = _pyspark_home(python)
+    if home is not None:
+        (home / "spark-distribution").mkdir(exist_ok=True)
     return python
 
 
@@ -198,11 +226,18 @@ def cluster(client_python):
         capture_output=True,
     )  # fmt: skip
     address = f"sc://127.0.0.1:{port}"
+    # pyspark-client needs SPARK_HOME even for Connect-only sessions (see _pyspark_home).
+    # Explicitly set it here so any wrong SPARK_HOME already in the runner env is overridden.
+    _phome = _pyspark_home(client_python)
+    _probe_env = {**os.environ, "SPARK_HOME": str(_phome)} if _phome is not None else None
     try:
         deadline = time.monotonic() + _SERVER_START_S
         while True:
             probe = subprocess.run(
-                [str(client_python), "-c", _PROBE, address], capture_output=True, text=True
+                [str(client_python), "-c", _PROBE, address],
+                capture_output=True,
+                text=True,
+                env=_probe_env,
             )
             if probe.returncode == 0:
                 break
@@ -229,11 +264,16 @@ class _Host:
         self.hashed = content_hash(code)
         (work / "names.json").write_text("{}")
         (work / "manifest.json").write_text(json.dumps(_PROJECT_MANIFEST))
+        # pyspark-client needs SPARK_HOME even for Connect-only sessions (see _pyspark_home).
+        # Explicitly set it so any wrong SPARK_HOME in the runner env is overridden and the
+        # user script's `import pyspark.sql` succeeds when the front spawns it via `python`.
+        _phome = _pyspark_home(python)
         env = {
             **os.environ,
             "PROVISA_CODE_HASH": self.hashed,
             "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),
             "PROVISA_CONNECTOR_SCRIPT": "script",
+            **({"SPARK_HOME": str(_phome)} if _phome is not None else {}),
         }
         self.process = subprocess.Popen(  # noqa: S603 -- the test's interpreter and Provisa's front
             [
