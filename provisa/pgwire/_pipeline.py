@@ -1977,7 +1977,7 @@ async def govern_statement(
     )
     _table_functions = (
         CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
-    )
+    ) | frozenset(getattr(state, "tracked_functions", None) or {})
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,

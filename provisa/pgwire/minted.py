@@ -29,7 +29,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import secrets
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -387,6 +387,7 @@ class CallScope:
 
         if not run_on_connection_loop(self._store.live(self._token_hash), timeout=30):
             raise CallTokenRefused("the call this session was minted for has ended")
+        _refuse_hidden_columns(sql, self.call.role_id, self.call.org_id, self._state)
         refuse_outside_call(sql, self.call.tables, self._state)
 
     def check_all(self, statements: list[str]) -> None:
@@ -404,7 +405,7 @@ class CallScope:
         self.check(sql)
 
     @contextmanager
-    def bound(self) -> Iterator[None]:
+    def bound(self) -> Generator[None, None, None]:
         """The caller's session variables and entitlements for the statement, and the call's
         correlation id for its audit row (REQ-1682, REQ-2219, REQ-886): the session sees what
         the caller sees, no more."""

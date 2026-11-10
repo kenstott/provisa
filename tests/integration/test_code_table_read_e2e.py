@@ -341,14 +341,21 @@ def ledger(server):
     )
     # A view is built as the organisation's administrator (mv.governed_build), so "vault" grants
     # its secret to a role that is not that administrator's ancestor.
-    for table, secret_reader in (("orders", _ROLE), ("vault", _ANALYST)):
-        # "tag" is visible to both roles but masked for _ANALYST (REQ-2226: masking runs through
-        # the same governed pipeline as column visibility).
+    # For "orders": _ROLE is the unmasked role for "tag" (analyst sees ***).
+    # For "vault": _ANALYST is the unmasked role for "tag" (analyst sees the real value; org_admin
+    #   sees *** — the MV build runs as org_admin, so vault_digest captures the masked value).
+    for table, secret_reader, tag_unmasked in (
+        ("orders", _ROLE, _ROLE),
+        ("vault", _ANALYST, _ANALYST),
+    ):
+        # "tag" is visible to both roles but masked for one of them (REQ-2226: masking runs
+        # through the same governed pipeline as column visibility).
+        tag_masked = _ANALYST if tag_unmasked == _ROLE else _ROLE
         columns = [
             _column("id", "bigint", _ROLE, _ANALYST),
             _column("region", "text", _ROLE, _ANALYST),
             _column("secret", "text", secret_reader),
-            _column_masked("tag", "text", "***", _ROLE, _ANALYST),
+            _column_masked("tag", "text", "***", tag_unmasked, tag_masked),
         ]
         registered = _admin(
             server,
