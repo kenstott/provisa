@@ -238,7 +238,9 @@ def test_no_publication_is_reachable_without_every_build():
     builds: dict[str, str] = {}
     for leg, name in {**_LEGS, "orchestrator": "build-dmg.yml"}.items():
         for job, body in _load(name)["jobs"].items():
-            if job.startswith(("build-", "package-")) or job in _BUILDS_ALSO:
+            # A job that calls a leg (the orchestrator's platform-connectors) is not the build.
+            builds_here = job.startswith(("build-", "package-")) or job in _BUILDS_ALSO
+            if builds_here and "uses" not in body:
                 builds[job] = leg
             for step in body.get("steps") or []:
                 text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
