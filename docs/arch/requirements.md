@@ -24302,7 +24302,7 @@ A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce acc
 
 **Code:** —
 
-**Tests:** `tests/integration/test_customer360_demo.py`, `tests/unit/test_customer360_demo_data.py`
+**Tests:** —
 
 ### REQ-2035 · UI {#REQ-2035}
 

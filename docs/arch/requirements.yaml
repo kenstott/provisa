@@ -83454,9 +83454,6 @@
     feature assignment in the description.'
 - id: REQ-2034
   status: proposed
-  tests:
-  - tests/integration/test_customer360_demo.py
-  - tests/unit/test_customer360_demo_data.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
