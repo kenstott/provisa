@@ -42,19 +42,22 @@ class _Conn:
     def __init__(self, sent: list[str]) -> None:
         self.sent = sent
 
-    async def upsert(self, *args, **kwargs):
+    async def upsert(self, *_a, **_kw):
+        del _a, _kw
         self.sent.append("upsert")
 
     async def execute(self, sql: str):
         self.sent.append(sql)
         return ""
 
-    async def execute_core(self, stmt):
+    async def execute_core(self, _stmt):
+        del _stmt
         self.sent.append("execute_core")
         return SimpleNamespace(scalar=lambda: 0)
 
     @asynccontextmanager
-    async def advisory_lock(self, key: int):
+    async def advisory_lock(self, _key: int):
+        del _key
         self.sent.append("lock")
         yield self
 
@@ -78,6 +81,7 @@ def _seed(monkeypatch, *, cloned: bool) -> tuple[list[str], list[str]]:
 
     def _step(name: str):
         async def _ran(*args, **kwargs):
+            del args, kwargs
             steps.append(name)
 
         return _ran
@@ -86,6 +90,7 @@ def _seed(monkeypatch, *, cloned: bool) -> tuple[list[str], list[str]]:
         monkeypatch.setattr(startup_seed, name, _step(name))
 
     async def _view(conn, ddl: str) -> None:
+        del conn
         steps.append(f"view {ddl.strip().splitlines()[0]}")
 
     monkeypatch.setattr(startup_seed, "_seed_view", _view)
@@ -150,9 +155,11 @@ def test_a_sandbox_runtime_built_cloned_asks_for_the_cloned_build_and_none_other
     asked: list[bool] = []
 
     async def _lane(org_id, env):
+        del org_id, env
         return None
 
     async def _build(org_id, *, storage_url=None, model_cloned=False):
+        del org_id, storage_url
         asked.append(model_cloned)
 
     monkeypatch.setattr(app, "_region_lane_of", _lane)
@@ -179,7 +186,10 @@ def test_a_sandbox_environments_rows_are_landed_on_a_runtime_built_cloned(monkey
         asked.append((org_id, env, cloned))
         raise _Landed
 
-    monkeypatch.setattr(materialize_broker, "copy_schema", lambda *args: None)
+    def _copy_schema(*args):
+        del args
+
+    monkeypatch.setattr(materialize_broker, "copy_schema", _copy_schema)
     monkeypatch.setattr("provisa.api.demo_replicas._store_path", lambda org: f"/stores/{org}")
     monkeypatch.setattr(demo_synthetic, "_model_db", _model_db)
     for cloned in (True, False):
@@ -205,15 +215,19 @@ def test_an_environment_asked_for_cloned_is_built_cloned(monkeypatch):
     built: list[tuple[str, str, bool]] = []
 
     async def _none(*args, **kwargs):
+        del args, kwargs
         return None
 
     async def _flags(org_id):
+        del org_id
         return app.OrgLane(False, False, None, None, None, "", None)
 
     async def _env(admin_db, org_id, env):
+        del admin_db, org_id, env
         return {"expires_at": None, "data_mode": "test_synthetic", "mutation_handling": "refused"}
 
     async def _build(org_id, *, env, model_cloned=False, **kwargs):
+        del kwargs
         built.append((org_id, env, model_cloned))
         return SimpleNamespace()
 
@@ -313,6 +327,7 @@ def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
 
     class _MockConn:
         async def execute_core(self, stmt):
+            del stmt
             return SimpleNamespace(fetchall=lambda: [])
 
     @asynccontextmanager
@@ -329,6 +344,7 @@ def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
     monkeypatch.setattr(app, "state", _MockState())
 
     async def _unbound(_conn):
+        del _conn
         return frozenset()
 
     monkeypatch.setattr(app, "_unbound_sources", _unbound)
@@ -337,13 +353,14 @@ def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
     import provisa.api.admin.lineage_router as _lr
 
     async def _load_fn(_conn):
+        del _conn
         return None
 
     async def _persist_fn(_conn, _fn):
-        pass
+        del _conn, _fn
 
     async def _lineage(_conn, _state):
-        pass
+        del _conn, _state
 
     monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
     monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
@@ -444,6 +461,7 @@ def test_cloned_env_test_fake_reloads_masking_rules(monkeypatch):
 
     class _MockConn:
         async def execute_core(self, stmt):
+            del stmt
             return SimpleNamespace(fetchall=lambda: [])
 
     @asynccontextmanager
@@ -463,6 +481,7 @@ def test_cloned_env_test_fake_reloads_masking_rules(monkeypatch):
     measure_model_calls: list[bool] = []
 
     async def _mock_load_masking_rules(conn, col_types, roles, role_chains=None):
+        del conn, col_types, roles, role_chains
         masking_rules_calls.append(True)
         # simulate _load_masking_rules writing fake-aware rules (non-PROD value)
         cloned_rt.masking_rules = {"fake_rule": "has_fakes"}
@@ -473,11 +492,13 @@ def test_cloned_env_test_fake_reloads_masking_rules(monkeypatch):
     import provisa.fakes.measured as _measured
 
     async def _mock_measure_model(state_arg):
+        del state_arg
         measure_model_calls.append(True)
 
     monkeypatch.setattr(_measured, "measure_model", _mock_measure_model)
 
     async def _unbound(_conn):
+        del _conn
         return frozenset()
 
     monkeypatch.setattr(app, "_unbound_sources", _unbound)
@@ -486,13 +507,14 @@ def test_cloned_env_test_fake_reloads_masking_rules(monkeypatch):
     import provisa.api.admin.lineage_router as _lr
 
     async def _load_fn(_conn):
+        del _conn
         return None
 
     async def _persist_fn(_conn, _fn):
-        pass
+        del _conn, _fn
 
     async def _lineage(_conn, _state):
-        pass
+        del _conn, _state
 
     monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
     monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
@@ -528,6 +550,7 @@ def test_cloned_env_non_test_fake_does_not_reload_masking_rules(monkeypatch):
 
     class _MockConn:
         async def execute_core(self, stmt):
+            del stmt
             return SimpleNamespace(fetchall=lambda: [])
 
     @asynccontextmanager
@@ -546,11 +569,13 @@ def test_cloned_env_non_test_fake_does_not_reload_masking_rules(monkeypatch):
     masking_rules_calls: list[bool] = []
 
     async def _mock_load_masking_rules(conn, col_types, roles, role_chains=None):
+        del conn, col_types, roles, role_chains
         masking_rules_calls.append(True)
 
     monkeypatch.setattr(app, "_load_masking_rules", _mock_load_masking_rules)
 
     async def _unbound(_conn):
+        del _conn
         return frozenset()
 
     monkeypatch.setattr(app, "_unbound_sources", _unbound)
@@ -559,13 +584,14 @@ def test_cloned_env_non_test_fake_does_not_reload_masking_rules(monkeypatch):
     import provisa.api.admin.lineage_router as _lr
 
     async def _load_fn(_conn):
+        del _conn
         return None
 
     async def _persist_fn(_conn, _fn):
-        pass
+        del _conn, _fn
 
     async def _lineage(_conn, _state):
-        pass
+        del _conn, _state
 
     monkeypatch.setattr(_fn, "load_field_number_allocator", _load_fn)
     monkeypatch.setattr(_fn, "persist_field_numbers", _persist_fn)
