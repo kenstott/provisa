@@ -37,6 +37,11 @@ class _FakeConn:
     async def execute_core(self, _stmt):
         return _FakeResult()
 
+    @asynccontextmanager
+    async def transaction(self):
+        # A real connection's transaction: the code under test writes inside one.
+        yield self
+
     async def upsert_returning(self, _table, _values, **_kw):
         # Stable integer id assigned per composite_id, mirroring the node_ids sequence.
         self._next_id += 1
