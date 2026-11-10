@@ -54,7 +54,7 @@ data_products:
     email) keeps the link the hub gives it
   sla: Rebuilt each time the customer master syncs from the four systems
   support_contact: kennethstott@gmail.com
-  tables: [master, hub_findings, hub_match_rate, renewal_risk_checked]
+  tables: [view_master, view_hub_findings, view_hub_match_rate, view_renewal_risk_checked]
 domains:
 - id: customer360
   description: Halyard Software's customers across Salesforce, ServiceNow, Jira and Stripe, and the
@@ -580,7 +580,7 @@ relationships:
 # Inside each system: its own records' links.
 - {id: opportunity-to-account, alias: RENEWS, cardinality: many-to-one, source_table_id: opportunities, source_column: AccountId, target_table_id: accounts, target_column: Id}
 - {id: incident-to-company, alias: RAISED_BY, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: companies, target_column: sys_id}
-- {id: invoice-to-customer, alias: BILLS, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: stripe_customers, target_column: id}
+- {id: invoice-to-customer, alias: BILLS, graphql_alias: billedCustomer, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: stripe_customers, target_column: id}
 # An incident's fix: the Jira bug its correlation id names.
 - {id: incident-to-bug, alias: FIXED_BY, cardinality: many-to-one, source_table_id: incidents, source_column: correlation_id, target_table_id: bugs, target_column: key}
 # Hub and spoke: each system's id relates to the hub's crosswalk, the crosswalk to its master.

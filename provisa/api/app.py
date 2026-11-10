@@ -3078,7 +3078,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     Called from ``_build_org_runtime`` when ``model_cloned=True`` and ``env != PROD``.  The
     sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
     """
-    from provisa.core.env_classes import BINDING_COLUMN, OWN
+    from provisa.core.env_classes import BINDING_COLUMN, OWN, TEST_FAKE
     from provisa.core.schema_org import sources as _sources_t
 
     _rt = state._active_runtime()
@@ -3126,10 +3126,28 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.pg_notify_tables = prod_rt.pg_notify_tables
     _rt.table_watermarks = prod_rt.table_watermarks
     _rt.user_attributes = prod_rt.user_attributes
-    # masking_rules already contain measurements from measure_model in PROD's build.
-    # Do NOT call measure_model again.
+    # masking_rules: for a plain clone (data_mode is not test_fake) PROD's rules are correct —
+    # the clone has the same model, same masks, and no fake generators are needed.
+    # REQ-2053 / REQ-1494: for a test_fake env PROD built with faking=False (data_mode=None),
+    # so prod_rt.masking_rules contains NO fake generators.  Copying them causes the env to
+    # return production rows.  Reload from this env's model DB with faking=True so every
+    # column's declared fake() rule is activated.  measure_model populates the measured values
+    # fake generators that need them (categories(), bool(), after/before with no distance) rely
+    # on; called here because _rebuild_schemas_impl (which normally calls it) is bypassed for
+    # cloned envs.
     _rt.masking_rules = prod_rt.masking_rules
     _rt.masked_columns = prod_rt.masked_columns
+    if _rt.data_mode == TEST_FAKE:
+        async with state.model_db.acquire() as conn:
+            await _load_masking_rules(
+                conn,
+                prod_rt.schema_build_cache.get("column_types", {}),
+                list(prod_rt.roles.values()),
+                prod_rt.role_chains,
+            )
+        from provisa.fakes.measured import measure_model as _measure_model
+
+        await _measure_model(state)
     _rt.tracked_functions = prod_rt.tracked_functions
     _rt.tracked_webhooks = prod_rt.tracked_webhooks
     _rt.column_transforms = prod_rt.column_transforms
@@ -3154,6 +3172,13 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.source_cache = prod_rt.source_cache
     _rt.source_allowed_domains = prod_rt.source_allowed_domains
     _rt.source_federation_hints = prod_rt.source_federation_hints
+    # REQ-2006: copy source identity maps so the query pipeline's _known_cats_pgwire
+    # check and the native backend's catalog lookup succeed for the cloned env.
+    # source_catalogs maps source_id → org-prefixed catalog name; source_types and
+    # source_dialects are identical for a cloned env (same sources, same model).
+    _rt.source_catalogs = prod_rt.source_catalogs
+    _rt.source_types = prod_rt.source_types
+    _rt.source_dialects = prod_rt.source_dialects
     _rt.kafka_windows = prod_rt.kafka_windows
     _rt.kafka_bootstrap = prod_rt.kafka_bootstrap
     _rt.kafka_declared = prod_rt.kafka_declared
