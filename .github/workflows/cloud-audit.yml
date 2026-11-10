@@ -1,0 +1,78 @@
+# The paid-cloud audit (maintainer 2026-11-10, .claude/refs/swarm-mode.md "Paid cloud resources"):
+# every 4 hours, list the billable resources in each test scope and delete every one that is not
+# active -- tagged with a run that is still in progress (tests/integration/cloud_run_tag.py).
+# What it found and what it deleted go to the run summary. The scopes are data in
+# scripts/ci/cloud_audit.py; it refuses, by name, any scope that is cloud-dev (provisa-test-473,
+# cloud.provisa.dev) and never lists or touches anything outside them.
+name: Cloud audit
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List and classify only; delete nothing
+        type: boolean
+        default: false
+      providers:
+        description: Comma-separated providers to audit
+        type: string
+        default: azure,aws,gcp
+
+permissions:
+  contents: read
+  # Whether a resource's run is still in progress is read from the Actions API.
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # The live lanes' group: the audit never runs while a live warehouse lane does, so a resource
+    # a lane is creating (and has not tagged yet) is never taken from under it. Waits, never
+    # cancels, and keeps every waiting run.
+    concurrency:
+      group: live-cloud-warehouses
+      queue: max
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+      REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+      REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+      GITHUB_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+      PROVIDERS: ${{ inputs.providers || 'azure,aws,gcp' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          cache: "true"
+      - name: Credentials present
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+          missing=""
+          for v in AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID \
+                   REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY REDSHIFT_AWS_REGION \
+                   GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::the cloud audit cannot run; repo secrets not set:$missing"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+      - name: Azure CLI login
+        run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
+      - name: Audit
+        run: uv run python scripts/ci/cloud_audit.py $DRY_RUN --providers "$PROVIDERS"
+      - name: Remove the credential file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-key.json"
