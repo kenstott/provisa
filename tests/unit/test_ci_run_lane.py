@@ -87,9 +87,8 @@ def test_a_shard_runs_only_its_files():
 
 
 def test_all_is_every_suite_lane_with_its_shards(monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
     runner = _runner()
-    # The matrix's shape only; whether every test has a lane is the coverage rule's own test.
-    monkeypatch.setattr(runner, "unselected", lambda: [])
     include = runner.matrix("all")["include"]
     assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
     assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
@@ -936,15 +935,6 @@ def test_a_lane_routed_a_test_that_then_selects_none_of_it_fails(runner, monkeyp
     assert runner.main(["neo4j"]) == 5
 
 
-# Lanes no dispatch of integration-suite.yml runs: a test only they select is never routed.
-_NO_CI_LANE = {
-    "packaging",
-    "requires_google_workspace",
-    "requires_quickbooks",
-    "requires_shopify",
-}
-
-
 def test_every_test_of_the_repository_is_read_and_some_lane_selects_it():
     runner = _runner()
     for path in runner.test_files(("tests/integration", "tests/steps", "tests/e2e")):
@@ -955,7 +945,7 @@ def test_every_test_of_the_repository_is_read_and_some_lane_selects_it():
                     for lane in runner.LANES
                     if runner._in_lane(lane, path) and runner.selects(lane, marks)
                 ]
-                assert lanes or marks & _NO_CI_LANE, (test, sorted(marks))
+                assert lanes or marks & runner.NO_CI_LANE.keys(), (test, sorted(marks))
 
 
 def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, capsys):
@@ -978,7 +968,6 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     naming it runs it, and no other lane selects its test."""
     monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
     run_lane = _runner()
-    monkeypatch.setattr(run_lane, "unselected", lambda: [])  # the coverage rule's own test
     lanes = lambda selection: [job["lane"] for job in run_lane.matrix(selection)["include"]]  # noqa: E731
     assert "leak" not in lanes("all")
     assert lanes("leak") == ["leak"]
@@ -995,10 +984,13 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
 
 # --- an untargeted "all" run: every test under the suite's paths has a lane ---------------------
 
+# A cluster test placed under tests/integration: the cluster lane reads only its own file, and every
+# lane of the suite's paths excludes cluster, so no lane selects it, and cluster is no NO_CI_LANE
+# marker.
 _NO_LANE = """
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.packaging]
+pytestmark = [pytest.mark.integration, pytest.mark.cluster]
 
 
 def test_installs():
@@ -1012,10 +1004,10 @@ def test_an_all_run_is_refused_while_a_test_is_selected_by_no_lane(runner, monke
     assert runner.unselected() == []  # the fixture's modules: each has a lane, demo_walk's too
     assert {e["lane"] for e in runner.matrix("all")["include"]} >= {"core", "kafka"}
     (runner.REPO / _NO_LANE_FILE).write_text(_NO_LANE)
-    assert runner.unselected() == [f"{_NO_LANE_FILE}::test_installs [integration, packaging]"]
+    assert runner.unselected() == [f"{_NO_LANE_FILE}::test_installs [cluster, integration]"]
     with pytest.raises(ValueError) as refused:
         runner.matrix("all")
-    assert f"{_NO_LANE_FILE}::test_installs [integration, packaging]" in str(refused.value)
+    assert f"{_NO_LANE_FILE}::test_installs [cluster, integration]" in str(refused.value)
     assert "selected by no lane" in str(refused.value)
     # A selection of lanes, and a targeted run, are not "all": the rule is the untargeted run's.
     assert [e["lane"] for e in runner.matrix("kafka")["include"]] == ["kafka"]
@@ -1026,8 +1018,57 @@ def test_an_all_run_is_refused_while_a_test_is_selected_by_no_lane(runner, monke
 def test_a_variant_no_lane_selects_is_named_though_its_test_has_a_lane(runner, monkeypatch):
     monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
     (runner.REPO / _NO_LANE_FILE).write_text(
-        _PARAMETRIZED.replace("pytest.mark.requires_neo4j", "pytest.mark.packaging")
+        _PARAMETRIZED.replace("pytest.mark.requires_neo4j", "pytest.mark.cluster")
     )
     assert runner.unselected() == [
-        f"{_NO_LANE_FILE}::test_through_the_server [integration, packaging]"
+        f"{_NO_LANE_FILE}::test_through_the_server [cluster, integration]"
     ]
+
+
+@pytest.mark.parametrize("exempt", ["packaging", "requires_google_workspace", "requires_shopify"])
+def test_a_test_no_lane_selects_is_refused_unless_it_carries_a_no_ci_lane_marker(
+    runner, monkeypatch, exempt
+):
+    """Maintainer 2026-11-10: the rule, with named exemptions. A lane-less test is refused; the same
+    test carrying a NO_CI_LANE marker runs where that marker's reason says, and is not."""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    assert exempt in runner.NO_CI_LANE
+    assert "cluster" not in runner.NO_CI_LANE
+    (runner.REPO / _NO_LANE_FILE).write_text(_NO_LANE)
+    with pytest.raises(ValueError, match="selected by no lane") as refused:
+        runner.matrix("all")
+    assert f"{_NO_LANE_FILE}::test_installs [cluster, integration]" in str(refused.value)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _NO_LANE.replace("pytest.mark.cluster]", f"pytest.mark.cluster, pytest.mark.{exempt}]")
+    )
+    assert runner.unselected() == []
+    assert {e["lane"] for e in runner.matrix("all")["include"]} >= {"core", "kafka"}
+
+
+def test_an_exemption_covers_only_the_variants_that_carry_it(runner, monkeypatch):
+    """A parameter marked with an exempt marker excuses that variant; its unmarked sibling that no
+    lane selects is still named. (test_certified's warehouse variant has a lane: warehouse.)"""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _PARAMETRIZED.replace(
+            "pytestmark = [pytest.mark.integration]",
+            "pytestmark = [pytest.mark.integration, pytest.mark.cluster]",
+        ).replace("pytest.mark.requires_neo4j", "pytest.mark.requires_quickbooks")
+    )
+    assert runner.unselected() == [
+        f"{_NO_LANE_FILE}::test_certified [cluster, integration, parametrize]",
+        f"{_NO_LANE_FILE}::test_through_the_server [cluster, integration]",
+    ]
+
+
+def test_every_no_ci_lane_marker_says_where_its_tests_run_and_is_a_registered_marker():
+    runner = _runner()
+    registered = {
+        line.split(":", 1)[0].strip()
+        for line in tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pytest"][
+            "ini_options"
+        ]["markers"]
+    }
+    for marker, reason in runner.NO_CI_LANE.items():
+        assert marker in registered, marker
+        assert reason.strip(), marker

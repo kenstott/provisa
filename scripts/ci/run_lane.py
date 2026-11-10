@@ -179,6 +179,16 @@ ELSEWHERE = {
     "polly_bakeoff": "polly-bakeoff.yml",
 }
 
+# Markers whose tests no CI lane runs, by the maintainer's choice (2026-11-10), each with where its
+# tests run instead. The rule that every test has a lane (unselected) passes over a test carrying
+# one of these, and over no other: a new test that no lane selects and none of these marks fails it.
+NO_CI_LANE: dict[str, str] = {
+    "packaging": "scripts/test-all, with TEST_ALL_PACKAGING=1 (its packaging lane)",
+    "requires_google_workspace": "by hand, against the maintainer's own Google Workspace domain",
+    "requires_quickbooks": "by hand, against the maintainer's own QuickBooks sandbox company",
+    "requires_shopify": "by hand, against the maintainer's own Shopify dev store",
+}
+
 
 def named_tests() -> list[str]:
     """The tests a targeted run names (PROVISA_LANE_TESTS: space-separated pytest node ids or
@@ -444,11 +454,14 @@ def routes(runnable: tuple[str, ...]) -> dict[str, list[str]]:
 def unselected() -> list[str]:
     """Every test under the suite's paths (one variant of it) that no lane selects, with its
     markers: such a test runs in no CI job at all. A lane another workflow runs (ELSEWHERE) is a
-    lane, so its tests are selected."""
+    lane, so its tests are selected. A variant carrying a NO_CI_LANE marker runs elsewhere by
+    choice, and is not named."""
     found = []
     for path in test_files(_SUITE):
         for test, marker_sets in test_markers(path).items():
             for marks in marker_sets:
+                if marks & NO_CI_LANE.keys():
+                    continue
                 if not any(_in_lane(lane, path) and selects(lane, marks) for lane in LANES):
                     found.append(f"{test} [{', '.join(sorted(marks)) or 'no markers'}]")
     return found
@@ -478,7 +491,8 @@ def matrix(selection: str) -> dict:
             raise ValueError(
                 "these tests are selected by no lane, so no CI run runs them:\n  "
                 + "\n  ".join(orphans)
-                + "\n(give each a lane in run_lane.py LANES)"
+                + "\n(give each a lane in run_lane.py LANES, or, where the maintainer has chosen"
+                " that it runs outside CI, a marker of NO_CI_LANE)"
             )
     unknown = [n for n in names if n not in LANES]
     if unknown:
