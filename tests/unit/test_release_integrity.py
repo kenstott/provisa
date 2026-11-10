@@ -39,6 +39,8 @@ _WORKFLOWS = _ROOT / ".github" / "workflows"
 # The release is an orchestrator (build-dmg.yml) and its legs; publish-release is a job of the
 # last leg, which the orchestrator starts only after every other leg has succeeded.
 _LEGS = {
+    # REQ-2225: the platform connector block every package carries; the packaging legs read it.
+    "platform-connectors": "release-platform-connectors.yml",
     "prebuilt": "release-prebuilt.yml",
     "packages": "release-packages.yml",
     "macos": "release-macos.yml",
@@ -49,6 +51,8 @@ _LEGS = {
 # PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
 # to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
 _PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+#: Build jobs whose names do not start with build-/package-: the platform connector block.
+_BUILDS_ALSO = frozenset({"platform-connectors"})
 #: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
 _PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 
@@ -98,11 +102,14 @@ def test_build_dmg_publish_job_depends_on_all_builds():
         "package-plugins",
         # The server wheel too (v0.1.0-alpha.478 was undrafted while its job had failed).
         "build-provisa-wheel",
+        "platform-connectors",
     }
     assert required <= built, f"no leg builds: {required - built}"
     # A leg that reads another leg's artifacts starts after it.
     for leg in ("macos", "windows", "linux"):
         assert orchestrator[leg]["needs"] == "prebuilt"
+    for leg in ("prebuilt", "packages"):
+        assert orchestrator[leg]["needs"] == "platform-connectors"
     # Inside the last leg the engine image still follows the release it reads its assets from.
     assert (
         "publish-release" in _load("release-publish.yml")["jobs"]["publish-engine-image"]["needs"]
@@ -231,7 +238,7 @@ def test_no_publication_is_reachable_without_every_build():
     builds: dict[str, str] = {}
     for leg, name in {**_LEGS, "orchestrator": "build-dmg.yml"}.items():
         for job, body in _load(name)["jobs"].items():
-            if job.startswith(("build-", "package-")):
+            if job.startswith(("build-", "package-")) or job in _BUILDS_ALSO:
                 builds[job] = leg
             for step in body.get("steps") or []:
                 text = f"{step.get('uses') or ''}\n{step.get('run') or ''}"
