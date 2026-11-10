@@ -41,6 +41,7 @@ import json
 import os
 import subprocess
 import sys
+import types
 
 import pytest
 
@@ -142,6 +143,49 @@ def test_google_sheets_read_through_duckdb_engine():
 
     result = [tuple(r) for r in json.loads(out.stdout.strip().splitlines()[-1])]
     assert result == list(_WIDGETS)
+
+
+@pytest.mark.asyncio
+async def test_google_sheets_lands_through_the_sheets_api():
+    """REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT: a Google Sheets source lands
+    through the Google Sheets API where the engine has no gsheets extension): the real loader
+    build_adapter_loaders wires reads the durable fixture sheet with values.batchGet, signed in
+    with the service account key as a source enters it (a path), into Arrow of the registered
+    column types -- what the landing path writes as the replica. No DuckDB extension is loaded."""
+    import pyarrow as pa
+
+    from provisa.core.models import Source, SourceType
+    from provisa.events.sheets_reader import make_google_sheets_loader
+
+    assert _FIXTURE_SHEET_ID, (
+        "GSHEETS_TEST_SHEET_ID is the durable fixture sheet (header id,name + Widget A/B/C) shared "
+        "with the service account; the warehouse lane sets it"
+    )
+    source = Source(
+        id="gsheets_land",
+        type=SourceType.google_sheets,
+        database=_FIXTURE_SHEET_ID,
+        mapping={"credentials_json": _CREDS_PATH},
+    )
+    # The one table the Register Table picker offers, named after the source: the first sheet.
+    table = types.SimpleNamespace(
+        table_name=source.id,
+        schema_name="main",
+        landing_filter=None,
+        columns=[
+            types.SimpleNamespace(name="id", data_type="varchar", native_filter_type=None),
+            types.SimpleNamespace(name="name", data_type="varchar", native_filter_type=None),
+        ],
+    )
+    loader = make_google_sheets_loader()
+    reader = loader.replica_source(source, table, [("id", "text"), ("name", "text")])
+    landed = pa.Table.from_batches([b async for b in reader.batches(2)])
+    assert landed.schema.types == [pa.string(), pa.string()]
+    assert sorted(zip(landed.column("id").to_pylist(), landed.column("name").to_pylist())) == list(
+        _WIDGETS
+    )
+    rows = await loader(source, table)
+    assert sorted((r["id"], r["name"]) for r in rows) == list(_WIDGETS)
 
 
 if __name__ == "__main__":

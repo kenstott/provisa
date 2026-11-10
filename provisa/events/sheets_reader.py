@@ -195,7 +195,7 @@ def cell(value: Any, ir_type: str, where: str) -> Any:
     if canonical in _INTEGERS:
         if number and float(value).is_integer():
             return int(value)
-        if isinstance(value, str):
+        if isinstance(value, str) and value.strip().lstrip("+-").isdigit():
             return int(value)
         raise SheetsReadError(f"{where}: {value!r} is not an integer, as its column declares")
     if canonical in _FLOATS:
