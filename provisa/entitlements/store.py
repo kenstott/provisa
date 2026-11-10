@@ -175,6 +175,42 @@ async def withdraw_list_expiries(
         )
 
 
+async def write_list(
+    conn: "Connection",
+    principal: str,
+    role_id: str,
+    kind: str,
+    identifiers: Iterable[str],
+    *,
+    expires_at: "datetime | None",
+    set_by: str,
+    reason: str,
+) -> None:
+    """The one write of a principal's list, as the write API and an attached pending grant make
+    it: withdraw the expiry the list was last set with, set the list, and add its expiry if any.
+    The caller holds the transaction."""
+    ids = list(identifiers)
+    await withdraw_list_expiries(conn, principal, role_id, kind, set_by=set_by, reason=reason)
+    await set_list(conn, principal, role_id, kind, ids, set_by=set_by, reason=reason)
+    if expires_at is not None:
+        await add_expiry(
+            conn,
+            principal,
+            role_id,
+            expires_at,
+            {"*": ids},
+            set_by=set_by,
+            reason=reason,
+            list_kind=kind,
+        )
+
+
+def idp_supersedes(idp: Mapping[str, IdpLists], principal: str, role_id: str, kind: str) -> bool:
+    """Whether the identity provider sends ``principal``'s ``kind`` list for ``role_id``: that
+    list wins, and no write reaches it (REQ-2219)."""
+    return kind in idp.get(principal, {}).get(role_id, {})
+
+
 async def mirror_idp(conn: "Connection", principal: str, lists: IdpLists) -> None:
     """Record what ``principal``'s token carried at sign-in: a row per list that changed, and a
     ``removed`` row per list it no longer carries. Nothing changed appends nothing, so a sign-in

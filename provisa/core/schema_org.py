@@ -571,6 +571,29 @@ entitlement_expiries = Table(
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
+# Append-only, keyed by (email, role_id, kind): the last row is the grant's state. ``outcome`` is
+# NULL while it waits; ``principal`` names whom a sign-in attached it to, or was refused for.
+entitlement_pending = Table(
+    "entitlement_pending",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("email", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("identifiers", JSON, nullable=False, default=list, server_default="[]"),
+    Column("expires_at", DateTime(timezone=True)),
+    Column("outcome", Text),
+    Column("principal", Text),
+    Column("reason", Text, nullable=False),
+    Column("set_by", Text, nullable=False),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(
+        "outcome IN ('ended', 'attached', 'refused')", name="entitlement_pending_outcome_check"
+    ),
+)
+
 # REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
 # predicates, encrypted at rest as rls_rules.filter_expr is (REQ-686); NULL is the role's read row
 # filter on the table.
