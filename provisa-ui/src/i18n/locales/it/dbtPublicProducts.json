@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "Cosa registrare",
+    "modeTables": "Scegli tabelle",
+    "modeProducts": "Modelli pubblici come prodotti dati",
+    "intro_one": "Ogni modello pubblico con contratto applicato viene registrato come tabella, e viene creato {{count}} prodotto dati come bozza da far revisionare a uno steward.",
+    "intro_other": "Ogni modello pubblico con contratto applicato viene registrato come tabella, e vengono creati {{count}} prodotti dati come bozze da far revisionare a uno steward.",
+    "none": "Nessun modello di questo manifest è pubblico con contratto applicato.",
+    "groupProduct": "Prodotto dati {{id}} (gruppo dbt)",
+    "projectProduct": "Prodotto dati {{id}} (l'intero progetto)",
+    "exists": "Esiste già un prodotto dati chiamato {{id}}. Rinominalo o rimuovilo per registrare questi modelli.",
+    "owner": "Proprietario: {{owner}}",
+    "ownerRole": "ruolo proprietario {{role}}",
+    "tests": "Test: {{tests}}",
+    "version": "Versione {{version}}",
+    "columns": "Colonne promesse: {{columns}}",
+    "required": "obbligatoria",
+    "alreadyRegistered": "già registrato",
+    "ungrouped": "Non appartengono a nessun gruppo, quindi non vengono registrati qui: {{models}}. Sceglili invece come tabelle.",
+    "confirm_one": "Registra e crea {{count}} bozza di prodotto",
+    "confirm_other": "Registra e crea {{count}} bozze di prodotto"
+  }
+}

@@ -657,12 +657,10 @@
       "unknown_role": "No role named {{role}} exists."
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} is not offered as a data product: its manifest does not mark it public with an enforced contract.",
-        "not_registered": "Register {{model}} as a table before accepting it as a data product.",
-        "columns_missing": "The table does not hold the contract's columns: {{columns}}.",
+      "products": {
+        "none_offered": "Source {{source_id}} has no public model with an enforced contract.",
         "id_taken": "Data product {{data_product}} already exists.",
-        "already_a_product": "{{model}} is already a member of data product {{data_product}}."
+        "columns_missing": "{{model}} does not hold the contract's columns: {{columns}}."
       }
     },
     "google_workspace": {

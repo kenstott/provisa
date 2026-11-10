@@ -657,12 +657,10 @@
       "unknown_role": "不存在名为 {{role}} 的角色。"
     },
     "dbt": {
-      "candidate": {
-        "not_offered": "{{model}} 未作为数据产品提供：其清单未将其标记为契约已强制执行的公开模型。",
-        "not_registered": "请先将 {{model}} 注册为表，然后再接受为数据产品。",
-        "columns_missing": "该表不包含契约中的列：{{columns}}。",
+      "products": {
+        "none_offered": "数据源 {{source_id}} 没有强制执行契约的公开模型。",
         "id_taken": "数据产品 {{data_product}} 已存在。",
-        "already_a_product": "{{model}} 已是数据产品 {{data_product}} 的成员。"
+        "columns_missing": "{{model}} 不包含契约的列：{{columns}}。"
       }
     },
     "google_workspace": {

@@ -46,6 +46,7 @@ describe("RegisterTableForm — columns of a starting source", () => {
       suggestTableAlias: vi.fn().mockResolvedValue(""),
       onContinue: vi.fn(),
       onCancel: () => {},
+      onProductsRegistered: vi.fn(),
       setError: vi.fn(),
     };
     const { rerender } = render(<RegisterTableForm {...props} columnsStarting />);

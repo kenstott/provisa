@@ -22,19 +22,6 @@
     "warehouseHost": "帳戶或主機",
     "warehouseUser": "使用者名稱",
     "warehouseCredential": "憑證",
-    "adapterUnknown": "{{adapter}} 適配器沒有相符的資料來源類型。請先註冊其資料倉儲，然後新增此資料來源。",
-    "candidatesTitle": "候選數據產品",
-    "candidatesIntro": "這些模型是公開的，且合約已強制執行。接受後，模型會成為數據產品，並帶有其清單中的合約、擁有者和版本。",
-    "candidatesNone": "此清單中沒有合約已強制執行的公開模型。",
-    "candidateVersion": "版本：{{version}}",
-    "candidateOwner": "擁有者：{{owner}}",
-    "candidateColumns": "承諾的欄位：{{columns}}",
-    "candidateRequired": "必填",
-    "candidateTests": "測試：{{tests}}",
-    "candidateProductId": "數據產品 ID",
-    "candidateOwnerRole": "擁有者角色",
-    "candidateAccept": "接受為數據產品",
-    "candidateRegisterFirst": "請先將此模型註冊為資料表，然後才能接受。",
-    "candidateBecame": "已接受為數據產品 {{product}}。"
+    "adapterUnknown": "{{adapter}} 適配器沒有相符的資料來源類型。請先註冊其資料倉儲，然後新增此資料來源。"
   }
 }
