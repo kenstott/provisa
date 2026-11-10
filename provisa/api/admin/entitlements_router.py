@@ -448,14 +448,19 @@ async def effective(principal: str, role_id: str, request: Request) -> dict:
 async def person_roles(principal: str, request: Request) -> dict:
     """The roles ``principal`` holds in the caller's org, within the roles the caller administers,
     each with where it came from: Provisa's assignments, the deployment's default assignments, or
-    the identity provider. Gated as a write: it offers the role grants a list is set on."""
+    the identity provider (a role it names that the org does not define is left out: no list can
+    be set on it). Gated as a write: it offers the role grants a list is set on."""
     from provisa.api.app import state
 
     require_capability_request(request, _ASSIGN)
     require_active_org_id(request)
     async with _db(state).acquire() as conn:
         held = await roles.held_roles(
-            conn, principal, state.idp_entitlements.get(principal, {}), state.auth_config or {}
+            conn,
+            principal,
+            state.idp_entitlements.get(principal, {}),
+            state.auth_config or {},
+            state.roles,
         )
     if _caller(request) is not None:
         held = [r for r in held if reaches_role(state, r.role_id, {_ASSIGN})]

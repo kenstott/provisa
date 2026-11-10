@@ -110,6 +110,35 @@ describe("the entitlement picker", () => {
     expect(screen.queryByTestId("entitlement-picker-toggle-finance.revenue")).toBeNull();
   });
 
+  it("shows the model's own spelling, and matches a listed identifier ignoring case", async () => {
+    const spelled: NamesNode[] = [
+      {
+        id: "Finance",
+        label: "Finance",
+        children: [
+          {
+            id: "Finance.Revenue",
+            label: "Revenue",
+            children: [{ id: "Finance.Revenue.AmountUSD", label: "AmountUSD", children: [] }],
+          },
+          { id: "Finance.budget", label: "budget", children: [] },
+        ],
+      },
+    ];
+    render(<Harness kind="columns" initial={["finance.revenue"]} names={spelled} />);
+    expect(screen.getByLabelText("Finance")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("entitlement-picker-toggle-Finance"));
+    expect(screen.getByLabelText("Revenue")).toBeChecked();
+    expect(screen.queryByLabelText("revenue")).toBeNull();
+    // A listed identifier the tree holds is not shown as one it lacks, whatever its case.
+    expect(screen.queryByTestId("entitlement-picker-other")).toBeNull();
+    await userEvent.click(screen.getByTestId("entitlement-picker-toggle-Finance.Revenue"));
+    expect(screen.getByLabelText("AmountUSD")).toBeChecked();
+    // Checking the domain replaces the listed table it now covers, spelled as the model spells it.
+    await userEvent.click(screen.getByTestId("entitlement-picker-node-Finance"));
+    expect(shown()).toEqual(["Finance"]);
+  });
+
   it("says the model has nothing yet when no model is built", () => {
     render(<Harness kind="tables" initial={[]} names={null} />);
     expect(screen.getByText("The model has nothing of this kind yet.")).toBeInTheDocument();

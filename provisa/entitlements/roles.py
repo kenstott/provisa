@@ -17,7 +17,9 @@ Entitlement lists are set per role grant, so the picker offers the roles the per
 * ``default_assignment``: the deployment's ``default_assignments``, which a person holds there
   when the org holds no assignment for them (``provisa.auth.held_assignments.read_assignments``);
 * ``idp``: the roles their identity provider sent entitlement lists for at their last sign-in, as
-  the store mirrors them (``provisa.entitlements.store.mirror_idp``).
+  the store mirrors them (``provisa.entitlements.store.mirror_idp``), among the roles the org
+  defines: a role the identity provider names that the org does not define has no lists to set,
+  so it is not offered.
 
 A role from more than one source is listed once, with each origin.
 """
@@ -26,7 +28,7 @@ A role from more than one source is listed once, with each origin.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -68,9 +70,11 @@ async def held_roles(
     principal: str,
     idp: IdpLists,
     auth: Mapping,
+    defined: Collection[str],
 ) -> list[HeldRole]:
     """The roles ``principal`` holds in the org ``conn`` is bound to, ordered by role id. ``idp``
-    is what their identity provider last sent; ``auth`` the deployment's auth settings."""
+    is what their identity provider last sent; ``auth`` the deployment's auth settings;
+    ``defined`` the ids of the roles the org defines."""
     origins: dict[str, list[str]] = {}
     domains: dict[str, list[str]] = {}
 
@@ -88,7 +92,8 @@ async def held_roles(
             for a in auth.get("default_assignments") or []:
                 note(a["role_id"], DEFAULT_ASSIGNMENT, (a.get("domain_id", "*"),))
     for role_id in idp:
-        note(role_id, IDP)
+        if role_id in defined:
+            note(role_id, IDP)
     return [
         HeldRole(role_id, tuple(origins[role_id]), tuple(sorted(domains[role_id])))
         for role_id in sorted(origins)

@@ -27,10 +27,18 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from provisa.api.admin import entitlements_router
 from provisa.api.admin.entitlements_router import router
 from provisa.api.errors import ApiError
+from provisa.compiler.names_table import NameRow, build_names_table
 from provisa.core.schema_org import roles as roles_table
 from provisa.core.schema_org import user_role_assignments
 from provisa.entitlements import runtime, store
-from provisa.entitlements.index import KIND_ORDER, KINDS, SEMANTIC_LISTS
+from provisa.entitlements.index import (
+    KIND_ORDER,
+    KINDS,
+    SEMANTIC_LISTS,
+    build_index,
+    matches,
+    names_tree,
+)
 from tests.pg_control_plane import ORG
 from tests.unit.test_entitlement_lists import _ctx
 from tests.unit.test_entitlements_api import ASSIGN, _identity, _set, _state
@@ -152,6 +160,20 @@ async def test_assignments_are_not_held_where_the_deployment_reads_claims(api):
     ]
 
 
+async def test_a_role_the_identity_provider_names_that_the_org_does_not_define_is_left_out(api):
+    await _idp(api, "alice", {"ghost": {"tables": ()}, "analyst": {"tables": ()}})
+    assert "ghost" not in api.state.roles
+    assert await _roles(api, "alice") == [
+        {"role_id": "analyst", "origins": ["idp"], "domains": []},
+    ]
+    # No list can be set on it: the effective view refuses it, so it is not offered.
+    response = await api.client.get(
+        "/admin/entitlements/effective", params={"principal": "alice", "role_id": "ghost"}
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "entitlements.role_not_found"
+
+
 async def test_a_caller_without_assign_entitlements_is_refused_the_roles(api):
     api.caller["identity"] = _identity(role="people")
     response = await api.client.get("/admin/entitlements/roles", params={"principal": "alice"})
@@ -248,3 +270,85 @@ async def test_a_caller_without_assign_entitlements_is_refused_the_kinds(api):
     response = await api.client.get("/admin/entitlements/kinds")
     assert response.status_code == 403
     assert response.json()["code"] == "auth.missing_capability"
+
+
+def _mixed_case_names():
+    def t(oid, name, dom):
+        return NameRow(
+            "table",
+            str(oid),
+            "sql",
+            name,
+            name,
+            name,
+            domain_id=dom,
+            table_id=oid,
+            scope=("sql", dom),
+        )
+
+    def c(tid, name, dom):
+        return NameRow(
+            "column",
+            f"{tid}:{name}",
+            "sql",
+            name,
+            name,
+            name,
+            domain_id=dom,
+            table_id=tid,
+            scope=("sql_column", str(tid)),
+        )
+
+    return build_names_table(
+        [
+            t(1, "Revenue", "Finance"),
+            c(1, "AmountUSD", "Finance"),
+            c(1, "id", "Finance"),
+            t(2, "budget", "Finance"),
+            t(3, "Orders", "sales"),
+            c(3, "OrderID", "sales"),
+        ]
+    )
+
+
+def test_the_names_tree_shows_the_models_own_spelling():
+    tree = names_tree(build_index(_mixed_case_names(), None))
+
+    def spelled(nodes):
+        return [(n.id, n.label, spelled(n.children)) for n in nodes]
+
+    # Labels and identifiers as the model spells them, each level ordered ignoring case.
+    assert spelled(tree) == [
+        (
+            "Finance",
+            "Finance",
+            [
+                ("Finance.budget", "budget", []),
+                (
+                    "Finance.Revenue",
+                    "Revenue",
+                    [
+                        ("Finance.Revenue.AmountUSD", "AmountUSD", []),
+                        ("Finance.Revenue.id", "id", []),
+                    ],
+                ),
+            ],
+        ),
+        ("sales", "sales", [("sales.Orders", "Orders", [("sales.Orders.OrderID", "OrderID", [])])]),
+    ]
+
+
+def test_matching_ignores_the_case_the_tree_shows():
+    index = build_index(_mixed_case_names(), None)
+    amount = next(o for o in index.objects if o.oid == "1:AmountUSD")
+    assert amount.spelled == ("Finance", "Revenue", "AmountUSD")
+    assert amount.paths == (("finance", "revenue", "amountusd"),)
+    for identifier in (
+        "Finance.Revenue.AmountUSD",
+        "finance.revenue.amountusd",
+        "FINANCE.REVENUE",
+        "fInAnCe",
+        "*.revenue.AMOUNTusd",
+    ):
+        assert matches(identifier, amount.paths), identifier
+    assert not matches("Finance.Revenue.id", amount.paths)

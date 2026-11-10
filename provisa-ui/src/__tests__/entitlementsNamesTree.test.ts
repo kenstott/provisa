@@ -86,6 +86,25 @@ describe("the names tree", () => {
     ]);
   });
 
+  it("a tree in the model's own spelling matches identifiers listed in any case", () => {
+    const spelled: NamesNode[] = [
+      {
+        id: "Finance",
+        label: "Finance",
+        children: [
+          { id: "Finance.Costs", label: "Costs", children: [] },
+          { id: "Finance.Revenue", label: "Revenue", children: [] },
+        ],
+      },
+    ];
+    expect(allIds(spelled).has("finance.revenue")).toBe(true);
+    expect(covers("finance", "Finance.Revenue")).toBe(true);
+    const [finance] = spelled;
+    expect(checkNode(["finance.costs"], finance)).toEqual(["Finance"]);
+    expect(uncheckNode(["finance"], finance.children[1], spelled)).toEqual(["Finance.Costs"]);
+    expect(uncheckNode(["finance.revenue"], finance.children[1], spelled)).toEqual([]);
+  });
+
   it("unchecking a node listed itself removes it and nothing else", () => {
     const roots = toDepth(TREE, 2);
     expect(uncheckNode(["finance.costs", "sales_ops"], roots[0].children[0], roots)).toEqual([
