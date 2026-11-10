@@ -154,7 +154,12 @@ class TestBuild:
 
     @pytest.mark.parametrize(
         ("standard", "language"),
-        [("go.mod", "go"), ("package.json", "node"), ("requirements.txt", "python")],
+        [
+            ("go.mod", "go"),
+            ("package.json", "node"),
+            ("requirements.txt", "python"),
+            ("Cargo.toml", "rust"),  # REQ-2227
+        ],
     )
     def test_detects_the_language_from_standard_files(
         self, tmp_path, built, capsys, standard, language
@@ -176,7 +181,7 @@ class TestBuild:
         assert cli.main(_build_args(root)) == 1
         err = capsys.readouterr().err
         assert "is not a standard project" in err
-        for name in ("go.mod", "package.json", "pyproject.toml", "requirements.txt"):
+        for name in ("Cargo.toml", "go.mod", "package.json", "pyproject.toml", "requirements.txt"):
             assert name in err
         assert built == []
 

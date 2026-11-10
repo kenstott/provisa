@@ -21,7 +21,9 @@ there fails the audit. What it found and what it deleted go to the run summary.
 
 The test scopes are data (``SCOPES``), and nothing outside them is listed or touched:
 
-- Azure: the resource groups of the test subscription the live tests create in;
+- Azure: the resource groups of the test subscription the live tests create in, each listed by
+  itself (the CI principal holds rights on those groups, not read on the subscription); a group
+  that does not exist is reported absent by name and holds nothing;
 - AWS: the Redshift Serverless workgroups and namespaces of the account and region the Redshift
   tests use (REDSHIFT_AWS_*), named ``provisa-e2e*``;
 - GCP: the BigQuery datasets of the project the BigQuery tests use (GOOGLE_CLOUD_PROJECT) whose
@@ -103,14 +105,17 @@ class Scopes:
 
 
 # The test scopes. Azure: the subscription the live Azure tests run in and the resource groups
-# they create in (FABRIC_RESOURCE_GROUP is my-rg; provisa-e2e held the Purview account).
+# they create in (FABRIC_RESOURCE_GROUP is my-rg, where the per-run Purview account is made too;
+# provisa-e2e, which held the standing one, was deleted 2026-11-10). A group is listed only with
+# rights on it: the CI principal's are on my-rg alone, and Azure answers a group it holds none on
+# with AuthorizationFailed whether or not that group exists.
 # The BigQuery patterns are run_name()'s ``<stem>_<8 hex>`` for every stem a live test creates a
 # dataset under (directly, or as an org's replica/export schema).
 _RUN_SUFFIX = r"_[0-9a-f]{8}"
 SCOPES = Scopes(
     azure=AzureScope(
         subscription="e37b61f0-2a28-4546-b9f9-160bf25b1ab8",
-        resource_groups=("my-rg", "provisa-e2e"),
+        resource_groups=("my-rg",),
     ),
     aws=AwsScope(
         access_key_env="REDSHIFT_AWS_ACCESS_KEY_ID",
@@ -172,6 +177,7 @@ class Provider(Protocol):
     def list(self) -> list[Resource]: ...
     def delete(self, resource: Resource) -> None: ...
     def exists(self, resource: Resource) -> bool: ...
+    def absent(self) -> list[str]: ...
 
 
 class Runs(Protocol):
@@ -242,6 +248,8 @@ class Row:
 class Report:
     rows: list[Row] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # Parts of a scope the last listing found not to exist (they hold nothing): reported, not failed.
+    absent: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -260,6 +268,7 @@ def audit(providers: Iterable[Provider], runs: Runs, now: float, *, dry_run: boo
         except Exception as exc:  # noqa: BLE001 -- reported, and fails the audit
             report.errors.append(f"{provider.name} ({provider.scope()}): listing failed: {exc}")
             continue
+        report.absent += [f"{provider.name}: {part}" for part in provider.absent()]
         deleted: list[Row] = []
         for resource in resources:
             try:
@@ -314,6 +323,8 @@ def summary(report: Report, *, dry_run: bool) -> str:
                 f"{r.tags.get(RUN_KEY, '-')} | {r.tags.get(CREATED_KEY, '-')} | "
                 f"{row.action} | {row.reason} |"
             )
+    if report.absent:
+        lines += ["", "### Absent (hold nothing)", ""] + [f"- {a}" for a in report.absent]
     if report.errors:
         lines += ["", "### Errors", ""] + [f"- {e}" for e in report.errors]
     return "\n".join(lines) + "\n"
@@ -330,20 +341,27 @@ def _not_found(text: str) -> bool:
 
 class AzureProvider:
     """The top-level resources of the scope's resource groups, through the Azure CLI (logged in
-    as the CI principal). A child resource (a type of more than one segment) goes with its
-    parent; a resource group the subscription does not have holds nothing."""
+    as the CI principal), each group listed by itself. A child resource (a type of more than one
+    segment) goes with its parent. A resource group the subscription does not have holds nothing
+    and is reported absent by name; any other failure to list a group fails the listing, naming
+    the group."""
 
     name = "azure"
 
     def __init__(self, scope: AzureScope, az: Callable[..., str]) -> None:
         self._scope = scope
         self._az = az
+        self._absent: list[str] = []
 
     def scope(self) -> str:
         return f"{self._scope.subscription}/{','.join(self._scope.resource_groups)}"
 
+    def absent(self) -> list[str]:
+        return list(self._absent)
+
     def list(self) -> list[Resource]:
         found: list[Resource] = []
+        self._absent = []
         for group in self._scope.resource_groups:
             try:
                 out = self._az(
@@ -352,8 +370,11 @@ class AzureProvider:
                 )  # fmt: skip
             except RuntimeError as exc:
                 if "ResourceGroupNotFound" in str(exc):
+                    self._absent.append(
+                        f"resource group {group} ({self._scope.subscription}) does not exist"
+                    )
                     continue
-                raise
+                raise RuntimeError(f"resource group {group}: {exc}") from exc
             for item in json.loads(out or "[]"):
                 if item["type"].count("/") != 1:
                     continue
@@ -416,6 +437,9 @@ class RedshiftServerlessProvider:
     def scope(self) -> str:
         return f"redshift-serverless/{self._region}/{self._scope.name_prefix}*"
 
+    def absent(self) -> list[str]:
+        return []
+
     def _tags(self, arn: str) -> dict[str, str]:
         listed = self._rss.list_tags_for_resource(resourceArn=arn).get("tags", [])
         return {t["key"]: t["value"] for t in listed}
@@ -475,6 +499,9 @@ class BigQueryProvider:
 
     def scope(self) -> str:
         return f"bigquery/{self._project}"
+
+    def absent(self) -> list[str]:
+        return []
 
     def _ours(self, name: str) -> bool:
         return any(p.search(name) for p in self._patterns)

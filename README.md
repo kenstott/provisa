@@ -6,7 +6,7 @@ Governed from the first query.
 
 ---
 
-Provisa is a data kernel, a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
+Provisa is a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
 
 It is built the way an operating system is built. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling, command bindings answer other tools' calls, and clients connect over standard protocols.
 
