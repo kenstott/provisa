@@ -28,7 +28,10 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import (
+    require_capability_request,
+    require_right_in_domains_request,
+)
 from provisa.api.admin.schema_common import remote_source_counts
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import sources
@@ -324,6 +327,8 @@ async def register_dbt_products(request: Request, source_id: str, body: DbtRegis
     """Every public model with an enforced contract registered as a table, and a draft data product
     made of each dbt group's (or the project's), each through the mutation a steward's own form
     calls."""
+    # The right registerTable asks of the domain the tables land in, asked before anything is read.
+    require_right_in_domains_request(request, "table_registration", {body.domain_id})
     try:
         created = await register_products(
             types.SimpleNamespace(context={"request": request}), source_id, body.domain_id
