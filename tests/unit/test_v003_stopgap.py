@@ -45,7 +45,11 @@ def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
     return GovernanceContext(
         rls_rules=rls_rules or {},
         masking_rules={},
-        visible_columns={1: frozenset({"id", "name", "email"})},
+        visible_columns={
+            1: frozenset({"id", "name", "email"}),
+            2: None,  # all columns visible (REQ-039: absent key = fail closed, None = all visible)
+            3: None,
+        },
         table_map={
             "bank.customer": 1,
             "customer": 1,

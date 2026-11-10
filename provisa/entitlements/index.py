@@ -69,9 +69,12 @@ _READ_BY: dict[str, frozenset[str]] = {
             "environment_data",
         }
     ),
-    "roles": frozenset({"user_management"}),
+    "roles": frozenset({"user_management", "assign_entitlements"}),
     "regions": frozenset({"platform_settings", "cross_org"}),
 }
+
+#: Every kind of list a principal's role grant can carry.
+KINDS = SEMANTIC_LISTS | frozenset(_READ_BY)
 
 
 @dataclass(frozen=True)

@@ -942,6 +942,15 @@ class AppState:
         self._active_runtime().held_entitlements = value
 
     @property
+    def idp_entitlements(self) -> dict[str, Any]:
+        """user id -> the lists their identity provider last sent (REQ-2219)."""
+        return self._active_runtime().idp_entitlements
+
+    @idp_entitlements.setter
+    def idp_entitlements(self, value: dict[str, Any]) -> None:
+        self._active_runtime().idp_entitlements = value
+
+    @property
     def data_product_refs(self) -> tuple[tuple[str, str], ...]:
         """(data product id, domain id) of every product, for entitlement lists (REQ-2219)."""
         return self._active_runtime().data_product_refs
@@ -2966,8 +2975,21 @@ async def _build_org_runtime(
                 naming_override.get("default_domain", default),
             )
 
-        # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
-        await _rebuild_schemas(converge=False)
+        # REQ-2006: for a cloned sandbox env, copy compiled schema from the sandbox's PROD runtime
+        # instead of running _rebuild_schemas (~6 s per env → ~0.5 s, J1157b).  PROD is always
+        # built before the env builds (_environments in demo_sandbox.py), so the registry holds it.
+        if model_cloned and env != PROD:
+            _prod_key = runtime_key(org_id, PROD)
+            _prod_rt = state.org_registry.get(_prod_key)
+            if _prod_rt is None:
+                raise RuntimeError(
+                    f"org {org_id!r}: cloned env {env!r} built before its PROD runtime — "
+                    "cannot copy compiled schema from PROD"
+                )
+            await _install_cloned_env_schema(_prod_rt)
+        else:
+            # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
+            await _rebuild_schemas(converge=False)
         clock.mark("its schemas")
         await _converge_after_seed(org_id, env)
 
@@ -3101,6 +3123,126 @@ def start_replica_convergence() -> None:
 
     if process_mode.runs_background_work():
         spawn_background(converge_logged(state), name="replica-converge")
+
+
+async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
+    """Fast-path schema install for a cloned sandbox env runtime (REQ-2006, J1157b).
+
+    For a cloned sandbox environment the model is identical to the sandbox's PROD: copies the
+    compiled schema from ``prod_rt`` into the current env's runtime, reads env-specific source
+    rows from the env's model DB, and skips the full ``_rebuild_schemas_impl`` (~6 s per env).
+
+    Called from ``_build_org_runtime`` when ``model_cloned=True`` and ``env != PROD``.  The
+    sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
+    """
+    from provisa.core.env_classes import BINDING_COLUMN, OWN
+    from provisa.core.schema_org import sources as _sources_t
+
+    _rt = state._active_runtime()
+
+    # --- Read env-specific source data from this env's model DB ---
+    # runtime_sources is NOT safe to copy from PROD: for test_synthetic envs the source row
+    # carries an env-specific synthetic store path that differs from PROD's SQLite path.
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
+        _all_source_rows = (await conn.execute_core(select(_sources_t))).fetchall()
+        env_unbound = await _unbound_sources(conn)
+
+    env_runtime_sources = {r._mapping["id"]: dict(r._mapping) for r in _all_source_rows}
+    # source_binding_env: only OWN-bound sources; SYNTHETIC binding is not OWN.
+    env_source_binding_env = {
+        r._mapping["id"]: _rt.env for r in _all_source_rows if r._mapping[BINDING_COLUMN] == OWN
+    }
+
+    # --- Copy compiled schema from PROD (model is identical for a cloned env) ---
+    # LazySurface is safe to copy: its _build callback captures the PROD runtime's inputs,
+    # which are identical for a cloned env (same model, data_refusal=None, kept={}).
+    # Install through app_loaders so the build stays the single writer of surfaces (REQ-213).
+    from provisa.api.app_loaders import _install_cloned_surfaces
+
+    _install_cloned_surfaces(_rt, prod_rt.surfaces)
+    _rt.role_build_inputs = prod_rt.role_build_inputs
+    _rt.tables = prod_rt.tables
+    _rt.relationships = prod_rt.relationships
+    _rt.roles = prod_rt.roles
+    _rt.role_chains = prod_rt.role_chains
+    _rt.draft_table_ids = prod_rt.draft_table_ids
+    _rt.view_context = prod_rt.view_context
+    _rt.view_path_map = prod_rt.view_path_map
+    _rt.names_table = prod_rt.names_table
+    # view_sql_map is already physical SQL (compiled by _finalize_rebuild_state in PROD's build).
+    # Do NOT call _finalize_rebuild_state again — it would corrupt already-compiled physical SQL.
+    _rt.view_sql_map = prod_rt.view_sql_map
+    _rt.mv_registry = prod_rt.mv_registry
+    _rt.bitemporal_view_reads = prod_rt.bitemporal_view_reads
+    _rt.stored_view_reads = prod_rt.stored_view_reads
+    _rt.class_tables = prod_rt.class_tables
+    _rt.refused_classes = prod_rt.refused_classes
+    _rt.class_bodies = prod_rt.class_bodies
+    _rt.table_cache = prod_rt.table_cache
+    _rt.pg_notify_tables = prod_rt.pg_notify_tables
+    _rt.table_watermarks = prod_rt.table_watermarks
+    _rt.user_attributes = prod_rt.user_attributes
+    # masking_rules already contain measurements from measure_model in PROD's build.
+    # Do NOT call measure_model again.
+    _rt.masking_rules = prod_rt.masking_rules
+    _rt.masked_columns = prod_rt.masked_columns
+    _rt.tracked_functions = prod_rt.tracked_functions
+    _rt.tracked_webhooks = prod_rt.tracked_webhooks
+    _rt.column_transforms = prod_rt.column_transforms
+    _rt.undefined_commands = prod_rt.undefined_commands
+    _rt.replica_routes = prod_rt.replica_routes
+    _rt.metrics = prod_rt.metrics
+    _rt.schema_build_cache = prod_rt.schema_build_cache
+    _rt.api_sources = prod_rt.api_sources
+    _rt.api_endpoints = prod_rt.api_endpoints
+    _rt.table_approval_hooks = prod_rt.table_approval_hooks
+    _rt.source_approval_hooks = prod_rt.source_approval_hooks
+    _rt.pg_enum_types = prod_rt.pg_enum_types
+    _rt.pg_source_enums = prod_rt.pg_source_enums
+    _rt.graphql_remote_sources = prod_rt.graphql_remote_sources
+    _rt.openapi_specs = prod_rt.openapi_specs
+    _rt.grpc_remote_sources = prod_rt.grpc_remote_sources
+    _rt.ingest_engines = prod_rt.ingest_engines
+    _rt.ingest_tables = prod_rt.ingest_tables
+    _rt.websocket_sources = prod_rt.websocket_sources
+    _rt.rss_sources = prod_rt.rss_sources
+    _rt.cdc_sources = prod_rt.cdc_sources
+    _rt.source_cache = prod_rt.source_cache
+    _rt.source_allowed_domains = prod_rt.source_allowed_domains
+    _rt.source_federation_hints = prod_rt.source_federation_hints
+    _rt.kafka_windows = prod_rt.kafka_windows
+    _rt.kafka_bootstrap = prod_rt.kafka_bootstrap
+    _rt.kafka_declared = prod_rt.kafka_declared
+    _rt.kafka_table_configs = prod_rt.kafka_table_configs
+    _rt.kafka_table_physical = prod_rt.kafka_table_physical
+
+    # --- Env-specific fields ---
+    _rt.unbound_sources = frozenset(env_unbound)
+    _rt.source_binding_env = env_source_binding_env
+    _rt.runtime_sources = env_runtime_sources
+    # REQ-1914: carry the same model stamp as PROD (same model).
+    _rt.model_stamp = prod_rt.model_stamp
+
+    # --- Schema versioning ---
+    with _schema_version_guard:
+        state.schema_version += 1
+
+    # --- DB writes ---
+    # persist_field_numbers and write_lineage_edges are written per-env; names_table (PROD-only,
+    # already written by PROD's build) and write_checker_targets are skipped.
+    async with state.model_db.acquire() as conn:
+        from provisa.grpc.field_numbering import (
+            load_field_number_allocator,
+            persist_field_numbers,
+        )
+
+        _field_numbers = await load_field_number_allocator(conn)
+        await persist_field_numbers(conn, _field_numbers)
+
+        from provisa.api.admin.lineage_router import write_lineage_edges
+
+        await write_lineage_edges(conn, state)
 
 
 async def _converge_after_seed(org_id: str, env: str) -> None:
@@ -3612,6 +3754,7 @@ async def _rebuild_schemas_impl(
         from provisa.entitlements import store as _entitlement_store
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
         await _check_fakes(conn)  # REQ-1494
 
@@ -3746,12 +3889,6 @@ async def _rebuild_schemas_impl(
 
         await write_checker_targets(conn, _checked)
 
-        # REQ-194: this build's names table, for the meta domain and the names report, and each
-        # name the disambiguate policy derived kept as its object's alias.
-        assert state.names_table is not None, "the build stores the names table it built"
-        await _model_names.write_names_table(conn, state.names_table.rows)
-        await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
-
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
     from datetime import UTC as _UTC, datetime as _datetime
@@ -3807,6 +3944,17 @@ async def _rebuild_schemas_impl(
         state.schema_version += 1
     _stamped_runtime.model_stamp = _stamps[_config_stamp.MODEL]  # REQ-1914
     _stamped_runtime.build_stamp = _stamps[_config_stamp.BUILD]
+    # REQ-194: the prod build's names table and frozen aliases, written after the schema version
+    # advances so a concurrent read cannot see a stale home-region for a table while the
+    # SHARE ROW EXCLUSIVE MODE lock write_names_table holds is in contention (REQ-1882,
+    # REQ-1915). An env build (a sandbox environment's runtime, REQ-2006) skips both: its model
+    # is the prod's, the prod has already written it, and the lock it acquires would delay
+    # unrelated env-runtime rebuilds for every concurrent sandbox open.
+    if _env == PROD:
+        assert state.names_table is not None, "the build stores the names table it built"
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_names_table(conn, state.names_table.rows)
+            await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
     await _finalize_rebuild_state(_rebuild_log)
     # REQ-1494: the measured values faked reads compute from, taken from the model just built.
     from provisa.fakes.measured import measure_model
@@ -5362,6 +5510,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.masks_router import router as masks_router
 
     app.include_router(masks_router)  # REQ-2059
+    from provisa.api.admin.entitlements_router import router as entitlements_router
+
+    app.include_router(entitlements_router)  # REQ-2219
     from provisa.api.admin.creation_requests_router import router as creation_requests_router
 
     app.include_router(creation_requests_router)

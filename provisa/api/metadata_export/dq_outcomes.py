@@ -135,7 +135,7 @@ async def read_latest_outcomes(
     from provisa.api.metadata_export.refs import table_ref
 
     checker_ids = {source.id for source in config.sources if source.type.value in CHECKERS}
-    owners = product_memberships(config) if product_id is not None else {}
+    owners = product_memberships(config, product_id=product_id) if product_id is not None else {}
     rows: list[dict] = []
     for table in config.tables:
         if table.source_id not in checker_ids or not table.dq_contract:

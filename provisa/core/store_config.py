@@ -164,6 +164,22 @@ def _internal_table(row: dict[str, Any]) -> bool:
     return row["source_id"] in seeded or row.get("domain_id") in ("meta", "ops", "ontology")
 
 
+async def seeded_table_names(conn: "Connection") -> frozenset[str]:  # REQ-1634
+    """Every name that identifies a seeded table: its virtual name (its alias, else its table
+    name) and ``source.schema.table``, the two ways a data product names a member."""
+    from provisa.core.repositories import table as table_repo
+
+    return frozenset(
+        name
+        for row in await table_repo.list_all(conn, parts_of=lambda _row: False)
+        if _internal_table(row)
+        for name in (
+            str(row.get("alias") or row["table_name"]),
+            f"{row['source_id']}.{row['schema_name']}.{row['table_name']}",
+        )
+    )
+
+
 _PROFILE_RESULT = re.compile(r"(.+)_(\d+)_profile_(\w+)")
 
 
@@ -401,12 +417,12 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     # read (the meta domain's SQL catalog views alone are hundreds); a data product's member and a
     # relationship that name it are the model's, and keep its name (REQ-1634): the import holds
     # that name until the seeded table exists.
-    tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
-    by_id = {int(t["id"]): t for t in tables}
-    internal = {int(t["id"]) for t in tables if _internal_table(t)}
     # REQ-2222: a row rule or a tag on the demo's seeded tables is the model's, as a member or a
     # relationship naming one is; the built-in catalog tables' are the deployment's.
     demo_seeded = SEEDED_SOURCE_IDS - BUILT_IN_SOURCE_IDS
+    tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
+    by_id = {int(t["id"]): t for t in tables}
+    internal = {int(t["id"]) for t in tables if _internal_table(t)}
     system = {i for i in internal if by_id[i]["source_id"] not in demo_seeded}
     # A table is named in a configuration by its virtual name: its alias when it has one.
     name_of = {int(t["id"]): str(t.get("alias") or t["table_name"]) for t in tables}

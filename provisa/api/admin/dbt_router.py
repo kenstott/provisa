@@ -27,12 +27,22 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import (
+    acting_role_of_request,
+    require_capability_request,
+    require_right_in_domains_request,
+)
 from provisa.api.admin.schema_common import remote_source_counts
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import sources
 from provisa.core.secrets_store import resolved_credential
 from provisa.core.source_downloads import read_bytes
+from provisa.dbt.candidates import (
+    CandidateRefused,
+    accept_candidate,
+    candidate_table,
+    candidates,
+)
 from provisa.dbt.cloud import NoCloudRun, latest_manifest
 from provisa.dbt.commands import offered_commands
 from provisa.dbt.manifest import DbtManifest, NotAManifest, parse_manifest
@@ -231,6 +241,84 @@ async def refresh_dbt_source(request: Request, source_id: str, body: DbtRefreshR
         await store_manifest(conn, source_id, manifest)
     await _rebuild_schemas()
     return {"source_id": source_id, **_summary(manifest)}
+
+
+def _not_registered(source_id: str) -> ApiError:
+    return ApiError(
+        404,
+        "dbt.source_not_registered",
+        f"dbt source {source_id!r} not registered",
+        source_id=source_id,
+    )
+
+
+def _creator_of(request: Request) -> str | None:
+    """Who is creating a product; None in dev mode, which has no identity to record."""
+    identity = getattr(getattr(request, "state", None), "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    return None if user_id is None or user_id == "anonymous" else str(user_id)
+
+
+class DbtAcceptCandidate(BaseModel):
+    unique_id: str
+    product_id: str
+    owner_role: str = ""
+
+
+@router.get("/candidates/{source_id}")
+async def dbt_candidates(request: Request, source_id: str):
+    """The models this source's manifest offers as data products. Nothing is created by asking."""
+    require_capability_request(request, "source_registration")
+    from provisa.api.app import state
+
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
+        manifest = await held_manifest(conn, source_id)
+        if manifest is None:
+            raise _not_registered(source_id)
+        return await candidates(conn, manifest)
+
+
+@router.post("/candidates/{source_id}/accept")
+async def accept_dbt_candidate(request: Request, source_id: str, body: DbtAcceptCandidate):
+    """A steward's decision: the candidate becomes a data product in its table's domain, a draft
+    until it is published, as any new product is."""
+    from provisa.api.app import _rebuild_schemas, state
+    from provisa.entitlements.store import record_product_creator
+
+    assert state.model_db is not None
+    creator = _creator_of(request)
+    async with state.model_db.acquire() as conn:
+        manifest = await held_manifest(conn, source_id)
+        if manifest is None:
+            raise _not_registered(source_id)
+        try:
+            model, table = await candidate_table(conn, manifest, body.unique_id)
+            require_right_in_domains_request(request, "data_product_rw", {table.domain_id})
+            async with conn.transaction():
+                await accept_candidate(
+                    conn,
+                    manifest,
+                    model,
+                    table,
+                    product_id=body.product_id,
+                    owner_role=body.owner_role or None,
+                )
+                if creator is not None:  # REQ-2219: creating a product grants its creator RW on it
+                    await record_product_creator(
+                        cast("Connection", conn),
+                        creator,
+                        acting_role_of_request(request),
+                        table.domain_id,
+                        body.product_id,
+                    )
+        except CandidateRefused as refused:
+            raise ApiError(
+                422, f"dbt.candidate.{refused.code}", str(refused), **refused.params
+            ) from refused
+    await _rebuild_schemas()  # the owner and the membership are read by the runtime build
+    log.info("dbt model %s accepted as data product %s", body.unique_id, body.product_id)
+    return {"data_product": body.product_id, "domain_id": table.domain_id}
 
 
 @router.get("/list")

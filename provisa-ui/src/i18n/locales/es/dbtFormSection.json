@@ -22,6 +22,19 @@
     "warehouseHost": "Cuenta o host",
     "warehouseUser": "Nombre de usuario",
     "warehouseCredential": "Credencial",
-    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de fuente correspondiente. Registre primero su almacén y luego añada esta fuente."
+    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de fuente correspondiente. Registre primero su almacén y luego añada esta fuente.",
+    "candidatesTitle": "Productos de datos candidatos",
+    "candidatesIntro": "Estos modelos son públicos y tienen un contrato aplicado. Al aceptar uno, se convierte en un producto de datos con el contrato, el propietario y la versión que indica su manifiesto.",
+    "candidatesNone": "Ningún modelo de este manifiesto es público con un contrato aplicado.",
+    "candidateVersion": "Versión: {{version}}",
+    "candidateOwner": "Propietario: {{owner}}",
+    "candidateColumns": "Columnas prometidas: {{columns}}",
+    "candidateRequired": "obligatoria",
+    "candidateTests": "Pruebas: {{tests}}",
+    "candidateProductId": "ID del producto de datos",
+    "candidateOwnerRole": "Rol propietario",
+    "candidateAccept": "Aceptar como producto de datos",
+    "candidateRegisterFirst": "Registre este modelo como tabla para aceptarlo.",
+    "candidateBecame": "Aceptado como producto de datos {{product}}."
   }
 }
