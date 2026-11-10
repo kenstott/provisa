@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
+import { act, render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { PlatformOrgEngine, PlatformOrgEngines } from "../components/admin/PlatformOrgEngine";
 import type { OrgEngineState } from "../api/admin";
@@ -26,8 +26,11 @@ vi.mock("../api/regions", async (importOriginal) => ({
   fetchOrgGrants: vi.fn(),
 }));
 
-// REQ-1922: no regions, so the page is the one engine, as before.
-vi.mock("../components/admin/useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+// REQ-1922: no regions, so the page is the one engine, as before, unless a test grants some.
+const regionEngines = vi.hoisted(() => ({ current: { status: "none" } as unknown }));
+vi.mock("../components/admin/useRegionEngines", () => ({
+  useRegionEngines: () => regionEngines.current,
+}));
 
 import {
   fetchOrgEngine,
@@ -78,6 +81,7 @@ describe("OrgEngineTab", () => {
     mockFetch.mockReset();
     mockSet.mockReset();
     mockSet.mockResolvedValue({ success: true, mode: "external" });
+    regionEngines.current = { status: "none" };
   });
 
   // REQ-1418: which address the org supplies follows the KIND it picked, as reported by the
@@ -204,6 +208,59 @@ describe("OrgEngineTab", () => {
     expect(change.querySelector("a")).toHaveAttribute("href", "/admin/billing");
     // A shared-lane org has no dedicated engine, so there is no engine state to report.
     expect(screen.queryByTestId("org-engine-hosted-state")).not.toBeInTheDocument();
+  });
+
+  it("points no one to Billing when the org is not on a plan", async () => {
+    mockOrgFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+    render(<OrgEngineTab />);
+    expect(await screen.findByTestId("org-engine-save-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/admin/billing"]')).toBeNull();
+  });
+
+  // REQ-1412 (A PLAN DECIDES ITS LANE): the regions the org holds do not change who decides its
+  // engine, so the page that shows them per region points to the plan as the single-engine page does.
+  describe("when the org uses regions", () => {
+    beforeEach(() => {
+      regionEngines.current = {
+        status: "regions",
+        sandbox: false,
+        save: null,
+        grant: {
+          stores: [{ id: "eu-engine", kind: "trino", url: "trino://eu.example.com:8443" }],
+          regions: [{ id: "eu", engine: "eu-engine" }],
+          platform_regions: [],
+          engine_kinds: ["trino"],
+        },
+      };
+    });
+
+    it("points an org on a plan to Billing", async () => {
+      mockOrgFetch.mockResolvedValue(state({ plan: "starter", plan_derived: true }));
+      render(<OrgEngineTab />);
+      expect(screen.getByTestId("federation-regions")).toBeInTheDocument();
+      const change = await screen.findByTestId("org-engine-hosted-change");
+      expect(change).toHaveTextContent(/Billing page/);
+      expect(change.querySelector("a")).toHaveAttribute("href", "/admin/billing");
+    });
+
+    it("points no one to Billing when the org is not on a plan", async () => {
+      mockOrgFetch.mockResolvedValue(state({ plan: null, plan_derived: false }));
+      render(<OrgEngineTab />);
+      await waitFor(() => expect(mockOrgFetch).toHaveBeenCalled());
+      await act(async () => {
+        await mockOrgFetch.mock.results[0].value;
+      });
+      expect(screen.getByTestId("federation-regions")).toBeInTheDocument();
+      expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    });
+
+    it("shows the error when the plan cannot be read", async () => {
+      mockOrgFetch.mockRejectedValue(new Error("could not read the org's engine"));
+      render(<OrgEngineTab />);
+      expect(await screen.findByText(/could not read the org's engine/)).toBeInTheDocument();
+      expect(screen.queryByTestId("org-engine-hosted-change")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps the controls where nothing derives the lane", async () => {
