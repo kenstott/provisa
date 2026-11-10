@@ -73,8 +73,14 @@ _READ_BY: dict[str, frozenset[str]] = {
     "regions": frozenset({"platform_settings", "cross_org"}),
 }
 
-#: Every kind of list a principal's role grant can carry.
-KINDS = SEMANTIC_LISTS | frozenset(_READ_BY)
+#: Every kind of list a principal's role grant can carry, in the order a client lists them: the
+#: semantic hierarchy first, then the rest. The write API accepts these and no other.
+KIND_ORDER: tuple[str, ...] = ("domains", *LIST_OF.values(), *_READ_BY)
+KINDS = frozenset(KIND_ORDER)
+
+#: The kinds whose identifiers are picked from the names tree, and how deep it goes for each:
+#: domains are its first level, tables its second, columns its third.
+TREE_DEPTH: dict[str, int] = {"domains": 1, LIST_OF[TABLE]: 2, LIST_OF[COLUMN]: 3}
 
 
 @dataclass(frozen=True)
@@ -302,3 +308,46 @@ def check_lists(
                     )
                 )
     return findings
+
+
+@dataclass(frozen=True)
+class NamesNode:
+    """One node of the names tree: ``id`` is the identifier it is listed as, ``label`` its last
+    segment. Checking a node selects everything beneath it."""
+
+    id: str
+    label: str
+    children: tuple["NamesNode", ...] = ()
+
+
+def names_tree(index: ObjectIndex) -> tuple[NamesNode, ...]:
+    """The domains, tables and columns of ``index`` as a tree of the identifiers that select them,
+    each level ordered by label: what a picker offers for the kinds of :data:`TREE_DEPTH`."""
+    columns: dict[tuple[str, str], list[str]] = {}
+    tables: dict[str, set[str]] = {}
+    for o in index.objects:
+        if o.kind == TABLE:
+            domain, table = o.paths[0]
+            tables.setdefault(domain, set()).add(table)
+        elif o.kind == COLUMN:
+            domain, table, column = o.paths[0]
+            columns.setdefault((domain, table), []).append(column)
+    domains = {o.domain for o in index.objects if o.domain} | set(tables)
+    return tuple(
+        NamesNode(
+            domain,
+            domain,
+            tuple(
+                NamesNode(
+                    f"{domain}.{table}",
+                    table,
+                    tuple(
+                        NamesNode(f"{domain}.{table}.{column}", column)
+                        for column in sorted(set(columns.get((domain, table), ())))
+                    ),
+                )
+                for table in sorted(tables.get(domain, ()))
+            ),
+        )
+        for domain in sorted(domains)
+    )
