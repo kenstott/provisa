@@ -26,14 +26,27 @@
       "everything": "すべて (後から追加されるものを含む)",
       "typedLabel": "エントリ",
       "typedPlaceholder": "エントリを入力して Enter キーを押します",
-      "filterLabel": "検索",
-      "filterPlaceholder": "名前で検索",
       "noObjects": "モデルにはまだこの種類のものがありません。",
       "otherValues": "その他のエントリ",
       "removeValue": "{{value}} を削除",
-      "expand": "{{name}} を展開",
-      "collapse": "{{name}} を折りたたむ",
-      "includedByParent": "上位のエントリに含まれています"
+      "domains": {
+        "label": "ドメイン",
+        "search": "ドメインを検索"
+      },
+      "tables": {
+        "label": "テーブル",
+        "search": "選択したドメインのテーブルを検索",
+        "searchAll": "すべてのテーブルを検索",
+        "chooseAbove": "選択したドメインにテーブルがありません"
+      },
+      "columns": {
+        "label": "列",
+        "search": "選択したテーブルの列を検索",
+        "chooseAbove": "テーブルを選択すると列が表示されます"
+      },
+      "noMatch": "一致するものがありません",
+      "more": "{{total}} 件中 {{shown}} 件を表示。入力して絞り込みます。",
+      "unknownValue": "モデルにこの項目はありません。削除するまで保持されます。"
     },
     "people": {
       "placeholder": "名前またはメールで検索",
@@ -49,7 +62,7 @@
       "kindLabel": "種類",
       "kindPlaceholder": "種類を選択",
       "entriesLabel": "エントリ",
-      "entriesHelp": "ロールが許可する範囲のうち、このユーザーが到達できるもの。エントリをチェックすると配下のすべてが含まれます。空のリストはこの種類の何にも到達しません。",
+      "entriesHelp": "ロールが許可する範囲のうち、この人がアクセスできるもの。配下で何も選択せずに選んだドメインまたはテーブルは、そのすべてを含みます。空のリストはこの種類の何にもアクセスしません。",
       "endsOnLabel": "終了日",
       "endsOnHint": "空のままにすると、終了されるまでリストを維持します。",
       "reasonLabel": "理由",

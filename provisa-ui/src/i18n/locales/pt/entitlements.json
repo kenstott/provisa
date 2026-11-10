@@ -26,14 +26,27 @@
       "everything": "Tudo, incluindo o que for adicionado depois",
       "typedLabel": "Entradas",
       "typedPlaceholder": "Digite uma entrada e pressione Enter",
-      "filterLabel": "Localizar",
-      "filterPlaceholder": "Localizar por nome",
       "noObjects": "O modelo ainda não tem nada deste tipo.",
       "otherValues": "Também listado",
       "removeValue": "Remover {{value}}",
-      "expand": "Expandir {{name}}",
-      "collapse": "Recolher {{name}}",
-      "includedByParent": "Incluído pela entrada acima"
+      "domains": {
+        "label": "Domínios",
+        "search": "Pesquisar domínios"
+      },
+      "tables": {
+        "label": "Tabelas",
+        "search": "Pesquisar tabelas dos domínios escolhidos",
+        "searchAll": "Pesquisar todas as tabelas",
+        "chooseAbove": "Os domínios escolhidos não têm tabelas"
+      },
+      "columns": {
+        "label": "Colunas",
+        "search": "Pesquisar colunas das tabelas escolhidas",
+        "chooseAbove": "Escolha tabelas para listar as suas colunas"
+      },
+      "noMatch": "Nenhum resultado",
+      "more": "A mostrar {{shown}} de {{total}}. Escreva para restringir.",
+      "unknownValue": "O modelo não tem isto. É mantido até o remover."
     },
     "people": {
       "placeholder": "Pesquisar por nome ou e-mail",
@@ -49,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Selecione um tipo",
       "entriesLabel": "Entradas",
-      "entriesHelp": "O que esta pessoa pode alcançar do que a função permite. Marcar uma entrada inclui tudo abaixo dela. Uma lista vazia não alcança nada deste tipo.",
+      "entriesHelp": "O que esta pessoa pode alcançar do que a função permite. Um domínio ou tabela escolhido sem nada escolhido abaixo inclui todo o seu conteúdo. Uma lista vazia não alcança nada deste tipo.",
       "endsOnLabel": "Termina em",
       "endsOnHint": "Deixe vazio para manter a lista até que seja encerrada.",
       "reasonLabel": "Motivo",

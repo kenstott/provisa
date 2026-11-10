@@ -26,14 +26,27 @@
       "everything": "全部，包括以后添加的内容",
       "typedLabel": "条目",
       "typedPlaceholder": "输入条目后按 Enter",
-      "filterLabel": "查找",
-      "filterPlaceholder": "按名称查找",
       "noObjects": "模型中尚无此类内容。",
       "otherValues": "其他已列条目",
       "removeValue": "移除 {{value}}",
-      "expand": "展开 {{name}}",
-      "collapse": "折叠 {{name}}",
-      "includedByParent": "已由上级条目包含"
+      "domains": {
+        "label": "域",
+        "search": "搜索域"
+      },
+      "tables": {
+        "label": "表",
+        "search": "搜索所选域中的表",
+        "searchAll": "搜索所有表",
+        "chooseAbove": "所选域中没有表"
+      },
+      "columns": {
+        "label": "列",
+        "search": "搜索所选表中的列",
+        "chooseAbove": "选择表以列出其列"
+      },
+      "noMatch": "无匹配项",
+      "more": "显示 {{total}} 项中的 {{shown}} 项。输入以缩小范围。",
+      "unknownValue": "模型中没有此项。在您移除之前会一直保留。"
     },
     "people": {
       "placeholder": "按姓名或电子邮件搜索",
@@ -49,7 +62,7 @@
       "kindLabel": "类型",
       "kindPlaceholder": "选择类型",
       "entriesLabel": "条目",
-      "entriesHelp": "此人员在角色允许范围内可访问的内容。勾选条目即包含其下所有内容。空列表表示不访问此类型的任何内容。",
+      "entriesHelp": "此人可在角色允许的范围内访问的内容。选中某个域或表且其下未选择任何内容时，包含其全部内容。空列表不能访问此类的任何内容。",
       "endsOnLabel": "结束日期",
       "endsOnHint": "留空则保留该列表，直到将其结束。",
       "reasonLabel": "原因",

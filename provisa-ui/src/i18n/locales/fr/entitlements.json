@@ -26,14 +26,27 @@
       "everything": "Tout, y compris ce qui sera ajouté plus tard",
       "typedLabel": "Entrées",
       "typedPlaceholder": "Saisissez une entrée et appuyez sur Entrée",
-      "filterLabel": "Rechercher",
-      "filterPlaceholder": "Rechercher par nom",
       "noObjects": "Le modèle ne contient encore rien de ce type.",
       "otherValues": "Également listé",
       "removeValue": "Retirer {{value}}",
-      "expand": "Déplier {{name}}",
-      "collapse": "Replier {{name}}",
-      "includedByParent": "Inclus par l'entrée au-dessus"
+      "domains": {
+        "label": "Domaines",
+        "search": "Rechercher des domaines"
+      },
+      "tables": {
+        "label": "Tables",
+        "search": "Rechercher les tables des domaines choisis",
+        "searchAll": "Rechercher toutes les tables",
+        "chooseAbove": "Les domaines choisis n'ont aucune table"
+      },
+      "columns": {
+        "label": "Colonnes",
+        "search": "Rechercher les colonnes des tables choisies",
+        "chooseAbove": "Choisissez des tables pour lister leurs colonnes"
+      },
+      "noMatch": "Aucun résultat",
+      "more": "{{shown}} sur {{total}} affichés. Tapez pour affiner.",
+      "unknownValue": "Le modèle ne contient pas ceci. Il est conservé jusqu'à ce que vous le retiriez."
     },
     "people": {
       "placeholder": "Rechercher par nom ou e-mail",
@@ -49,7 +62,7 @@
       "kindLabel": "Type",
       "kindPlaceholder": "Sélectionnez un type",
       "entriesLabel": "Entrées",
-      "entriesHelp": "Ce que cette personne peut atteindre parmi ce que le rôle autorise. Cocher une entrée inclut tout ce qui se trouve en dessous. Une liste vide n'atteint rien de ce type.",
+      "entriesHelp": "Ce que cette personne peut atteindre de ce que le rôle permet. Un domaine ou une table choisi sans rien de choisi en dessous inclut tout son contenu. Une liste vide n'atteint rien de ce type.",
       "endsOnLabel": "Se termine le",
       "endsOnHint": "Laissez vide pour conserver la liste jusqu'à ce qu'elle soit clôturée.",
       "reasonLabel": "Motif",
