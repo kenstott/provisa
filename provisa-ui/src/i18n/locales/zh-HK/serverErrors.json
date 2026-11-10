@@ -787,6 +787,22 @@
       "layout_not_found": "沒有名為 {{name}} 的版面",
       "layout_name_required": "版面需要名稱",
       "layout_place_unreadable": "此版面放置了您無權讀取的 {{kind}}"
+    },
+    "entitlements": {
+      "database_not_connected": "資料庫未連線。",
+      "role_out_of_reach": "角色 {{role_id}} 不在您管理的角色範圍內。",
+      "role_not_found": "找不到角色 {{role_id}}。",
+      "principal_or_email": "請指定人員或電郵，不能同時指定。",
+      "principal_required": "必須指定人員。",
+      "email_required": "必須填寫電郵。",
+      "email_ambiguous": "{{email}} 是多於一位人員的電郵。請改為選擇人員。",
+      "reason_required": "必須填寫原因。",
+      "unknown_kind": "{{kind}} 不是權益清單的類型。",
+      "idp_supersedes": "身分識別提供者為角色 {{role_id}} 傳送了此人員的 {{kind}} 清單。該清單優先，因此須在該處更改，而非此處。",
+      "blank_identifier": "項目不可留空。",
+      "expiry_in_past": "結束日期必須是將來的日期。",
+      "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
+      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
     }
   }
 }

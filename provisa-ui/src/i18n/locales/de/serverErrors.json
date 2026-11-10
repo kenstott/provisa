@@ -787,6 +787,22 @@
       "layout_not_found": "Kein Layout namens {{name}}",
       "layout_name_required": "Ein Layout braucht einen Namen",
       "layout_place_unreadable": "Das Layout platziert ein(e) {{kind}}, das Sie nicht lesen dürfen"
+    },
+    "entitlements": {
+      "database_not_connected": "Die Datenbank ist nicht verbunden.",
+      "role_out_of_reach": "Rolle {{role_id}} liegt außerhalb der Rollen, die Sie verwalten.",
+      "role_not_found": "Rolle {{role_id}} wurde nicht gefunden.",
+      "principal_or_email": "Eine Person oder eine E-Mail angeben, nicht beides.",
+      "principal_required": "Eine Person ist erforderlich.",
+      "email_required": "Eine E-Mail ist erforderlich.",
+      "email_ambiguous": "{{email}} ist die E-Mail mehrerer Personen. Wählen Sie stattdessen die Person.",
+      "reason_required": "Ein Grund ist erforderlich.",
+      "unknown_kind": "{{kind}} ist keine Art von Berechtigungsliste.",
+      "idp_supersedes": "Der Identitätsanbieter sendet die Liste {{kind}} dieser Person für Rolle {{role_id}}. Diese Liste hat Vorrang und wird dort geändert, nicht hier.",
+      "blank_identifier": "Ein Eintrag darf nicht leer sein.",
+      "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
+      "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
+      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
     }
   }
 }

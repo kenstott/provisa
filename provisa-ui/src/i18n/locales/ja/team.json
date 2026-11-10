@@ -91,6 +91,8 @@
       "cancelEdit": "編集をキャンセル",
       "remove": "{{name}} を削除"
     },
-    "localUsersHeading": "ローカルユーザー"
+    "localUsersHeading": "ローカルユーザー",
+    "attributesTab": "属性",
+    "accessTab": "アクセス"
   }
 }

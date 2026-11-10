@@ -787,6 +787,22 @@
       "layout_not_found": "No hay ningún diseño llamado {{name}}",
       "layout_name_required": "Un diseño necesita un nombre",
       "layout_place_unreadable": "El diseño coloca un(a) {{kind}} que usted no puede leer"
+    },
+    "entitlements": {
+      "database_not_connected": "La base de datos no está conectada.",
+      "role_out_of_reach": "El rol {{role_id}} está fuera de los roles que usted administra.",
+      "role_not_found": "No se encontró el rol {{role_id}}.",
+      "principal_or_email": "Indique una persona o un correo, no ambos.",
+      "principal_required": "Se requiere una persona.",
+      "email_required": "Se requiere un correo electrónico.",
+      "email_ambiguous": "{{email}} es el correo de más de una persona. Elija a la persona.",
+      "reason_required": "Se requiere un motivo.",
+      "unknown_kind": "{{kind}} no es un tipo de lista de derechos de acceso.",
+      "idp_supersedes": "El proveedor de identidad envía la lista de {{kind}} de esta persona para el rol {{role_id}}. Esa lista prevalece: se cambia allí, no aquí.",
+      "blank_identifier": "Una entrada no puede estar vacía.",
+      "expiry_in_past": "La fecha de fin debe ser futura.",
+      "expiry_removes_nothing": "Una fecha de fin en esta lista de {{kind}} no quitaría nada.",
+      "pending_not_found": "Ninguna concesión espera a {{email}} para el rol {{role_id}} y {{kind}}."
     }
   }
 }

@@ -1,0 +1,103 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Dominios",
+      "tables": "Tablas",
+      "columns": "Columnas",
+      "metrics": "Métricas",
+      "relationships": "Relaciones",
+      "commands": "Comandos",
+      "data_products": "Productos de datos",
+      "sources": "Orígenes",
+      "environments": "Entornos",
+      "roles": "Roles",
+      "regions": "Regiones"
+    },
+    "origin": {
+      "idp": "Proveedor de identidad",
+      "provisa": "Definida en Provisa",
+      "role": "Predeterminada del rol"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} en {{kind}} no designa nada en el modelo.",
+      "unused_kind": "Este rol no usa {{kind}}, así que esa lista no selecciona nada."
+    },
+    "picker": {
+      "everything": "Todo, incluido lo que se añada más adelante",
+      "typedLabel": "Entradas",
+      "typedPlaceholder": "Escriba una entrada y pulse Intro",
+      "filterLabel": "Buscar",
+      "filterPlaceholder": "Buscar por nombre",
+      "noObjects": "El modelo aún no tiene nada de este tipo.",
+      "otherValues": "También en la lista",
+      "removeValue": "Quitar {{value}}",
+      "expand": "Expandir {{name}}",
+      "collapse": "Contraer {{name}}",
+      "includedByParent": "Incluido por la entrada superior"
+    },
+    "people": {
+      "placeholder": "Buscar por nombre o correo electrónico",
+      "typedEmail": "{{email}} (espera su primer inicio de sesión)",
+      "typeMore": "Escriba al menos dos caracteres",
+      "noneFound": "Nadie coincide. Escriba un correo completo para concederle acceso."
+    },
+    "form": {
+      "personLabel": "Persona",
+      "personHint": "A quien aún no ha iniciado sesión se le puede conceder acceso por correo.",
+      "roleLabel": "Rol",
+      "rolePlaceholder": "Seleccione un rol",
+      "kindLabel": "Tipo",
+      "kindPlaceholder": "Seleccione un tipo",
+      "entriesLabel": "Entradas",
+      "entriesHelp": "Lo que esta persona puede alcanzar de lo que el rol permite. Marcar una entrada incluye todo lo que hay debajo. Una lista vacía no alcanza nada de este tipo.",
+      "endsOnLabel": "Termina el",
+      "endsOnHint": "Déjelo vacío para mantener la lista hasta que se finalice.",
+      "reasonLabel": "Motivo",
+      "reasonHint": "Se registra con el cambio, para quien revise los accesos."
+    },
+    "person": {
+      "help": "Lo que esta persona puede alcanzar con cada asignación de rol, lista por tipo. Una lista del proveedor de identidad prevalece y se cambia allí.",
+      "roleLabel": "Asignación de rol",
+      "rolePlaceholder": "Seleccione un rol",
+      "roleHint": "Los roles con listas definidas en Provisa aparecen primero.",
+      "roleWithLists": "{{role}} (con listas)",
+      "readOnly": "Todas las listas de esta asignación vienen del proveedor de identidad: se cambian allí y aquí son de solo lectura.",
+      "grantEnded": "Ha pasado una fecha de fin para toda esta asignación: no se alcanza nada de lo siguiente.",
+      "colKind": "Tipo",
+      "colEntries": "Entradas",
+      "colOrigin": "Origen",
+      "colEnds": "Termina",
+      "noLists": "Sin listas: esta asignación alcanza todo lo que el rol permite.",
+      "nothing": "Nada",
+      "everything": "Todo",
+      "more": "+{{count}} más",
+      "endedHint": "Finalizado por una fecha de fin ya pasada",
+      "superseded": "Reemplazada: {{entries}}",
+      "supersededHint": "La lista que esta reemplazó",
+      "setBy": "Definida por {{who}}: {{reason}}",
+      "editList": "Editar la lista de {{kind}}",
+      "endList": "Finalizar la lista de {{kind}}",
+      "addList": "Añadir lista",
+      "endPrompt": "Finalizar la lista de {{kind}}. Vuelve a aplicarse el valor predeterminado del rol.",
+      "endButton": "Finalizar lista"
+    },
+    "grants": {
+      "heading": "Concesiones de acceso",
+      "help": "Conceda a una persona acceso dentro de un rol, por tipo. A quien aún no ha iniciado sesión se le concede por correo, y la concesión se aplica en su primer inicio de sesión.",
+      "grantButton": "Conceder acceso",
+      "saved": "Acceso guardado para el rol {{role}}.",
+      "savedPending": "Guardado. La concesión espera a que {{email}} inicie sesión.",
+      "pendingHeading": "En espera de inicio de sesión",
+      "colEmail": "Correo electrónico",
+      "colRole": "Rol",
+      "colKind": "Tipo",
+      "colEntries": "Entradas",
+      "colEnds": "Termina",
+      "colReason": "Motivo",
+      "colActions": "Acciones",
+      "noPending": "No hay concesiones en espera.",
+      "endPrompt": "Finalizar la concesión de {{kind}} para {{email}} en el rol {{role}}.",
+      "endButton": "Finalizar"
+    }
+  }
+}

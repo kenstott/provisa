@@ -1,0 +1,103 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Domaines",
+      "tables": "Tables",
+      "columns": "Colonnes",
+      "metrics": "Métriques",
+      "relationships": "Relations",
+      "commands": "Commandes",
+      "data_products": "Produits de données",
+      "sources": "Sources",
+      "environments": "Environnements",
+      "roles": "Rôles",
+      "regions": "Régions"
+    },
+    "origin": {
+      "idp": "Fournisseur d'identité",
+      "provisa": "Défini dans Provisa",
+      "role": "Valeur par défaut du rôle"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} dans {{kind}} ne désigne rien dans le modèle.",
+      "unused_kind": "Ce rôle n'utilise aucun élément de type {{kind}} : cette liste ne sélectionne rien."
+    },
+    "picker": {
+      "everything": "Tout, y compris ce qui sera ajouté plus tard",
+      "typedLabel": "Entrées",
+      "typedPlaceholder": "Saisissez une entrée et appuyez sur Entrée",
+      "filterLabel": "Rechercher",
+      "filterPlaceholder": "Rechercher par nom",
+      "noObjects": "Le modèle ne contient encore rien de ce type.",
+      "otherValues": "Également listé",
+      "removeValue": "Retirer {{value}}",
+      "expand": "Déplier {{name}}",
+      "collapse": "Replier {{name}}",
+      "includedByParent": "Inclus par l'entrée au-dessus"
+    },
+    "people": {
+      "placeholder": "Rechercher par nom ou e-mail",
+      "typedEmail": "{{email}} (en attente de sa première connexion)",
+      "typeMore": "Saisissez au moins deux caractères",
+      "noneFound": "Aucun résultat. Saisissez un e-mail complet pour lui accorder l'accès."
+    },
+    "form": {
+      "personLabel": "Personne",
+      "personHint": "Une personne pas encore connectée peut recevoir l'accès par e-mail.",
+      "roleLabel": "Rôle",
+      "rolePlaceholder": "Sélectionnez un rôle",
+      "kindLabel": "Type",
+      "kindPlaceholder": "Sélectionnez un type",
+      "entriesLabel": "Entrées",
+      "entriesHelp": "Ce que cette personne peut atteindre parmi ce que le rôle autorise. Cocher une entrée inclut tout ce qui se trouve en dessous. Une liste vide n'atteint rien de ce type.",
+      "endsOnLabel": "Se termine le",
+      "endsOnHint": "Laissez vide pour conserver la liste jusqu'à ce qu'elle soit clôturée.",
+      "reasonLabel": "Motif",
+      "reasonHint": "Enregistré avec la modification, pour la revue des accès."
+    },
+    "person": {
+      "help": "Ce que cette personne peut atteindre par chaque attribution de rôle, liste par type. Une liste du fournisseur d'identité prévaut et se modifie chez lui.",
+      "roleLabel": "Attribution de rôle",
+      "rolePlaceholder": "Sélectionnez un rôle",
+      "roleHint": "Les rôles avec des listes définies dans Provisa apparaissent en premier.",
+      "roleWithLists": "{{role}} (listes définies)",
+      "readOnly": "Toutes les listes de cette attribution viennent du fournisseur d'identité : elles se modifient chez lui et sont en lecture seule ici.",
+      "grantEnded": "Une date de fin est passée pour toute cette attribution : rien ci-dessous n'est atteint.",
+      "colKind": "Type",
+      "colEntries": "Entrées",
+      "colOrigin": "Origine",
+      "colEnds": "Fin",
+      "noLists": "Aucune liste : cette attribution atteint tout ce que le rôle autorise.",
+      "nothing": "Rien",
+      "everything": "Tout",
+      "more": "+{{count}} de plus",
+      "endedHint": "Clôturé par une date de fin passée",
+      "superseded": "Remplacée : {{entries}}",
+      "supersededHint": "La liste que celle-ci a remplacée",
+      "setBy": "Défini par {{who}} : {{reason}}",
+      "editList": "Modifier la liste {{kind}}",
+      "endList": "Clôturer la liste {{kind}}",
+      "addList": "Ajouter une liste",
+      "endPrompt": "Clôturer la liste {{kind}}. La valeur par défaut du rôle s'applique de nouveau.",
+      "endButton": "Clôturer la liste"
+    },
+    "grants": {
+      "heading": "Octrois d'accès",
+      "help": "Accordez à une personne un accès dans un rôle, par type. Une personne qui ne s'est pas encore connectée le reçoit par e-mail, et l'octroi s'applique à sa première connexion.",
+      "grantButton": "Accorder l'accès",
+      "saved": "Accès enregistré pour le rôle {{role}}.",
+      "savedPending": "Enregistré. L'octroi attend la connexion de {{email}}.",
+      "pendingHeading": "En attente de connexion",
+      "colEmail": "E-mail",
+      "colRole": "Rôle",
+      "colKind": "Type",
+      "colEntries": "Entrées",
+      "colEnds": "Fin",
+      "colReason": "Motif",
+      "colActions": "Actions",
+      "noPending": "Aucun octroi en attente.",
+      "endPrompt": "Clôturer l'octroi {{kind}} pour {{email}} dans le rôle {{role}}.",
+      "endButton": "Clôturer"
+    }
+  }
+}

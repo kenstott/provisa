@@ -91,6 +91,8 @@
       "cancelEdit": "Bewerken annuleren",
       "remove": "{{name}} verwijderen"
     },
-    "localUsersHeading": "Lokale gebruikers"
+    "localUsersHeading": "Lokale gebruikers",
+    "attributesTab": "Kenmerken",
+    "accessTab": "Toegang"
   }
 }
