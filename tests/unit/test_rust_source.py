@@ -86,10 +86,6 @@ def test_the_codes_tables_commands_and_streams_are_read_with_typed_rows(reader, 
         ("ticks", "stream"),
         ("refund", "command"),
         ("price", "command"),
-        ("started", "command"),
-        ("start", "on-start"),
-        ("stop", "on-stop"),
-        ("health", "health"),
         ("outside", "table"),
     ]
     orders = manifest.export("orders")
@@ -127,7 +123,7 @@ def test_the_codes_tables_commands_and_streams_are_read_with_typed_rows(reader, 
         ("sku", True, False),
         ("quantity", False, True),
     ]
-    assert manifest.export("started").returns == Scalar("bigint")
+    assert price.returns == Scalar("double")
 
 
 def test_the_lifecycle_tags_are_read_from_a_doc_comment(reader, toolchain, tmp_path):

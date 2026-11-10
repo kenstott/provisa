@@ -151,17 +151,50 @@ def _keyed_dependencies(packages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _compatible(version: str) -> tuple[int, ...]:
+    """The part of a version semver holds compatible: the major, else the minor, else the
+    patch. cargo keeps one version of a crate per compatible range."""
+    major, minor, patch = (int(p) for p in version.split("+")[0].split("-")[0].split("."))
+    if major:
+        return (major,)
+    return (0, minor) if minor else (0, 0, patch)
+
+
+def _registry_packages(text: str | None) -> list[dict[str, Any]]:
+    if text is None:
+        return []
+    packages = [p for p in tomllib.loads(text).get("package", []) if "source" in p]
+    return _keyed_dependencies(packages)
+
+
 def joined_lock(host_lock: str, code_lock: str | None) -> str:
-    """One ``Cargo.lock`` of the host's and the code's registry packages; a package both hold at
-    one version is the code's entry. Path packages (the host, the code, the code's own crates) are
-    left for cargo to write."""
-    joined: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for text in (host_lock, code_lock):
-        if text is None:
-            continue
-        packages = [p for p in tomllib.loads(text).get("package", []) if "source" in p]
-        for package in _keyed_dependencies(packages):
-            joined[(package["name"], package["version"], package["source"])] = package
+    """One ``Cargo.lock`` of the host's and the code's registry packages. Where both hold a crate
+    in one compatible range, the code's version is kept and the host's packages depend on it:
+    cargo builds one version of it, and the code's lock is the code's word. Path packages (the
+    host, the code, the code's own crates) are left for cargo to write."""
+    code = _registry_packages(code_lock)
+    kept = {(p["name"], _compatible(p["version"]), p["source"]): p for p in code}
+    joined: dict[tuple[str, str, str], dict[str, Any]] = {
+        (p["name"], p["version"], p["source"]): p for p in code
+    }
+    moved: dict[str, str] = {}  # "name version" of the host's -> of the code's
+    host = []
+    for package in _registry_packages(host_lock):
+        twin = kept.get((package["name"], _compatible(package["version"]), package["source"]))
+        if twin is not None:
+            moved[f"{package['name']} {package['version']}"] = f"{twin['name']} {twin['version']}"
+        else:
+            host.append(package)
+    for package in host:
+        dependencies = []
+        for dependency in package["dependencies"]:
+            words = dependency.split(" ")
+            named = " ".join(words[:2])
+            dependencies.append(" ".join([moved.get(named, named), *words[2:]]))
+        joined[(package["name"], package["version"], package["source"])] = {
+            **package,
+            "dependencies": dependencies,
+        }
     lines = [
         "# Joined by Provisa (provisa/rustlang/build.py): the host's and the code's.",
         "version = 4",

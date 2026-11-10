@@ -1,13 +1,9 @@
-//! A Rust source (REQ-2227): its tagged public functions are tables, commands, a query, a
-//! stream and the connector's lifecycle.
+//! A Rust source (REQ-2227): its tagged public functions are tables, commands and a stream.
 
 mod model;
 
 pub use model::{Line, Order, Status};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static STARTED: AtomicU64 = AtomicU64::new(0);
 
 /// The inputs of Orders: who the orders are for.
 #[derive(Deserialize)]
@@ -76,26 +72,6 @@ pub fn refund(order_id: String, amount: f64) -> Result<Refunded, String> {
 /// @command
 pub fn price(sku: String, quantity: Option<i64>) -> f64 {
     sku.len() as f64 * quantity.unwrap_or(1) as f64
-}
-
-/// How many times the connector started.
-/// @command
-pub fn started() -> u64 {
-    STARTED.load(Ordering::SeqCst)
-}
-
-/// @on-start
-pub fn start(settings: std::collections::HashMap<String, String>) {
-    let _ = settings;
-    STARTED.fetch_add(1, Ordering::SeqCst);
-}
-
-/// @on-stop
-pub fn stop() {}
-
-/// @health
-pub fn health() -> String {
-    "ok".to_string()
 }
 
 /// Reads outside its sandbox.
