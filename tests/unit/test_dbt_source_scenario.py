@@ -43,7 +43,7 @@ from provisa.api.admin.dbt_router import (
     register_dbt_source,
 )
 from provisa.api.errors import ApiError
-from provisa.core import schema_org
+from provisa.core import schema_org, secrets_providers
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.models import Source, SourceType
 from provisa.core.repositories import source as source_repo
@@ -52,6 +52,14 @@ from provisa.executor.source_operation import offered_operations
 from provisa.lineage.merge import build_federation_graph
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _single_org(monkeypatch: pytest.MonkeyPatch) -> None:
+    """source_repo.upsert calls sandbox_egress.pinned_source → many_organisations(); guard
+    against xdist worker ordering leaving _many_organisations=None (REQ-2228 scenario tests)."""
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "dbt" / "manifest.json"
 SOURCE = "dbt-jaffle"
