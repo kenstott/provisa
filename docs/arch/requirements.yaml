@@ -94160,7 +94160,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-10: a code resolver may declare @login, a function taking a user and a password or token and
     answering whether to let them in. A code host''s pgwire and Flight SQL front ends call it when a client
     connects to the host itself. When the host is paired with Provisa, Provisa''s own authentication and
-    roles apply and @login is not called.'
+    roles apply and @login is not called. (Amended 2026-11-10, A HOST CAN RUN UNPAIRED:) Maintainer 2026-11-10:
+    a code host can run unpaired, as a container on its own: it takes its setup values from its own environment
+    or a file instead of from Provisa over a pairing, and serves its tables to SQL clients over pgwire and
+    Flight SQL, letting in whoever its @login admits. Paired with Provisa, the same container is a governed
+    source with no change to its code.'
   use_case: A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the
     model's config names the new digest on a feature branch. Someone adds the connector as a source from
     Sources in that branch's environment, filling in what it requires, and promotion through dev, test and
