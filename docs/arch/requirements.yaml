@@ -94616,7 +94616,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Register tables step, not a modal: Register Table with that source already chosen and every table discovery
     found listed, the tables that need no input ticked, so one action registers them all with their defaults.
     Tables that need input are listed and marked, registered one at a time later. Skipping the step closes
-    it.'
+    it. (Amended 2026-11-10, SEE THE DATA RIGHT AFTER REGISTERING:) Maintainer 2026-11-10: to guide a new
+    user from connecting to querying, once tables are registered the detail panel opens on a Your data step
+    for the first of them, the others a click away: a preview of its first rows, read through the governed
+    query as the person''s own role; a button that opens the query explorer with a query on it ready to
+    run; and the same table through the other access methods, each ready to copy (the GraphQL query, the
+    connection string for a SQL client over pgwire, the REST and MCP equivalents).'
   scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
