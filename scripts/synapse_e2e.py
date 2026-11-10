@@ -64,17 +64,8 @@ def _workspace_exists(lane: dict) -> bool:
 
 
 def _up() -> None:
-    pinned = os.environ.get("SYNAPSE_SQL_SERVER")
-    if pinned:
-        state = {
-            "lane": None,
-            "sql_server": pinned,
-            "database": os.environ["SYNAPSE_DATABASE"],
-            "adls_url": os.environ["SYNAPSE_ADLS_URL"],
-        }
-        print(json.dumps(state))
-        return
-
+    # Every run makes its own workspace (maintainer 2026-11-10, "Paid cloud resources"): there
+    # is no standing one to pin.
     if _STATE_FILE.exists():
         state = json.loads(_STATE_FILE.read_text())
         if state["lane"] and _workspace_exists(state["lane"]):
@@ -108,10 +99,6 @@ def _down() -> None:
         print("no state file, nothing to tear down", file=sys.stderr, flush=True)
         return
     state = json.loads(_STATE_FILE.read_text())
-    if not state["lane"]:
-        print("state file is a pinned workspace — nothing to delete", file=sys.stderr, flush=True)
-        _STATE_FILE.unlink(missing_ok=True)
-        return
     _teardown(state["lane"])
     _STATE_FILE.unlink(missing_ok=True)
 

@@ -419,7 +419,7 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
     from provisa.core.change_signal import is_poll
     from provisa.core.secrets import resolve_secrets
     from provisa.events.app_wiring import build_adapter_loaders
-    from provisa.events.probes import can_probe, loader_probe
+    from provisa.events.probes import can_probe, source_transport
     from provisa.federation.residency import resolve_landing_args
 
     if key not in (getattr(state, "replica_nodes", None) or {}):
@@ -435,8 +435,8 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
         source_path=resolve_secrets(getattr(source, "path", "") or "") or None,  # REQ-788
         file_glob=getattr(table, "file_glob", None),  # REQ-788
         # The source's own adapter asks its provider (a mail source's mailboxes).
-        loader_probe=loader_probe(
-            build_adapter_loaders(state, state.federation_engine), source, table
+        loader_probe=source_transport(
+            state, build_adapter_loaders(state, state.federation_engine), source, table
         )
         is not None,
     )

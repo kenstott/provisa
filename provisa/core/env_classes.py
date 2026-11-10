@@ -236,6 +236,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # dbt target that built it, so like catalog_bindings it addresses this environment's
         # warehouse; another environment reads its own.
         "dbt_manifests",
+        # REQ-2228, REQ-858: what this environment's dbt runs last built.
+        "dbt_node_runs",
     }
 )
 
