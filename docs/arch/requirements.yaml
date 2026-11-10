@@ -94585,3 +94585,21 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     not list that product''s shortcomings; the page is named Works with. They also state, as the customer''s
     own choice, that the model lets you change or recover from a choice you have outgrown and scale back
     a product that is not delivering value.'
+
+- id: REQ-2234
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: source-registration-explicit-tables
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-10. Register Table lets a person pick several tables of a source at once,
+    and every one of them is registered in one action with the defaults a single registration would apply:
+    its columns, names, types and read grants as discovery and the registration defaults give them. Each is
+    registered through the same registration path, with the same rights and checks, as registering it alone;
+    a table that one of those checks refuses is reported by name and the others are registered.'
+  scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
+    table_registration in a domain picks all three on Register Table and registers them; then all three are
+    registered in that domain with the defaults one registration would give each, and a table one of them
+    refuses is named while the others are registered.'

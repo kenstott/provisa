@@ -26875,3 +26875,15 @@ Maintainer 2026-11-09. The site presents Provisa as additive and solving a probl
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2234 · Registration & Governance {#REQ-2234}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-10. Register Table lets a person pick several tables of a source at once, and every one of them is registered in one action with the defaults a single registration would apply: its columns, names, types and read grants as discovery and the registration defaults give them. Each is registered through the same registration path, with the same rights and checks, as registering it alone; a table that one of those checks refuses is reported by name and the others are registered.
+
+**Code:** —
+
+**Tests:** —
