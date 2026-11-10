@@ -942,6 +942,15 @@ class AppState:
         self._active_runtime().held_entitlements = value
 
     @property
+    def idp_entitlements(self) -> dict[str, Any]:
+        """user id -> the lists their identity provider last sent (REQ-2219)."""
+        return self._active_runtime().idp_entitlements
+
+    @idp_entitlements.setter
+    def idp_entitlements(self, value: dict[str, Any]) -> None:
+        self._active_runtime().idp_entitlements = value
+
+    @property
     def data_product_refs(self) -> tuple[tuple[str, str], ...]:
         """(data product id, domain id) of every product, for entitlement lists (REQ-2219)."""
         return self._active_runtime().data_product_refs
@@ -3612,6 +3621,7 @@ async def _rebuild_schemas_impl(
         from provisa.entitlements import store as _entitlement_store
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
         await _check_fakes(conn)  # REQ-1494
 
@@ -5362,6 +5372,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.masks_router import router as masks_router
 
     app.include_router(masks_router)  # REQ-2059
+    from provisa.api.admin.entitlements_router import router as entitlements_router
+
+    app.include_router(entitlements_router)  # REQ-2219
     from provisa.api.admin.creation_requests_router import router as creation_requests_router
 
     app.include_router(creation_requests_router)

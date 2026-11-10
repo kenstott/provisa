@@ -1,0 +1,123 @@
+{
+  "realm": "provisa-test",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {"name": "viewer", "description": "Reads what its lists select."},
+      {"name": "analyst", "description": "A second role grant, for per-role lists."}
+    ]
+  },
+  "groups": [
+    {"name": "provisa:viewer:tables:finance.revenue", "path": "/provisa:viewer:tables:finance.revenue"},
+    {"name": "provisa:viewer:tables:sales.orders", "path": "/provisa:viewer:tables:sales.orders"},
+    {"name": "provisa:viewer:relationships:", "path": "/provisa:viewer:relationships:"},
+    {"name": "analysts", "path": "/analysts", "realmRoles": ["analyst"]}
+  ],
+  "clients": [
+    {
+      "clientId": "provisa-test",
+      "name": "Provisa integration tests",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "provisa-test",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "nested entitlements",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "provisa_entitlements",
+            "claim.name": "provisa_entitlements",
+            "jsonType.label": "JSON",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "flat entitlements",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@provisa.test",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Nested",
+      "realmRoles": ["viewer"],
+      "attributes": {
+        "provisa_entitlements": ["{\"viewer\": {\"tables\": [\"finance.revenue\"], \"columns\": [\"finance.revenue.id\"]}}"]
+      },
+      "credentials": [{"type": "password", "value": "alice-password", "temporary": false}]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@provisa.test",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Flat",
+      "realmRoles": ["viewer"],
+      "groups": [
+        "/provisa:viewer:tables:finance.revenue",
+        "/provisa:viewer:tables:sales.orders",
+        "/provisa:viewer:relationships:"
+      ],
+      "credentials": [{"type": "password", "value": "bob-password", "temporary": false}]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "email": "carol@provisa.test",
+      "emailVerified": true,
+      "firstName": "Carol",
+      "lastName": "Plain",
+      "realmRoles": ["viewer"],
+      "credentials": [{"type": "password", "value": "carol-password", "temporary": false}]
+    },
+    {
+      "username": "dana",
+      "enabled": true,
+      "email": "dana@provisa.test",
+      "emailVerified": true,
+      "firstName": "Dana",
+      "lastName": "Both",
+      "realmRoles": ["viewer"],
+      "groups": ["/analysts", "/provisa:viewer:tables:sales.orders"],
+      "attributes": {
+        "provisa_entitlements": ["{\"analyst\": {\"tables\": [\"finance.*\"]}}"]
+      },
+      "credentials": [{"type": "password", "value": "dana-password", "temporary": false}]
+    }
+  ]
+}

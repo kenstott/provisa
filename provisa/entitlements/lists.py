@@ -143,6 +143,10 @@ class ExpiryRule:
     ends_at: datetime
     ends: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     reason: str | None = None
+    # What the API reads it by, and the list it was set with. Neither is the rule, so neither is
+    # in held_version.
+    rule_key: str | None = None
+    list_kind: str | None = None
 
 
 @dataclass(frozen=True)
