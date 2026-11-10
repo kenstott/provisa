@@ -70,7 +70,11 @@ async def table_access_endpoint(table_id: int, request: Request):  # REQ-2162
         roles=[rid for rid in state.roles if not is_meta_role_id(rid) and full(rid)],
         parents=parent_map(dict(r._mapping) for r in rows),
         stored=stored,
-        readable=lambda tid, column: scope.whole or column in scope.served.get(tid, set()),
+        readable=lambda tid, column: (
+            scope.whole
+            or (scope.governance and bool(scope.served.get(tid)))
+            or column in scope.served.get(tid, set())
+        ),
         governance=scope.governance,
         standard=STANDARD_ROLES,
     )
