@@ -80,7 +80,7 @@ def _model() -> dict:
             "arguments": [],
         }
 
-    reads = ["query_development", "full_results"]
+    reads = ["query_development", "full_results", "command_execution"]
     return {
         "domains": [
             {"id": "sales", "description": "orders"},

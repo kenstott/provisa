@@ -24,7 +24,6 @@ import duckdb
 import pytest
 
 from provisa.federation.duckdb_pg_functions import register
-from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
 
 _NULL_ARRAY = (
@@ -85,9 +84,13 @@ def connection() -> duckdb.DuckDBPyConnection:
 
 
 @pytest.mark.parametrize("function", ["percentile_cont", "percentile_disc"])
-def test_clickhouse_refuses_a_null_fraction_array_by_name(function: str):
-    with pytest.raises(FunctionRefused, match=rf"{function}\(\) has no form on clickhouse"):
-        transpile(_NULL_ARRAY.format(f=function), "clickhouse")
+def test_clickhouse_produces_dead_branch_for_null_fraction_array(function: str):
+    # REQ-2167: MATRIX["clickhouse"] (commit 4c510070b2) changed this entry from "refused" to
+    # "error" — ClickHouse is now expected to raise its own engine error because the implicit-else
+    # NULL of CASE WHEN FALSE THEN Array(Float64) END is a type mismatch in ClickHouse (arrays
+    # are non-nullable). The transpilation must succeed and emit the dead-branch guard.
+    sql = transpile(_NULL_ARRAY.format(f=function), "clickhouse")
+    assert "CASE WHEN FALSE" in sql, f"expected CASE WHEN FALSE dead branch, got: {sql!r}"
 
 
 @pytest.mark.parametrize("function", ["percentile_cont", "percentile_disc"])
