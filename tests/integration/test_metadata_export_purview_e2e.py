@@ -10,8 +10,9 @@
 
 """REQ-2118 e2e: a Provisa server publishes a data product to Microsoft Purview's Unified Catalog.
 
-The project's Purview account (provisa-e2e-purview) holds the governance domain
-provisa-e2e-sales, which the product's domain is named for. The product's owner role has one
+The run creates its own Purview account and governance domain (tests/integration/
+purview_account.py; maintainer 2026-11-10: create, test, destroy), tagged with the run, and the
+product's domain is named for that domain (provisa-e2e-sales-<run>). The product's owner role has one
 holder: a user of the Entra tenant, found through Graph. The target is saved and published through
 the admin API: the Data Map through Atlas, then the Unified Catalog product over the Data Map's
 entities. The product, its data assets and the org's terms are read back from the Unified Catalog.
@@ -22,10 +23,10 @@ them), the product and the terms -- and the fixture's teardown, which runs howev
 deletes all of it by those names: the Unified Catalog relationships, data product, terms and data
 assets, then the Data Map entities, glossary terms and glossary. Every delete is attempted and
 every failure reported together; then the account is read again for each of the run's objects and
-the teardown fails if any is still there. The governance domain is the account's, which the test
-only reads, and stays.
+the teardown fails if any is still there. Then the run's governance domain and the account itself
+are deleted and read back: one still there fails the run.
 
-Without the account's endpoint and the CI app's credentials the test fails, never skips: a target
+Without the test resource group and the CI app's credentials the test fails, never skips: a target
 with no end-to-end proof is not complete (REQ-2119).
 """
 
@@ -48,6 +49,7 @@ from provisa.api.metadata_export.atlas import (
     PROVISA_TABLE_TYPE,
 )
 from provisa.api.metadata_export.purview import API_VERSION
+from tests.integration.purview_account import purview_account
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     GLOSSARY_TERM,
@@ -67,13 +69,15 @@ pytestmark = [
 ]
 
 ORG = "mdx_purview_e2e"
+# The stem of the run's governance domain (purview_account names it <stem>-<run>).
 DOMAIN = "provisa-e2e-sales"
 OWNER = "provisa-e2e-owner"
 _CREDENTIALS = (
-    "PROVISA_E2E_PURVIEW_ENDPOINT",
     "AZURE_TENANT_ID",
     "AZURE_CLIENT_ID",
     "AZURE_CLIENT_SECRET",
+    # The test resource group the run's Purview account is created in.
+    "FABRIC_RESOURCE_GROUP",
 )
 PURVIEW = "https://purview.azure.net/.default"
 ATLAS = "/api/atlas/v2"
@@ -87,10 +91,12 @@ class _Run:
     finds exactly the run's own objects and no other run's."""
 
     tag: str
+    # The run's own governance domain (purview_account), which the product's domain is named for.
+    domain: str
 
     @classmethod
-    def new(cls) -> _Run:
-        return cls(uuid.uuid4().hex[:8])
+    def new(cls, domain: str) -> _Run:
+        return cls(uuid.uuid4().hex[:8], domain)
 
     @property
     def org(self) -> str:
@@ -133,7 +139,7 @@ class _Run:
             "trino",
             with_view=False,
             product=self.product,
-            domain=DOMAIN,
+            domain=self.domain,
             product_name=self.name,
             source=self.source,
             terms=self.terms,
@@ -184,7 +190,7 @@ def _catalog(creds: dict[str, str]) -> str:
 
 
 def _data_map(creds: dict[str, str]) -> str:
-    return f"{creds['PROVISA_E2E_PURVIEW_ENDPOINT'].rstrip('/')}{ATLAS}"
+    return f"{creds['endpoint'].rstrip('/')}{ATLAS}"
 
 
 def _a_tenant_user(creds: dict[str, str]) -> tuple[str, str]:
@@ -245,11 +251,11 @@ def _listed(http: httpx.Client, url: str, **params) -> list[dict]:
 
 def _domain_id(http: httpx.Client, creds: dict[str, str]) -> str:
     domains = {d["name"]: d["id"] for d in _listed(http, f"{_catalog(creds)}/businessdomains")}
-    return domains[DOMAIN]
+    return domains[creds["domain"]]
 
 
 def _named(http: httpx.Client, creds: dict[str, str], kind: str, names: set[str]) -> list[dict]:
-    """The Unified Catalog ``kind`` (dataProducts, terms) of DOMAIN named one of ``names``: the
+    """The Unified Catalog ``kind`` (dataProducts, terms) of the run's domain named one of ``names``: the
     service gives each an id of its own, so the run's are found by the run's names."""
     url = f"{_catalog(creds)}/{kind}"
     return [
@@ -566,46 +572,50 @@ async def _deprecate(client: httpx.AsyncClient, name: str) -> dict:
 
 @pytest.fixture(scope="module")
 async def published():
-    creds = _credentials()
-    run = _Run.new()
-    result: dict | None = None
-    try:
-        email, oid = _a_tenant_user(creds)
-        async with published_server(
-            run.org,
-            with_view=False,
-            product=run.product,
-            domain=DOMAIN,
-            product_name=run.name,
-            source=run.source,
-            terms=run.terms,
-        ) as client:
-            await _hold_owner_role(client, run.org, email)
-            await approve_terms(client, run.terms)
-            result = await publish(
-                client,
-                {
-                    "provider": "purview",
-                    "endpoint": creds["PROVISA_E2E_PURVIEW_ENDPOINT"],
-                    "auth_mode": "entra",
-                    "entra_tenant_id": creds["AZURE_TENANT_ID"],
-                    "entra_client_id": creds["AZURE_CLIENT_ID"],
-                    "entra_client_secret": creds["AZURE_CLIENT_SECRET"],
-                    "timeout_seconds": 120,
-                },
+    """The run's own Purview account and governance domain (purview_account), published to; the
+    run's objects deleted and read back after, then the domain and the account."""
+    env = _credentials()
+    with purview_account(env, env["FABRIC_RESOURCE_GROUP"], DOMAIN) as account:
+        creds = {**env, "endpoint": account.endpoint, "domain": account.domain_name}
+        run = _Run.new(account.domain_name)
+        result: dict | None = None
+        try:
+            email, oid = _a_tenant_user(creds)
+            async with published_server(
+                run.org,
+                with_view=False,
+                product=run.product,
+                domain=run.domain,
+                product_name=run.name,
+                source=run.source,
+                terms=run.terms,
+            ) as client:
+                await _hold_owner_role(client, run.org, email)
+                await approve_terms(client, run.terms)
+                result = await publish(
+                    client,
+                    {
+                        "provider": "purview",
+                        "endpoint": account.endpoint,
+                        "auth_mode": "entra",
+                        "entra_tenant_id": creds["AZURE_TENANT_ID"],
+                        "entra_client_id": creds["AZURE_CLIENT_ID"],
+                        "entra_client_secret": creds["AZURE_CLIENT_SECRET"],
+                        "timeout_seconds": 120,
+                    },
+                )
+                # A curator deprecates a published term; the next publish moves the live Unified
+                # Catalog term from PUBLISHED to EXPIRED.
+                deprecated = await _deprecate(client, run.glossary_term)
+            term, term_assets = _term(creds, run.class_term)
+            expired, _ = _term(creds, run.glossary_term)
+            found, assets, guids = _read_back(creds, run.name)
+            yield run, result, found, assets, guids, oid, term, term_assets, deprecated, expired
+        finally:
+            problems = _tear_down(creds, run, result)
+            assert not problems, (
+                "the run left the Purview account unclean (REQ-254):\n" + "\n".join(problems)
             )
-            # A curator deprecates a published term; the next publish moves the live Unified
-            # Catalog term from PUBLISHED to EXPIRED.
-            deprecated = await _deprecate(client, run.glossary_term)
-        term, term_assets = _term(creds, run.class_term)
-        expired, _ = _term(creds, run.glossary_term)
-        found, assets, guids = _read_back(creds, run.name)
-        yield run, result, found, assets, guids, oid, term, term_assets, deprecated, expired
-    finally:
-        problems = _tear_down(creds, run, result)
-        assert not problems, "the run left the Purview account unclean (REQ-254):\n" + "\n".join(
-            problems
-        )
 
 
 async def test_the_publish_reports_the_product_and_its_assets(published):

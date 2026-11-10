@@ -1,0 +1,29 @@
+# The host a Rust source's worker runs (REQ-2227). provisa/rustlang/build.py compiles it once per
+# code hash with the code linked in: it writes this manifest's dependencies beside the code's,
+# and joins the Cargo.lock beside this file with the code's, so each crate is at a version one of
+# the two locks names (the code's, where both name one).
+[package]
+name = "provisa-codehost"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "host"
+path = "src/main.rs"
+
+[dependencies]
+arrow-array = { version = "56", default-features = false }
+arrow-buffer = { version = "56", default-features = false }
+arrow-schema = { version = "56", default-features = false }
+arrow-ipc = { version = "56", default-features = false }
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+libc = { version = "0.2", default-features = false }
+serde = { version = "1", default-features = false, features = ["std"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = 2
+debug = false
+strip = true
+panic = "unwind"

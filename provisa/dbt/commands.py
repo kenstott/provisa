@@ -15,7 +15,8 @@ freshness`` and each macro through ``run-operation``. Each is a mutation. Nothin
 call, a trigger or a schedule does, and dbt goes on running on its own schedule.
 
 Provisa holds no dbt logic. A command only says what to invoke, at wherever dbt already runs: dbt
-Cloud's jobs API (an ``http`` command) or a ``dbt`` a command line reaches (a ``script`` command).
+Cloud's jobs API (an ``http`` command), a ``dbt`` a command line reaches (a ``script`` command), or
+an operator-run connector's ``@command`` taking the invocation as a fixed argument.
 """
 
 # Requirements: REQ-2228
@@ -98,6 +99,20 @@ def script_binding(command: DbtCommand, command_line: str) -> dict[str, Any]:
     if command.arguments:
         binding["json_argument"] = {"flag": "--args", "argument": MACRO_ARGUMENT}
     return binding
+
+
+def connector_binding(
+    command: DbtCommand, *, source_id: str, code_command: str, invocation_argument: str
+) -> dict[str, Any]:
+    """A ``code_command``'s binding: a code source's ``@command``, the dbt invocation a fixed
+    argument of it, so a caller runs this command and no other (REQ-2221, REQ-885)."""
+    if not code_command:
+        raise TargetRefused(f"a dbt source run by the connector {source_id!r} names its @command")
+    return {
+        "source_id": source_id,
+        "command": code_command,
+        "fixed_arguments": {invocation_argument: list(command.invocation)},
+    }
 
 
 def cloud_binding(

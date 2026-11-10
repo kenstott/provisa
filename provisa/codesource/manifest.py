@@ -39,7 +39,7 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221
+# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200, REQ-2221, REQ-2227
 from __future__ import annotations
 
 import hashlib
@@ -94,6 +94,10 @@ PYTHON_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 #: Provisa's is unknown; a stream is an iterator function yielding a row and an error
 #: (``iter.Seq2[T, error]``), which Go has no async counterpart of.
 GO_RULES = Rules(standard_tags=frozenset(), sync_streams=True, stream_errors=True)
+#: Rust (REQ-2227): a doc comment has no standard tag beginning with ``@``, so every one but
+#: Provisa's is unknown; a stream is an iterator, of rows or of rows each in a Result, which a
+#: Rust source has no async counterpart of.
+RUST_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 
 
 # -- shapes -----------------------------------------------------------------------------------------
