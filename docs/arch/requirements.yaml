@@ -93987,7 +93987,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     local accounts and known members of the org, returning the principal the sign-in token carries, with
     name and email for display only. A person not yet seen is granted by typed email, shown as pending,
     and the grant attaches when a sign-in token''s email matches. Directory lookup in an identity provider
-    is added per provider, behind one interface, as customers need it.'
+    is added per provider, behind one interface, as customers need it. (Amended 2026-11-10, IDENTITY PROVIDER
+    ROLES ARE MIRRORED:) Maintainer 2026-11-10: when roles come from the identity provider''s claims, each
+    sign-in records the person''s role claims, as the identity provider''s attributes already are, and the
+    roles a person holds are listed with the identity provider as their origin. They are read-only in Provisa.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
