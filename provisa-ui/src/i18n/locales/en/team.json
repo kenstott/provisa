@@ -91,6 +91,8 @@
       "cancelEdit": "Cancel the edit",
       "remove": "Remove {{name}}"
     },
-    "localUsersHeading": "Local users"
+    "localUsersHeading": "Local users",
+    "attributesTab": "Attributes",
+    "accessTab": "Access"
   }
 }
