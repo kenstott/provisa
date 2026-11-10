@@ -1,0 +1,82 @@
+# Release: platform connector block
+#
+# REQ-2225: the platform connector block every Provisa package of the release carries. The Spark
+# connector is built and its block written to provisa/core/platform_connectors.yaml, which is
+# uploaded to the run as `platform-connectors`; each leg job that packages provisa downloads it
+# over its checkout before anything is packaged, so this leg runs before the others.
+#
+# One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
+# manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
+# `publish` is false on a dry run: the connector's image is neither built nor pushed and the
+# checkout's empty block is uploaded as it is, so a dry run's packages carry the empty block.
+name: "Release: platform connector block"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.477).
+        type: string
+        required: true
+      publish:
+        description: Leave the run (draft release, attachments, PyPI, image pushes). False on a dry run.
+        type: boolean
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  platform-connectors:
+    name: Platform connector block
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - id: meta
+        uses: ./.github/actions/release-metadata
+        with:
+          version: ${{ inputs.version }}
+
+      # The connector's image carries provisa._encoders from the Linux wheel of this very version.
+      - name: Stamp the version
+        if: inputs.publish
+        run: |
+          sed -i 's/^version = .*/version = "${{ steps.meta.outputs.py_version }}"/' pyproject.toml
+          sed -i 's/"provisa-notebook==[^"]*"/"provisa-notebook==${{ steps.meta.outputs.py_version }}"/' pyproject.toml
+
+      - name: Set up Python
+        if: inputs.publish
+        uses: ./.github/actions/setup-python
+
+      - name: Build the Linux wheel the image's encoders come from
+        if: inputs.publish
+        run: docker build --platform linux/amd64 --target provisa-wheel --output type=local,dest=wheelhouse .
+
+      # Builds the connector's image and pushes it to the registry (its digest is in the block),
+      # so it leaves the run: only on publish.
+      - name: Build the Spark connector and fill the block
+        if: inputs.publish
+        env:
+          VERSION: ${{ inputs.version }}
+          PROVISA_WHEELHOUSE: ${{ github.workspace }}/wheelhouse
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run provisa connector build "https://github.com/${GITHUB_REPOSITORY}.git" \
+            --name spark --ref "$VERSION" --commit "$GITHUB_SHA" --path connectors/spark \
+            --build-command "python3 connectors/spark/_build_client.py" \
+            --image ghcr.io/kenstott/provisa-spark-connector --arch amd64 \
+            --registry-user "$GITHUB_ACTOR" --registry-password-env REGISTRY_PASSWORD > block.yaml
+          uv run python scripts/fill_platform_connectors.py block.yaml
+
+      - name: Keep the block for the packaging legs
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-connectors
+          path: provisa/core/platform_connectors.yaml
+          retention-days: 1

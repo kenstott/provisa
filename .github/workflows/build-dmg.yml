@@ -40,8 +40,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # REQ-2225: the platform connector block, first: every package of the release carries it (each
+  # leg job that packages provisa downloads it over its checkout). On a release the connector's
+  # image is pushed here, before the other legs; nothing names it until a package carrying this
+  # block is published. A dry run pushes nothing and ships the empty block.
+  platform-connectors:
+    name: Platform connector block
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release-platform-connectors.yml
+    with:
+      version: ${{ inputs.version || github.ref_name }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+
   prebuilt:
     name: Prebuilt inputs
+    needs: platform-connectors
     uses: ./.github/workflows/release-prebuilt.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -49,6 +64,7 @@ jobs:
 
   packages:
     name: Packages
+    needs: platform-connectors
     # The union of what the leg's jobs ask for: attach SBOMs to the draft release (contents),
     # Sigstore for the JAR's attestation (id-token, attestations).
     permissions:
@@ -103,7 +119,7 @@ jobs:
     name: Publish Python client to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [prebuilt, packages, macos, windows, linux]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -128,7 +144,7 @@ jobs:
     name: Publish provisa-notebook to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [prebuilt, packages, macos, windows, linux]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -150,7 +166,7 @@ jobs:
     name: Publish provisa server to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
     runs-on: ubuntu-latest
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
     # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
@@ -179,7 +195,7 @@ jobs:
   # proves the asset set is whole), and never after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
     # Sigstore attestations (id-token), the image pushes (packages).

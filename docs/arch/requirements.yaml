@@ -18452,7 +18452,11 @@
     Linux arm64 is a fully supported platform, because Docker on Apple silicon runs Linux arm64 and the
     macOS container tier is a Linux arm64 install. The release builds, publishes and probes everything for
     it as for the other platforms: the Provisa wheel, the DuckDB extension parts and every pgwire connector
-    bundle. The supported platforms are macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64.'
+    bundle. The supported platforms are macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64. (Amended
+    2026-11-10, THE ENGINE RELEASE BUILDS THE BUNDLES:) Maintainer 2026-11-10: the pgwire connector bundles,
+    including the files they share, are built, signed and published by the calcite engine release, which
+    holds the signing key and repository credentials, for every supported platform. Provisa builds no bundle;
+    it reads the bundles the engine release published at the engine version it pins.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
