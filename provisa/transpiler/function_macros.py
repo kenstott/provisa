@@ -289,6 +289,19 @@ _PG_TYPEOF = (
     "repeat('[]', (length(typeof(value)) - length(replace(typeof(value), '[]', ''))) // 2)"
 )
 
+#: uuid_extract_timestamp, as PostgreSQL 17's uuid.c reads it: a version 7 UUID's milliseconds
+#: (DuckDB's own), a version 1 UUID's 100-nanosecond count since 1582-10-15, and NULL for any other
+#: version or a variant that is not RFC 9562's. DuckDB's own refuses all but version 7.
+_UUID_HEX = "replace(CAST(u AS VARCHAR), '-', '')"
+_UUID_TIMESTAMP = (
+    f"CASE WHEN (CAST('0x' || substr({_UUID_HEX}, 17, 1) AS INTEGER) & 12) <> 8 THEN NULL "
+    "WHEN uuid_extract_version(u) = 7 THEN uuid_extract_timestamp(u) "
+    "WHEN uuid_extract_version(u) = 1 THEN TIMESTAMPTZ '1970-01-01 00:00:00+00' + to_microseconds("
+    f"((CAST('0x' || substr({_UUID_HEX}, 14, 3) AS BIGINT) << 48) "
+    f"| (CAST('0x' || substr({_UUID_HEX}, 9, 4) AS BIGINT) << 32) "
+    f"| CAST('0x' || substr({_UUID_HEX}, 1, 8) AS BIGINT)) // 10 - 12219292800000000) END"
+)
+
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
 _INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
@@ -966,6 +979,7 @@ _NUMBERS: tuple[Macro, ...] = (
     _pg("bool_int4", "value", "CASE WHEN value THEN 1 WHEN NOT value THEN 0 END"),
     _pg("float4_avg", "x", "AVG(CAST(x AS DOUBLE PRECISION))"),
     _macro("int2int4_sum", "v", strict("v", "BIGINT", pg_forms.INT2INT4_SUM)),
+    _macro("uuid_extract_timestamp", "u", strict("u", "TIMESTAMPTZ", _UUID_TIMESTAMP)),
     _macro("int2vectorsend", "v", strict("v", "BLOB", pg_forms.INT2VECTOR_SEND)),
     _macro(
         "integer_pl_date",
@@ -1204,6 +1218,10 @@ _ARRAYS: tuple[Macro, ...] = (
             ),
         },
     ),
+    # DuckDB's array_length takes no dimension but the first, and refuses the call for any
+    # other: a dimension the list does not have is NULL, as array_upper's (a list counts from 1).
+    # (generate_subscripts(a, d) is read as its reverse-false form: pg_functions.)
+    _macro("array_length", "a, d", _ARRAY_UPPER, own={_EVERY_BUT_DUCKDB: MAPPED}),
     _macro(
         "generate_subscripts",
         "a, d, reverse",
@@ -1489,13 +1507,21 @@ _ROWS: tuple[Macro, ...] = (
     ),
     Macro("inet_text", ("value",), {_EVERY: Pg(strict("value", "TEXT", _INET_TEXT))}),
     # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
-    _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value))"),
-    _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value))"),
+    _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value, 'max'))"),
+    _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value, 'min'))"),
     _macro("to_number", "value, format", "provisa_to_number(value, format)"),
     Macro("current_query", ()),  # the engine's is the statement as Provisa wrote it
     _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
     _macro("pg_to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),  # as readable writes it
     _macro("netmask", "value", "host(netmask(value))"),
+    # DuckDB's broadcast of an IPv4 address of the high bit holds it as a negative integer, which
+    # is no address; its text is the address, read again.
+    _macro(
+        "broadcast",
+        "value",
+        "CAST(CAST(broadcast(value) AS VARCHAR) AS INET)",
+        own={_EVERY_BUT_DUCKDB: MAPPED},
+    ),
     _macro(
         "uuid_extract_version",
         "value",
@@ -2628,6 +2654,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
     if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
         return "array_cat", [node.this, node.expressions[0]]
+    if isinstance(node, exp.ArraySize) and node.expression is not None:  # array_length(a, d)
+        return "array_length", [node.this, node.expression]
     if isinstance(node, exp.Repeat):
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
@@ -2643,7 +2671,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         if node.args.get("modifiers") is None:
             return "regexp_replace_at", [node.args[k] for k in at if node.args.get(k) is not None]
     if isinstance(node, exp.Log) and node.this == exp.Literal.number(10):  # sqlglot's log10
-        return "log10", [node.expression]
+        return "log10", [node.args["expression"]]
     if isinstance(node, (exp.Log, exp.Pow)):
         called = "log" if isinstance(node, exp.Log) else "power"
         return called, [a for a in (node.this, node.expression) if a is not None]
@@ -2923,6 +2951,8 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
 _MOST_SCALE = 18
+#: The most digits past the point DuckDB's DECIMAL holds: its width is 38 at most.
+_DUCKDB_MOST_SCALE = 38
 
 
 def refuse_named(tree: exp.Expr, dialect: str) -> None:
@@ -2966,7 +2996,8 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
     if isinstance(said, exp.Null):
         return None
     digits = _constant(said)
-    if digits is None or (dialect not in _DUCKDB and not 0 <= digits <= _MOST_SCALE):
+    most = _DUCKDB_MOST_SCALE if dialect in _DUCKDB else _MOST_SCALE
+    if digits is None or digits > most or (dialect not in _DUCKDB and digits < 0):
         raise FunctionRefused(called, dialect)
     return digits
 

@@ -37,6 +37,7 @@ import sqlglot.expressions as exp
 from provisa.core import pg_range
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Range, RangeType
+from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     SubtypeOperationRefused,
@@ -252,6 +253,37 @@ def _case(whens: Iterable[tuple[exp.Expr, exp.Expr]], default: exp.Expr | None) 
     if not ifs:
         return default.copy() if default is not None else _null()
     return exp.Case(ifs=ifs, default=default.copy() if default is not None else None)
+
+
+def _typed(written: exp.Expr, sql_type: str) -> exp.Expr:
+    """``written``, a NULL known at compile time (a NULL range's part) cast to the function's
+    PostgreSQL result type: a bare NULL has no type, and a client is sent text."""
+    if not isinstance(written, exp.Null):
+        return written
+    return exp.Cast(this=written, to=exp.DataType.build(sql_type, dialect="postgres"))
+
+
+def _time_part(value: exp.Expr, offset: exp.Expr) -> exp.Expr:
+    """in_range's offset for a time or timetz value: its interval's time alone, as
+    in_range_time_interval reads it (its months and days are no part of a time of day). Read where
+    the statement writes the interval; any other offset is as written."""
+    from provisa.transpiler.pg_type_literals import interval_fields
+
+    kind = _unwrapped(value)
+    cast = _unwrapped(offset)
+    if not (
+        isinstance(kind, exp.Cast)
+        and kind.to.this in (_T.TIME, _T.TIMETZ)
+        and isinstance(cast, exp.Cast)
+        and cast.to.this == _T.INTERVAL
+        and isinstance(cast.this, exp.Literal)
+        and cast.this.is_string
+    ):
+        return offset
+    fields = interval_fields(cast.this.this)
+    if fields is None:
+        return offset
+    return exp.Cast(this=_string(f"{fields[2]} microseconds"), to=cast.to.copy())
 
 
 def _int(value: int) -> exp.Expr:
@@ -1299,15 +1331,16 @@ def _constant_element(node: exp.Expr, rtype: RangeType) -> object:  # object-ok:
     inner = _unwrapped(node)
     if _null_value(inner):
         return None
-    if isinstance(inner, exp.Neg):
-        return pg_range.read_element(rtype, "-" + _constant_text(inner.this))
     return pg_range.read_element(rtype, _constant_text(inner))
 
 
 def _constant_text(node: exp.Expr) -> str:
+    """A constant's text, its casts gone: ``(-7)::integer`` is ``-7``."""
     inner = _unwrapped(node)
     while isinstance(inner, exp.Cast):
         inner = _unwrapped(inner.this)
+    if isinstance(inner, exp.Neg):
+        return "-" + _constant_text(inner.this)
     return inner.this
 
 
@@ -1726,6 +1759,7 @@ class _Rewrite:
     def _in_range(self, args: list[exp.Expr]) -> exp.Expr:
         """in_range(value, base, offset, subtract, less): a window frame's bound, a comparison."""
         value, base, offset, subtract, less = args
+        offset = _time_part(value, offset)
         sum_ = _case([(subtract.copy(), _minus(base, offset))], _plus(base, offset))
         below = exp.LTE(this=value.copy(), expression=sum_.copy())
         above = exp.GTE(this=value.copy(), expression=sum_.copy())
@@ -1786,7 +1820,7 @@ class _Rewrite:
                     exp.If(this=_not(written), true=_int(0)),
                 ]
             )
-        return written
+        return _typed(written, "boolean")
 
     def visit(self, node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one per form
         if isinstance(node, exp.Dot) and _catalog(node):
@@ -1809,7 +1843,8 @@ class _Rewrite:
             if value is None:
                 return node
             name = "lower" if isinstance(node, exp.Lower) else "upper"
-            return self._part(name, value, self._as_written(node), self._read_as_text(node))
+            written = self._part(name, value, self._as_written(node), self._read_as_text(node))
+            return _typed(written, value.rtype.element)
         if isinstance(node, (exp.Explode, exp.Unnest)):
             return self._unnest(node)
         if isinstance(node, exp.Anonymous):
@@ -1880,9 +1915,9 @@ class _Rewrite:
         if operator == "cmp" and len(args) == 2:  # noqa: PLR2004
             a, b = self._pair(args[0], args[1])
             if isinstance(a, _R) and isinstance(b, _R):
-                return _case([(_or(a.null, b.null), _null())], _sign(a, b))
+                return _typed(_case([(_or(a.null, b.null), _null())], _sign(a, b)), "integer")
             if isinstance(a, _M) and isinstance(b, _M):
-                return self._multirange_cmp(a, b)
+                return _typed(self._multirange_cmp(a, b), "integer")
             return None
         if operator in _BOOLEAN_FUNCTIONS and len(args) == 2:  # noqa: PLR2004
             verb = _BOOLEAN_FUNCTIONS[operator]
@@ -1920,7 +1955,11 @@ class _Rewrite:
         )
 
     def _aggregate(self, name: str, argument: exp.Expr) -> exp.Expr:
+        if isinstance(argument, exp.Order):  # a union or an intersection is of no order
+            argument = argument.this
         value = self.value(argument)
+        if value is None and isinstance(argument, exp.Column):
+            value = self._of_values(argument)
         if value is None:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
         w, rtype = self.writer, value.rtype
@@ -1935,6 +1974,17 @@ class _Rewrite:
         # No value at all is NULL, as a strict aggregate's result is.
         nothing = _eq(exp.Count(this=text.copy()), _int(0))
         return _case([(nothing, _null())], folded)
+
+    def _of_values(self, column: exp.Column) -> _Value | None:
+        """A column of a VALUES list the statement casts to a range or multirange type, read as
+        that type's text (pg_literals.values_cast)."""
+        said = values_cast(column)
+        kind = said.to.this if said is not None else None
+        if kind in _CAST_RANGES:
+            return self.writer.parsed(column.copy(), RANGE_TYPES[_CAST_RANGES[kind]])
+        if kind in _CAST_MULTIRANGES:
+            return _M(MULTIRANGE_TYPES[_CAST_MULTIRANGES[kind]], _is_null(column), column.copy())
+        return None
 
     def _unnest(self, node: exp.Expr) -> exp.Expr:
         argument = node.this if isinstance(node, exp.Explode) else node.expressions[0]

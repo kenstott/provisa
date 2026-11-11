@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime
 import importlib.resources
+import re
 import zoneinfo
 
 from provisa.pgwire.catalog_pg17_abbrevs import TIMEZONE_ABBREVS
@@ -28,6 +29,53 @@ from provisa.pgwire.catalog_pg17_abbrevs import TIMEZONE_ABBREVS
 ZONE_NAMES: tuple[str, ...] = tuple(
     sorted(importlib.resources.files("tzdata").joinpath("zones").read_text().split())
 )
+
+
+#: The zone names and abbreviations PostgreSQL finds a zone's text among, in lower case, before it
+#: reads the text as a POSIX zone.
+_NAMED = frozenset(
+    [name.lower() for name in ZONE_NAMES] + [abbrev.lower() for abbrev, _, _ in TIMEZONE_ABBREVS]
+)
+#: A POSIX zone of no daylight rule: an optional standard name, then its offset WEST of UTC.
+_POSIX_FIXED = re.compile(
+    r"(?:<[A-Za-z0-9+-]+>|[A-Za-z]{3,})?(?P<sign>[+-]?)(?P<hours>\d{1,3})"
+    r"(?::(?P<minutes>\d{1,2})(?::(?P<seconds>\d{1,2}))?)?"
+)
+#: A numeric zone as DecodeTimezone reads it: a sign, then its offset EAST of UTC.
+_NUMERIC = re.compile(
+    r"(?P<sign>[+-])(?P<hours>\d{1,2})(?::?(?P<minutes>\d{2})(?::?(?P<seconds>\d{2}))?)?"
+)
+_DAY_MINUTES = 24 * 60
+
+
+def _icu(found: re.Match[str] | None, east_sign: str) -> str | None:
+    """The ICU zone of the offset ``found`` says, east when its sign is ``east_sign``; None for
+    one no ICU zone has (seconds, or a day or more)."""
+    if found is None or found["seconds"] not in (None, "0", "00"):
+        return None
+    minutes = int(found["hours"]) * 60 + int(found["minutes"] or 0)
+    east = minutes if (found["sign"] or "+") == east_sign else -minutes
+    if abs(east) >= _DAY_MINUTES:
+        return None
+    hours, rest = divmod(abs(east), 60)
+    return f"GMT{'+' if east >= 0 else '-'}{hours:02d}:{rest:02d}"
+
+
+def icu_fixed_zone(written: str) -> str | None:
+    """The ICU zone DuckDB reads for a zone's text PostgreSQL reads as a POSIX zone of a fixed
+    offset (pg_tzset, as timezone() and AT TIME ZONE look a zone up): ``'12'`` is twelve hours
+    WEST of UTC, ``GMT-12:00``, and ``'+05:30'`` five and a half, ``GMT-05:30``. None for a text
+    PostgreSQL finds by name or abbreviation, and for an offset no ICU zone has."""
+    if written.lower() in _NAMED:
+        return None
+    return _icu(_POSIX_FIXED.fullmatch(written.strip()), "-")
+
+
+def icu_numeric_zone(written: str) -> str | None:
+    """The ICU zone of a numeric zone as make_timestamptz reads one (parse_sane_timezone, ISO
+    8601's sign): ``'+05:30'`` is five and a half hours EAST of UTC, ``GMT+05:30``. None for any
+    other text."""
+    return _icu(_NUMERIC.fullmatch(written.strip()), "+")
 
 
 def _quoted(text: str) -> str:
