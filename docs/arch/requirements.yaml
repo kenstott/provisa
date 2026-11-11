@@ -91757,7 +91757,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     an offer with any other role is refused by name. Rights can change after an offer is published, so accepting
     a bid checks again that the one accepting may grant the offer''s role; an open offer is checked against
     the right of the owner who published it, and while that right is gone the offer is not accepted, its
-    owner is told, and the offer is listed for review.'
+    owner is told, and the offer is listed for review. (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A
+    SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11. Each offer gives one level of data: full (the product''s
+    datasets); a sample, which is one or more views that already exist in the model over the product''s
+    datasets, named on the offer -- accepting it builds entitlements on those views alone, never on the
+    tables beneath them, so no query can widen the sample past what the views express; or synthetic, the
+    product''s shape served by the existing fake-data generator (REQ-1494), with no real records. An offer''s
+    data quality results and profiles stay its own choices; a synthetic offer has no profiles.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
