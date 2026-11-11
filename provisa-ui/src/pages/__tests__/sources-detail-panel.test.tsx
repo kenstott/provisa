@@ -306,8 +306,9 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     expect(
       step.getByText("Needs input: no type was found for body. Register it on its own."),
     ).toBeInTheDocument();
-    // A step in the panel, not a dialog over the page.
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // A step in the source's own panel, not a dialog over the page.
+    expect(panel()).toContainElement(screen.getByTestId("register-many-tables"));
+    expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
   });
 });
 

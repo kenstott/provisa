@@ -83,9 +83,14 @@ export function ManyTablesList({
                       {tbl.comment}
                     </Text>
                   )}
+                  {/* Why it cannot be ticked, on the line under its name. */}
+                  {why && (
+                    <Text c="dimmed" fz="xs">
+                      {why}
+                    </Text>
+                  )}
                 </>
               }
-              description={why}
               data-testid={`register-many-table-${tbl.name}`}
             />
           );
