@@ -1369,6 +1369,16 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="mcp.principal",
+        card="mcp",
+        type="str",
+        effect="live",  # the principal local stdio calls act for; unset, the stdio transport refuses
+        req="REQ-1105",
+        env="PROVISA_MCP_PRINCIPAL",
+        nullable=True,
+        guard="confirm",
+    ),
+    Setting(
         key="mcp.external_url",
         card="mcp",
         type="str",

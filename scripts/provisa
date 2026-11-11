@@ -482,6 +482,9 @@ native_env_pairs() {
         # server.public_url, the operator setting in Deployment settings, when nothing sets it.
         "PROVISA_LOCAL_ADDRESS=http://localhost:${API_PORT}"
     )
+    # REQ-1105: the principal local MCP calls act for, beside the pinned role. No default: a
+    # local MCP server whose configuration names no principal refuses every call, by name.
+    [ -n "${PROVISA_MCP_PRINCIPAL:-}" ] && e+=("PROVISA_MCP_PRINCIPAL=${PROVISA_MCP_PRINCIPAL}")
     [ -n "$ENGINE_URL" ]      && e+=("PROVISA_ENGINE_URL=${ENGINE_URL}")
     [ -n "$MATERIALIZE_URL" ] && e+=("PROVISA_MATERIALIZE_URL=${MATERIALIZE_URL}")
     [ -n "$TRINO_HOST" ]      && e+=("TRINO_HOST=${TRINO_HOST}")
