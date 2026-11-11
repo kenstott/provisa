@@ -95010,7 +95010,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its configuration and overrides. Each named source has a page generated from its definition -- its base,
     what it can be pushed, what it needs to connect, and when it was last verified live (or verified against
     its base) -- never written by hand. The audit of every existing connector, naming the base it sits or
-    would sit on and what it needs from it, is the first step.'
+    would sit on and what it needs from it, is the first step. (Amended 2026-11-11, THE OTHER ROOT IS WHAT
+    THE ENGINES READ NATIVELY:) Maintainer 2026-11-11, after the connector audit. The tree''s other root
+    is everything the serving engines read natively, named for that, not "the SQL family": SQL databases
+    and warehouses, files and lakes (Parquet, CSV, Delta, Iceberg, Hive) and the stores the engines attach
+    directly (MongoDB, Cassandra, Redis, Elasticsearch, Pinot, Druid, Prometheus, Kafka), as named groups
+    within it. A host that serves the source contract over pgwire is a code-resolver instance whatever its
+    language, so the Calcite adapters (Salesforce, ServiceNow, Jira, SharePoint, Splunk and the rest) sit
+    in the tree as Java-runtime hosts, not as hand-built connectors.'
 - id: REQ-2236
   status: proposed
   target: 2027-Q1
