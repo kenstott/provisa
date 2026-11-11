@@ -44,6 +44,7 @@ import {
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { EntitlementListForm } from "./EntitlementListForm";
+import { ExpiryRules } from "./ExpiryRules";
 import { kindInfo, useEntitlementKinds } from "./kinds";
 import { roleLabel } from "./personRoles";
 
@@ -260,6 +261,17 @@ export function PersonEntitlements({
             ))}
           </Stack>
         </Alert>
+      )}
+
+      {view !== null && (
+        <ExpiryRules
+          key={view.role_id}
+          principal={principal}
+          view={view}
+          editable={editable}
+          onSaved={saved}
+          onError={report}
+        />
       )}
 
       {editable && roleId !== null && mode !== null && mode.type !== "end" && (

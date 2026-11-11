@@ -165,6 +165,13 @@ describe("a person's entitlement lists", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("The list this one replaced");
   });
 
+  it("lists the grant's end dates beside its lists", async () => {
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    const rules = await screen.findByTestId("expiry-rules");
+    expect(within(rules).getByTestId("expiry-rule-r1")).toHaveTextContent("The whole grant");
+    expect(within(rules).getByTestId("expiry-rule-r1-extend")).toBeInTheDocument();
+  });
+
   it("is read-only, and says why, when every list comes from the identity provider", async () => {
     mockEffective.mockResolvedValue(ALL_IDP);
     render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
