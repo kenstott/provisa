@@ -25,10 +25,10 @@ import {
   moreId,
   placedLaneOrder,
   stackTerms,
-  tipPlacement,
   type At,
   type Lane,
 } from "../laneDiagram";
+import { tipPlacement } from "../../provisa-graph/tipPlacement";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>

@@ -8,31 +8,44 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The ERD's image controls, in a vertical bar inside the diagram: zoom, fit, full screen, and one
-// download with the file types under it. Shown while the pointer is over the diagram or a control in
-// it has the keyboard's focus (App.css, .erd-stage__bar). The menu and the hints are drawn inside
-// the diagram, not in a portal, so they are still seen while it is full screen.
+// REQ-2239: a graph's controls, in one bar at the canvas's bottom-left, always in this order: zoom
+// in, zoom out, fit, full screen, and one download with the file types under it; a copy of the
+// graph as text where the view gives one. Shown while the pointer is over the graph or a control in
+// it has the keyboard's focus (provisa-graph.css). The menu and the hints are drawn inside the
+// graph, not in a portal, so they are still seen while it is full screen.
 
 import { useEffect, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Menu, Stack } from "@mantine/core";
-import { Download, Expand, Shrink } from "lucide-react";
+import { ActionIcon, Group, Menu } from "@mantine/core";
+import { Check, Copy, Download, Expand, Shrink } from "lucide-react";
 import { FitScreenIcon, ZoomInIcon, ZoomOutIcon } from "../graph/GraphIcons";
 import type { CyInstance } from "../graph/cytoscape-types";
 import { Tip } from "../Tip";
-import { FIT_PADDING, zoomAboutCentre, type ErdExports } from "./erd-viewport";
+import { FIT_PADDING, zoomAboutCentre, type GraphExports } from "./viewport";
 
 const ZOOM_STEP = 1.3;
 
-export function ErdCanvasBar({
+/** Text a graph's controls copy: the button's words, before and after, and the text. */
+export interface GraphCopy {
+  label: string;
+  done: string;
+  text: () => string;
+  testId: string;
+}
+
+export function GraphControls({
   cyRef,
   stageRef,
   exports,
+  copy,
+  testId,
 }: {
   cyRef: RefObject<CyInstance | null>;
-  /** The diagram's own box: what goes full screen. */
+  /** The graph's own box: what goes full screen. */
   stageRef: RefObject<HTMLDivElement | null>;
-  exports: ErdExports;
+  exports: GraphExports;
+  copy?: GraphCopy;
+  testId: string;
 }) {
   const { t } = useTranslation();
   const [full, setFull] = useState(false);
@@ -52,95 +65,119 @@ export function ErdCanvasBar({
   const zoom = (factor: number) => {
     if (cyRef.current) zoomAboutCentre(cyRef.current, factor);
   };
-  const items: { key: keyof ErdExports; label: string }[] = [
-    { key: "svg", label: "SVG" },
-    { key: "png", label: "PNG" },
-    { key: "jpeg", label: "JPEG" },
-    { key: "json", label: "JSON" },
-  ];
-  const hints: Record<keyof ErdExports, string> = {
+  const [copied, setCopied] = useState(false);
+  const copyText = () => {
+    if (!copy) return;
+    void navigator.clipboard.writeText(copy.text()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+  const items = (
+    [
+      { key: "svg", label: "SVG" },
+      { key: "png", label: "PNG" },
+      { key: "jpeg", label: "JPEG" },
+      { key: "json", label: "JSON" },
+    ] as { key: keyof GraphExports; label: string }[]
+  ).filter(({ key }) => exports[key] !== undefined);
+  const hints: Record<keyof GraphExports, string> = {
     svg: t("erdModal.downloadSvg"),
     png: t("erdModal.downloadPng"),
     jpeg: t("erdModal.downloadJpeg"),
     json: t("erdModal.downloadJson"),
   };
   return (
-    <Stack
+    <Group
       gap={2}
-      className="erd-stage__bar"
+      wrap="nowrap"
+      className="pg-controls"
       role="toolbar"
-      aria-orientation="vertical"
+      aria-orientation="horizontal"
       aria-label={t("canvasControls.toolbarLabel")}
-      data-testid="erd-canvas-bar"
+      data-testid={`${testId}-canvas-bar`}
     >
-      <Tip text={t("canvasControls.zoomIn")} position="left" named inPlace>
+      <Tip text={t("canvasControls.zoomIn")} position="top" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
           aria-label={t("canvasControls.zoomIn")}
           onClick={() => zoom(ZOOM_STEP)}
-          data-testid="erd-zoom-in"
+          data-testid={`${testId}-zoom-in`}
         >
           <ZoomInIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={t("canvasControls.zoomOut")} position="left" named inPlace>
+      <Tip text={t("canvasControls.zoomOut")} position="top" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
           aria-label={t("canvasControls.zoomOut")}
           onClick={() => zoom(1 / ZOOM_STEP)}
-          data-testid="erd-zoom-out"
+          data-testid={`${testId}-zoom-out`}
         >
           <ZoomOutIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={t("erdModal.fitAll")} position="left" named inPlace>
+      <Tip text={t("erdModal.fitAll")} position="top" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
           aria-label={t("erdModal.fitAll")}
           onClick={() => cyRef.current?.fit(undefined, FIT_PADDING)}
-          data-testid="erd-fit-all"
+          data-testid={`${testId}-fit-all`}
         >
           <FitScreenIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={fullLabel} position="left" named inPlace>
+      <Tip text={fullLabel} position="top" named inPlace>
         <ActionIcon
           variant={full ? "light" : "subtle"}
           size="md"
           aria-label={fullLabel}
           aria-pressed={full}
           onClick={toggleFull}
-          data-testid="erd-fullscreen"
+          data-testid={`${testId}-fullscreen`}
         >
           {full ? <Shrink size={15} /> : <Expand size={15} />}
         </ActionIcon>
       </Tip>
-      <Menu position="left-start" withinPortal={false} transitionProps={{ duration: 0 }}>
+      <Menu position="top-start" withinPortal={false} transitionProps={{ duration: 0 }}>
         <Menu.Target>
-          <Tip text={t("erdModal.download")} position="left" named inPlace>
+          <Tip text={t("erdModal.download")} position="top" named inPlace>
             <ActionIcon
               variant="subtle"
               size="md"
               aria-label={t("erdModal.download")}
-              data-testid="erd-download"
+              data-testid={`${testId}-download`}
             >
               <Download size={15} />
             </ActionIcon>
           </Tip>
         </Menu.Target>
-        <Menu.Dropdown data-testid="erd-download-menu">
+        <Menu.Dropdown data-testid={`${testId}-download-menu`}>
           {items.map(({ key, label }) => (
-            <Tip key={key} text={hints[key]} position="left" inPlace>
-              <Menu.Item onClick={exports[key]} data-testid={`erd-export-${key}`}>
+            <Tip key={key} text={hints[key]} position="top" inPlace>
+              <Menu.Item onClick={exports[key]} data-testid={`${testId}-export-${key}`}>
                 {label}
               </Menu.Item>
             </Tip>
           ))}
         </Menu.Dropdown>
       </Menu>
-    </Stack>
+    {copy && (
+        <Tip text={copied ? copy.done : copy.label} position="top" named inPlace>
+          <ActionIcon
+            variant="subtle"
+            size="md"
+            aria-label={copied ? copy.done : copy.label}
+            onClick={copyText}
+            data-testid={copy.testId}
+          >
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+          </ActionIcon>
+        </Tip>
+      )}
+    </Group>
   );
 }

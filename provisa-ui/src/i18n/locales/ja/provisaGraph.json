@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "凡例",
+    "type": {
+      "product": "データプロダクト",
+      "source": "ソース",
+      "domain": "ドメイン",
+      "group": "グループ",
+      "table": "テーブル",
+      "view": "ビュー",
+      "relation": "外部テーブル",
+      "junction": "結合",
+      "column": "列",
+      "term": "用語",
+      "concept": "概念",
+      "class": "クラス",
+      "property": "プロパティ",
+      "command": "コマンド",
+      "checker": "品質チェック",
+      "profile": "プロファイル",
+      "tag": "タグ",
+      "more": "その他"
+    }
+  }
+}

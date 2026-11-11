@@ -8,18 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The ERD's viewport moves and downloads, as its canvas bar calls them.
+// REQ-2239: a graph's camera moves and downloads, as its controls call them.
 
 import type { CyInstance } from "../graph/cytoscape-types";
 
 /** The margin a fit leaves round the diagram. */
 export const FIT_PADDING = 10;
 
-export interface ErdExports {
+export interface GraphExports {
   svg: () => void;
   png: () => void;
   jpeg: () => void;
-  json: () => void;
+  json?: () => void;
 }
 
 /** Zoom by `factor` about the middle of the canvas, as a pinch at its centre would. */

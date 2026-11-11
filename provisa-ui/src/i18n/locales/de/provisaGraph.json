@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "Legende",
+    "type": {
+      "product": "Datenprodukt",
+      "source": "Quelle",
+      "domain": "Domäne",
+      "group": "Gruppe",
+      "table": "Tabelle",
+      "view": "Sicht",
+      "relation": "Externe Tabelle",
+      "junction": "Verknüpfung",
+      "column": "Spalte",
+      "term": "Begriff",
+      "concept": "Konzept",
+      "class": "Klasse",
+      "property": "Eigenschaft",
+      "command": "Befehl",
+      "checker": "Qualitätsprüfung",
+      "profile": "Profil",
+      "tag": "Tag",
+      "more": "Mehr"
+    }
+  }
+}

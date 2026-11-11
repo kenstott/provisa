@@ -299,7 +299,7 @@ const param = (key: string) => new URL(where(), "http://x").searchParams.get(key
 const drawnHas = (id: string) => (drawn.cy?.getElementById(id).length ?? 0) > 0;
 const diagramHolds = async (id: string) => waitFor(() => expect(drawnHas(id)).toBe(true));
 const tap = (id: string) => act(() => drawn.cy?.getElementById(id).emit("tap"));
-const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 const settled = (ids: string) =>
   waitFor(() => expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", ids));
 const toggle = (page: "tables" | "relationships") =>
@@ -728,7 +728,7 @@ describe("the page's filter box on the ERD", () => {
 });
 
 describe("the item whose detail panel is open", () => {
-  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 
   it("on Tables is highlighted when the ERD opens from the list", async () => {
     open("/tables");
