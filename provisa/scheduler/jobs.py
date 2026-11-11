@@ -1154,6 +1154,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.auth.role_grants import register_org_role_grants
 
         register_org_role_grants(scheduler, org_id)
+        # REQ-2219: and its entitlement expiry rules, each's expiring-soon and expired events.
+        from provisa.entitlements.expiry_run import register_org as register_org_expiry_run
+
+        register_org_expiry_run(scheduler, org_id)
         # REQ-2144: and its deprecated terms, retired on their planned date.
         from provisa.scheduler.planned_retirement import register_org as register_org_retirements
 

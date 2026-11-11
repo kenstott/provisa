@@ -31,7 +31,9 @@ from provisa.entitlements.index import (
     build_index,
     capability_scopes,
     check_lists,
+    covers,
     matches,
+    overlaps,
 )
 from provisa.entitlements.lists import (
     IDP,
@@ -42,7 +44,7 @@ from provisa.entitlements.lists import (
     effective_lists,
 )
 from provisa.entitlements.mask import EntitlementMask
-from provisa.entitlements.runtime import principal_mask, role_defaults
+from provisa.entitlements.runtime import ListReach, list_reach, principal_mask, role_defaults
 
 _NOTHING_HELD = HeldEntitlements()
 _EVERY_CAPABILITY = "*"
@@ -171,10 +173,14 @@ _DATA_PLANE_CHAIN: dict[str, tuple[str, ...]] = {
 @dataclass(frozen=True)
 class RoleOrigin:
     """Where one role's part of a capability came from: per kind of list that applied, its
-    origin (idp, provisa or role). Empty: no list applied, so the role's whole reach."""
+    origin (idp, provisa or role); empty, no list applied, so the role's whole reach.
+    ``from_role`` is the role the capability comes from: ``role_id`` itself, or the parent role it
+    inherits it from. ``ended``: what a passed expiry rule ended within that role's list."""
 
     role_id: str
     lists: dict[str, str]
+    from_role: str
+    ended: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -213,13 +219,41 @@ def _listed(
     return listed.identifiers, listed.origin
 
 
+def _reach(
+    held: HeldEntitlements,
+    role_id: str,
+    capability: str,
+    kind: str,
+    lists: Mapping,
+    rules: Iterable[ExpiryRule],
+    at: datetime,
+) -> tuple[ListReach, str | None]:
+    """A list-scoped capability's reach through ``role_id`` at ``at``, ``rules`` applied, and the
+    origin of the list it reads."""
+    identifiers, origin = _listed(held, role_id, capability, kind, lists)
+    mine = tuple(r for r in rules if r.role_id == role_id)
+    return list_reach(identifiers, origin, mine, capability, kind, at), origin
+
+
+def inherited_from(state: Any, role_id: str, capability: str) -> str:
+    """The role ``role_id`` holds ``capability`` from: the furthest role up its chain holding it
+    (REQ-2155: a role's capabilities include what it inherits), else ``role_id`` itself."""
+    chain = state.role_chains.get(role_id, [role_id])
+    holding = [
+        r for r in chain if capability in ((state.roles.get(r) or {}).get("capabilities") or ())
+    ]
+    return holding[-1] if holding else role_id
+
+
 def capability_views(
     state: Any, principal: str, role_ids: Iterable[str], held: HeldEntitlements, now: datetime
 ) -> list[CapabilityView]:
     """``principal``'s capabilities acting as ``role_ids`` at ``now``, each with where it applies:
     per capability, the union over the roles that grant it (REQ-2219: several roles combine by
     union per capability). The data plane's capabilities are a role's whenever it has a schema,
-    and their expansion is its mask; another scoped capability's is its kind's list."""
+    and their expansion is its mask; another scoped capability's is its kind's list, less what a
+    passed expiry rule ended of it. A role's capabilities include those it inherits from its
+    parent roles, each origin naming the role it comes from."""
     scopes = capability_scopes()
     version = (state.schema_boot_id, state.schema_version)
     scoped: dict[str, set[str]] = {}
@@ -234,18 +268,21 @@ def capability_views(
             for capability, chain in _DATA_PLANE_CHAIN.items():
                 scoped.setdefault(capability, set()).update(_mask_reach(mask, capability))
                 origins.setdefault(capability, []).append(
-                    RoleOrigin(role_id, {k: lists[k].origin for k in chain if k in lists})
+                    RoleOrigin(role_id, {k: lists[k].origin for k in chain if k in lists}, role_id)
                 )
         for capability in role.get("capabilities") or ():
             kind = scopes.get(capability)
+            source = inherited_from(state, role_id, capability)
             if kind is None:
                 unscoped.add(capability)
-                origins.setdefault(capability, []).append(RoleOrigin(role_id, {}))
+                origins.setdefault(capability, []).append(RoleOrigin(role_id, {}, source))
                 continue
-            identifiers, origin = _listed(held, role_id, capability, kind, lists)
-            scoped.setdefault(capability, set()).update(identifiers)
+            reach, origin = _reach(held, role_id, capability, kind, lists, held.expiries, now)
+            if reach.ended_all:
+                continue  # a grant-wide rule passed: the role grant reaches nothing
+            scoped.setdefault(capability, set()).update(reach.kept())
             origins.setdefault(capability, []).append(
-                RoleOrigin(role_id, {} if origin is None else {kind: origin})
+                RoleOrigin(role_id, {} if origin is None else {kind: origin}, source, reach.ended)
             )
     return [
         CapabilityView(
@@ -293,4 +330,45 @@ def preview_expiry(
             gone = _mask_reach(before, capability) - _mask_reach(after, capability)
             if gone:
                 removes[capability] = tuple(sorted(gone))
+    removes.update(_list_scoped_removes(state, principal, role_id, held, rules, rule, ends_at))
     return ExpiryPreview(removes, not removes)
+
+
+def _list_scoped_removes(
+    state: Any,
+    principal: str,
+    role_id: str,
+    held: HeldEntitlements,
+    rules: tuple[ExpiryRule, ...],
+    rule: ExpiryRule,
+    at: datetime,
+) -> dict[str, tuple[str, ...]]:
+    """Per list-scoped capability of ``role_id``, what ``rule`` ends at ``at`` of what its list
+    reaches then, ``rules`` already applied: the list's identifiers, for a grant-wide rule; else
+    the identifiers it names that the list reaches and no rule before it ended."""
+    role = state.roles[role_id]
+    lists = effective_lists(
+        role_id, state.idp_entitlements.get(principal, {}), held, role_defaults(role)
+    )
+    scopes = capability_scopes()
+    out: dict[str, tuple[str, ...]] = {}
+    for capability in role.get("capabilities") or ():
+        kind = scopes.get(capability)
+        if kind is None or capability in DATA_PLANE_CAPABILITIES:
+            continue
+        before, _origin = _reach(held, role_id, capability, kind, lists, rules, at)
+        after, _origin = _reach(held, role_id, capability, kind, lists, (*rules, rule), at)
+        if before.ended_all:
+            continue
+        if after.ended_all:
+            gone = set(before.kept())
+        else:
+            gone = {
+                e
+                for e in after.ended
+                if any(overlaps(e, i) for i in before.identifiers)
+                and not any(covers(b, e) for b in before.ended)
+            }
+        if gone:
+            out[capability] = tuple(sorted(gone))
+    return out

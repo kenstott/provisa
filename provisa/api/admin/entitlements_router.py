@@ -33,9 +33,10 @@ scopes each capability (``/kinds``).
 
 The shortcuts and the rule editor: add access appends only what is new (``/lists/add``); a grant's
 expiry rules are added, changed and withdrawn by key (``/expiries``), with a dry run that says what
-a rule would end on its date (``/expiries/preview``), and a rule that would remove nothing is
-refused; the timeline of what was added (``/lists/history``); and effective access per capability
-over the roles a request acts as (``/effective/capabilities``).
+a rule would end on its date (``/expiries/preview``), and a rule that would remove nothing, or
+whose date has passed, is refused; the timeline of what was added (``/lists/history``); and
+effective access per capability over the roles a request acts as, inherited capabilities included
+(``/effective/capabilities``). The scheduled expiry run is ``provisa.entitlements.expiry_run``.
 """
 
 # Requirements: REQ-2219
@@ -54,6 +55,7 @@ from provisa.api.admin.capabilities import _resolved_capabilities, require_capab
 from provisa.api.errors import ApiError
 from provisa.core.org_membership import record_admin_action
 from provisa.entitlements import pending, people, roles, store
+from provisa.entitlements.expiry_run import expiring_soon_days
 from provisa.entitlements.effective import (
     ExpiryPreview,
     access_view,
@@ -251,11 +253,7 @@ def _require_list_write(state: Any, principal: str | None, role_id: str, kind: s
         )
 
 
-def _check_list_expiry(kind: str, identifiers: list[str], expires_at: datetime | None) -> None:
-    if any(not identifier.strip() for identifier in identifiers):
-        raise ApiError(422, "entitlements.blank_identifier", "An identifier cannot be blank")
-    if expires_at is None:
-        return
+def _refuse_past(expires_at: datetime) -> None:
     if expires_at <= datetime.now(UTC):
         raise ApiError(
             422,
@@ -263,9 +261,23 @@ def _check_list_expiry(kind: str, identifiers: list[str], expires_at: datetime |
             "An expiry must be in the future",
             expires_at=expires_at.isoformat(),
         )
-    # An expiry ends objects in the mask: with no identifiers, or for a kind the mask does not
-    # hold, the rule would remove nothing, and saving it would promise an end that never comes.
-    if not identifiers or kind not in SEMANTIC_LISTS:
+
+
+def _check_list_expiry(
+    state: Any, role_id: str, kind: str, identifiers: list[str], expires_at: datetime | None
+) -> None:
+    if any(not identifier.strip() for identifier in identifiers):
+        raise ApiError(422, "entitlements.blank_identifier", "An identifier cannot be blank")
+    if expires_at is None:
+        return
+    _refuse_past(expires_at)
+    # An expiry ends objects in the mask, or a list-scoped capability of the role over the list's
+    # identifiers: with no identifiers, or for a kind no capability of the role is scoped by, the
+    # rule would remove nothing, and saving it would promise an end that never comes.
+    scoped = kind in SEMANTIC_LISTS or any(
+        capability_scopes().get(c) == kind for c in state.roles[role_id].get("capabilities") or ()
+    )
+    if not identifiers or not scoped:
         raise ApiError(
             422,
             "entitlements.expiry_removes_nothing",
@@ -274,8 +286,8 @@ def _check_list_expiry(kind: str, identifiers: list[str], expires_at: datetime |
         )
 
 
-def _check_set(body: SetListBody) -> None:
-    _check_list_expiry(body.kind, body.identifiers, body.expires_at)
+def _check_set(state: Any, body: SetListBody) -> None:
+    _check_list_expiry(state, body.role_id, body.kind, body.identifiers, body.expires_at)
 
 
 def _view(state: Any, principal: str, role_id: str) -> dict:
@@ -332,7 +344,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
     from provisa.api.app import state
 
     principal = await _require_write(request, state, body)
-    _check_set(body)
+    _check_set(state, body)
     actor = _caller(request) or _ANONYMOUS
     if principal is None:
         return await _set_pending(state, body, actor)
@@ -547,7 +559,9 @@ async def list_kinds(request: Request) -> dict:
     """The kinds of list the write accepts, in the order a client lists them, each with whether an
     expiry can end it and how deep the names tree goes for it; and that tree, of the model's
     domains, tables and columns as the identifiers that select them (null before a model is
-    built); and each capability with the kind of list that scopes it. Gated as a write: it is what a list is picked from."""
+    built); each capability with the kind of list that scopes it; and how many days ahead of an
+    expiry rule its expiring-soon event is emitted, which a client highlights by. Gated as a
+    write: it is what a list is picked from."""
     from provisa.api.app import state
 
     require_capability_request(request, _ASSIGN)
@@ -561,6 +575,7 @@ async def list_kinds(request: Request) -> dict:
         "names": None if index is None else [_node(n) for n in names_tree(index)],
         # Each capability and the kind that scopes it; null: unscoped, held wherever the role is.
         "capability_scopes": capability_scopes(),
+        "expiring_soon_days": expiring_soon_days(),
     }
 
 
@@ -576,7 +591,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
     if not body.principal.strip():
         raise ApiError(422, "entitlements.principal_required", "A principal is required")
     _require_list_write(state, body.principal, body.role_id, body.kind)
-    _check_list_expiry(body.kind, body.identifiers, body.until)
+    _check_list_expiry(state, body.role_id, body.kind, body.identifiers, body.until)
     actor = _caller(request) or _ANONYMOUS
     base = role_defaults(state.roles[body.role_id]).get(body.kind, [WILDCARD])
     db = _db(state)
@@ -717,6 +732,7 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
     _require_grant_write(request, state, body.role_id, body.reason)
     if not body.principal.strip():
         raise ApiError(422, "entitlements.principal_required", "A principal is required")
+    _refuse_past(body.ends_at)
     if _preview(state, body.principal, body.role_id, body).removes_nothing:
         raise _refuse_removes_nothing(body.principal, body.role_id)
     actor = _caller(request) or _ANONYMOUS
@@ -757,6 +773,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
     require_capability_request(request, _ASSIGN)
     principal, rule = _rule(state, rule_key)
     _require_grant_write(request, state, rule.role_id, body.reason)
+    _refuse_past(body.ends_at)
     if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
         raise _refuse_removes_nothing(principal, rule.role_id)
     actor = _caller(request) or _ANONYMOUS

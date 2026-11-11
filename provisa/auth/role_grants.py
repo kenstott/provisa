@@ -227,7 +227,8 @@ async def _going_unused(conn: Any, within: timedelta) -> list[Grant]:
     return [_grant(r) for r in result.fetchall()]
 
 
-async def _emails(conn: Any, user_ids: Iterable[str]) -> dict[str, str]:
+async def emails_of(conn: Any, user_ids: Iterable[str]) -> dict[str, str]:
+    """Each of ``user_ids`` with an address in the directory, and that address."""
     ids = list(set(user_ids))
     if not ids:
         return {}
@@ -311,8 +312,12 @@ def _ended(g: Grant, org_id: str, why: str) -> tuple[str, str]:
 
 
 async def _send(org_id: str, to: str, subject: str, body: str) -> None:
-    """One message through the org mail channel, recorded as every send is (REQ-1576). A failed
-    send is logged and recorded, never raised: the sweep's removals have already happened."""
+    await send_notice(org_id, to, subject, body, kind="role_grant")
+
+
+async def send_notice(org_id: str, to: str, subject: str, body: str, *, kind: str) -> None:
+    """One notice through the org mail channel, recorded as every send is (REQ-1576) under
+    ``kind``. A failed send is logged and recorded, never raised: what it tells of has happened."""
     from provisa.api.app import state
     from provisa.core.mail import MailMessage, email_sender
     from provisa.core.mail_stats import MailAttempt, record
@@ -322,12 +327,12 @@ async def _send(org_id: str, to: str, subject: str, body: str) -> None:
     try:
         email_sender(state.config.mail).send(MailMessage(to=to, subject=subject, body=body))
     except Exception as exc:  # recorded and logged below; the next grant's notice still goes
-        log.error("role grant notice to %s for org %s not delivered: %s", to, org_id, exc)
+        log.error("%s notice to %s for org %s not delivered: %s", kind, to, org_id, exc)
         await record(
             state.admin_db,
             MailAttempt(
                 provider=provider,
-                kind="role_grant",
+                kind=kind,
                 recipient=to,
                 succeeded=False,
                 org_id=org_id,
@@ -337,9 +342,7 @@ async def _send(org_id: str, to: str, subject: str, body: str) -> None:
         return
     await record(
         state.admin_db,
-        MailAttempt(
-            provider=provider, kind="role_grant", recipient=to, succeeded=True, org_id=org_id
-        ),
+        MailAttempt(provider=provider, kind=kind, recipient=to, succeeded=True, org_id=org_id),
     )
 
 
@@ -352,7 +355,7 @@ async def _tell(db: "Database", org_id: str, outcome: Sweep) -> None:
         (g, "the grant went unused") for g in outcome.inactive
     ]
     async with db.acquire() as conn:
-        emails = await _emails(conn, [*admins, *(g.user_id for g in told)])
+        emails = await emails_of(conn, [*admins, *(g.user_id for g in told)])
     admin_emails = sorted({emails[a] for a in admins if a in emails})
     for g in told:
         if g.user_id in emails:

@@ -250,6 +250,12 @@
         "help": "Quanti giorni prima che un'assegnazione di ruolo scada, o venga rimossa perché inutilizzata, il titolare e gli amministratori dell'organizzazione ricevono un'email."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Preavviso di scadenza delle autorizzazioni",
+        "help": "Quanti giorni prima della data di una regola di scadenza delle autorizzazioni viene emesso l'evento \"in scadenza\" e vengono avvisati via e-mail la persona e gli amministratori dell'organizzazione. Le schermate delle autorizzazioni evidenziano le regole così vicine alla loro data."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Nome host",
