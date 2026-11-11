@@ -29,6 +29,7 @@
     "sampleViewsLabel": "サンプルビュー",
     "sampleViewsHint": "プロダクトのデータセット上のビュー。アクセスはこれらのビューにのみ付与されます。",
     "noSampleViews": "このプロダクトのデータセットを読むビューはありません",
+    "sampleViewsPlaceholder": "ビューを 1 つ以上選択",
     "sampleViews": "サンプルビュー: {{views}}",
     "duration": "期間 (日)",
     "durationHint": "終了日を設けない場合は空のままにします。",

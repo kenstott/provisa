@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Steekproefviews",
     "sampleViewsHint": "Views over de datasets van het product; toegang wordt alleen op deze views verleend.",
     "noSampleViews": "Geen views lezen de datasets van dit product",
+    "sampleViewsPlaceholder": "Kies een of meer views",
     "sampleViews": "Steekproefviews: {{views}}",
     "duration": "Duur (dagen)",
     "durationHint": "Leeg laten voor geen einddatum.",

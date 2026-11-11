@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Vistas de muestra",
     "sampleViewsHint": "Vistas sobre los conjuntos de datos del producto; el acceso se concede solo sobre estas vistas.",
     "noSampleViews": "Ninguna vista lee los conjuntos de datos de este producto",
+    "sampleViewsPlaceholder": "Elija una o más vistas",
     "sampleViews": "Vistas de muestra: {{views}}",
     "duration": "Duración (días)",
     "durationHint": "Déjelo vacío para que no tenga fecha de fin.",

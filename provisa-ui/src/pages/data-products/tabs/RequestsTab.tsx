@@ -36,6 +36,7 @@ import {
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { TableAccessPanel } from "../../tables/TableAccessPanel";
+import { usePanelDirty } from "../../../components/list/panelLeave";
 import type { OfferDataset } from "../offers/AddOfferForm";
 
 const STATUS_COLOR: Record<BidStatus, string> = {
@@ -64,6 +65,7 @@ function DeclineForm({
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  usePanelDirty(reason.trim() !== "", t("dataProductOffers.decline"));
   return (
     <FormLayout data-testid={`bid-${bid.id}-decline-form`}>
       <FormField size="full">

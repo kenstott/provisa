@@ -37,6 +37,7 @@ import {
 } from "../../../api/dataProductOffers";
 import { fetchTableAccess, type TableAccess } from "../../../api/roleRights";
 import { MultiSelect } from "../../../components/MultiSelect";
+import { usePanelDirty } from "../../../components/list/panelLeave";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { AccessCells, AccessHeads } from "../../security/AccessCells";
 import { offerSummary } from "./offerTerms";
@@ -102,6 +103,8 @@ export function AddOfferForm({
   const [accesses, setAccesses] = useState<TableAccess[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<OfferInput>) => setOffer((o) => ({ ...o, ...patch }));
+  // Leaving the panel asks first once anything is filled in.
+  usePanelDirty(JSON.stringify(offer) !== JSON.stringify(EMPTY), t("dataProductOffers.addTitle"));
 
   const datasetIds = datasets.map((d) => d.id).join(",");
   useEffect(() => {
@@ -237,7 +240,11 @@ export function AddOfferForm({
             options={views.map((v) => ({ id: String(v.id), label: v.name }))}
             value={offer.sample_views.map(String)}
             onChange={(ids) => set({ sample_views: ids.map(Number) })}
-            placeholder={views.length === 0 ? t("dataProductOffers.noSampleViews") : undefined}
+            placeholder={
+              views.length === 0
+                ? t("dataProductOffers.noSampleViews")
+                : t("dataProductOffers.sampleViewsPlaceholder")
+            }
           />
         </FormField>
       )}

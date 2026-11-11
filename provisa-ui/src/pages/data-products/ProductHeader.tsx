@@ -236,8 +236,10 @@ export function ProductHeader({
       </Stack>
       {/* Every value of the product: the read view shows them all. */}
       <Collapsibles id="data-product.header" testId={`data-product-card-details-${product.id}`}>
+        {/* Closed at first, as the viewer left it after: the tabs are the panel's working surface. */}
         <CollapsibleItem
           value="details"
+          defaultOpen={false}
           controlTestId={`data-product-card-details-${product.id}-toggle`}
           title={
             <Text size="sm" fw={500}>

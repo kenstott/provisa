@@ -39,6 +39,7 @@ import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/C
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { Tip } from "../../../components/Tip";
+import { usePanelDirty } from "../../../components/list/panelLeave";
 import { ColumnsTable } from "../../tables/ColumnsTable";
 import { contractColumns, offerSummary } from "./offerTerms";
 
@@ -148,6 +149,7 @@ function BidForm({
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  usePanelDirty(reason.trim() !== "", t("dataProductOffers.sendBid"));
   const submit = () =>
     bidForOffer(productId, offer.id, reason.trim()).then(onDone, (e: unknown) =>
       setError(message(e)),

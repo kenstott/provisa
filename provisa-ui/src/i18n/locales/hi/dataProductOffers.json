@@ -29,6 +29,7 @@
     "sampleViewsLabel": "सैंपल व्यू",
     "sampleViewsHint": "प्रोडक्ट के डेटासेट पर बने व्यू; पहुँच केवल इन्हीं व्यू पर दी जाती है।",
     "noSampleViews": "कोई व्यू इस प्रोडक्ट के डेटासेट नहीं पढ़ता",
+    "sampleViewsPlaceholder": "एक या अधिक व्यू चुनें",
     "sampleViews": "सैंपल व्यू: {{views}}",
     "duration": "अवधि (दिन)",
     "durationHint": "कोई अंतिम तिथि न हो तो खाली छोड़ें।",

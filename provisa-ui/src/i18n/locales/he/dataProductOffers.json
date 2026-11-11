@@ -29,6 +29,7 @@
     "sampleViewsLabel": "תצוגות מדגם",
     "sampleViewsHint": "תצוגות על מערכי הנתונים של המוצר; הגישה ניתנת לתצוגות אלה בלבד.",
     "noSampleViews": "אין תצוגות שקוראות את מערכי הנתונים של מוצר זה",
+    "sampleViewsPlaceholder": "בחרו תצוגה אחת או יותר",
     "sampleViews": "תצוגות מדגם: {{views}}",
     "duration": "משך (ימים)",
     "durationHint": "השאירו ריק ללא תאריך סיום.",

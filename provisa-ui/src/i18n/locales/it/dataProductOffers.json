@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Viste campione",
     "sampleViewsHint": "Viste sui dataset del prodotto; l'accesso è concesso solo su queste viste.",
     "noSampleViews": "Nessuna vista legge i dataset di questo prodotto",
+    "sampleViewsPlaceholder": "Scegli una o più viste",
     "sampleViews": "Viste campione: {{views}}",
     "duration": "Durata (giorni)",
     "durationHint": "Lascia vuoto per nessuna data di fine.",

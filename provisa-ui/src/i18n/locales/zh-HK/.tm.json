@@ -10160,5 +10160,6 @@
   "zh-HK/dataProductOffers.json::dataProductOffers.profileChecks": "Profile checks on {{table}}",
   "zh-HK/latestProfilePanel.json::latestProfilePanel.viewTable": "Table",
   "zh-HK/latestProfilePanel.json::latestProfilePanel.viewTerrain": "Terrain",
-  "zh-HK/dataProductsTab.json::dataProductsTab.detailPanel": "Data product detail"
+  "zh-HK/dataProductsTab.json::dataProductsTab.detailPanel": "Data product detail",
+  "zh-HK/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views"
 }

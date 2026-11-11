@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Vues d'échantillon",
     "sampleViewsHint": "Vues sur les jeux de données du produit ; l'accès est accordé sur ces seules vues.",
     "noSampleViews": "Aucune vue ne lit les jeux de données de ce produit",
+    "sampleViewsPlaceholder": "Choisissez une ou plusieurs vues",
     "sampleViews": "Vues d'échantillon : {{views}}",
     "duration": "Durée (jours)",
     "durationHint": "Laissez vide pour aucune date de fin.",

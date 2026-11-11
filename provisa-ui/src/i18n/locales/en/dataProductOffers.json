@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Sample views",
     "sampleViewsHint": "Views over the product's datasets; access is granted on these views alone.",
     "noSampleViews": "No views read this product's datasets",
+    "sampleViewsPlaceholder": "Pick one or more views",
     "sampleViews": "Sample views: {{views}}",
     "duration": "Duration (days)",
     "durationHint": "Leave empty for no end date.",

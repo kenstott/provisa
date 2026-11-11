@@ -29,6 +29,7 @@
     "sampleViewsLabel": "Stichproben-Views",
     "sampleViewsHint": "Views über den Datensätzen des Produkts; der Zugriff wird nur auf diese Views gewährt.",
     "noSampleViews": "Keine Views lesen die Datensätze dieses Produkts",
+    "sampleViewsPlaceholder": "Eine oder mehrere Views wählen",
     "sampleViews": "Stichproben-Views: {{views}}",
     "duration": "Dauer (Tage)",
     "durationHint": "Leer lassen für kein Enddatum.",

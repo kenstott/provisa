@@ -29,6 +29,7 @@
     "sampleViewsLabel": "樣本視圖",
     "sampleViewsHint": "建基於產品數據集的視圖；只授予這些視圖的存取權。",
     "noSampleViews": "沒有視圖讀取此產品的數據集",
+    "sampleViewsPlaceholder": "選擇一個或多個視圖",
     "sampleViews": "樣本視圖：{{views}}",
     "duration": "期限（日）",
     "durationHint": "留空表示沒有結束日期。",
