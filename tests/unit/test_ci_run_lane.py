@@ -855,6 +855,8 @@ _NO_CI_LANE = {
     "requires_google_workspace",
     "requires_quickbooks",
     "requires_shopify",
+    # Maintainer 2026-11-11: out of CI until the CI service principal has Admin on the Fabric workspace.
+    "requires_fabric",
 }
 
 
