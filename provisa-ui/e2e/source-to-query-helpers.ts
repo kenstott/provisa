@@ -111,7 +111,12 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
   // source opens in edit; a step that navigates before then waits behind those rebuilds (run
   // 40227062159: the next page's tables query outlasted its 15 s).
+  // REQ-2234: the panel opens first on the "Register tables" step, the edit behind it; skipping
+  // the step reveals the edit.
   const save = page.getByTestId("sources-edit-submit");
+  const skipRegister = page.getByTestId("register-tables-skip");
+  await expect(skipRegister.or(save)).toBeVisible({ timeout: 60000 });
+  if (await skipRegister.isVisible()) await skipRegister.click();
   await expect(save).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
   if (seconds === undefined) return;

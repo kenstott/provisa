@@ -40,7 +40,7 @@ Each schema's and view's full name is recorded in the target's bindings (REQ-138
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -179,6 +179,51 @@ def term_statements(
     ]
 
 
+def _owned(tag: str) -> bool:
+    """A tag this export sets: the term tag or a governance tag; any other origin is never touched."""
+    return tag == TERM_TAG or tag.startswith(GOVERNANCE_PREFIX)
+
+
+def stale_tag_statements(
+    view: Parts,
+    table: "TableAsset",
+    governance_tags: list["GovernanceTag"],
+    terms_by_column: Mapping[str, "GroundedTerm"],
+    table_tags: Iterable[str],
+    column_tags: Iterable[tuple[str, str]],
+) -> list[str]:
+    """Unsets the tags the view still holds that its member no longer carries. ``CREATE OR REPLACE
+    VIEW`` keeps the tags of the view it replaces, so a term that left a column, or a governance
+    rule that no longer fires, would stay tagged. ``table_tags`` and ``column_tags``
+    (``(column, tag)``) are what the view holds now."""
+    table_fqn = table.ref.fqn()
+    names = {c.ref.fqn(): c.name for c in table.columns}
+    wanted_table: set[str] = set()
+    wanted_columns: set[tuple[str, str]] = set()
+    for tag in governance_tags:
+        key = f"{GOVERNANCE_PREFIX}{tag.signal.value}"
+        fqn = tag.asset.fqn()
+        if fqn == table_fqn:
+            wanted_table.add(key)
+        elif fqn in names:
+            wanted_columns.add((names[fqn], key))
+    for column in table.columns:
+        if column.ref.fqn() in terms_by_column:
+            wanted_columns.add((column.name, TERM_TAG))
+    stmts = [
+        f"ALTER VIEW {q(*view)} UNSET TAGS ('{lit(tag)}')"
+        for tag in sorted(set(table_tags))
+        if _owned(tag) and tag not in wanted_table
+    ]
+    stmts += [
+        # A view's column is untagged through ALTER TABLE, as it is tagged.
+        f"ALTER TABLE {q(*view)} ALTER COLUMN {q(column)} UNSET TAGS ('{lit(tag)}')"
+        for column, tag in sorted(set(column_tags))
+        if _owned(tag) and (column, tag) not in wanted_columns
+    ]
+    return stmts
+
+
 @register_provider
 class UnityCatalogExport(MetadataExport):  # REQ-2117
     """Publishes each data product as a Unity Catalog schema of views over its members."""
@@ -302,6 +347,27 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
             view = (catalog, schema, name)
             member = self._member_parts(runtime, snapshot, ref)
             cur.execute(view_statement(view, member, table, terms))
+            where = f"schema_name = '{lit(schema)}' AND table_name = '{lit(name)}'"
+            held_table = [
+                str(k)
+                for (k, _) in self._rows(
+                    cur,
+                    f"SELECT tag_name, tag_value FROM {q(catalog)}.information_schema.table_tags "
+                    f"WHERE {where}",
+                )
+            ]
+            held_columns = [
+                (str(c), str(k))
+                for (c, k, _) in self._rows(
+                    cur,
+                    f"SELECT column_name, tag_name, tag_value "
+                    f"FROM {q(catalog)}.information_schema.column_tags WHERE {where}",
+                )
+            ]
+            for stmt in stale_tag_statements(
+                view, table, governance, terms, held_table, held_columns
+            ):
+                cur.execute(stmt)
             for stmt in governance_statements(view, table, governance):
                 cur.execute(stmt)
             for stmt in term_statements(view, table, terms):
