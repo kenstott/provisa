@@ -582,16 +582,14 @@ jobs:
 
       # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is this run's own,
       # created and tagged with the run, the lane's workspace assigned to it
-      # (tests/integration/fabric_capacity.py create_run_capacity). Only a run that selects a
-      # Fabric test makes it: the whole lane (no inputs.tests), or a targeted run naming one of the
-      # test files that reach Fabric. A targeted run naming none of them creates no capacity.
+      # (tests/integration/fabric_capacity.py create_run_capacity). Maintainer 2026-11-11 ("skip
+      # fabric tests for now"): no lane selects a requires_fabric test (scripts/ci/run_lane.py), so
+      # this step never runs: assignToCapacity returns 403 until the CI service principal holds the
+      # Admin role on the Fabric workspace (run 42930869189). To lift: grant that role, drop
+      # "and not requires_fabric" from the warehouse lane, and restore the condition (git show 6838117e17).
       - name: This run's Fabric capacity
         id: fabric-capacity
-        if: >-
-          inputs.tests == ''
-          || contains(inputs.tests, 'tests/integration/test_fabric_federation_engine_e2e.py')
-          || contains(inputs.tests, 'tests/integration/test_tds_inplace_duckdb_e2e.py')
-          || contains(inputs.tests, 'tests/integration/test_cross_vendor_parity_e2e.py')
+        if: false
         run: uv run python scripts/fabric_e2e.py up
 
       - name: Run lane

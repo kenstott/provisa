@@ -531,7 +531,12 @@ async def _run_lane(lane: Lane) -> list[tuple]:
         pytest.param(
             lane,
             id=lane.id,
-            marks=[] if lane is _DUCKDB else [pytest.mark.requires_warehouse],
+            marks=(
+                []
+                if lane is _DUCKDB
+                else [pytest.mark.requires_warehouse]
+                + ([pytest.mark.requires_fabric] if lane is _FABRIC else [])
+            ),
         )
         for lane in _LANES
     ],
