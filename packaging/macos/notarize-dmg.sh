@@ -5,6 +5,10 @@
 # limit is run again alone without rebuilding the DMG.
 #
 # Usage: notarize-dmg.sh <path-to.dmg>
+#        notarize-dmg.sh --app <path-to.app>   zip the signed .app, notarize it, staple the .app.
+#                                              Core and Container notarize the .app first, build the
+#                                              DMG from the stapled .app, then notarize the DMG: the
+#                                              .app launches offline once copied out of the DMG.
 # Env:   APPLE_NOTARYTOOL_APPLE_ID, APPLE_NOTARYTOOL_PASSWORD, APPLE_NOTARYTOOL_TEAM_ID
 #        NOTARY_TIMEOUT_MINUTES  longest wait for Apple's verdict (default 150; the job's limit is longer)
 #        NOTARY_POLL_SECONDS     seconds between status checks (default 40)
@@ -24,9 +28,13 @@ NOTARY_TIMEOUT_MINUTES="${NOTARY_TIMEOUT_MINUTES:-150}"
 NOTARY_POLL_SECONDS="${NOTARY_POLL_SECONDS:-40}"
 
 notarize_dmg() {
-  local dmg="$1"
-  if [ ! -f "$dmg" ]; then
+  local dmg="$1" app="${2:-}"
+  if [ -z "$app" ] && [ ! -f "$dmg" ]; then
     err "DMG not found: ${dmg}"
+    exit 1
+  fi
+  if [ -n "$app" ] && [ ! -d "$app" ]; then
+    err "App bundle not found: ${app}"
     exit 1
   fi
   if [ -z "${APPLE_NOTARYTOOL_APPLE_ID:-}" ]; then
@@ -38,16 +46,25 @@ notarize_dmg() {
     --password "${APPLE_NOTARYTOOL_PASSWORD}"
     --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
   )
-  info "Submitting $(basename "$dmg") for notarization..."
+  # notarytool takes a zip, pkg or dmg: an .app goes in zipped with ditto.
+  local submit_path="$dmg" zip_dir=""
+  if [ -n "$app" ]; then
+    zip_dir="$(mktemp -d)"
+    submit_path="${zip_dir}/$(basename "$app" .app)-notarize.zip"
+    info "Zipping $(basename "$app") for notarization submission..."
+    ditto -c -k --keepParent "$app" "$submit_path"
+  fi
+  info "Submitting $(basename "$submit_path") for notarization..."
   local err_file submit_out submit_err submit_rc
   err_file="$(mktemp)"
-  submit_out=$(xcrun notarytool submit "$dmg" "${notary_args[@]}" --output-format json 2>"$err_file") \
+  submit_out=$(xcrun notarytool submit "$submit_path" "${notary_args[@]}" --output-format json 2>"$err_file") \
     && submit_rc=0 || submit_rc=$?
   submit_err=$(cat "$err_file" 2>/dev/null || true)
   rm -f "$err_file"
+  if [ -n "$zip_dir" ]; then rm -rf "$zip_dir"; fi
   if [ $submit_rc -ne 0 ]; then
     if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
-      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
+      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). It will be unsigned."
       return
     fi
     err "notarytool submit failed (exit $submit_rc): $submit_err"
@@ -87,16 +104,20 @@ notarize_dmg() {
   fi
 
   notary_log_check "$submission_id" "${notary_args[@]}"
-  staple_retry "$dmg"
-  ok "$(basename "$dmg") notarized and stapled."
+  local stapled="${app:-$dmg}"
+  staple_retry "$stapled"
+  ok "$(basename "$stapled") notarized and stapled."
 }
 
 main() {
-  if [ $# -ne 1 ]; then
-    err "usage: notarize-dmg.sh <path-to.dmg>"
+  if [ $# -eq 1 ] && [ "$1" != "--app" ]; then
+    notarize_dmg "$1"
+  elif [ $# -eq 2 ] && [ "$1" = "--app" ]; then
+    notarize_dmg "" "$2"
+  else
+    err "usage: notarize-dmg.sh <path-to.dmg> | --app <path-to.app>"
     exit 2
   fi
-  notarize_dmg "$1"
 }
 
 main "$@"

@@ -121,6 +121,62 @@ def test_the_notarize_job_notarizes_and_staples_every_dmg_under_its_own_limit():
     assert upload["path"] == "dmg/${{ matrix.dmg }}"
 
 
+def test_core_and_container_notarize_the_app_then_build_the_dmg_from_it_then_notarize_the_dmg():
+    job = _load("notarize-macos.yml")["jobs"]["notarize"]
+    legs = {leg["artifact"]: leg for leg in job["strategy"]["matrix"]["include"]}
+    assert legs["macos-core"]["app_edition"] == "core"
+    assert legs["macos-container"]["app_edition"] == "container"
+    assert legs["macos-obs"]["app_edition"] == ""
+    assert legs["macos-demo"]["app_edition"] == ""
+    assert legs["macos-core"]["built_dmg"] == "Provisa.dmg"
+    assert legs["macos-container"]["built_dmg"] == "Provisa-Container.dmg"
+    names = [s["name"] for s in job["steps"]]
+    assert names.index("Notarize and staple the app") < names.index(
+        "Build the DMG from the stapled app"
+    )
+    assert names.index("Build the DMG from the stapled app") < names.index("Notarize and staple")
+    steps = {s["name"]: s for s in job["steps"]}
+    app = steps["Notarize and staple the app"]
+    assert app["if"] == "${{ matrix.app_edition != '' }}"
+    assert "notarize-dmg.sh --app packaging/macos/Provisa.app" in app["run"]
+    assert 'tar -xf "dmg/stage-${{ matrix.app_edition }}.tar"' in app["run"]
+    assert set(app["env"]) == set(_SECRETS)
+    build = steps["Build the DMG from the stapled app"]
+    assert build["if"] == app["if"]
+    assert "build-dmg.sh dmg" in build["run"]
+    assert build["env"] == {"PROVISA_EDITION": "${{ matrix.app_edition }}"}
+    assert (
+        'mv "packaging/macos/dist/${{ matrix.built_dmg }}" "dmg/${{ matrix.dmg }}"' in build["run"]
+    )
+    # The step that creates the DMG holds no notarization secret.
+    assert not any(secret in str(build) for secret in _SECRETS)
+
+
+@pytest.mark.parametrize(
+    ("job_id", "edition"), [("build-macos-core", "core"), ("build-macos-container", "container")]
+)
+def test_the_core_and_container_build_jobs_hand_on_the_signed_app_not_a_dmg(job_id, edition):
+    job = _load("release-macos.yml")["jobs"][job_id]
+    runs = [s["run"] for s in job["steps"] if "run" in s]
+    assert any("packaging/macos/build-dmg.sh stage" in r for r in runs)
+    assert not any(".dmg" in r for r in runs)
+    (upload,) = [s for s in job["steps"] if _is_upload(s)]
+    assert upload["with"]["path"] == f"packaging/macos/dist/stage-{edition}.tar"
+    assert job["timeout-minutes"] == _BUILD_LIMIT
+
+
+def test_build_dmg_stages_the_app_and_the_native_payload_and_makes_the_dmg_in_a_later_step():
+    source = (_REPO / "packaging/macos/build-dmg.sh").read_text()
+    assert 'STAGE_TAR="${OUT_DIR}/stage-${EDITION}.tar"' in source
+    assert "members+=(native-payload/runtime)" in source
+    assert "stage|dmg|all) ;;" in source
+    main = source.split("main() {")[1]
+    # `stage` stops before the DMG; `dmg` skips the build and signing.
+    assert main.index("stage_app") < main.index("create_dmg")
+    assert 'if [ "$step" != "dmg" ]; then' in main
+    assert 'if [ "$step" = "stage" ]; then' in main
+
+
 def test_the_notarize_script_waits_less_than_its_job_limit_and_staples_through_the_retry():
     job = _load("notarize-macos.yml")["jobs"]["notarize"]
     source = (_REPO / "packaging/macos/notarize-dmg.sh").read_text()
@@ -168,7 +224,9 @@ def test_the_notarize_workflow_never_prints_a_secret():
             assert "APPLE_NOTARYTOOL_PASSWORD" not in line
 
 
-def _run_script(tmp_path: Path, env: dict[str, str], submit_exit: int = 0):
+def _run_script(
+    tmp_path: Path, env: dict[str, str], submit_exit: int = 0, target: str = "Provisa.dmg"
+):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     calls = tmp_path / "calls"
@@ -188,10 +246,18 @@ def _run_script(tmp_path: Path, env: dict[str, str], submit_exit: int = 0):
     fake.chmod(0o755)
     (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
     (bin_dir / "sleep").chmod(0o755)
-    dmg = tmp_path / "Provisa.dmg"
-    dmg.write_bytes(b"dmg")
+    # ditto is macOS's; the fake writes the zip the real one would.
+    (bin_dir / "ditto").write_text(f'#!/bin/bash\necho "ditto $*" >> {calls}\n: > "${{@: -1}}"\n')
+    (bin_dir / "ditto").chmod(0o755)
+    path = tmp_path / target
+    if target.endswith(".app"):
+        path.mkdir()
+        args = ["--app", str(path)]
+    else:
+        path.write_bytes(b"dmg")
+        args = [str(path)]
     proc = subprocess.run(
-        ["bash", str(_REPO / "packaging/macos/notarize-dmg.sh"), str(dmg)],
+        ["bash", str(_REPO / "packaging/macos/notarize-dmg.sh"), *args],
         capture_output=True,
         text=True,
         env={"PATH": f"{bin_dir}:/usr/bin:/bin", **env},
@@ -239,3 +305,26 @@ def test_the_script_skips_without_the_notarization_account_and_staples_nothing(t
     assert proc.returncode == 0, proc.stderr
     assert "skipping notarization" in proc.stdout
     assert calls == []
+
+
+def test_the_script_zips_submits_and_staples_an_app_bundle(tmp_path):
+    proc, calls = _run_script(tmp_path, _CREDS, target="Provisa.app")
+    assert proc.returncode == 0, proc.stderr
+    assert calls[0].startswith("ditto -c -k --keepParent ")
+    verbs = [" ".join(c.split()[:2]) for c in calls[1:]]
+    assert verbs == ["notarytool submit", "notarytool info", "notarytool log", "stapler staple"]
+    # The zip is what is submitted; the bundle itself is what is stapled.
+    assert calls[1].split()[2].endswith("-notarize.zip")
+    assert calls[-1].endswith("Provisa.app")
+    assert "s3cret-app-password" not in proc.stdout + proc.stderr
+
+
+def test_the_script_fails_when_the_app_bundle_is_missing(tmp_path):
+    proc = subprocess.run(
+        ["bash", str(_REPO / "packaging/macos/notarize-dmg.sh"), "--app", str(tmp_path / "x.app")],
+        capture_output=True,
+        text=True,
+        env={"PATH": "/usr/bin:/bin", **_CREDS},
+    )
+    assert proc.returncode == 1
+    assert "App bundle not found" in proc.stderr

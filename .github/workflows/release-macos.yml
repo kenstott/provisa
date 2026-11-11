@@ -1,8 +1,10 @@
 # Release: macOS installers
 #
 # The four macOS DMGs. The Obs and Demo DMGs embed image tarballs and plugins the prebuilt leg of the same run uploaded.
-# The build jobs build and sign each DMG and upload it as macos-<x>-unnotarized; the notarize job
-# (notarize-macos.yml) notarizes and staples them under its own limit and uploads macos-<x>-dist.
+# The Obs and Demo build jobs build and sign each DMG; the Core and Container build jobs build and
+# sign the .app. Each uploads macos-<x>-unnotarized. The notarize job (notarize-macos.yml)
+# notarizes and staples under its own limit (the Core and Container .app first, then the DMG built
+# from it) and uploads macos-<x>-dist.
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
@@ -100,24 +102,21 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
-      - name: Build DMG
+      - name: Build and sign the app
         env:
           VERSION: ${{ inputs.version }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
         run: |
           chmod +x packaging/macos/build-dmg.sh
-          packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh stage
 
-      - name: Rename DMG with version + channel
-        run: |
-          mv packaging/macos/dist/Provisa.dmg \
-             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
-
-      - name: Upload DMG artifact
+      # The signed .app and the native payload, not a DMG: the notarize job notarizes and staples
+      # the .app, builds the DMG from it, then notarizes the DMG.
+      - name: Upload signed app artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-core-unnotarized
-          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          path: packaging/macos/dist/stage-core.tar
           retention-days: 7
 
   build-macos-container:
@@ -158,25 +157,20 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
-      - name: Build Container DMG
+      - name: Build and sign the Container app
         env:
           PROVISA_EDITION: container
           VERSION: ${{ inputs.version }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
         run: |
           chmod +x packaging/macos/build-dmg.sh
-          packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh stage
 
-      - name: Rename DMG with version + channel
-        run: |
-          mv packaging/macos/dist/Provisa-Container.dmg \
-             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
-
-      - name: Upload Container DMG artifact
+      - name: Upload signed app artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-container-unnotarized
-          path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
+          path: packaging/macos/dist/stage-container.tar
           retention-days: 7
 
   build-macos-obs:

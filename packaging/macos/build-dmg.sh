@@ -408,26 +408,57 @@ create_dmg() {
   ok "DMG created: ${DMG_PATH}"
 }
 
+# ── Stage: hand the signed .app (and the native payload) to the notarize job ──
+# The DMG is made from the .app AFTER notarize-dmg.sh --app has stapled it, so the .app carries
+# its own ticket and launches offline once copied out of the DMG. tar, not the artifact zip,
+# keeps the bundle's symlinks and modes, which its signature seals.
+STAGE_TAR="${OUT_DIR}/stage-${EDITION}.tar"
+stage_app() {
+  mkdir -p "$OUT_DIR"
+  rm -f "$STAGE_TAR"
+  local members=(Provisa.app)
+  if [ "$EDITION" = "core" ]; then members+=(native-payload/runtime); fi
+  tar -cf "$STAGE_TAR" -C "$SCRIPT_DIR" "${members[@]}"
+  ok "Staged signed app: ${STAGE_TAR}"
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+# Steps (argument):
+#   stage  build and sign Provisa.app, write dist/stage-<edition>.tar. CI's build job.
+#   dmg    create the DMG from an already built (and, in CI, notarized + stapled) Provisa.app
+#          unpacked beside this script. CI's notarize job.
+#   (none) both, for a local build; nothing is notarized.
 main() {
+  local step="${1:-all}"
+  case "$step" in
+    stage|dmg|all) ;;
+    *) err "usage: build-dmg.sh [stage|dmg]"; exit 2 ;;
+  esac
   printf '\n%bProvisa DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
 
   check_prereqs
-
   generate_assets
-  build_ui             # provisa-ui/dist + provisa-cli (both editions)
-  if [ "$EDITION" = "container" ]; then
-    embed_compose        # compose YAMLs, config, db, trino, observability
-    download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
-  else
-    bundle_native_payload # interpreter with provisa[embedded] + UI installed
+
+  if [ "$step" != "dmg" ]; then
+    build_ui             # provisa-ui/dist + provisa-cli (both editions)
+    if [ "$EDITION" = "container" ]; then
+      embed_compose        # compose YAMLs, config, db, trino, observability
+      download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
+    else
+      bundle_native_payload # interpreter with provisa[embedded] + UI installed
+    fi
+    build_launcher       # compile SwiftUI launcher and embed binary
+    embed_scripts
+    bake_version         # write Contents/Resources/VERSION before signing seals the bundle
+    sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
+    sign_app
   fi
-  build_launcher       # compile SwiftUI launcher and embed binary
-  embed_scripts
-  bake_version         # write Contents/Resources/VERSION before signing seals the bundle
-  sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
-  sign_app
+  if [ "$step" = "stage" ]; then
+    stage_app
+    printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
+    return
+  fi
   # The DMG bundles Provisa.app + the hidden native payload; notarize-dmg.sh notarizes it.
   create_dmg
 

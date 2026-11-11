@@ -3,8 +3,10 @@
 # Submits each DMG of one version to Apple's notary service, waits for the verdict under its own
 # limit (Apple's queue took 44 minutes for the Obs DMG of v0.1.0-alpha.508, run 42951512721, which
 # the DMG build's 45-minute limit cancelled), staples it, and uploads it as the macos-<x>-dist
-# artifact the release's publish leg attaches. The DMG build jobs (release-macos.yml) build and
-# sign; they do not notarize, and hand each DMG on as a macos-<x>-unnotarized artifact.
+# artifact the release's publish leg attaches. The build jobs (release-macos.yml) build and sign;
+# they do not notarize, and hand each DMG (Obs, Demo) or signed .app (Core, Container) on as a
+# macos-<x>-unnotarized artifact. Core and Container: the .app is notarized and stapled, the DMG is
+# built from it, and the DMG is notarized and stapled.
 #
 # Two ways in:
 #   - Called by release-macos.yml, in the release's run, after the DMG builds. A notarization that
@@ -84,18 +86,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Core and Container arrive as a signed .app: it is notarized and stapled, the DMG is built
+          # from it (built_dmg is what build-dmg.sh names it), then the DMG is notarized.
           - edition: Core
             artifact: macos-core
             dmg: ${{ needs.metadata.outputs.dmg_name }}
+            app_edition: core
+            built_dmg: Provisa.dmg
           - edition: Container
             artifact: macos-container
             dmg: ${{ needs.metadata.outputs.dmg_container_name }}
+            app_edition: container
+            built_dmg: Provisa-Container.dmg
+          # Obs and Demo arrive as a signed DMG.
           - edition: Obs
             artifact: macos-obs
             dmg: ${{ needs.metadata.outputs.dmg_obs_name }}
+            app_edition: ""
           - edition: Demo
             artifact: macos-demo
             dmg: ${{ needs.metadata.outputs.dmg_demo_name }}
+            app_edition: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,6 +118,28 @@ jobs:
           path: dmg/
           run-id: ${{ inputs.run_id || github.run_id }}
           github-token: ${{ github.token }}
+
+      # Core and Container: notarize and staple the .app first, so it carries its own ticket and
+      # launches offline once copied out of the DMG; then make the DMG from the stapled .app.
+      - name: Notarize and staple the app
+        if: ${{ matrix.app_edition != '' }}
+        env:
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          tar -xf "dmg/stage-${{ matrix.app_edition }}.tar" -C packaging/macos
+          chmod +x packaging/macos/notarize-dmg.sh
+          packaging/macos/notarize-dmg.sh --app packaging/macos/Provisa.app
+
+      - name: Build the DMG from the stapled app
+        if: ${{ matrix.app_edition != '' }}
+        env:
+          PROVISA_EDITION: ${{ matrix.app_edition }}
+        run: |
+          chmod +x packaging/macos/build-dmg.sh
+          packaging/macos/build-dmg.sh dmg
+          mv "packaging/macos/dist/${{ matrix.built_dmg }}" "dmg/${{ matrix.dmg }}"
 
       - name: Notarize and staple
         env:
