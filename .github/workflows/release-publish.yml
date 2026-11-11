@@ -49,6 +49,7 @@ jobs:
       trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
       trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
+      duckdb_extensions_name: ${{ steps.meta.outputs.duckdb_extensions_name }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -175,6 +176,8 @@ jobs:
             release-assets/${{ needs.metadata.outputs.trino_image_name }}
             release-assets/${{ needs.metadata.outputs.trino_image_amd64_name }}
             release-assets/${{ needs.metadata.outputs.plugins_name }}
+            release-assets/${{ needs.metadata.outputs.duckdb_extensions_name }}
+            release-assets/${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
             release-assets/*.whl
         run: |
           set -euo pipefail
@@ -225,6 +228,7 @@ jobs:
             | `${{ needs.metadata.outputs.obs_images_name }}` | Observability Stack (optional) |
             | `${{ needs.metadata.outputs.demo_images_name }}` | Demo Data Pack (optional) |
             | `${{ needs.metadata.outputs.plugins_name }}` | Coordination Engine connectors (SharePoint, Splunk, File) |
+            | `${{ needs.metadata.outputs.duckdb_extensions_name }}` | macOS Core DuckDB extensions — first launch downloads this, or drop it beside the DMG for airgap |
 
             ### macOS Install
             1. Download `${{ needs.metadata.outputs.dmg_name }}`

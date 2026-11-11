@@ -45,6 +45,8 @@ outputs:
     value: ${{ steps.meta.outputs.trino_image_amd64_name }}
   plugins_name:
     value: ${{ steps.meta.outputs.plugins_name }}
+  duckdb_extensions_name:
+    value: ${{ steps.meta.outputs.duckdb_extensions_name }}
 runs:
   using: composite
   steps:
@@ -94,3 +96,6 @@ runs:
         echo "trino_image_name=provisa-trino-image-${TAG}.tar.gz"          >> "$GITHUB_OUTPUT"
         echo "trino_image_amd64_name=provisa-trino-image-amd64-${TAG}.tar.gz" >> "$GITHUB_OUTPUT"
         echo "plugins_name=provisa-trino-plugins-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"
+        # The macOS Core runtime's DuckDB extensions: codesign cannot sign them, so the notarized
+        # Core DMG ships without them and first launch fetches this (maintainer decision 2026-11-11).
+        echo "duckdb_extensions_name=provisa-duckdb-extensions-${TAG}-macOS-arm64.tar.gz" >> "$GITHUB_OUTPUT"

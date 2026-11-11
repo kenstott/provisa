@@ -277,6 +277,33 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
   ok "Native runtime staged ($(du -sh "$runtime" | cut -f1), provisa installed)."
 }
 
+# ── Take the DuckDB extensions out of the native runtime (core edition) ──────
+# DuckDB extensions are Mach-O with DuckDB's own signature appended after the image: codesign
+# refuses them, re-signing would break the signature DuckDB loads them under, and Apple rejects the
+# DMG that carries them unsigned ("The signature of the binary is invalid"). So the Core DMG ships
+# none (maintainer decision 2026-11-11, "Separate release asset"): every extension file of the
+# runtime (the blob, its .info, a repository's trust anchor) goes into DUCKDB_EXTENSIONS_ASSET at its
+# path under the runtime, a release asset of its own. Its sha256 is baked into the .app before it is
+# signed, and first-launch.sh restores the asset into the staged runtime only when it matches.
+DUCKDB_EXTENSIONS_ASSET="${DUCKDB_EXTENSIONS_ASSET:-provisa-duckdb-extensions-${VERSION:-dev}-macOS-arm64.tar.gz}"
+DUCKDB_EXTENSIONS_PIN="duckdb-extensions.sha256"   # in Contents/Resources: "<sha256>  <asset>"
+split_duckdb_extensions() {
+  local runtime="${NATIVE_PAYLOAD_DIR}/runtime" asset="${OUT_DIR}/${DUCKDB_EXTENSIONS_ASSET}"
+  local files=() f
+  while IFS= read -r f; do files+=("$f"); done \
+    < <(cd "$runtime" && find . -type f -name '*.duckdb_extension*' | LC_ALL=C sort)
+  if [ "${#files[@]}" -eq 0 ]; then
+    err "No DuckDB extension in the native runtime: provisa[embedded] did not install them."
+    exit 1
+  fi
+  mkdir -p "$OUT_DIR" "${APP_BUNDLE}/Contents/Resources"
+  tar -czf "$asset" -C "$runtime" "${files[@]}"
+  ( cd "$runtime" && rm -f "${files[@]}" )
+  ( cd "$OUT_DIR" && shasum -a 256 "$DUCKDB_EXTENSIONS_ASSET" > "${DUCKDB_EXTENSIONS_ASSET}.sha256" )
+  cp "${asset}.sha256" "${APP_BUNDLE}/Contents/Resources/${DUCKDB_EXTENSIONS_PIN}"
+  ok "${#files[@]} DuckDB extension files moved to ${DUCKDB_EXTENSIONS_ASSET}."
+}
+
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
 build_launcher() {
   info "Building ProvisaLauncher (Swift)..."
@@ -356,11 +383,6 @@ for root, dirs, files in os.walk(sys.argv[1]):
 PY
 }
 
-# DuckDB extensions are Mach-O with DuckDB's own signature appended after the image; codesign
-# refuses them ("main executable failed strict validation"), and re-signing would break the DuckDB
-# signature they are loaded under. They are listed apart, not signed.
-DUCKDB_EXTENSION_GLOB='*.duckdb_extension'
-
 sign_app() {
   if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
     info "APPLE_DEVELOPER_ID not set — skipping signing."
@@ -406,8 +428,6 @@ sign_native_payload() {
   local runtime="${NATIVE_PAYLOAD_DIR}/runtime"
   local f kind libraries=() executables=() i
   while IFS= read -r f; do
-    # shellcheck disable=SC2053
-    [[ "$f" == $DUCKDB_EXTENSION_GLOB ]] && continue
     kind="$(file -b "$f")"
     if [[ "$kind" == *executable* ]]; then executables+=("$f"); else libraries+=("$f"); fi
   done < <(macho_files "$runtime")
@@ -433,12 +453,13 @@ verify_signed() {
     bad=1
   fi
   if [ "$EDITION" = "core" ]; then
+    # The DuckDB extensions ship as their own release asset (split_duckdb_extensions), never here.
     while IFS= read -r f; do
-      # shellcheck disable=SC2053
-      if [[ "$f" == $DUCKDB_EXTENSION_GLOB ]]; then
-        info "  Not signable by codesign (DuckDB-signed extension): ${f#"${SCRIPT_DIR}/"}"
-        continue
-      fi
+      err "${f#"${SCRIPT_DIR}/"} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG."
+      bad=1
+    done < <(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*')
+    while IFS= read -r f; do
+      [[ "$f" == *.duckdb_extension ]] && continue   # named above
       # codesign -dv prints "Timestamp=" for a secure timestamp, "Signed Time=" for a local clock.
       details="$(codesign -dv "$f" 2>&1)" || details=""
       if ! codesign --verify --strict -R='anchor apple generic' "$f" \
@@ -472,6 +493,12 @@ create_dmg() {
     # first-launch.sh copies it to ~/.provisa/venv — it neither builds a venv nor pips.
     if [ ! -x "${NATIVE_PAYLOAD_DIR}/runtime/bin/python3" ]; then
       err "Native runtime missing at ${NATIVE_PAYLOAD_DIR}/runtime — bundle_native_payload must run first."
+      exit 1
+    fi
+    local ext
+    ext="$(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*' | head -1)"
+    if [ -n "$ext" ]; then
+      err "${ext} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG (split_duckdb_extensions)."
       exit 1
     fi
     cp -R "${NATIVE_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
@@ -541,6 +568,7 @@ main() {
       download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
     else
       bundle_native_payload # interpreter with provisa[embedded] + UI installed
+      split_duckdb_extensions # extensions -> their own release asset; its sha256 into Resources
     fi
     build_launcher       # compile SwiftUI launcher and embed binary
     embed_scripts
