@@ -677,7 +677,7 @@ describe("the page's filter box on the ERD", () => {
   const dimmed = (id: string) =>
     (drawn.cy as unknown as { getElementById(id: string): { hasClass(c: string): boolean } })
       .getElementById(id)
-      .hasClass("erd-dim");
+      .hasClass("dim");
   const type = (value: string) =>
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value } });
 

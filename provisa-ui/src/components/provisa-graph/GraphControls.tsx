@@ -177,6 +177,12 @@ export function GraphControls({
           </ActionIcon>
         </Tip>
       )}
+      {/* The copy said done, beside the bar, for as long as the check shows. */}
+      {copy && copied && (
+        <span className="pg-copied" role="status">
+          {copy.done}
+        </span>
+      )}
     </Stack>
   );
 }

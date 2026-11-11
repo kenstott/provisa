@@ -62,6 +62,16 @@
 .pg-controls:focus-within {
   opacity: 1;
 }
+.pg-copied {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-start: calc(100% + 6px);
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  font-size: var(--mantine-font-size-xs);
+  white-space: nowrap;
+}
 /* The one legend: top right, clear of the controls and of the application's floating buttons. */
 .pg-legend {
   top: 8px;
