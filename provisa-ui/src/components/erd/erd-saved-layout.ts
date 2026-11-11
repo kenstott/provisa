@@ -15,7 +15,7 @@
 
 import { catalogTableName } from "../../naming";
 import type { ListedTable } from "../../types/admin";
-import type { CyInstance } from "../graph/cytoscape-types";
+import type { GraphPlaces, StandPlaces } from "../provisa-graph/places";
 import type { DomainPlace, LayoutArrangement, SavedLayout, TablePlace } from "../../api/erdLayouts";
 import type { ErdFocus } from "./erd-focus";
 import type { ErdOptions } from "./useErdOptions";
@@ -97,41 +97,27 @@ export function arrangementOf(
   return { options: places.options, domains, tables };
 }
 
-/** Read the diagram's places off the canvas. */
-export function readPlaces(cy: CyInstance, options: ErdOptions, collapsed: Set<string>): ErdPlaces {
+/** The ERD's places, from the graph's: its tables by id, its domains by id. */
+export function erdPlaces(
+  graph: GraphPlaces,
+  options: ErdOptions,
+  collapsed: Set<string>,
+): ErdPlaces {
   const tables = new Map<number, Pt>();
-  cy.nodes(".erd-table").forEach((n) => {
-    tables.set(Number(n.data("tableId")), n.position());
+  graph.nodes.forEach((at, id) => {
+    if (id.startsWith("t:")) tables.set(Number(id.slice(2)), at);
   });
   const domains = new Map<string, Pt & { w: number; h: number }>();
-  cy.nodes(".erd-domain").forEach((n) => {
-    domains.set(String(n.data("domainId")), { ...n.position(), w: n.width(), h: n.height() });
+  graph.groups.forEach((box, id) => {
+    if (id.startsWith("d:")) domains.set(id.slice(2), box);
   });
   return { options, collapsed, tables, domains };
 }
 
-/** Stand the diagram as the layout holds it, with what was moved since (`moved`, by node id)
- * over it. A table with no saved position keeps the one the automatic layout gave it. A domain
- * keeps at least its saved size; a collapsed one stands where it was saved. */
-export function applyPlaces(cy: CyInstance, layout: SavedLayout, moved: Map<string, Pt>): void {
-  cy.batch(() => {
-    for (const place of layout.tables) {
-      const node = cy.getElementById(`t:${place.tableId}`);
-      if (node.empty() || place.x === null || place.y === null) continue;
-      node.position({ x: place.x, y: place.y });
-    }
-    for (const place of layout.domains) {
-      const node = cy.getElementById(`d:${place.domainId}`);
-      if (node.empty()) continue;
-      if (node.children().empty()) {
-        if (place.x !== null && place.y !== null) node.position({ x: place.x, y: place.y });
-      } else if (place.w !== null && place.h !== null) {
-        node.style({ "min-width": place.w, "min-height": place.h });
-      }
-    }
-    moved.forEach((at, id) => {
-      const node = cy.getElementById(id);
-      if (!node.empty()) node.position(at);
-    });
-  });
+/** A saved layout's places, by the ids the graph draws them with. */
+export function standOf(layout: SavedLayout): StandPlaces {
+  return {
+    nodes: layout.tables.map((p) => ({ id: `t:${p.tableId}`, x: p.x, y: p.y })),
+    groups: layout.domains.map((p) => ({ id: `d:${p.domainId}`, x: p.x, y: p.y, w: p.w, h: p.h })),
+  };
 }

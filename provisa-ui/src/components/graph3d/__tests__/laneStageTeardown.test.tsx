@@ -43,6 +43,8 @@ vi.mock("cytoscape", () => {
       filter: () => none,
     };
     return {
+      // The element it draws in, as cytoscape's own container() gives it (a fit reads it).
+      container: () => container,
       on: vi.fn(),
       layout: () => {
         let stop: (() => void) | null = null;
