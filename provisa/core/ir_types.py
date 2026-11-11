@@ -15,6 +15,9 @@ spoke of any fed engine: **sources map native → IR** (at registration), **fed 
 their physical dialect** (at query/DDL time), and the **write face maps IR → SQLAlchemy** (store
 DDL, free). Swap the fed engine and only its IR→physical map changes; sources are untouched.
 
+An array of a primitive at its depth is an IR type too (REQ-1965, amended 2026-11-11):
+``integer[]``, ``numeric(10,2)[][]`` (``provisa.core.ir_arrays``).
+
 ``data_type`` on a column is an IR name. For a LANDED table it is authoritative (it IS the store
 DDL); for a LIVE source it is informational (the engine's live resolution wins). Either way it is
 resolved at registration, never lazily backfilled. A type that names none of the vocabulary is
@@ -994,6 +997,13 @@ def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     session_only = _session_only_sqlalchemy(type_name)
     if session_only is not None:
         return session_only
+    from provisa.core.ir_arrays import TypedArray, array_of
+
+    typed = array_of(type_name)
+    if typed is not None:
+        # REQ-1965 (amended 2026-11-11): a typed array, held natively where the store has an
+        # array type and as JSON where it has none.
+        return TypedArray(typed.element, typed.depth)
     type_name = base_type(type_name)  # REQ-2171: a subtype is stored as its base
     sa_type = _IR_TO_SA[to_ir(type_name)]
     if sa_type is Numeric:
