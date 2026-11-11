@@ -50,6 +50,7 @@ function renderForm(domainHints: string[]) {
       onContinue={onContinue}
       onCancel={() => {}}
       onProductsRegistered={vi.fn()}
+      onRegisteredMany={vi.fn()}
       setError={vi.fn()}
     />,
   );

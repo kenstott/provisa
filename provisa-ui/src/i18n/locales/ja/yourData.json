@@ -1,0 +1,15 @@
+{
+  "yourData": {
+    "title": "あなたのデータ",
+    "loading": "登録したばかりのテーブルを読み取っています…",
+    "openQuery": "クエリエクスプローラーで開く",
+    "otherWays": "このテーブルへの他のアクセス方法",
+    "graphql": "GraphQL クエリ",
+    "pgwire": "SQL クライアント用の接続文字列 (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP ツール呼び出し",
+    "copy": "{{what}}をコピー",
+    "close": "閉じる"
+  }
+}

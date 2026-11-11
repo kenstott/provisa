@@ -69,6 +69,7 @@ describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
         onContinue={onContinue}
         onCancel={() => {}}
         onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

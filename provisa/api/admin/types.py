@@ -2059,6 +2059,26 @@ class MutationResult:  # REQ-533
     params: JsonScalar | None = None
 
 
+@strawberry.type
+class TableAccessType:  # REQ-2234
+    """The ways to reach a registered table, each ready to copy. ``pgwire`` and ``rest`` are None
+    where that listener or surface is not serving."""
+
+    graphql: str
+    sql: str
+    pgwire: str | None
+    rest: str | None
+    mcp: str
+
+
+@strawberry.type
+class TableRegistrationOutcome:  # REQ-2234
+    """One table of several registered in one action: what its own registration answered."""
+
+    table_name: str
+    result: MutationResult
+
+
 # --- Compile / Submit types ---
 
 
