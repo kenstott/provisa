@@ -28,22 +28,35 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import sqlglot.expressions as exp
+from sqlglot.dialects.dialect import Dialects
 
 from provisa.transpiler.polyfill import notation
 from provisa.transpiler.polyfill.matching import Bindings, match
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
 
-#: Each engine of the grid, and the dialects that are it.
-ENGINES: Mapping[str, frozenset[str]] = {
+#: PostgreSQL's own dialect: every feature is native there, and no rule runs.
+NATIVE = frozenset({"postgres"})
+_FEDERATION = {
     "duckdb": frozenset({"duckdb"}),
     "trino": frozenset({"trino", "presto", "athena"}),
     "clickhouse": frozenset({"clickhouse"}),
+}
+#: The column of every other dialect sqlglot writes: a source a statement goes to directly
+#: (REQ-863). No one dialect writes its forms, so a form there is a refusal or a rewrite function.
+SOURCES = "sources"
+#: Each engine of the grid, and the dialects that are it.
+ENGINES: Mapping[str, frozenset[str]] = {
+    **_FEDERATION,
+    SOURCES: frozenset(d.value for d in Dialects if d.value)
+    - NATIVE
+    - frozenset().union(*_FEDERATION.values()),
 }
 #: How the documentation names each engine.
 ENGINE_TITLES: Mapping[str, str] = {
     "duckdb": "DuckDB",
     "trino": "Trino",
     "clickhouse": "ClickHouse",
+    SOURCES: "Other sources",
 }
 
 
@@ -155,6 +168,8 @@ class Grid:
                     raise RuleError(f"{feature.name}: no engine {engine!r}")
                 if rule.pattern is None and not isinstance(form, Rewrite):
                     raise RuleError(f"{feature.name}: a rule with no pattern is a function name")
+                if isinstance(form, str) and engine == SOURCES:
+                    raise RuleError(f"{feature.name}: no one dialect writes a form for {SOURCES}")
                 if isinstance(form, str):
                     assert rule.pattern is not None
                     notation.replacement(form, _dialect(engine), rule.pattern)

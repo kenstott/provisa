@@ -4,7 +4,7 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Trino (dialects: athena, presto, trino). Each feature has a read polyfill, how its values and operations are computed on the engine, and a write polyfill, how its values reach the engine; each states its limitations.
 
-This page lists every feature that has a polyfill or a limitation on Trino. A feature Trino does natively with no difference from PostgreSQL is left out: 0 of the grid's 11 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on Trino. A feature Trino does natively with no difference from PostgreSQL is left out: 1 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 Rules on this page: 12, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the engine's replacement.
 
@@ -43,5 +43,5 @@ shuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; cardinality($a) THEN fail(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || CAST(cardinality($a) AS VARCHAR) || &#x27; &lt;end of postgresql-error&gt;&#x27;) ELSE slice($a, 1, cardinality($a) - $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused: 0A000 generate_subscripts() has no form on trino</code></pre></td><td><ul><li>A set of rows from an array is refused. <code>0A000</code> generate_subscripts() has no form on trino</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on trino</li></ul></td><td></td><td></td></tr>
 </tbody></table>

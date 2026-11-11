@@ -173,6 +173,7 @@ nav:
           - DuckDB: conformance/polyfill/duckdb.md
           - Trino: conformance/polyfill/trino.md
           - ClickHouse: conformance/polyfill/clickhouse.md
+          - Other sources: conformance/polyfill/sources.md
   - Clients:
       - Python Client: python-client.md
   - Administration:

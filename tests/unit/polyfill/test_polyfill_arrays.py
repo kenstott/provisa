@@ -24,11 +24,15 @@ import sqlglot.expressions as exp
 from provisa.transpiler import function_macros
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID, arrays, graft, holes
-from provisa.transpiler.polyfill.grid import ENGINES
+from provisa.transpiler.polyfill.grid import ENGINES, SOURCES
 from provisa.transpiler.polyfill.notation import Refusal, pattern, replacement
 from provisa.transpiler.transpile import transpile
 
-_DIALECTS = sorted(d for dialects in ENGINES.values() for d in dialects)
+#: A dialect of each engine; for the sources, one a statement goes to directly.
+_A_DIALECT = {engine: "snowflake" if engine == SOURCES else engine for engine in ENGINES}
+_DIALECTS = sorted(
+    {*(d for e, dialects in ENGINES.items() if e != SOURCES for d in dialects), "snowflake"}
+)
 _RULES = [
     (feature, rule, engine)
     for feature in arrays.FEATURES
@@ -53,22 +57,29 @@ def test_the_family_is_in_the_grid_and_not_in_the_old_table():
 
 @pytest.mark.parametrize(("feature", "rule", "engine"), _RULES)
 def test_each_rule_is_the_form_the_translator_writes(feature, rule, engine):
-    """The statement's call written with the grid's replacement and nothing else."""
-    form = rule.forms[engine]
-    call = _call(rule.pattern)
-    sql = f"SELECT {call} AS v FROM t"
+    """The statement's call written with the grid's replacement and nothing else; an engine the
+    rule gives no form for keeps the call (its own function); a refusal is raised from the row."""
+    form = rule.forms.get(engine)
+    dialect = _A_DIALECT[engine]
+    sql = f"SELECT {_call(rule.pattern)} AS v FROM t"
     if isinstance(form, Refusal):
         with pytest.raises(RowRefused) as refused:
-            transpile(sql, engine)
+            transpile(sql, dialect)
         assert str(refused.value) == form.message
         assert refused.value.sqlstate == form.sqlstate
+        assert isinstance(refused.value, FunctionRefused)  # the API's handler of a refusal
         return
+    written = sqlglot.parse_one(transpile(sql, dialect), read=dialect).expressions[0].this
+    if form is None:  # sqlglot's own writing of the call, untouched by the grid
+        plain = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
+        assert type(written) is type(sqlglot.parse_one(plain, read=dialect).expressions[0].this)
+        return
+    assert isinstance(form, str)
     bindings = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
     expected = graft(replacement(form, engine, rule.pattern), bindings)
     if engine == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
-    written = sqlglot.parse_one(transpile(sql, engine), read=engine)
-    assert written.expressions[0].this.sql(engine) == expected.sql(engine)
+    assert written.sql(dialect) == expected.sql(dialect)
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -97,10 +108,18 @@ def test_a_refusal_is_raised_from_the_row_on_every_dialect_of_the_engine():
             transpile("SELECT generate_subscripts(ARRAY[1], 1, true) AS v", dialect)
 
 
-def test_a_dialect_no_engine_of_the_grid_is_refused_by_name():
-    with pytest.raises(FunctionRefused, match="array_ndims\\(\\) has no form on snowflake") as e:
+def test_a_source_a_statement_goes_to_directly_is_refused_from_its_row():
+    with pytest.raises(RowRefused, match="array_ndims\\(\\) has no form on a direct source"):
         transpile("SELECT array_ndims(a) AS v FROM t", "snowflake")
-    assert not isinstance(e.value, RowRefused)
+
+
+def test_array_length_is_a_sources_own():
+    assert "ARRAY_SIZE" in transpile("SELECT array_length(a, 1) AS v FROM t", "snowflake")
+
+
+def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
+    out = transpile('SELECT pg_catalog."array_length"(ARRAY[1, 2], 1) AS v', "duckdb")
+    assert "JSON_ARRAY_LENGTH" in out.upper(), out
 
 
 def test_postgresql_is_native():

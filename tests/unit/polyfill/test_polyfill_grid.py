@@ -94,7 +94,8 @@ def _node(sql: str) -> exp.Expr:
         ("presto", "trino"),
         ("athena", "trino"),
         ("clickhouse", "clickhouse"),
-        ("snowflake", None),
+        ("snowflake", "sources"),
+        ("tsql", "sources"),
         ("postgres", None),
     ],
 )
@@ -125,7 +126,7 @@ def test_a_refusal_is_the_rows_form():
 
 
 def test_a_dialect_that_is_no_engine_matches_with_no_form():
-    applied = _TOY.read(_node("shout(x)"), "snowflake")
+    applied = _TOY.read(_node("shout(x)"), "postgres")
     assert applied is not None and applied.form is None
 
 
@@ -172,6 +173,7 @@ def test_each_feature_has_a_status_on_each_engine(feature, engine, status):
         ((Feature("f", "t", "", Side((Rule("f($a)", {"duckdb": "g($b)"}),))),), "does not have"),
         ((Feature("f", "t", "", Side((Rule("f($a)", {"trino": "g(($a"}),))),), "does not parse"),
         ((Feature("f", "t", "", Side(limitations={"x": ()})),), "no engine"),
+        ((Feature("f", "t", "", Side((Rule("f($a)", {"sources": "g($a)"}),))),), "no one dialect"),
     ],
 )
 def test_a_grid_that_does_not_hold_is_refused_when_built(features, message: str):
@@ -194,14 +196,17 @@ def test_an_engines_page_lists_what_is_not_native_and_counts_the_rest():
 
 def test_a_refusal_is_shown_with_its_sqlstate_and_message():
     page = docs.engine_page(_TOY, "clickhouse")
-    assert "refused: 0A000 shout has no form on clickhouse" in page
+    assert "refused (its error is under the limitations)" in page
+    assert (
+        "<li>Refused: shout($a::text). <code>0A000</code> shout has no form on clickhouse</li>"
+    ) in page
     assert "<li>Refused. <code>0A000</code> shout has no form on clickhouse</li>" in page
 
 
 def test_the_summary_shows_each_feature_on_each_engine():
     page = docs.summary_page(_TOY)
-    assert "| `shout` | toy | polyfilled | native | refused |" in page
-    assert "| `a_money_value` | toy | native | differs | native |" in page
+    assert "| `shout` | toy | polyfilled | native | refused | native |" in page
+    assert "| `a_money_value` | toy | native | differs | native | native |" in page
 
 
 def test_every_page_states_its_rule_and_the_pages_are_one_per_engine():

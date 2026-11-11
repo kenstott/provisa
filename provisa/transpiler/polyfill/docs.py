@@ -20,7 +20,15 @@ from __future__ import annotations
 
 import html
 
-from provisa.transpiler.polyfill.grid import ENGINE_TITLES, ENGINES, Feature, Grid, Rule, Side
+from provisa.transpiler.polyfill.grid import (
+    ENGINE_TITLES,
+    ENGINES,
+    SOURCES,
+    Feature,
+    Grid,
+    Rule,
+    Side,
+)
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite
 
 #: Where the pages are written, from the repository's root.
@@ -37,7 +45,7 @@ def _code(text: str) -> str:
 
 def _form(form: Form) -> str:
     if isinstance(form, Refusal):
-        return f"refused: {form.sqlstate} {form.message}"
+        return "refused (its error is under the limitations)"
     if isinstance(form, Rewrite):
         return f"function {form.name}: {form.purpose}"
     return form
@@ -55,14 +63,26 @@ def _polyfill(side: Side, engine: str) -> str:
     return "".join(_rule(rule, engine) for rule in side.rules)
 
 
+def _refused(text: str, refusal: Refusal) -> str:
+    return (
+        f"<li>{html.escape(text)} <code>{refusal.sqlstate}</code> "
+        f"{html.escape(refusal.message)}</li>"
+    )
+
+
 def _limitations(side: Side, engine: str) -> str:
-    items = []
+    """Each limitation, and each refusal of a rule, with the SQLSTATE and message a client gets
+    (REQ-2236, THE REFUSAL LIVES IN THE GRID)."""
+    items = [
+        _refused(f"Refused: {rule.pattern or 'the call'}.", form)
+        for rule in side.rules
+        if isinstance(form := rule.forms.get(engine), Refusal)
+    ]
     for limitation in side.limitations.get(engine, ()):
-        text = html.escape(limitation.text)
-        if limitation.refusal is not None:
-            refusal = limitation.refusal
-            text += f" <code>{refusal.sqlstate}</code> {html.escape(refusal.message)}"
-        items.append(f"<li>{text}</li>")
+        if limitation.refusal is None:
+            items.append(f"<li>{html.escape(limitation.text)}</li>")
+        else:
+            items.append(_refused(limitation.text, limitation.refusal))
     return f"<ul>{''.join(items)}</ul>" if items else ""
 
 
@@ -96,6 +116,8 @@ def engine_page(grid: Grid, engine: str) -> str:
     native = len(grid.features) - len(listed)
     rules, functions = _counts(grid, engine)
     dialects = ", ".join(sorted(ENGINES[engine]))
+    if engine == SOURCES:
+        title = "other sources"
     header = (
         "<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th>"
         "<th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>"

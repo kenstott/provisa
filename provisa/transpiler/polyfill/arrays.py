@@ -21,7 +21,7 @@ takes only a constant message, so there such a refusal is by name, and is a limi
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import SOURCES, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal
 
 FAMILY = "arrays"
@@ -50,6 +50,11 @@ def _no_form(function: str, engine: str) -> Refusal:
     return Refusal("0A000", f"{function}() has no form on {engine}")
 
 
+def _on_sources(function: str) -> dict[str, Refusal]:
+    """A source a statement goes to directly has no form of an array function."""
+    return {SOURCES: _no_form(function, "a direct source")}
+
+
 ARRAY_NDIMS = Feature(
     "array_ndims",
     FAMILY,
@@ -59,6 +64,7 @@ ARRAY_NDIMS = Feature(
             Rule(
                 "array_ndims($a::anyarray)",
                 {
+                    **_on_sources("array_ndims"),
                     "duckdb": r"CAST(CASE WHEN len($a) > 0 THEN "
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER)",
                     "trino": r"CAST(CASE WHEN cardinality($a) > 0 THEN "
@@ -80,6 +86,7 @@ ARRAY_DIMS = Feature(
             Rule(
                 "array_dims($a::anyarray)",
                 {
+                    **_on_sources("array_dims"),
                     "duckdb": r"array_to_string(list_transform(range(CAST(CASE WHEN len($a) > 0 "
                     r"THEN length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER)), "
                     r"_d -> '[1:' || json_array_length(to_json($a), '$' || "
@@ -125,6 +132,7 @@ ARRAY_LOWER = Feature(
             Rule(
                 "array_lower($a::anyarray, $d::integer)",
                 {
+                    **_on_sources("array_lower"),
                     "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
                     r"THEN 1 END AS INTEGER)",
@@ -149,6 +157,7 @@ ARRAY_UPPER = Feature(
             Rule(
                 "array_upper($a::anyarray, $d::integer)",
                 {
+                    **_on_sources("array_upper"),
                     "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
                     r"THEN json_array_length(to_json($a), '$' || "
@@ -215,6 +224,7 @@ ARRAY_FILL = Feature(
             Rule(
                 "array_fill($v::anyelement, $dims::integer[])",
                 {
+                    **_on_sources("array_fill"),
                     "duckdb": "CASE WHEN $dims IS NULL THEN error('postgresql-error 22004: ' || "
                     "'dimension array or low bound array cannot be null') "
                     "WHEN len($dims) = 1 THEN list_transform(range($dims[1]), _i -> $v) "
@@ -234,6 +244,7 @@ ARRAY_FILL = Feature(
             Rule(
                 "array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])",
                 {
+                    **_on_sources("array_fill"),
                     "duckdb": "CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN "
                     "error('postgresql-error 22004: ' || "
                     "'dimension array or low bound array cannot be null') "
@@ -273,6 +284,7 @@ ARRAY_POSITIONS = Feature(
             Rule(
                 "array_positions($a::anycompatiblearray, $v::anycompatible)",
                 {
+                    **_on_sources("array_positions"),
                     "duckdb": "CAST(list_filter(range(1, len($a) + 1), "
                     "_i -> $a[_i] IS NOT DISTINCT FROM $v) AS INTEGER[])",
                     "trino": "CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) "
@@ -295,6 +307,7 @@ ARRAY_REPLACE = Feature(
             Rule(
                 "array_replace($a::anycompatiblearray, $v::anycompatible, $w::anycompatible)",
                 {
+                    **_on_sources("array_replace"),
                     "duckdb": "list_transform($a, "
                     "_x -> CASE WHEN _x IS NOT DISTINCT FROM $v THEN $w ELSE _x END)",
                     "trino": "transform($a, "
@@ -316,6 +329,7 @@ ARRAY_SAMPLE = Feature(
             Rule(
                 "array_sample($a::anyarray, $n::integer)",
                 {
+                    **_on_sources("array_sample"),
                     "duckdb": "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
                     "WHEN $n < 0 OR $n > len($a) THEN error('postgresql-error 22023: ' || "
                     "'sample size must be between 0 and ' || len($a)) "
@@ -344,6 +358,7 @@ ARRAY_SHUFFLE = Feature(
             Rule(
                 "array_shuffle($a::anyarray)",
                 {
+                    **_on_sources("array_shuffle"),
                     "duckdb": "list_transform(list_sort(list_transform($a, "
                     "_x -> {'k': random(), 'v': _x})), _e -> _e.v)",
                     "trino": "shuffle($a)",
@@ -363,6 +378,7 @@ TRIM_ARRAY = Feature(
             Rule(
                 "trim_array($a::anyarray, $n::integer)",
                 {
+                    **_on_sources("trim_array"),
                     "duckdb": "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
                     "WHEN $n < 0 OR $n > len($a) THEN error('postgresql-error 2202E: ' || "
                     "'number of elements to trim must be between 0 and ' || len($a)) "
@@ -391,6 +407,7 @@ GENERATE_SUBSCRIPTS = Feature(
             Rule(
                 "generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)",
                 {
+                    **_on_sources("generate_subscripts"),
                     "duckdb": r"unnest(CASE WHEN $reverse THEN range(CAST(CASE WHEN $d BETWEEN 1 "
                     r"AND CAST(CASE WHEN len($a) > 0 THEN length(regexp_extract(typeof($a), "
                     r"'(\[\])+$')) // 2 END AS INTEGER) THEN json_array_length(to_json($a), '$' "
@@ -404,20 +421,6 @@ GENERATE_SUBSCRIPTS = Feature(
                 },
             ),
         ),
-        limitations={
-            "trino": (
-                Limitation(
-                    "A set of rows from an array is refused.",
-                    _no_form("generate_subscripts", "trino"),
-                ),
-            ),
-            "clickhouse": (
-                Limitation(
-                    "A set of rows from an array is refused.",
-                    _no_form("generate_subscripts", "clickhouse"),
-                ),
-            ),
-        },
     ),
 )
 

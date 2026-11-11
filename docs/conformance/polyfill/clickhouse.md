@@ -4,7 +4,7 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on ClickHouse (dialects: clickhouse). Each feature has a read polyfill, how its values and operations are computed on the engine, and a write polyfill, how its values reach the engine; each states its limitations.
 
-This page lists every feature that has a polyfill or a limitation on ClickHouse. A feature ClickHouse does natively with no difference from PostgreSQL is left out: 0 of the grid's 11 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on ClickHouse. A feature ClickHouse does natively with no difference from PostgreSQL is left out: 1 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 Rules on this page: 12, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the engine's replacement.
 
@@ -43,5 +43,5 @@ arrayShuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 arraySlice($a, 1 + throwIf($n IS NULL OR $n &lt; 0 OR $n &gt; length($a), &#x27;postgresql-error 0A000: trim_array does not read this value &lt;end of postgresql-error&gt;&#x27;), length($a) - $n)</code></pre></td><td><ul><li>An out-of-range count is refused with 0A000, not PostgreSQL&#x27;s 2202E and its message. <code>0A000</code> trim_array does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused: 0A000 generate_subscripts() has no form on clickhouse</code></pre></td><td><ul><li>A set of rows from an array is refused. <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 </tbody></table>
