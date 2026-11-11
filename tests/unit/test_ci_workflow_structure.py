@@ -19,7 +19,9 @@ the shape, with no list of exceptions beyond the one stated below (the NixOS gue
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -422,7 +424,7 @@ _FABRIC_DOWN_IF = (
 
 def _fabric_test_files() -> set[str]:
     """The integration test files that reach Fabric: they resume its capacity or connect to its
-    SQL endpoint, so a run selecting one needs the run's capacity."""
+    SQL endpoint, so each must carry requires_fabric."""
     return {
         str(p.relative_to(REPO))
         for p in (REPO / "tests/integration").glob("test_*.py")
@@ -432,50 +434,37 @@ def _fabric_test_files() -> set[str]:
     }
 
 
-def _fabric_up_runs(condition: str, tests: str) -> bool:
-    """The create step's ``if:`` evaluated for a run's ``inputs.tests``. The condition may only be
-    ``inputs.tests == ''`` or'd with ``contains(inputs.tests, '<file>')`` clauses; anything else
-    fails here rather than being guessed at."""
-    runs = False
-    for clause in (c.strip() for c in condition.split("||")):
-        if clause == "inputs.tests == ''":
-            runs = runs or tests == ""
-            continue
-        named = re.fullmatch(r"contains\(inputs\.tests, '([^']+)'\)", clause)
-        assert named, f"unexpected clause in the Fabric capacity step's condition: {clause!r}"
-        runs = runs or named.group(1) in tests
-    return runs
-
-
-def test_the_warehouse_lane_creates_a_fabric_capacity_only_for_a_run_selecting_a_fabric_test():
-    """REQ-254: a lane run that selects no Fabric test creates no capacity. The whole lane (no
-    inputs.tests) still makes it; a targeted run makes it only when it names a test file that
-    reaches Fabric -- every such file, so none runs without one. The delete step runs whenever
-    the create step ran, whatever happened, and is skipped with it."""
+def test_the_warehouse_lane_never_creates_a_fabric_capacity_and_selects_no_fabric_test():
+    """Maintainer 2026-11-11 ("skip fabric tests for now"): no lane selects a requires_fabric
+    test, so the capacity step never runs (assignToCapacity returns 403 until the CI service
+    principal is Admin on the Fabric workspace; run 42930869189). The delete step stays tied to
+    the create step's outcome, so it is skipped with it."""
     job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
         "jobs"
     ]["warehouse"]
     steps = {s.get("name"): s for s in job["steps"]}
     up = steps["This run's Fabric capacity"]
     assert up["id"] == "fabric-capacity"
-    condition = up["if"]
-    fabric = _fabric_test_files()
-    assert fabric, "no integration test reaches Fabric: the condition below would be vacuous"
-    assert set(re.findall(r"contains\(inputs\.tests, '([^']+)'\)", condition)) == fabric
-
-    assert _fabric_up_runs(condition, "")
-    for f in sorted(fabric):
-        assert _fabric_up_runs(condition, f), f
-        assert _fabric_up_runs(
-            condition, f"tests/integration/test_google_sheets_source_e2e.py {f}::test_x"
-        ), f
-    # Run 42930869189: a targeted Google Sheets run made (and paid for) a capacity it never used.
-    assert not _fabric_up_runs(condition, "tests/integration/test_google_sheets_source_e2e.py")
-    assert not _fabric_up_runs(
-        condition, "tests/integration/test_metadata_export_purview_e2e.py::test_x"
-    )
-
+    assert up["if"] is False  # YAML `if: false`: the step never runs
     assert steps["Delete this run's Fabric capacity"]["if"] == _FABRIC_DOWN_IF
+
+
+def test_run_lane_s_warehouse_lane_excludes_requires_fabric():
+    spec = importlib.util.spec_from_file_location("run_lane", REPO / "scripts/ci/run_lane.py")
+    run_lane = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = run_lane
+    spec.loader.exec_module(run_lane)
+    assert "and not requires_fabric" in run_lane.LANES["warehouse"].marker
+    for name, lane in run_lane.LANES.items():
+        if name != "warehouse":
+            assert "requires_fabric" not in lane.marker.replace("not requires_fabric", ""), name
+
+
+def test_every_integration_file_reaching_fabric_carries_requires_fabric():
+    fabric = _fabric_test_files()
+    assert fabric, "no integration test reaches Fabric: the check below would be vacuous"
+    for f in sorted(fabric):
+        assert "pytest.mark.requires_fabric" in (REPO / f).read_text(), f
 
 
 def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test():

@@ -276,10 +276,10 @@ def to_number(value: str, form: str) -> str:
     return format(-number if negative else number, "f")
 
 
-def en_us_key(value: str) -> str:
+def en_us_key(value: str, called: str) -> str:
     """A text that compares as ``value`` does under en_US.utf8, for letters and digits: their
     letters, then their case, lower first. Anything else it weighs by rules of its own, and a value
-    holding it is refused."""
+    holding it is refused, naming ``called``, the function ordering it."""
     if not value.isascii() or not value.isalnum():
-        raise ValueError(f"{MARK} 0A000: this collation {REFUSED}{END}")
+        raise ValueError(f"{MARK} 0A000: {called} {REFUSED}{END}")
     return f"{value.lower()}\x01{''.join('b' if c.isupper() else 'a' for c in value)}"

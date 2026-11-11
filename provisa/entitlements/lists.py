@@ -149,6 +149,19 @@ class ExpiryRule:
     list_kind: str | None = None
 
 
+def rule_ends(rule: ExpiryRule, capability: str, kind: str) -> tuple[str, ...] | None:
+    """What a passed ``rule`` ends of ``capability``, a capability scoped by the list ``kind``
+    outside the mask: None for everything (a grant-wide rule), else the identifiers named under
+    the capability, and those under ``*`` when the rule was set with the ``kind`` list itself.
+    Otherwise ``*`` names the mask's objects, which are no list-scoped capability's."""
+    if not rule.ends:
+        return None
+    named = tuple(rule.ends.get(capability, ()))
+    if rule.list_kind == kind:
+        named = (*named, *rule.ends.get("*", ()))
+    return named
+
+
 @dataclass(frozen=True)
 class HeldEntitlements:
     """What Provisa holds for one person."""

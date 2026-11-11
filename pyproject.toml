@@ -481,6 +481,7 @@ markers = [
     "requires_salesforce: requires a live Salesforce org (SF_* env); no self-provision",
     "requires_servicenow: requires a live ServiceNow instance (SERVICENOW_* env); no self-provision",
     "requires_microsoft_365: requires a live Microsoft 365 tenant (M365_* env); no self-provision",
+    "requires_fabric: reaches Microsoft Fabric (needs its capacity, and the CI service principal as Admin on the Fabric workspace); in no CI lane (maintainer 2026-11-11)",
     "requires_google_workspace: requires a live Google Workspace domain (GWS_* env); no self-provision",
     "requires_cloudops: requires live Azure, AWS or GCP credentials (CLOUDOPS_* env); no self-provision",
     "requires_quickbooks: requires a live QuickBooks Online sandbox company (QUICKBOOKS_* env); no self-provision",

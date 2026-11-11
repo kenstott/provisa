@@ -325,6 +325,10 @@ def _boolean(e: Engine) -> str:
     return e.boolean
 
 
+#: The oid of the pseudo-type record: a composite of no type.
+_RECORD_OID = 2249
+
+
 def _by_name(e: Engine, function: str, sql_type: str) -> str:
     """A value this form cannot read as PostgreSQL reads it: refused by name, not answered."""
     return e.raises("0A000", _quoted(f"{function} {REFUSED}"), sql_type)
@@ -1224,7 +1228,19 @@ ROWS: tuple[Row, ...] = (
     ),
     *_refused("interval_in", "v, o, m", _text, "interval"),
     *_refused("enum_in", "v, o", _text, "text"),
-    _no_value("record_in", "input of anonymous composite types is not implemented", "v, o, m"),
+    # The anonymous record's oid is PostgreSQL's own refusal; a named composite's is answered by
+    # PostgreSQL, from a type the engine holds no columns of, so it is refused by name.
+    _noted(
+        _row(
+            "record_in",
+            "v, o, m",
+            _text,
+            lambda e: f"CASE WHEN o = {_RECORD_OID} THEN "
+            f"{e.raises('0A000', _quoted('input of anonymous composite types is not implemented'), _text(e))} "
+            f"ELSE {_by_name(e, 'record_in', _text(e))} END",
+        ),
+        "text",
+    ),
     _noted(
         ("domain_in", ("v", "o", "m"), {e.dialects: _by_name(e, "domain_in", e.text) for e in ENGINES}),
         "text",

@@ -97,7 +97,7 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     string literal is of unknown type, which overload resolution fits to the overload: ``literal``
     is what it is read as (None: any type). ``numbers``: a numeric literal has the type it reads
     as; otherwise it is said to fit any overload, as PostgreSQL's implicit casts widen it."""
-    if isinstance(arg, (exp.Neg, exp.Paren)):
+    if isinstance(arg, (exp.Neg, exp.Paren, exp.Order)):  # an aggregate's value ORDER BY ...
         return _arg_type(arg.this, literal, numbers)
     if isinstance(arg, exp.Literal):
         if arg.is_string:
@@ -123,6 +123,13 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     if call is not None:
         return call_result_type(arg)
     return None
+
+
+def argument_type(arg: exp.Expr) -> str | None:
+    """PostgreSQL's name of the type a statement says of ``arg``, None where it does not say one
+    (a column, an untyped literal, a call whose overload is not known). REQ-2236's typed holes read
+    an argument's type this way."""
+    return _arg_type(arg, None, True)
 
 
 def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
@@ -208,6 +215,12 @@ def _fits(argument: str | None, parameter: str) -> bool:
             and argument in MULTIRANGE_TYPES
         )
     )
+
+
+def fits(argument: str | None, parameter: str) -> bool:
+    """Whether an argument of type ``argument`` (None: not said) fits a parameter of type
+    ``parameter``, as overload resolution here fits it."""
+    return _fits(argument, parameter)
 
 
 #: The polymorphic parameters of each family that take an element, or an array of one.

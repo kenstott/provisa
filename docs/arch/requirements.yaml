@@ -35485,7 +35485,15 @@
     a call. (Amended 2026-11-11, A LOCAL MCP SERVER ACTS FOR A PRINCIPAL ITS OPERATOR NAMES:) Maintainer
     2026-11-11: over stdio, where no token arrives, the operator''s local MCP configuration names the principal
     the process acts for, beside the role it pins; that principal''s entitlements apply to every call. A
-    stdio MCP server whose configuration names no principal refuses every call, naming what is missing.'
+    stdio MCP server whose configuration names no principal refuses every call, naming what is missing.
+    (Amended 2026-11-11, FIRST-RUN SETUP NAMES THE LOCAL PRINCIPAL:) Maintainer 2026-11-11. On an install
+    whose local MCP connector is always on (the desktop tier), the first-run setup that creates the bootstrap
+    admin also sets the local MCP principal (mcp.principal) to that admin, so the connector acts for that
+    person from the start. The operator can change it in Settings like any other setting. (Amended 2026-11-11,
+    A NO-SIGN-IN INSTALL SEATS A LOCAL ADMIN:) Maintainer 2026-11-11. An install that runs with no sign-in
+    (auth provider none, the desktop demo) has no bootstrap admin from setup, so its setup creates a local
+    admin account that no one can sign in as and names it as the local MCP principal, so the always-on connector
+    works from the start with that account''s entitlements.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
@@ -47583,55 +47591,65 @@
   type: constraint
   description: 'Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter.
     Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk,
-    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
-    attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance
-    projections, provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
-    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END SUPERSEDED BLOCK]
-    labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment in the catalog survives
-    every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
-    — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
-    a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
-    to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
-    overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This
-    is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only),
-    each data element has exactly ONE owning system, and the read step exists only because replace-style
-    catalog APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional:
-    the classification read-merge and attribute drift-correction ride the single publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
-    default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute)
-    is the canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes
-    live entities by URN; an entity Provisa published before whose physical address changed (re-platform,
-    physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding, enrichment
-    and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate replaces
-    the full attribute map (empirically verified: an update wiped a steward-written userDescription),
-    so every update starts from the LIVE attributes and overlays only the fields Provisa authors; fields
-    Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their guids and use
-    them to sync"): every successful publish CAPTURES the vendor''s own id per published asset — Atlas
-    entity guid (from the bulk response''s guidAssignments), OpenMetadata entity UUID (from the table
-    PUT response), Collibra asset UUID (exact-name lookup after the import job, only when the binding
+    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate,
+    and entities absent from a later snapshot are never pruned by publish. Every attribute is classified
+    as either PROVISA-OWNED (identity, physical binding, technical facts, governance projections, provisa_*
+    classifications — written on every publish and drift-corrected by the REQ-1072 reconcile) or HUMAN-OWNED
+    (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa
+    writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM
+    ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END
+    SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment
+    in the catalog survives every publish and reconcile). Consequence: the Atlas governance document moves
+    OFF userDescription — the exact field the Atlas UI edits for human descriptions, clobbered today on
+    every publish — onto a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift
+    correction applies to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If
+    Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications)
+    Provisa overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
+    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated
+    term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history;
+    do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins
+    and Provisa never writes it. This is a single-writer MERGE, not a sync: nothing flows back into Provisa
+    (publication is outbound-only), each data element has exactly ONE owning system, and the read step exists
+    only because replace-style catalog APIs force carrying the catalog-owned fields through unchanged. The
+    merge is NOT optional: the classification read-merge and attribute drift-correction ride the single
+    publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile
+    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
+    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
+    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
+    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog entity,
+    new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk
+    createOrUpdate replaces the full attribute map (empirically verified: an update wiped a steward-written
+    userDescription), so every update starts from the LIVE attributes and overlays only the fields Provisa
+    authors; fields Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their
+    guids and use them to sync"): every successful publish CAPTURES the vendor''s own id per published asset
+    — Atlas entity guid (from the bulk response''s guidAssignments), OpenMetadata entity UUID (from the
+    table PUT response), Collibra asset UUID (exact-name lookup after the import job, only when the binding
     is missing or the name changed), DataHub dataset URN — into the catalog_bindings table, one row per
-    (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the
-    stored id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert:
-    Atlas prefers the STORED guid over the laggy basic-search index (the index only covers URIs with no
-    binding); OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository
-    never opts into renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored
-    UUID, its steward enrichment carried onto the successor''s first publish, and its description marked
-    superseded with a pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset
-    by stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
-    identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
-    naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
-    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.
-    (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it.
-    A Class term (REQ-2141) is assigned to the published tables it grounds and a Property term to its
-    published columns; a Concept is assigned to nothing. Each is written as the catalog''s own automated
-    or system assignment, attributed to Provisa -- OpenMetadata labelType Automated, DataHub term associations
-    attributed to Provisa''s actor, Atlas and Atlan semantic assignments whose source is Provisa, Collibra
-    relations created by Provisa''s own user -- and that attribution is the ownership test. Provisa writes
-    and removes only its own assignments, which track the snapshot: one the snapshot no longer carries,
-    including every assignment of a term that left it, is withdrawn. A human assignment stays human-owned:
-    Provisa never removes or overwrites it, and adds none beside it for the same term on the same asset.
-    An assignment is never withdrawn because a request failed, and a live assignment list that cannot
-    be read is not written over.'
+    (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the stored
+    id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert: Atlas prefers
+    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding); OpenMetadata
+    cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository never opts into
+    renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID, its steward
+    enrichment carried onto the successor''s first publish, and its description marked superseded with a
+    pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by stored UUID BEFORE
+    the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable identity, so the
+    successor publishes as a new URN and the OLD bound URN gets the deprecation aspect naming the successor
+    and the Provisa URN. The binding lifecycle (load before publish, persist capture and prune departed-asset
+    bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain,
+    the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment
+    is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is assigned to the published tables
+    it grounds and a Property term to its published columns; a Concept is assigned to nothing. Each is written
+    as the catalog''s own automated or system assignment, attributed to Provisa -- OpenMetadata labelType
+    Automated, DataHub term associations attributed to Provisa''s actor, Atlas and Atlan semantic assignments
+    whose source is Provisa, Collibra relations created by Provisa''s own user -- and that attribution is
+    the ownership test. Provisa writes and removes only its own assignments, which track the snapshot: one
+    the snapshot no longer carries, including every assignment of a term that left it, is withdrawn. A human
+    assignment stays human-owned: Provisa never removes or overwrites it, and adds none beside it for the
+    same term on the same asset. An assignment is never withdrawn because a request failed, and a live assignment
+    list that cannot be read is not written over. (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY
+    COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a Class term is assigned to its tables and to its key columns
+    (whose references sit on the Class, REQ-2141), so a catalog links a primary or foreign key column to
+    its term.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -80600,69 +80618,71 @@
   - tests/unit/test_proto_gen.py
   - tests/integration/test_native_json_postgres.py
   - tests/integration/test_native_json_trino.py
-  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is
-    the type every catalog and every wire lists for it, on every federation engine and every source read
-    directly, so a registration answers the same on every engine. A datasource hands a native array, struct
-    or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON --
-    JSON is the type registration suggests for it, never text -- and registering one is never an error,
-    though reading one from a backend with no verified way to produce JSON is refused by name. A column
-    carries three hidden attributes, recorded from the source at registration, stored with the column, not
-    offered in the registration form and available to every translator: its array depth as an integer --
-    0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of
-    arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost
-    element with precision and scale where it has them, and the native type of the source in its own spelling.
-    A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has
-    no JSON type the value is held and passed as text, and what makes a backend supported is that it can
-    produce JSON from a native value and operate on JSON text with its own functions. Only an array whose
-    innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or
-    an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded,
-    and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable
-    set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate
-    into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted
-    as the same operations, and translated to the dialect of the backend a statement is routed to from one
-    rule table covering every operation on every backend class. For an array of a primitive, at any depth,
-    the attributes are an input to that translation: an innermost element that is extracted or unnested
-    is cast to the element type and a literal compared with one is cast to it, inside the generated statement,
-    and where the statement runs on the source and its column is natively an array, element access, length,
-    contains and unnest use the native operation, except that on the PostgreSQL family, whose array type
-    does not record its dimensions, unnest always goes through JSON, so its answer never depends on the
-    dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused
-    when the statement is compiled, naming the column and its depth. The native type is recorded for casting
-    in: its being recorded is what tells a translator the column must be converted to JSON on the way out,
-    a conversion that is the same whatever the type, and its content is what a value is cast into on the
-    way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON
-    or literal a statement compares with such a column -- with the whole value or with an element -- is
-    cast into the native type, so that the comparison is made on the native column by the source and can
-    use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement
-    gives for a column that is natively an array, struct or map is cast into the recorded native type by
-    the source that stores it, inside the generated statement, through the one write path; a value the source
-    cannot cast is refused with the error of the source, and a backend with no verified way to build its
-    native value from JSON refuses the write by name. A decimal element with a declared precision is written
-    into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its
-    instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or
-    an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value
-    from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa
-    does not parse, convert or re-encode it on any route; the translation is derived once with the governed
-    statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation
-    that is correct but slow is allowed and runs. The user is responsible for what will not perform, and
-    the product says so: the query plan notes, for each JSON operation that the backend it is routed to
-    cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend
-    and the documented alternative, as advice that never blocks or changes the statement and is shown with
-    the plan only; the documentation states the same per backend class from the same rule table. When the
-    type of a source column no longer matches what was recorded, reads of that column are refused, naming
-    the column and both types, until it is registered again. The hidden attributes are standard metadata
-    that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a
-    list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never
-    from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the
-    value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string.
-    (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON
-    with its three hidden attributes recorded from the source (depth, element type, native type, and whose
-    spelling that is), and registering it as any other type is refused by name; a read of such a column
-    is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile
-    step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL);
-    GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone,
-    a decimal element with a declared precision as String, and every other such column as the opaque JSON
-    value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter
+  description: '[SUPERSEDED by REQ-1965 (amended 2026-11-11, TYPED ARRAYS ARE AN IR TYPE), 2026-11-11 --
+    an array of a primitive is now a semantic SQL type; structs and maps stay JSON. Kept here for history;
+    do not implement against it.] Semantic SQL has no array, struct or map type; nested data is a JSON column,
+    and JSON is the type every catalog and every wire lists for it, on every federation engine and every
+    source read directly, so a registration answers the same on every engine. [END SUPERSEDED BLOCK] A datasource
+    hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column
+    is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering
+    one is never an error, though reading one from a backend with no verified way to produce JSON is refused
+    by name. A column carries three hidden attributes, recorded from the source at registration, stored
+    with the column, not offered in the registration form and available to every translator: its array depth
+    as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive,
+    2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type
+    of its innermost element with precision and scale where it has them, and the native type of the source
+    in its own spelling. A backend does not need a JSON type to carry such a column, only JSON functions:
+    where a backend has no JSON type the value is held and passed as text, and what makes a backend supported
+    is that it can produce JSON from a native value and operate on JSON text with its own functions. Only
+    an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array
+    of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its
+    native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL
+    offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct,
+    and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators
+    accepted as the same operations, and translated to the dialect of the backend a statement is routed
+    to from one rule table covering every operation on every backend class. For an array of a primitive,
+    at any depth, the attributes are an input to that translation: an innermost element that is extracted
+    or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated
+    statement, and where the statement runs on the source and its column is natively an array, element access,
+    length, contains and unnest use the native operation, except that on the PostgreSQL family, whose array
+    type does not record its dimensions, unnest always goes through JSON, so its answer never depends on
+    the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth
+    is refused when the statement is compiled, naming the column and its depth. The native type is recorded
+    for casting in: its being recorded is what tells a translator the column must be converted to JSON on
+    the way out, a conversion that is the same whatever the type, and its content is what a value is cast
+    into on the way in. That holds for a predicate as for a write. In a predicate that runs on the source,
+    the JSON or literal a statement compares with such a column -- with the whole value or with an element
+    -- is cast into the native type, so that the comparison is made on the native column by the source and
+    can use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a
+    statement gives for a column that is natively an array, struct or map is cast into the recorded native
+    type by the source that stores it, inside the generated statement, through the one write path; a value
+    the source cannot cast is refused with the error of the source, and a backend with no verified way to
+    build its native value from JSON refuses the write by name. A decimal element with a declared precision
+    is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element
+    keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct,
+    a map or an array of structs nothing is typed: the whole value and the untyped operations work, and
+    a typed value from inside one needs a cast the user writes. Once a source or an engine has produced
+    a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once
+    with the governed statement, not per request. An operation a backend cannot perform correctly is refused
+    by name; an operation that is correct but slow is allowed and runs. The user is responsible for what
+    will not perform, and the product says so: the query plan notes, for each JSON operation that the backend
+    it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation,
+    the backend and the documented alternative, as advice that never blocks or changes the statement and
+    is shown with the plan only; the documentation states the same per backend class from the same rule
+    table. When the type of a source column no longer matches what was recorded, reads of that column are
+    refused, naming the column and both types, until it is registered again. The hidden attributes are standard
+    metadata that a surface able to state a list may read: GraphQL declares a column whose depth is above
+    0 as a list, nested to that depth, of the GraphQL type of its element, from the attributes alone and
+    never from the spelling of a source type, and declares every other JSON column as the opaque JSON value;
+    the value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON
+    string. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers
+    as JSON with its three hidden attributes recorded from the source (depth, element type, native type,
+    and whose spelling that is), and registering it as any other type is refused by name; a read of such
+    a column is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one
+    transpile step every route takes; a replica lands it as JSON the source or engine produces (jsonb on
+    PostgreSQL); GraphQL declares a column of depth above 0 as a list of its element type from the attributes
+    alone, a decimal element with a declared precision as String, and every other such column as the opaque
+    JSON value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter
     (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column
     (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed
     as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a
@@ -80674,7 +80694,22 @@
     and the minimum (0001-01-01) for -infinity, since Timestamp has no infinity; a string field says "infinity"
     / "-infinity" as GraphQL and pgwire do. Arrays, structs and maps in a string field are JSON, never a
     Python repr; bytes are never written as a Python b''...'' literal; a value beyond a float field''s range
-    is refused by name, as PostgreSQL refuses float4 out of range.'
+    is refused by name, as PostgreSQL refuses float4 out of range. (Amended 2026-11-11, TYPED ARRAYS ARE
+    AN IR TYPE:) Maintainer 2026-11-11: "add typed arrays to the provisa ir types." An array whose innermost
+    element is one primitive type is a type of semantic SQL: the array of that element type at its depth
+    (integer[], text[][], numeric(10,2)[] and so on), recorded from the depth and element type every such
+    column already carries. Every catalog and wire lists it as an array of its element type in that protocol''s
+    own form (PostgreSQL array types on pgwire, Arrow lists on Flight, lists in GraphQL, repeated fields
+    in gRPC, lists in Cypher), the same on every engine. Each engine holds it in its own array type where
+    it has one that can hold the value, and as JSON where it has none or cannot hold it (an engine without
+    arrays, BigQuery for an array with a NULL element or an array of arrays); the translation between the
+    two is the translator''s, and a client never sees which. Array operations -- element access, slicing,
+    length, contains, overlap, concatenation, append, unnest with ordinality, array_agg, = ANY -- answer
+    as PostgreSQL does on every engine, through the engine''s array operations or the JSON operations; an
+    operation an engine cannot answer exactly (ordering, grouping or distinct over whole arrays where the
+    engine has no typed array, a lower bound other than 1, an ordered aggregate the engine cannot guarantee)
+    is refused by name. Structs, maps, arrays of structs and arrays of mixed elements stay JSON columns
+    as stated above.'
   scenario: 'Given a PostgreSQL source with a column tags of type text[]
 
     When the column is registered
@@ -85595,7 +85630,41 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   feature: roles-and-capabilities-capabilities
   priority: MUST
   type: behavioral
-  description: "A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant it is absent from the user's held roles on every request, however the request arrives, and an expired org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant of it that no request has depended on for longer than that, counted from the later of the grant's last use and its creation, is removed. A request depended on a role when that role served it as the single acting role, or, acting as several roles (a named set or All), when the role is granted a table the governed statement read; acting as All does not count every held role as used. The grant's last use (last_used_at) is recorded at most once a day per grant, after the statement's audit row lands. A sweep on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records each in the org's administrative trail as role.expired or role.removed_inactive. Wherever mail is configured (mail.provider), a self-hosted single-org deployment included, the holder and the org's administrators are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires or is removed for going unused, once per coming end (again after a grant is used and falls idle again, or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail is configured the trail entry is the record. Security notices are sent whatever a user's email opt-in says. A grant given again states its expiry anew. Roles from an identity provider's claims or role mappings are the provider's to time-limit, and derived roles and meta-roles never expire. The grant form takes an optional until date (the grant ends at the close of that day), the role form takes remove after N days unused, and the grant list shows each grant's end and last use."
+  description: 'A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role
+    may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant
+    it is absent from the user''s held roles on every request, however the request arrives, and an expired
+    org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant
+    of it that no request has depended on for longer than that, counted from the later of the grant''s last
+    use and its creation, is removed. A request depended on a role when that role served it as the single
+    acting role, or, acting as several roles (a named set or All), when the role is granted a table the
+    governed statement read; acting as All does not count every held role as used. The grant''s last use
+    (last_used_at) is recorded at most once a day per grant, after the statement''s audit row lands. A sweep
+    on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records
+    each in the org''s administrative trail as role.expired or role.removed_inactive. Wherever mail is configured
+    (mail.provider), a self-hosted single-org deployment included, the holder and the org''s administrators
+    are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires
+    or is removed for going unused, once per coming end (again after a grant is used and falls idle again,
+    or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail
+    is configured the trail entry is the record. Security notices are sent whatever a user''s email opt-in
+    says. A grant given again states its expiry anew. Roles from an identity provider''s claims or role
+    mappings are the provider''s to time-limit, and derived roles and meta-roles never expire. The grant
+    form takes an optional until date (the grant ends at the close of that day), the role form takes remove
+    after N days unused, and the grant list shows each grant''s end and last use. (Amended 2026-11-11, EXPIRY
+    IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer 2026-11-11. Expiry belongs to two things and only two.
+    A role grant may expire (REQ-2077): at that instant the whole role ends for that person, with every
+    entitlement under it. Each entitlement entry of a grant may expire on its own date: on that date that
+    entry alone ends, and the role and the rest of the list carry on (a person can hold viewer with no end
+    and a list in which some entries expire); an entry never outlives its grant, and a date past the grant''s
+    is refused. A rule that ends a whole grant is the grant''s own expiry, not a second mechanism. One expiring-soon
+    setting, one scheduled run and one notice cover both: the notice names the role when it is ending and
+    each entry that is. Each person''s access shows one timeline: each grant, and the dated entries under
+    it. (Amended 2026-11-11, EXPIRY IS THE LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds
+    a role once, and an entitlement entry once; when either is granted again (by an offer, an admin, any
+    grant), its expiry becomes the latest of the expiries that granted it, and no expiry is later than any
+    date. An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
+    Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
+    an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
+    Dec to no end date").'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -91697,7 +91766,101 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     role request and ends if it is declined. (Amended 2026-10-29, APPROVING THE ROLE RELEASES THE COLUMN
     REQUEST:) Maintainer 2026-10-31: the column request is held pending and names no role until the role
     request is approved. That approval adds the new role to the column request and releases it to the data
-    steward.'
+    steward. (Amended 2026-11-11, A PRODUCT LISTS THE ROLES IT IS GRANTED THROUGH:) [SUPERSEDED by REQ-2180
+    (amended 2026-11-11, OFFERS), 2026-11-11 -- replaced by offers (REQ-2180, OFFERS). Kept here for history;
+    do not implement against it.] Maintainer 2026-11-11. A data product names, when it is published, the
+    roles access to it may be granted through; by default that list is the viewer role. Approving a request
+    is picking one of them (the only one, when the list holds one, already picked), and the approval assigns
+    that role to the requester with entitlements built from the product itself -- its member tables and
+    columns -- so no one writes an entitlement list by hand. [END SUPERSEDED BLOCK] Masks, row rules and
+    anything else applied on read are defined up front, on the listed roles and the product, so what a consumer
+    gets is known before anyone asks. A product whose list is empty cannot be requested. (Amended 2026-11-11,
+    AN OPEN PRODUCT NEEDS NO APPROVAL:) [SUPERSEDED by REQ-2180 (amended 2026-11-11, OFFERS), 2026-11-11
+    -- replaced by offers (REQ-2180, OFFERS). Kept here for history; do not implement against it.] Maintainer
+    2026-11-11. A product can be marked open: a request for it is granted at once, through its listed role
+    (viewer by default) with the entitlements built from the product, and recorded like any approval, with
+    no owner to wait for. [END SUPERSEDED BLOCK] It is meant for common reference data many people need,
+    such as the organisation structure. (Amended 2026-11-11, PRODUCT ACCESS COMES IN TWO SIZES:) [SUPERSEDED
+    by REQ-2180 (amended 2026-11-11, OFFERS), 2026-11-11 -- replaced by offers (REQ-2180, OFFERS). Kept
+    here for history; do not implement against it.] Maintainer 2026-11-11, simplifying the entitlements
+    built from a product: there are two, and the approval (or the open grant) gives one of them -- the product''s
+    datasets, or its datasets with their data quality results and profiles. [END SUPERSEDED BLOCK] Masks,
+    row rules and anything else applied on read come from the listed role, defined up front. (Amended 2026-11-11,
+    OFFERS:) Maintainer 2026-11-11. Access to a data product is by offers. The product''s owner defines
+    its offers when publishing it; each offer is a role together with two choices, whether it includes the
+    product''s data quality results and whether it includes its profiles, and whether it is open. The default
+    offer is the viewer role with data quality results and without profiles. A requester bids for an offer;
+    the approver accepts or declines that offer as bid, never altering it; [SUPERSEDED by REQ-2180 (amended
+    2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no grant at all (REQ-2180,
+    REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against it.] an open offer is accepted
+    at once and recorded like any acceptance, with no one to wait for (meant for common reference data such
+    as the organisation structure) [END SUPERSEDED BLOCK]. Accepting assigns the offer''s role to the requester
+    with entitlements built from the product -- its datasets, with its data quality results and profiles
+    where the offer includes them -- so no one writes an entitlement list by hand. Masks, row rules and
+    anything else applied on read come from the offer''s role, defined up front. A product with no offers
+    cannot be requested. (Amended 2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11.
+    A product owner can put in an offer only a role they have the right to grant: the role picker lists
+    only those, and saving an offer with any other role is refused by name. Rights can change after an offer
+    is published, so accepting a bid checks again that the one accepting may grant the offer''s role; [SUPERSEDED
+    by REQ-2180 (amended 2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no
+    grant at all (REQ-2180, REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against
+    it.] an open offer is checked against the right of the owner who published it, and while that right
+    is gone the offer is not accepted, its owner is told, and the offer is listed for review. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11.
+    Each offer gives one level of data: full (the product''s datasets); a sample, which is one or more views
+    that already exist in the model over the product''s datasets, named on the offer -- accepting it builds
+    entitlements on those views alone, never on the tables beneath them, so no query can widen the sample
+    past what the views express; or synthetic, the product''s shape served by the existing fake-data generator
+    (REQ-1494), with no real records. An offer''s data quality results and profiles stay its own choices;
+    a synthetic offer has no profiles. (Amended 2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A
+    product starts with one offer and only one: the viewer role, the full data, with data quality results,
+    without profiles, not open. Any other offer is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC
+    OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer 2026-11-11. Synthetic data is generated from each
+    dataset''s profile (the Data Profiler, REQ-1934), so an offer of synthetic data can be saved only when
+    every dataset of the product has a profiler; one without is named in the refusal. If a dataset''s profiler
+    is later removed, the offer is not accepted, its owner is told, and the offer is listed for review.
+    (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM THE OFFERS:) Maintainer 2026-11-11. An offer always
+    covers all of the product''s datasets, and accepting it gives its terms on each of them. The data contracts
+    are derived from the offers: for every offer, each dataset of the product has a contract that is that
+    offer''s terms applied to that dataset -- its schema as the offer''s role sees it (masked columns stated
+    as masked, row rules stated in words), its data level (the full dataset, the offer''s sample view over
+    it, or synthetic), the data quality promises (always stated; the offer decides whether its results can
+    be read), and its profiles where the offer includes them -- so the contracts are every contract the
+    product can give, and a requester reads the ones an offer would give before bidding. What is written
+    by hand is only what all of a product''s contracts share (owner, description, freshness and support
+    terms), entered once on the product. Changing an offer changes its contracts'' versions, and a change
+    that removes or masks a column is a breaking one. (Amended 2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:)
+    Maintainer 2026-11-11. Where a product''s contracts are shown -- to its owner and to a requester --
+    they are shown per offer, not as one fixed list: the product lists its offers, and each offer opens
+    to the contracts it gives, one per dataset. (Amended 2026-11-11, AN OFFER''S DURATION DATES THE ENTRIES
+    IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration. Accepting it when the requester already
+    holds the offer''s role adds the product''s entitlements to that grant as entries expiring after the
+    duration; when the requester does not hold the role, the role grant is made with them, and both end
+    after the duration. Without a duration nothing accepted expires. (Amended 2026-11-11, EXPIRY IS THE
+    LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once;
+    when either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the
+    expiries that granted it, and no expiry is later than any date. An operator who needs a hard end on
+    some access makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone
+    added; it does not bring an extended date back. Before a bid, an offer''s summary states any extension
+    accepting it would make ("extends your viewer role from 31 Dec to no end date"). (Amended 2026-11-11,
+    REQUESTS GO THROUGH HOOKS:) Maintainer 2026-11-11: no one would have Provisa grant roles and entitlements
+    on its own. Provisa defines access (offers, contracts, roles, masks, entitlements) and enforces it on
+    every query, whatever granted it; it does not decide grants. Bidding on an offer, requesting a role
+    or entitlements by any path (the UI, MCP, the API), and cancelling a contract each only fire an outbound
+    request hook, carrying who asks, the offer and its terms (role, data level, entries, duration), the
+    contract versions, the reason and an id that makes a repeat harmless. Whatever receives it decides,
+    and the decision returns through one inbound decision hook (the request id, accepted or declined, who
+    decided, when), which refuses a decision that does not match its request or comes from one who may not
+    grant the role. Where access is held by Provisa (no external identity provider), an accepted decision
+    is applied as an ordinary admin grant of exactly what was requested, attributed to the one who decided,
+    and a cancel as the matching ordinary removal; any elaborate cancel bookkeeping is the receiving system''s.
+    Where access is held by an identity provider, the decision only updates the request''s status, and the
+    grant arrives as claims once that system makes it. With no external identity provider, the default outbound
+    hook writes the request into Provisa''s own request queue, and the approver decides there, through the
+    same decision hook. An offer can be open only when its data is already public -- readable by every member
+    through a role every member holds, which is checked when it is marked open and refused naming what is
+    not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
+    the data stops being public the offer is flagged for review.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94044,7 +94207,21 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     event ahead of each; that event''s own setting is the expiring-soon threshold, and the UI highlights
     by it. An expiry rule whose end date is already past is refused, as a list''s end date is. Effective
     access per capability includes the capabilities a role inherits from its parent roles, each shown with
-    the role it comes from.'
+    the role it comes from. (Amended 2026-11-11, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer
+    2026-11-11. Expiry belongs to two things and only two. A role grant may expire (REQ-2077): at that instant
+    the whole role ends for that person, with every entitlement under it. Each entitlement entry of a grant
+    may expire on its own date: on that date that entry alone ends, and the role and the rest of the list
+    carry on (a person can hold viewer with no end and a list in which some entries expire); an entry never
+    outlives its grant, and a date past the grant''s is refused. A rule that ends a whole grant is the grant''s
+    own expiry, not a second mechanism. One expiring-soon setting, one scheduled run and one notice cover
+    both: the notice names the role when it is ending and each entry that is. Each person''s access shows
+    one timeline: each grant, and the dated entries under it. (Amended 2026-11-11, EXPIRY IS THE LATEST
+    OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once; when
+    either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the expiries
+    that granted it, and no expiry is later than any date. An operator who needs a hard end on some access
+    makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone added; it
+    does not bring an extended date back. Before a bid, an offer''s summary states any extension accepting
+    it would make ("extends your viewer role from 31 Dec to no end date").'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -94780,3 +94957,172 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Arrow Flight, then pgwire, and failing both the host''s tables are read as a replica. A statement reading
     one code source''s tables alone keeps going DIRECT to the host (REQ-2100), the governed statement in
     and Arrow out.'
+- id: REQ-2236
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: MUST
+  type: structural
+  description: 'Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL''s answer
+    on an engine that is not PostgreSQL is called a polyfill: a PostgreSQL feature an engine lacks, or holds
+    differently, is supplied by Provisa so a PostgreSQL client gets PostgreSQL''s behaviour unchanged. Each
+    feature has a read polyfill -- how its values and operations are computed on the engine and returned
+    -- and a write polyfill -- how its values reach the engine in literals, parameters, predicates and writes
+    (INSERT, UPDATE). The code holds one grid, the single source of this knowledge, keyed by feature and
+    engine: for each, the read polyfill and its limitations and the write polyfill and its limitations.
+    A blank polyfill means the engine does it natively; a blank limitation means none; otherwise the limitation
+    states each difference from PostgreSQL, or that the feature is refused, with the error a client sees.
+    The translator takes its forms from the grid, so a polyfill exists exactly where the grid says it does.
+    The documentation shows the same grid, generated from the code, never written by hand: per engine, column
+    1 the feature (for example array sorting), then the read polyfill, its limitations, the write polyfill,
+    its limitations. The conformance runs check the grid: a feature the grid marks native or polyfilled
+    that answers otherwise than PostgreSQL is a failure, and so is a refusal or difference the grid does
+    not state. (Amended 2026-11-11, THE REFUSAL LIVES IN THE GRID:) Maintainer 2026-11-11. A refusal is
+    part of its grid row: the SQLSTATE and the message a client receives are held in the grid, read or write
+    side, and the translator raises the refusal from that row, so the documented error and the error a client
+    gets are the same text. The generated page shows them in the limitations column, and conformance checks
+    a refused feature''s SQLSTATE and message against its row. (Amended 2026-11-11, THE DOCS SAY POLYFILL:)
+    Maintainer 2026-11-11. The documentation is rewritten to the term: every page that describes how Provisa
+    gives PostgreSQL''s behaviour on an engine that is not PostgreSQL (the conformance pages, the pgwire
+    and engine pages, the function and type references) says polyfill, read polyfill and write polyfill,
+    and points to the generated grid for the details instead of restating them. (Amended 2026-11-11, A PAGE
+    PER ENGINE, EVERY POLYFILL LISTED:) Maintainer 2026-11-11. The generated documentation is one page per
+    engine. A page lists every feature that has a polyfill (read or write) or a limitation on that engine,
+    each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine
+    does natively with no difference is left out. Each page states that rule at its top and counts the features
+    left out as native, and the conformance check is what makes the omission hold: a feature left out that
+    answers otherwise than PostgreSQL fails the run. Beside the pages, a generated summary shows each feature
+    across the engines (native, polyfilled, differs, refused) for choosing an engine. Both come from the
+    one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11.
+    A grid row''s polyfill is written as a rule in a notation the translator itself executes, not described
+    beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray,
+    1)) and, for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a);
+    trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot
+    in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts
+    the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling.
+    A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or
+    literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to
+    an array''s depth, choosing by a value''s type, a check that refuses a bad value at run time), the rule''s
+    replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim,
+    with the helper''s name and one-line purpose where one is used, so what the docs show is what runs.
+    Each engine''s page counts its rows that are rules and those that use helpers. (Amended 2026-11-11,
+    THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be
+    just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement,
+    the row''s rule is that function''s name, the function does the matching and the rewrite on the tree,
+    and the documentation prints the name with its one-line purpose. Every row still has a rule; the count
+    of rules that are only a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES
+    ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s
+    limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid
+    covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate
+    an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source
+    with its own semantics, and the documentation says so once; a difference that comes from the source
+    is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific
+    source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source
+    type (and, where it matters, its version or a setting) that either keeps an operation from being pushed
+    to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
+    documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY
+    CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above.
+    The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source
+    a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector''s
+    dialect has its rows and its page. What the grid does not cover is the second order: an engine reading
+    a source it attaches directly, pushing work into that source with the source''s semantics. That is the
+    combinatorial explosion, and it is handled by hints as bugs are found, as stated above. (Amended 2026-11-11,
+    A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR:) Maintainer 2026-11-11, replacing the description
+    of hints above. The second order is not so much an explosion as outside Provisa''s oversight: an engine
+    decides at run time, by its own planner, how it uses a source it has attached and what it pushes into
+    it, and Provisa does not see that. A statement cannot be switched to a replica, and the engine''s reach
+    is wanted. So a hint is a rewrite of Provisa''s own statement for an engine and source pair: a rule
+    in the same notation, keyed by the engine and the source type, that differs from the engine''s default
+    rule and replaces it wherever the expression reads a column from an attached source of that type. Its
+    replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint
+    comes with the test that reproduced the bug, checking the answer, and the engine''s generated page lists
+    its hints under each source. (Amended 2026-11-11, SQL CONNECTORS ONLY; EVERY ROW NAMES WHAT IT WAS MADE
+    ON:) Maintainer 2026-11-11. A polyfill is only for a connector that executes a variant of SQL -- a serving
+    engine, or a source a statement is sent to DIRECT; a connector that does not run SQL (REST, GraphQL,
+    gRPC, files, code sources) has no polyfill page, its data reaching a statement through Provisa''s reader
+    or the engine, whose rows cover it. The documentation shows the direct polyfills and the engine polyfills.
+    Every row names what it was made and verified on, printed from the configuration of the test that proves
+    it, never written by hand: an engine''s own rows on data the engine holds itself, a direct row on that
+    source alone, a hint on its engine and source pair (with the source''s version or setting where the
+    hint depends on it). Each engine''s page states that when the engine reads a source it attaches directly,
+    it may push work into that source, so a result can depend on the pair, and its hints are the cases known.
+    (Amended 2026-11-11, EACH ENGINE HAS A BASELINE PAIR:) Maintainer 2026-11-11. Each engine''s rows are
+    made and verified on its baseline: the place its data mostly lives. Trino''s baseline is Trino with
+    PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB''s is its own
+    store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric),
+    their own or Iceberg tables. The baseline is printed as the rows'' provenance, and a hint exists only
+    for a pair that differs from it. (Amended 2026-11-11, THE COMPLETE TEST IS A LONG-TERM OBJECTIVE, NOT
+    A RELEASE GATE:) Maintainer 2026-11-11. With the grid defined, a complete test is possible: every row
+    on every SQL connector''s baseline and every hint on its pair, each answer checked against PostgreSQL.
+    It is expensive, so it is a long-term objective and never a release gate; the release gates stay as
+    REQ-1989 states them. Connectors that run in containers can be covered on a schedule; the paid warehouses
+    run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated
+    pages print, for each row, the last run that verified it.'
+  use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
+    feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
+    cannot drift from what the product does.
+- id: REQ-2237
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11, from a comparison with Entropy Data. An ontology made outside Provisa
+    -- an Apache Ossie model, or an RDF/OWL file (Turtle, RDF/XML, N-Triples, JSON-LD), such as an industry
+    standard like FIBO -- can be imported. Importing is an alignment, not an attachment: its classes and
+    properties come in as curated terms with their definitions, and each is aligned with the terms Provisa
+    already derived from the model (synonym, kind of, part of, same entity), so the imported meaning grounds
+    through the model''s own columns and tables. Nothing is linked field by field; a term that aligns
+    with nothing stays a Concept until it does.'
+  use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
+    Provisa already knows.
+- id: REQ-2238
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-data-products
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11. With Provisa as the hub, a data product''s ontology is part of the
+    product from the start, so it leaves with the product: every export of a data product (its ODCS contracts,
+    its ODPS description, the metadata export to external catalogs, and an Apache Ossie export of the terms
+    it reaches) names each field''s grounded term, through the standard''s own reference (ODCS authoritativeDefinitions
+    of type semantics), so a consumer outside Provisa receives the provider''s meaning and not only the
+    schema. Only terms an agent may see are named: approved, or defined drafts on an approved path. (Amended
+    2026-11-11, WHAT THIS ADDS TO THE GLOSSARY EXPORT:) Maintainer 2026-11-11. The catalogs with a glossary
+    of their own (Atlan, Atlas, Collibra, DataHub, Dataplex, DataZone, OpenMetadata, Purview) already receive
+    the glossary as native terms (REQ-1387); for them this requirement only holds that each exported column
+    is linked to its grounded term. What it adds: in each exported ODCS contract every field names its grounded
+    term (authoritativeDefinitions of type semantics), and the ODPS export carries the same links; an Apache
+    Ossie export of the terms a product reaches; and Snowflake Horizon and Unity Catalog, which have no
+    glossary to write into, carry each column''s grounded term through their own primitives -- a tag naming
+    the term and the term''s definition in the column comment. (Amended 2026-11-11, DATAZONE LINKS NO TERM:)
+    Lead 2026-11-11, following REQ-1389: DataZone records no author for a glossary assignment, so Provisa''s
+    links could not be told from a steward''s; DataZone receives no column-to-term links. Every other glossary
+    catalog links each exported column to its grounded term, a key column included.'
+  use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.
+- id: REQ-2239
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd-layouts
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-11: consistency across the 2D diagrams has been hard to keep, so every
+    2D graph view (the ERD, the graph explorer''s lane diagram, the ontology graph and any later one)
+    is drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and
+    by nothing else. The component owns the library''s setup, one prescriptive visual language (a node
+    shape with a type-coloured band, an icon and a two-line label, one edge style with arrows only where
+    direction carries meaning and dashes for pending or indirect, dashed tinted group boxes labelled on
+    their border, a dot-grid canvas, one place for the controls and the legend, one hover and selection
+    state), its layout presets, focus actions, saved layouts and export. A view supplies only its nodes,
+    edges, groups, each node''s type and the layout preset; it sets no colour, shape or control of its
+    own. The visual language takes its tokens from the detail cards. A test fails any code outside the
+    component that imports the graph library or its layout extensions. No other 2D graph library is added;
+    the 3D view and text diagrams (mermaid in Analyze) are not 2D graph views and keep their own.'
