@@ -112,3 +112,18 @@ def test_a_hidden_column_inside_a_qualified_aggregate_is_refused(sql):
 def test_a_qualified_aggregate_inside_its_order_by_naming_no_relation_is_refused():
     sql = 'SELECT pg_catalog."mode"() WITHIN GROUP (ORDER BY x.id) AS v FROM bank.customer c'
     assert any("'x' names no relation" in v for v in _violations(sql)), _violations(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.(1) AS v FROM bank.customer c",
+        "SELECT pg_catalog.1 AS v FROM bank.customer c",
+        "SELECT pg_catalog.'s' AS v FROM bank.customer c",
+        "SELECT pg_catalog.? AS v FROM bank.customer c",
+    ],
+)
+def test_a_qualified_shape_that_is_not_a_call_stays_a_column_and_is_refused(sql):
+    # sqlglot reads each as a Column whose ``this`` is a Paren, Literal or Placeholder under the
+    # pg_catalog qualifier; none is a call, so the schema is judged as the relation it names.
+    assert any("'pg_catalog' names no relation" in v for v in _violations(sql)), _violations(sql)
