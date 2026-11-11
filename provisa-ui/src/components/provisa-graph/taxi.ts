@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { CyInstance, CyElement } from "../../graph/cytoscape-types";
+import type { CyInstance, CyElement } from "../graph/cytoscape-types";
 
 type Pt = { x: number; y: number };
 
@@ -160,7 +160,7 @@ function assignSlots(edges: CyElement[]): Map<CyElement, { source: Slot; target:
 // routing, whose fallbacks handle close nodes.
 export function applyTaxiLanes(cy: CyInstance): void {
   const edges: CyElement[] = [];
-  cy.edges(".erd-rel").forEach((edge) => {
+  cy.edges(".pg-edge").forEach((edge) => {
     edges.push(edge);
   });
   const slots = assignSlots(edges);
@@ -189,7 +189,7 @@ export function applyTaxiLanes(cy: CyInstance): void {
 
 // Bezier routing separates parallel edges by curvature, so the endpoints return to the default.
 export function clearTaxiLanes(cy: CyInstance): void {
-  cy.edges(".erd-rel").style({
+  cy.edges(".pg-edge").style({
     "source-endpoint": DEFAULT_ENDPOINT,
     "target-endpoint": DEFAULT_ENDPOINT,
     "edge-distances": "intersection",

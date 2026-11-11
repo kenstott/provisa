@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "Legenda",
+    "type": {
+      "product": "Dataproduct",
+      "source": "Bron",
+      "domain": "Domein",
+      "group": "Groep",
+      "table": "Tabel",
+      "view": "View",
+      "relation": "Externe tabel",
+      "junction": "Koppeling",
+      "column": "Kolom",
+      "term": "Term",
+      "concept": "Concept",
+      "class": "Klasse",
+      "property": "Eigenschap",
+      "command": "Opdracht",
+      "checker": "Kwaliteitscontrole",
+      "profile": "Profiel",
+      "tag": "Tag",
+      "more": "Meer"
+    }
+  }
+}

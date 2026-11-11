@@ -21,7 +21,7 @@ import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
-import { cyCanvas } from "../graph/cyCanvas";
+import { cyCanvas } from "../provisa-graph/cyCanvas";
 import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
 import {

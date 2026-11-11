@@ -52,6 +52,8 @@ vi.mock("cytoscape", () => {
       return self;
     };
     return {
+      // The element it draws in, as cytoscape's own container() gives it (a fit reads it).
+      container: () => (options as { container: HTMLElement }).container,
       on: (event: string, selector: string, fn: (evt: unknown) => void) =>
         record.handlers.push({ event, selector, fn }),
       layout: () => {

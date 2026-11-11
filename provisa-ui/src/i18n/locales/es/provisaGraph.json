@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "Leyenda",
+    "type": {
+      "product": "Producto de datos",
+      "source": "Origen",
+      "domain": "Dominio",
+      "group": "Grupo",
+      "table": "Tabla",
+      "view": "Vista",
+      "relation": "Tabla externa",
+      "junction": "Unión",
+      "column": "Columna",
+      "term": "Término",
+      "concept": "Concepto",
+      "class": "Clase",
+      "property": "Propiedad",
+      "command": "Comando",
+      "checker": "Control de calidad",
+      "profile": "Perfil",
+      "tag": "Etiqueta",
+      "more": "Más"
+    }
+  }
+}

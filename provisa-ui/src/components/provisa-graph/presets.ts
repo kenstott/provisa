@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The ERD's ELK layout: layered, upward, children laid out with their parents. The MCP server's
-// render_graph draws with it as "elk" (provisa-ui/graph-render imports it).
+// REQ-2239: the layered preset's ELK layout: layered, upward, children laid out with their
+// parents. The MCP server's render_graph draws with it as "elk" (provisa-ui/graph-render imports it).
 
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
 
