@@ -93,6 +93,8 @@
     "sharingProducts": "Produits partageant ses jeux de données",
     "noSharingProducts": "Aucun autre produit ne partage ses jeux de données.",
     "datasetAssociations": "Associations de chaque jeu de données",
-    "profileChecks": "Contrôles de profil sur {{table}}"
+    "profileChecks": "Contrôles de profil sur {{table}}",
+    "breakingIn": "Changement incompatible en v{{version}}",
+    "contractDocument": "Document du contrat"
   }
 }

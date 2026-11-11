@@ -22,8 +22,6 @@ import {
   useUpdateDataProduct,
   useDeleteDataProduct,
   useSetDataProductMembers,
-  useSaveDataContract,
-  type DataContractInput,
   useDataProductFindings,
   useDataProductStatus,
 } from "../hooks/useDataProductMutations";
@@ -40,8 +38,6 @@ import { fetchProductLineage, type ProductLineage } from "../api/lineage";
 import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
-import { coreContracts } from "./data-products/productCore";
-import { contractChanged } from "./data-products/contractDraft";
 import { ProductMapButton } from "../components/graph3d/OntologyGraph";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -151,9 +147,6 @@ export function DataProductsPage() {
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
-  // REQ-2158: the open product's contracts as edited, by table id; each changed one is saved.
-  const [contractDrafts, setContractDrafts] = useState<Record<number, DataContractInput>>({});
-  const { saveDataContract } = useSaveDataContract();
   // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
   // documentation box, Analytics Hub) carries back to this page; it names the product to open and
   // wins over the last-expanded row remembered in localStorage.
@@ -210,8 +203,6 @@ export function DataProductsPage() {
   // changed -- a save, or a retirement that moves them to the successor. Every other status change
   // leaves both as they were, so it does not read them again.
   const [membersVersion, setMembersVersion] = useState(0);
-  // REQ-2158: the open product's contracts, read with its panel core.
-  const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
   const [msg, setMsg] = useState("");
   // REQ-2156: the expanded product's lineage, cut to what the reader may read; read again after
@@ -299,7 +290,6 @@ export function DataProductsPage() {
     });
     setSelectedTableIds(memberTables(p.id).map((tb) => String(tb.id)));
     setSelectedFunctionNames(memberFunctions(p.id).map((fn) => fn.name));
-    setContractDrafts({});
     setMsg("");
   };
 
@@ -356,20 +346,7 @@ export function DataProductsPage() {
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }
-    // REQ-2158: each changed contract is saved on its own; a refusal names the contract and keeps
-    // the form open with what was entered.
-    const refused: string[] = [];
-    for (const c of contracts) {
-      const draft = contractDrafts[c.tableId];
-      if (draft === undefined || !contractChanged(c, draft)) continue;
-      const saved = await saveDataContract(c.tableId, draft);
-      if (!saved.success) refused.push(saved.message);
-    }
-    if (refused.length > 0) {
-      setMsg(refused.join("\n"));
-      products.reload();
-      return;
-    }
+    // REQ-2180: a product's contracts are derived from its offers; none is written here.
     products.reload();
     setCoreVersion((v) => v + 1);
     setMembersVersion((v) => v + 1);
@@ -419,9 +396,6 @@ export function DataProductsPage() {
       msg={msg}
       onSave={handleSave}
       onCancel={closeForm}
-      contracts={editingId !== null ? contracts : []}
-      contractDrafts={contractDrafts}
-      setContractDrafts={setContractDrafts}
       focus={formFocus}
     />
   );

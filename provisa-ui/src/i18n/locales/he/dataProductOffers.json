@@ -93,6 +93,8 @@
     "sharingProducts": "מוצרים שחולקים את מערכי הנתונים שלו",
     "noSharingProducts": "אין מוצר אחר שחולק את מערכי הנתונים שלו.",
     "datasetAssociations": "השיוכים של כל מערך נתונים",
-    "profileChecks": "בדיקות פרופיל על {{table}}"
+    "profileChecks": "בדיקות פרופיל על {{table}}",
+    "breakingIn": "שינוי שובר ב-v{{version}}",
+    "contractDocument": "מסמך החוזה"
   }
 }

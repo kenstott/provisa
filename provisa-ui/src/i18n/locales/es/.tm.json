@@ -10165,5 +10165,7 @@
   "es/latestProfilePanel.json::latestProfilePanel.viewTable": "Table",
   "es/latestProfilePanel.json::latestProfilePanel.viewTerrain": "Terrain",
   "es/dataProductsTab.json::dataProductsTab.detailPanel": "Data product detail",
-  "es/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views"
+  "es/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views",
+  "es/dataProductOffers.json::dataProductOffers.breakingIn": "Breaking change in v{{version}}",
+  "es/dataProductOffers.json::dataProductOffers.contractDocument": "Contract document"
 }

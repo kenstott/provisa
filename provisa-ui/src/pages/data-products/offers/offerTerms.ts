@@ -12,7 +12,8 @@
 // the tables page's columns table reads them (REQ-2239, PRODUCT PAGES REUSE TABLE COMPONENTS).
 
 import type { TFunction } from "i18next";
-import type { OfferInput, OfferTerms } from "../../../api/dataProductOffers";
+import type { Offer, OfferInput, OfferTerms } from "../../../api/dataProductOffers";
+import type { CoreTable } from "../productCore";
 import type { MaskKind } from "../../../lib/masks";
 import type { ColumnForm } from "../../tables/types";
 
@@ -55,4 +56,26 @@ export function contractColumns(terms: OfferTerms, role: string): ColumnForm[] {
     isPrimaryKey: false,
     scope: "",
   }));
+}
+
+/** A dataset's address, as the contracts endpoint names it: source.schema.table. */
+export const memberOf = (port: CoreTable) =>
+  `${port.sourceId}.${port.schemaName}.${port.tableName}`;
+
+/** The dataset of ``offer`` a link names, by its key, its address or its table name; null when the
+ *  link names none of this offer's. */
+export function linkedDataset(
+  offer: Offer,
+  ports: CoreTable[],
+  linked: string | null,
+): number | null {
+  if (!linked) return null;
+  for (const entry of offer.contracts) {
+    const port = ports.find((p) => p.id === entry.table_id);
+    if (!port) continue;
+    const member = memberOf(port);
+    if (linked === `${offer.name}/${member}` || linked === member || linked === port.tableName)
+      return entry.table_id;
+  }
+  return null;
 }

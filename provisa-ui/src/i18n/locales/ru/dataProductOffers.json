@@ -93,6 +93,8 @@
     "sharingProducts": "Продукты с общими наборами данных",
     "noSharingProducts": "Ни один другой продукт не использует его наборы данных.",
     "datasetAssociations": "Связи каждого набора данных",
-    "profileChecks": "Проверки профиля для {{table}}"
+    "profileChecks": "Проверки профиля для {{table}}",
+    "breakingIn": "Несовместимое изменение в v{{version}}",
+    "contractDocument": "Документ контракта"
   }
 }

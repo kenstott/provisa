@@ -16,32 +16,17 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Button,
-  Group,
-  List,
-  Paper,
-  Stack,
-  Text,
-  Textarea,
-} from "@mantine/core";
-import { Eye, Trash2 } from "lucide-react";
-import {
-  bidForOffer,
-  removeOffer,
-  type Offer,
-  type OfferDatasetContract,
-} from "../../../api/dataProductOffers";
+import { Alert, Anchor, Badge, Button, Group, Paper, Stack, Text, Textarea } from "@mantine/core";
+import { Trash2 } from "lucide-react";
+import { bidForOffer, removeOffer, type Offer } from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { Tip } from "../../../components/Tip";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { ColumnsTable } from "../../tables/ColumnsTable";
-import { contractColumns, offerSummary } from "./offerTerms";
+import { linkedDataset, offerSummary } from "./offerTerms";
+import { OfferContracts, type ContractContext } from "./OfferContracts";
+import { useSearchParams } from "react-router-dom";
 
 export interface OfferCardProps {
   offer: Offer;
@@ -58,80 +43,12 @@ export interface OfferCardProps {
   onQueryNow: () => void;
   /** Sample views by table id, as the model names them. */
   viewName: (tableId: number) => string;
+  /** What each contract's heading and document read; null where it is not given. */
+  context?: ContractContext | null;
 }
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-/** One dataset's contract under the offer. */
-function DatasetContract({
-  offer,
-  entry,
-  onPreview,
-}: {
-  offer: Offer;
-  entry: OfferDatasetContract;
-  onPreview: (tableId: number) => void;
-}) {
-  const { t } = useTranslation();
-  const terms = entry.contract.terms;
-  const testId = `offer-${offer.id}-contract-${entry.table_id}`;
-  return (
-    <Stack gap="xs" data-testid={testId}>
-      <Group gap="xs" justify="space-between" wrap="wrap">
-        <Group gap={6}>
-          <Badge size="sm" variant="light" data-testid={`${testId}-version`}>
-            {t("dataProductsTab.contract.versionBadge", { version: entry.contract.version })}
-          </Badge>
-          {terms.sample_views.length > 0 && (
-            <Text size="xs" c="dimmed">
-              {t("dataProductOffers.sampleViews", { views: terms.sample_views.join(", ") })}
-            </Text>
-          )}
-        </Group>
-        {terms.data_level !== "synthetic" && (
-          <Button
-            size="compact-xs"
-            variant="subtle"
-            leftSection={<Eye size={12} />}
-            onClick={() => onPreview(entry.table_id)}
-            data-testid={`${testId}-preview`}
-          >
-            {t("dataProductOffers.preview")}
-          </Button>
-        )}
-      </Group>
-      <ColumnsTable
-        readOnly
-        columns={contractColumns(terms, offer.role_id)}
-        roles={[]}
-        irTypes={[]}
-        sourceType=""
-        tableId={entry.table_id}
-        testId={`${testId}-columns`}
-      />
-      <Text size="xs" fw={600}>
-        {t("dataProductOffers.rowRules")}
-      </Text>
-      {terms.row_rules.length === 0 ? (
-        <Text size="xs" c="dimmed" data-testid={`${testId}-no-row-rules`}>
-          {t("dataProductOffers.noRowRules")}
-        </Text>
-      ) : (
-        <List size="xs" data-testid={`${testId}-row-rules`}>
-          {terms.row_rules.map((rule) => (
-            <List.Item key={rule}>{rule}</List.Item>
-          ))}
-        </List>
-      )}
-      {terms.profiles.length > 0 && (
-        <Text size="xs" c="dimmed" data-testid={`${testId}-profiles`}>
-          {t("dataProductOffers.profileTables", { tables: terms.profiles.join(", ") })}
-        </Text>
-      )}
-    </Stack>
-  );
 }
 
 /** The bid's reason, asked inline: a bid states why. */
@@ -194,8 +111,12 @@ export function OfferCard({
   onPreview,
   onQueryNow,
   viewName,
+  context = null,
 }: OfferCardProps) {
   const { t } = useTranslation();
+  const [params] = useSearchParams();
+  // A link naming one of this offer's contracts opens it.
+  const linked = linkedDataset(offer, context?.ports ?? [], params.get("contract")) !== null;
   const [bidding, setBidding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const testId = `offer-card-${offer.id}`;
@@ -331,7 +252,10 @@ export function OfferCard({
           }}
         />
       )}
-      <Collapsibles id={`data-product.offer.${productId}.${offer.id}`}>
+      <Collapsibles
+        id={`data-product.offer.${productId}.${offer.id}`}
+        reveal={linked ? "contracts" : null}
+      >
         <CollapsibleItem
           value="contracts"
           defaultOpen={false}
@@ -343,30 +267,12 @@ export function OfferCard({
             </Text>
           }
         >
-          {offer.contracts.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              {t("dataProductOffers.noContracts")}
-            </Text>
-          ) : (
-            <Collapsibles id={`data-product.offer.${productId}.${offer.id}.datasets`}>
-              {offer.contracts.map((entry) => (
-                <CollapsibleItem
-                  key={entry.table_id}
-                  value={String(entry.table_id)}
-                  defaultOpen={offer.contracts.length === 1}
-                  mountWhenOpen
-                  controlTestId={`offer-${offer.id}-contract-${entry.table_id}-toggle`}
-                  title={
-                    <Text size="sm" ff="monospace">
-                      {entry.table}
-                    </Text>
-                  }
-                >
-                  <DatasetContract offer={offer} entry={entry} onPreview={onPreview} />
-                </CollapsibleItem>
-              ))}
-            </Collapsibles>
-          )}
+          <OfferContracts
+            productId={productId}
+            offer={offer}
+            context={context}
+            onPreview={onPreview}
+          />
         </CollapsibleItem>
       </Collapsibles>
     </Paper>

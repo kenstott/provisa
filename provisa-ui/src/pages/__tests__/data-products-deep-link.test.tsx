@@ -116,7 +116,6 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: FINDINGS, refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),

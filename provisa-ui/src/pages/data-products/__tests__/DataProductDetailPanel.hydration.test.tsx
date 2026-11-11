@@ -59,23 +59,21 @@ const LINEAGE = ["lineageLoading", "lineageError", "lineageGraph", "relationLabe
  *  previewed through, the products sharing its datasets, the model's relationships (each dataset's
  *  associations), the role it reads as, and the edit form that takes the header's place. */
 const PAGE = ["tables", "sharing", "relationships", "actingRole", "editForm"];
-/** Decided (REQ-2158, amended 2026-10-29): each contract row reads its own ODCS contract, declared
- * and derived by the export (REQ-2118), when it opens; the page says only when to read it again. */
+/** Decided (REQ-2180): the offers and their contracts are read by the Offers tab; the page says only
+ * when to read them again. */
 const CONTRACTS = ["contractsVersion"];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
     "the admin API's resolveOwners: the people who hold the owner and team roles (the decided exception)",
   "./offers/OffersTab":
-    "REQ-2180 OFFERS: the offers endpoint, each offer with its contracts; the roles its owner may grant",
+    "REQ-2180 OFFERS: the offers endpoint, each offer with its contracts; the roles its owner may grant; each contract's ODCS document, from its offer's contract route, as it opens",
   "./tabs/QualityTab":
     "the checks bar's profile checks, read when the owner opens it (REQ-1934); a checker's rules",
   "./tabs/ProfileTab": "REQ-2180: the product's profiles, sanitized on the server for the reader",
   "./tabs/RelatedTab":
     "the ontology in a read of its own (useOntology), focused on the product; the tag chip; each dataset's glossary terms and class term",
   "./tabs/RequestsTab": "REQ-2180: the product's bids, and who reads each dataset (REQ-2162)",
-  "./ProductContracts":
-    "the product's contracts endpoint, one output port's contract as its row opens (REQ-2158)",
 };
 
 const PRODUCT = {

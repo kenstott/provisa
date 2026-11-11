@@ -93,6 +93,8 @@
     "sharingProducts": "Products sharing its datasets",
     "noSharingProducts": "No other product shares its datasets.",
     "datasetAssociations": "Each dataset's associations",
-    "profileChecks": "Profile checks on {{table}}"
+    "profileChecks": "Profile checks on {{table}}",
+    "breakingIn": "Breaking change in v{{version}}",
+    "contractDocument": "Contract document"
   }
 }

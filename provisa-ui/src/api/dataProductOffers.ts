@@ -14,6 +14,7 @@
 
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import type { ProfileRun, ProfileRunResults } from "./profiler";
+import type { ContractVersion } from "../types/admin";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -51,6 +52,8 @@ export interface OfferContract {
   version: string;
   terms: OfferTerms;
   created_at: string;
+  /** Every saved version, oldest first, the last this one. */
+  versions?: ContractVersion[];
 }
 
 /** One dataset's contract under an offer. */

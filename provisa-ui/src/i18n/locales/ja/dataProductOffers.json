@@ -93,6 +93,8 @@
     "sharingProducts": "データセットを共有するプロダクト",
     "noSharingProducts": "データセットを共有する他のプロダクトはありません。",
     "datasetAssociations": "各データセットの関連付け",
-    "profileChecks": "{{table}} のプロファイルチェック"
+    "profileChecks": "{{table}} のプロファイルチェック",
+    "breakingIn": "v{{version}} で互換性のない変更",
+    "contractDocument": "コントラクト文書"
   }
 }

@@ -93,6 +93,8 @@
     "sharingProducts": "共享其数据集的产品",
     "noSharingProducts": "没有其他产品共享其数据集。",
     "datasetAssociations": "各数据集的关联",
-    "profileChecks": "{{table}} 的画像检查"
+    "profileChecks": "{{table}} 的画像检查",
+    "breakingIn": "v{{version}} 中的破坏性变更",
+    "contractDocument": "契约文档"
   }
 }

@@ -93,6 +93,8 @@
     "sharingProducts": "इसके डेटासेट साझा करने वाले प्रोडक्ट",
     "noSharingProducts": "कोई अन्य प्रोडक्ट इसके डेटासेट साझा नहीं करता।",
     "datasetAssociations": "हर डेटासेट के संबंध",
-    "profileChecks": "{{table}} पर प्रोफ़ाइल जाँच"
+    "profileChecks": "{{table}} पर प्रोफ़ाइल जाँच",
+    "breakingIn": "v{{version}} में ब्रेकिंग बदलाव",
+    "contractDocument": "अनुबंध दस्तावेज़"
   }
 }

@@ -93,6 +93,8 @@
     "sharingProducts": "Produkte mit gemeinsamen Datensätzen",
     "noSharingProducts": "Kein anderes Produkt teilt seine Datensätze.",
     "datasetAssociations": "Verknüpfungen jedes Datensatzes",
-    "profileChecks": "Profilprüfungen für {{table}}"
+    "profileChecks": "Profilprüfungen für {{table}}",
+    "breakingIn": "Breaking Change in v{{version}}",
+    "contractDocument": "Contract-Dokument"
   }
 }

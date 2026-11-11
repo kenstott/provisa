@@ -24,7 +24,7 @@ import {
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, TABLE_FACTS, TERM_FACTS } from "../../components/graph3d/ontologyData";
 import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
-import type { ContractVersion, DataContract, DataProduct } from "../../types/admin";
+import type { DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
 
 /** The product row's own fields, as data_products_meta names them. */
@@ -84,7 +84,6 @@ const PANEL: Selection = {
                 "alias",
                 "description",
                 "dq_contract",
-                "contract",
                 // REQ-2158: its freshness, a contract row's SLA headline.
                 "cache_ttl",
               ],
@@ -187,8 +186,6 @@ export interface CoreTable {
   dqContract: string | null;
   // REQ-2158: how long a read may trail its source, in seconds (-1: never expires); null for none.
   cacheTtl?: number | null;
-  // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
-  contract?: StoredContract | string | null;
   checks?: { id: number; domainId: string; tableName: string; alias: string | null } | null;
   checkedBy?: { latestOutcome: "pass" | "fail" | null; latestRunAt: string | null }[] | null;
   dqRules?: CoreDqRule[] | null;
@@ -206,65 +203,6 @@ export interface CoreTable {
     | { id: number; domainId: string; tableName: string; alias: string | null }[]
     | null;
   sourceRelationships?: CoreRelationship[] | null;
-}
-
-/** REQ-2158: a member's contract as registered_tables.contract stores it. */
-export interface StoredContract {
-  version: string;
-  status: string;
-  description?: string | null;
-  terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
-  sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
-  versions?: ContractVersion[];
-}
-
-/** REQ-2158: each output port's contract, in the order the members are read. */
-export function coreContracts(core: ProductCore): DataContract[] {
-  return (core.tables ?? []).flatMap((tb) => {
-    if (tb.contract === null || tb.contract === undefined) return [];
-    // The meta schema serves JSON as text where the engine answers it so.
-    const c = (
-      typeof tb.contract === "string" ? JSON.parse(tb.contract) : tb.contract
-    ) as StoredContract;
-    return [
-      {
-        tableId: tb.id,
-        sourceId: tb.sourceId,
-        schemaName: tb.schemaName,
-        tableName: tb.tableName,
-        contractId: `${core.product.id}/${tb.schemaName}.${tb.tableName}`,
-        version: c.version,
-        status: c.status,
-        description: c.description ?? null,
-        terms: {
-          usage: c.terms?.usage ?? null,
-          limitations: c.terms?.limitations ?? null,
-          noticePeriod: c.terms?.notice_period ?? null,
-        },
-        sla: (c.sla ?? []).map((x) => ({
-          property: x.property,
-          value: x.value ?? null,
-          unit: x.unit ?? null,
-          description: x.description ?? null,
-        })),
-        versions: c.versions ?? [],
-      },
-    ];
-  });
-}
-
-/** A contract status that is not yet in force: it has not been made active. */
-const NOT_IN_FORCE = ["proposed", "draft"];
-
-/** The newest versions not yet in force that carry a breaking change, newest first: the versions
- * after the last one in force. */
-export function breakingNotInForce(versions: ContractVersion[]): ContractVersion[] {
-  const pending: ContractVersion[] = [];
-  for (const v of [...versions].reverse()) {
-    if (!NOT_IN_FORCE.includes(v.contract.status)) break;
-    pending.push(v);
-  }
-  return pending.filter((v) => v.changes.some((c) => c.breaking));
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */

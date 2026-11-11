@@ -93,6 +93,8 @@
     "sharingProducts": "Productos que comparten sus conjuntos de datos",
     "noSharingProducts": "Ningún otro producto comparte sus conjuntos de datos.",
     "datasetAssociations": "Asociaciones de cada conjunto de datos",
-    "profileChecks": "Comprobaciones de perfil en {{table}}"
+    "profileChecks": "Comprobaciones de perfil en {{table}}",
+    "breakingIn": "Cambio incompatible en v{{version}}",
+    "contractDocument": "Documento del contrato"
   }
 }

@@ -127,7 +127,7 @@ describe("adding an offer", () => {
   it("picks a role from those the owner may grant that reach every dataset", async () => {
     form();
     fireEvent.click(await screen.findByTestId("add-offer-role"));
-const options = (await screen.findAllByRole("option", { hidden: true })).map(
+    const options = (await screen.findAllByRole("option", { hidden: true })).map(
       (o) => o.textContent,
     );
     // partner reads one dataset of the two: not offered.
@@ -165,7 +165,9 @@ const options = (await screen.findAllByRole("option", { hidden: true })).map(
     const save = screen.getByTestId("add-offer-save");
     expect(save).toBeDisabled();
     fireEvent.click(screen.getByRole("textbox", { name: "Sample views" }));
-    fireEvent.click(await screen.findByRole("option", { name: "sales.customers_sample", hidden: true }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "sales.customers_sample", hidden: true }),
+    );
     expect(save).toBeEnabled();
     expect(screen.getByTestId("add-offer-summary")).toHaveTextContent("a sample through 1 view");
   });

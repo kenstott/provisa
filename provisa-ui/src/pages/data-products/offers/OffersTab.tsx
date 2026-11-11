@@ -18,6 +18,7 @@ import { Plus } from "lucide-react";
 import { fetchOffers, type Offer } from "../../../api/dataProductOffers";
 import { AddOfferForm, type OfferDataset } from "./AddOfferForm";
 import { OfferCard } from "./OfferCard";
+import type { ContractContext } from "./OfferContracts";
 
 export function OffersTab({
   productId,
@@ -29,6 +30,8 @@ export function OffersTab({
   onPreview,
   onQueryNow,
   onBid,
+  context = null,
+  version: readAgain = 0,
 }: {
   productId: string;
   owner: boolean;
@@ -40,6 +43,10 @@ export function OffersTab({
   onQueryNow: () => void;
   /** A bid was made: the Requests a reader sees have changed. */
   onBid: () => void;
+  /** What each contract's heading and document read (the product's datasets, lineage, reader). */
+  context?: ContractContext | null;
+  /** Bumped when the product's datasets can have changed: its offers and contracts are read again. */
+  version?: number;
 }) {
   const { t } = useTranslation();
   const [offers, setOffers] = useState<Offer[] | null>(null);
@@ -57,7 +64,7 @@ export function OffersTab({
     return () => {
       live = false;
     };
-  }, [productId, version]);
+  }, [productId, version, readAgain]);
 
   const viewName = (id: number) => views.find((v) => v.id === id)?.name ?? String(id);
 
@@ -89,6 +96,7 @@ export function OffersTab({
           onPreview={onPreview}
           onQueryNow={onQueryNow}
           viewName={viewName}
+          context={context}
         />
       ))}
       {canEdit &&

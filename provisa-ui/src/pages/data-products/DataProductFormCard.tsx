@@ -22,10 +22,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import type { DataContract, ListedTable } from "../../types/admin";
-import type { DataContractInput } from "../../hooks/useDataProductMutations";
-import { ContractEditor } from "./ContractEditor";
-import { contractDraft } from "./contractDraft";
+import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
 import type { DataProductForm } from "./types";
@@ -49,10 +46,6 @@ export interface DataProductFormCardProps {
   msg: string;
   onSave: () => void;
   onCancel: () => void;
-  // REQ-2158: the product's members' contracts and their edits, by table id.
-  contracts?: DataContract[];
-  contractDrafts?: Record<number, DataContractInput>;
-  setContractDrafts?: React.Dispatch<React.SetStateAction<Record<number, DataContractInput>>>;
   /** The field the form opens on, where a finding's fix sent the reader. */
   focus?: "supportContact";
 }
@@ -111,9 +104,6 @@ export function DataProductFormCard({
   msg,
   onSave,
   onCancel,
-  contracts = [],
-  contractDrafts = {},
-  setContractDrafts,
   focus,
 }: DataProductFormCardProps) {
   const { t } = useTranslation();
@@ -319,20 +309,6 @@ export function DataProductFormCard({
             </FormField>
           </FormLayout>
         </Panel>
-        {contracts.length > 0 && setContractDrafts && (
-          <Panel id="contracts" title={t("dataProductsTab.contract.label")} errors={0}>
-            <Stack gap="lg">
-              {contracts.map((c) => (
-                <ContractEditor
-                  key={c.tableId}
-                  contract={c}
-                  draft={contractDrafts[c.tableId] ?? contractDraft(c)}
-                  onChange={(draft) => setContractDrafts((d) => ({ ...d, [c.tableId]: draft }))}
-                />
-              ))}
-            </Stack>
-          </Panel>
-        )}
       </div>
       {/* Save and Cancel stay at the bottom of the viewport while the panels scroll under them. */}
       <Stack

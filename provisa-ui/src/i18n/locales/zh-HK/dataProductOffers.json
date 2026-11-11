@@ -93,6 +93,8 @@
     "sharingProducts": "共用其數據集的產品",
     "noSharingProducts": "沒有其他產品共用其數據集。",
     "datasetAssociations": "各數據集的關聯",
-    "profileChecks": "{{table}} 的剖析檢查"
+    "profileChecks": "{{table}} 的剖析檢查",
+    "breakingIn": "v{{version}} 中的破壞性變更",
+    "contractDocument": "契約文件"
   }
 }

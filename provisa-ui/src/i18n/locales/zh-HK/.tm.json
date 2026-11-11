@@ -10161,5 +10161,7 @@
   "zh-HK/latestProfilePanel.json::latestProfilePanel.viewTable": "Table",
   "zh-HK/latestProfilePanel.json::latestProfilePanel.viewTerrain": "Terrain",
   "zh-HK/dataProductsTab.json::dataProductsTab.detailPanel": "Data product detail",
-  "zh-HK/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views"
+  "zh-HK/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views",
+  "zh-HK/dataProductOffers.json::dataProductOffers.breakingIn": "Breaking change in v{{version}}",
+  "zh-HK/dataProductOffers.json::dataProductOffers.contractDocument": "Contract document"
 }

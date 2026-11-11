@@ -122,7 +122,13 @@ describe("a product's offers", () => {
   it("are cards saying role, data level, duration and terms", async () => {
     api.offers.mockResolvedValue([
       offer({}),
-      offer({ id: 2, name: "trial", role_id: "analyst", data_level: "synthetic", duration_days: 30 }),
+      offer({
+        id: 2,
+        name: "trial",
+        role_id: "analyst",
+        data_level: "synthetic",
+        duration_days: 30,
+      }),
     ]);
     tab(false);
     const first = await screen.findByTestId("offer-card-1");
@@ -153,8 +159,9 @@ describe("a product's offers", () => {
     api.offers.mockResolvedValue([offer({})]);
     const h = tab(false);
     fireEvent.click(await screen.findByTestId("offer-card-1-toggle"));
+    fireEvent.click(await screen.findByTestId("offer-1-contract-7-toggle"));
     const contract = await screen.findByTestId("offer-1-contract-7");
-    expect(within(contract).getByTestId("offer-1-contract-7-version")).toHaveTextContent("1.0.0");
+    expect(screen.getByTestId("offer-1-contract-7-version")).toHaveTextContent("1.0.0");
     const email = within(contract).getByTestId("offer-1-contract-7-columns-col-email");
     expect(email).toHaveTextContent("Regex");
     expect(within(contract).getByTestId("offer-1-contract-7-columns-col-id")).not.toHaveTextContent(

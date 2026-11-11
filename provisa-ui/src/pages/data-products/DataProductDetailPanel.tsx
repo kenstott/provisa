@@ -34,7 +34,6 @@ import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { modelName, type ProductCore } from "./productCore";
 import { ProductHeader } from "./ProductHeader";
-import { ProductContracts } from "./ProductContracts";
 import type { ContractViewer } from "./ContractView";
 import { OffersTab } from "./offers/OffersTab";
 import type { OfferDataset } from "./offers/AddOfferForm";
@@ -72,8 +71,8 @@ interface DataProductDetailPanelProps {
   lineageGraph: ProductLineage | null;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
-  // REQ-2158: bumped when the product's members can have changed (a save, a retirement): each open
-  // contract row reads its contract again.
+  // Bumped when the product's members can have changed (a save, a retirement): its offers and
+  // their contracts are read again.
   contractsVersion?: number;
   /** Every registered table the reader lists: a dataset's (or sample view's) rows are previewed
    *  through it. */
@@ -306,15 +305,8 @@ export function DataProductDetailPanel({
             onPreview={previewTable}
             onQueryNow={queryNow}
             onBid={() => setBids((n) => n + 1)}
-          />
-          {/* REQ-2158: each table's own contract, one collapsed row each, beneath the offers. */}
-          <ProductContracts
-            productId={p.id}
-            core={core}
-            lineage={lineageGraph}
+            context={{ ports: outputTables ?? [], lineage: lineageGraph, reader, viewer }}
             version={contractsVersion}
-            reader={reader}
-            viewer={viewer}
           />
         </Tabs.Panel>
         <Tabs.Panel value="quality" pt="sm" style={TAB_BODY}>
