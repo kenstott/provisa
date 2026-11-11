@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Bericht voordat een roltoewijzing afloopt",
-        "help": "Hoeveel dagen voordat een roltoewijzing verloopt, of wordt verwijderd omdat ze ongebruikt blijft, de houder en de beheerders van de organisatie een e-mail krijgen."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Melding voordat rechten verlopen",
-        "help": "Hoeveel dagen vóór de datum van een vervalregel voor rechten de gebeurtenis 'verloopt binnenkort' wordt verzonden en de persoon en de beheerders van de organisatie worden gemaild. De schermen voor rechten markeren regels die zo dicht bij hun datum liggen."
+        "label": "Melding voordat een roltoewijzing of haar items eindigen",
+        "help": "Hoeveel dagen voordat een roltoewijzing, of een van haar rechtenitems, eindigt of de toewijzing wegens ongebruik wordt verwijderd, de houder en de beheerders van de organisatie worden gemaild."
       }
     },
     "server": {

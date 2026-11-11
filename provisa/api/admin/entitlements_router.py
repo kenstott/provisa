@@ -37,9 +37,14 @@ a rule would end on its date (``/expiries/preview``), and a rule that would remo
 whose date has passed, is refused; the timeline of what was added (``/lists/history``); and
 effective access per capability over the roles a request acts as, inherited capabilities included
 (``/effective/capabilities``). The scheduled expiry run is ``provisa.entitlements.expiry_run``.
+
+Expiry is on the grant and on its entries (REQ-2077, REQ-2219): a rule that ends a whole grant
+sets or shortens the grant's own expiry (``provisa.auth.role_grants``); any other dates entries of
+the grant, never past its end. Each person's one timeline is ``/timeline``: each grant, and the
+dated entries under it.
 """
 
-# Requirements: REQ-2219
+# Requirements: REQ-2077, REQ-2219
 
 from __future__ import annotations
 
@@ -53,9 +58,9 @@ from pydantic import AwareDatetime, BaseModel
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
+from provisa.auth import role_grants
 from provisa.core.org_membership import record_admin_action
 from provisa.entitlements import pending, people, roles, store
-from provisa.entitlements.expiry_run import expiring_soon_days
 from provisa.entitlements.effective import (
     ExpiryPreview,
     access_view,
@@ -286,12 +291,37 @@ def _check_list_expiry(
         )
 
 
+async def _refuse_past_grant(
+    state: Any, principal: str, role_id: str, ends_at: datetime | None
+) -> None:
+    """Refuse an entry's date past the end of its grant: an entry never outlives its grant. A role
+    Provisa holds no grant of for the person is the identity provider's to time-limit."""
+    if ends_at is None:
+        return
+    async with _db(state).acquire() as conn:
+        grants = await role_grants.held_grants(conn, principal)
+    held, grant_ends = role_grants.grant_end(grants, role_id)
+    if held and grant_ends is not None and ends_at > grant_ends:
+        raise ApiError(
+            422,
+            "entitlements.entry_outlives_grant",
+            f"{principal!r}'s grant of {role_id!r} ends {grant_ends.isoformat()}: an entry "
+            "cannot end after its grant",
+            principal=principal,
+            role_id=role_id,
+            ends_at=ends_at.isoformat(),
+            grant_expires_at=grant_ends.isoformat(),
+        )
+
+
 def _check_set(state: Any, body: SetListBody) -> None:
     _check_list_expiry(state, body.role_id, body.kind, body.identifiers, body.expires_at)
 
 
-def _view(state: Any, principal: str, role_id: str) -> dict:
-    return asdict(access_view(state, principal, role_id, datetime.now(UTC)))
+async def _view(state: Any, principal: str, role_id: str) -> dict:
+    async with _db(state).acquire() as conn:
+        ended = await role_grants.grant_ended(conn, principal, role_id)
+    return asdict(access_view(state, principal, role_id, datetime.now(UTC), grant_ended=ended))
 
 
 def _pending_view(grant: pending.PendingGrant) -> dict:
@@ -348,6 +378,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
     actor = _caller(request) or _ANONYMOUS
     if principal is None:
         return await _set_pending(state, body, actor)
+    await _refuse_past_grant(state, principal, body.role_id, body.expires_at)
     db = _db(state)
     async with db.acquire() as conn:
         async with conn.transaction():
@@ -376,7 +407,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
             "expires_at": body.expires_at.isoformat() if body.expires_at else None,
         },
     )
-    return _view(state, principal, body.role_id)
+    return await _view(state, principal, body.role_id)
 
 
 @router.post("/lists/end")
@@ -427,7 +458,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
         subject_id=principal,
         detail={"role_id": body.role_id, "kind": body.kind, "reason": body.reason},
     )
-    return _view(state, principal, body.role_id)
+    return await _view(state, principal, body.role_id)
 
 
 @router.get("/people")
@@ -515,6 +546,42 @@ async def list_lists(principal: str, request: Request) -> dict:
     }
 
 
+@router.get("/timeline")
+async def timeline(principal: str, request: Request) -> dict:
+    """``principal``'s one access timeline: each grant Provisa holds of a role the caller may read,
+    with when it ends (null: no end), and under it the dated entries of that role's grant, by
+    date, each with what it ends."""
+    from provisa.api.app import state
+
+    async with _db(state).acquire() as conn:
+        grants = await role_grants.held_grants(conn, principal)
+    visible = _visible_roles(request, state, principal, {g.role_id for g in grants})
+    held = state.held_entitlements.get(principal, _NOTHING_HELD)
+    return {
+        "principal": principal,
+        "grants": [
+            {
+                "role_id": g.role_id,
+                "domain_id": g.domain_id,
+                "expires_at": g.expires_at,
+                "entries": [
+                    {
+                        "rule_key": r.rule_key,
+                        "ends_at": r.ends_at,
+                        "ends": {capability: list(ids) for capability, ids in r.ends.items()},
+                        "list_kind": r.list_kind,
+                        "reason": r.reason,
+                    }
+                    for r in sorted(held.expiries, key=lambda r: r.ends_at)
+                    if r.role_id == g.role_id
+                ],
+            }
+            for g in grants
+            if g.role_id in visible
+        ],
+    }
+
+
 @router.get("/effective")
 async def effective(principal: str, role_id: str, request: Request) -> dict:
     """``principal``'s effective lists for ``role_id``: per kind what applies, where it came from
@@ -524,7 +591,7 @@ async def effective(principal: str, role_id: str, request: Request) -> dict:
     _require_role(state, role_id)
     if not _visible_roles(request, state, principal, {role_id}):
         raise _refuse_out_of_reach(role_id)
-    return _view(state, principal, role_id)
+    return await _view(state, principal, role_id)
 
 
 @router.get("/roles")
@@ -575,7 +642,7 @@ async def list_kinds(request: Request) -> dict:
         "names": None if index is None else [_node(n) for n in names_tree(index)],
         # Each capability and the kind that scopes it; null: unscoped, held wherever the role is.
         "capability_scopes": capability_scopes(),
-        "expiring_soon_days": expiring_soon_days(),
+        "expiring_soon_days": role_grants.notice_window().days,
     }
 
 
@@ -592,6 +659,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
         raise ApiError(422, "entitlements.principal_required", "A principal is required")
     _require_list_write(state, body.principal, body.role_id, body.kind)
     _check_list_expiry(state, body.role_id, body.kind, body.identifiers, body.until)
+    await _refuse_past_grant(state, body.principal, body.role_id, body.until)
     actor = _caller(request) or _ANONYMOUS
     base = role_defaults(state.roles[body.role_id]).get(body.kind, [WILDCARD])
     db = _db(state)
@@ -624,7 +692,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
             "until": body.until.isoformat() if body.until else None,
         },
     )
-    return _view(state, body.principal, body.role_id)
+    return await _view(state, body.principal, body.role_id)
 
 
 @router.get("/lists/history")
@@ -709,6 +777,31 @@ def _rule(state: Any, rule_key: str) -> tuple[str, ExpiryRule]:
     )
 
 
+async def _end_grant(
+    state: Any, principal: str, role_id: str, ends_at: datetime, actor: str, reason: str
+) -> None:
+    """End ``principal``'s grant of ``role_id`` at ``ends_at``: set or shorten its own expiry.
+    Refused by name when Provisa holds no grant of the role for them."""
+    db = _db(state)
+    async with db.acquire() as conn:
+        ended = await role_grants.end_grant(conn, principal, role_id, ends_at)
+    if not ended:
+        raise ApiError(
+            409,
+            "entitlements.no_grant_to_end",
+            f"Provisa holds no grant of {role_id!r} for {principal!r} to end",
+            principal=principal,
+            role_id=role_id,
+        )
+    await record_admin_action(
+        db,
+        action="role.expiry_set",
+        actor_id=actor,
+        subject_id=principal,
+        detail={"role_id": role_id, "ends_at": ends_at.isoformat(), "reason": reason},
+    )
+
+
 @router.post("/expiries/preview")
 async def preview(body: PreviewBody, request: Request) -> dict:
     """A dry run of an expiry rule: per capability, the identifiers it would end on its date of
@@ -725,17 +818,23 @@ async def preview(body: PreviewBody, request: Request) -> dict:
 
 @router.post("/expiries")
 async def add_expiry(body: ExpiryBody, request: Request) -> dict:
-    """Add an expiry rule to a principal's grant of a role. A rule that would remove nothing on
-    its date is refused by name."""
+    """Add an expiry rule to a principal's grant of a role. A rule that ends the whole grant
+    (``ends`` {}) is the grant's own expiry: it sets or shortens it. Any other dates entries of
+    the grant, never past the grant's end; one that would remove nothing on its date is refused by
+    name."""
     from provisa.api.app import state
 
     _require_grant_write(request, state, body.role_id, body.reason)
     if not body.principal.strip():
         raise ApiError(422, "entitlements.principal_required", "A principal is required")
     _refuse_past(body.ends_at)
+    actor = _caller(request) or _ANONYMOUS
+    if not body.ends:
+        await _end_grant(state, body.principal, body.role_id, body.ends_at, actor, body.reason)
+        return await _view(state, body.principal, body.role_id)
+    await _refuse_past_grant(state, body.principal, body.role_id, body.ends_at)
     if _preview(state, body.principal, body.role_id, body).removes_nothing:
         raise _refuse_removes_nothing(body.principal, body.role_id)
-    actor = _caller(request) or _ANONYMOUS
     db = _db(state)
     async with db.acquire() as conn:
         rule_key = await store.add_expiry(
@@ -761,23 +860,31 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
             "reason": body.reason,
         },
     )
-    return _view(state, body.principal, body.role_id)
+    return await _view(state, body.principal, body.role_id)
 
 
 @router.put("/expiries/{rule_key}")
 async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request) -> dict:
-    """Change an expiry rule: its date (extend), what it ends, or both. A change that would remove
-    nothing on its date is refused by name."""
+    """Change an expiry rule: its date (extend), what it ends, or both, never past the grant's end.
+    Changed to end the whole grant ({}), it is the grant's own expiry, and the rule is withdrawn. A
+    change that would remove nothing on its date is refused by name."""
     from provisa.api.app import state
 
     require_capability_request(request, _ASSIGN)
     principal, rule = _rule(state, rule_key)
     _require_grant_write(request, state, rule.role_id, body.reason)
     _refuse_past(body.ends_at)
-    if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
-        raise _refuse_removes_nothing(principal, rule.role_id)
     actor = _caller(request) or _ANONYMOUS
     db = _db(state)
+    if not body.ends:
+        await _end_grant(state, principal, rule.role_id, body.ends_at, actor, body.reason)
+        async with db.acquire() as conn:
+            await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
+            state.held_entitlements = await store.load_held(conn)
+        return await _view(state, principal, rule.role_id)
+    await _refuse_past_grant(state, principal, rule.role_id, body.ends_at)
+    if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
+        raise _refuse_removes_nothing(principal, rule.role_id)
     async with db.acquire() as conn:
         await store.change_expiry(
             conn, rule, principal, body.ends_at, body.ends, set_by=actor, reason=body.reason
@@ -796,7 +903,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
             "reason": body.reason,
         },
     )
-    return _view(state, principal, rule.role_id)
+    return await _view(state, principal, rule.role_id)
 
 
 @router.delete("/expiries/{rule_key}")
@@ -819,4 +926,4 @@ async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) 
         subject_id=principal,
         detail={"rule_key": rule_key, "role_id": rule.role_id, "reason": body.reason},
     )
-    return _view(state, principal, rule.role_id)
+    return await _view(state, principal, rule.role_id)
