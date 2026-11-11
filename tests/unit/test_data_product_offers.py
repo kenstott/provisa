@@ -35,6 +35,7 @@ from provisa.core.schema_org import (
     model_names,
     registered_tables,
     sources,
+    table_columns,
     user_role_assignments,
 )
 from provisa.entitlements import store
@@ -654,7 +655,9 @@ async def test_a_sample_grants_its_views_never_the_tables_beneath(control_plane)
 
 
 @pytest.mark.asyncio
-async def test_a_synthetic_offer_is_not_accepted(control_plane):
+async def test_a_synthetic_offer_grants_the_datasets_once_each_has_a_profiler_and_fakes(
+    control_plane,
+):
     async with _store(control_plane) as db, db.acquire() as conn:
         synthetic = DataProductOffer(name="syn", role_id="viewer", data_level="synthetic")
         with pytest.raises(OfferRefused) as gone:
@@ -666,9 +669,57 @@ async def test_a_synthetic_offer_is_not_accepted(control_plane):
             .values(profiler_source_id="prof")
             .where(registered_tables.c.id.in_([1, 2]))
         )
-        with pytest.raises(OfferRefused) as refused:
+        for tid, column, fake in ((1, "id", "hash()"), (1, "total", None), (2, "email", "email()")):
+            await conn.execute_core(
+                insert(table_columns).values(table_id=tid, column_name=column, fake=fake)
+            )
+        # Its role reads every column through its fake: a column with none is named.
+        with pytest.raises(OfferRefused) as unfaked:
             await offer_grant.entries(conn, "c360", synthetic)
-        assert refused.value.code == "synthetic_not_served"
+        assert (unfaked.value.code, unfaked.value.params) == (
+            "synthetic_needs_fake",
+            {"columns": "orders.total"},
+        )
+        await conn.execute_core(
+            table_columns.update()
+            .values(fake="uniform(min=0, max=10)")
+            .where(table_columns.c.column_name == "total")
+        )
+        # Accepted: the datasets (read through their fakes) and the dq results it includes.
+        assert await offer_grant.entries(conn, "c360", synthetic) == [
+            "sales.orders",
+            "sales.customers",
+            "sales.orders_checks",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_accepting_a_synthetic_offer_grants_its_role(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await conn.execute_core(
+            registered_tables.update()
+            .values(profiler_source_id="prof")
+            .where(registered_tables.c.id.in_([1, 2]))
+        )
+        saved = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="syn", role_id="analyst", data_level="synthetic"),
+            offer_id=None,
+            by="o1",
+        )
+        held = await _bid(conn, saved)
+        accepted = await offer_hooks.decide(
+            conn, _decision(held), may_grant=_anyone, grants=_provisa_held
+        )
+        assert accepted["status"] == "accepted"
+        assert accepted["granted"]["role_id"] == "analyst"
+        assert accepted["granted"]["entries"] == [
+            "sales.orders",
+            "sales.customers",
+            "sales.orders_checks",
+        ]
+        assert await offers.synthetic_readers(conn) == {1: ["analyst"], 2: ["analyst"]}
 
 
 @pytest.mark.asyncio
