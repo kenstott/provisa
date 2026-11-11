@@ -94851,7 +94851,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     an array''s depth, choosing by a value''s type, a check that refuses a bad value at run time), the rule''s
     replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim,
     with the helper''s name and one-line purpose where one is used, so what the docs show is what runs.
-    Each engine''s page counts its rows that are rules and those that use helpers.'
+    Each engine''s page counts its rows that are rules and those that use helpers. (Amended 2026-11-11,
+    THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be
+    just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement,
+    the row''s rule is that function''s name, the function does the matching and the rewrite on the tree,
+    and the documentation prints the name with its one-line purpose. Every row still has a rule; the count
+    of rules that are only a function name is what each engine''s page reports.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
