@@ -10,8 +10,9 @@
 
 """A data product's open-standard documents, served read-only (REQ-2118).
 
-A catalog that imports the standards pulls them from here: the product's ODPS document, and the
-ODCS contract of each member it names. They are built from the same snapshot the export
+A catalog that imports the standards pulls them from here: the product's ODPS document, the
+ODCS contract of each member it names, and the terms it reaches as an Apache Ossie ontology
+(REQ-2238). They are built from the same snapshot the export
 publishes (``publishing.org_snapshot``), so a catalog that pulls reads what one that is pushed to
 was told. Reading them asks what reading a data product asks (``data_product_read``), and they are
 part of the metadata export, so the org's tier must include it (REQ-1073; nothing gates it on a
@@ -20,7 +21,7 @@ asking only what reading the product asks, and each contract's saved versions, w
 has no element for (REQ-2158).
 """
 
-# Requirements: REQ-2118, REQ-1073
+# Requirements: REQ-2118, REQ-1073, REQ-2238
 
 from __future__ import annotations
 
@@ -38,9 +39,10 @@ router = APIRouter()
 _YAML = "application/yaml"
 
 
-async def _documents(request: Request, product_id: str, *, export: bool = True):
-    """The product's documents. ``export`` is a catalog's pull, part of the metadata export; the
-    product's own page reads the same contracts without it (REQ-2158), as it reads the product."""
+async def _product(request: Request, product_id: str, *, export: bool):
+    """The snapshot built for the product, and the product. ``export`` is a catalog's pull, part
+    of the metadata export; the product's own page reads the same contracts without it
+    (REQ-2158), as it reads the product."""
     require_capability_request(request, "data_product_read")
     org_id = require_active_org_id(request)
     if export:
@@ -48,7 +50,6 @@ async def _documents(request: Request, product_id: str, *, export: bool = True):
             await require_feature(org_id, Feature.METADATA_EXPORT)
         except (EntitlementError, KeyError) as exc:
             raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
-    from provisa.api.metadata_export.odps import product_documents
     from provisa.api.metadata_export.publishing import org_snapshot
 
     # Built for this product: only what its documents carry is read (REQ-2158).
@@ -62,7 +63,14 @@ async def _documents(request: Request, product_id: str, *, export: bool = True):
             "data_products.no_documents",
             f"data product {product_id!r} does not exist or has no member to describe",
         )
-    return product_documents(snapshot, product)
+    return snapshot, product
+
+
+async def _documents(request: Request, product_id: str, *, export: bool = True):
+    """The product's ODPS document and its members' ODCS contracts."""
+    from provisa.api.metadata_export.odps import product_documents
+
+    return product_documents(*await _product(request, product_id, export=export))
 
 
 def _yaml(document: dict) -> Response:
@@ -74,6 +82,19 @@ async def data_product_odps(product_id: str, request: Request) -> Response:  # R
     """The product's ODPS 1.0 document."""
     document, _ = await _documents(request, product_id)
     return _yaml(document)
+
+
+@router.get("/data-products/{product_id}/ontology.ossie.yaml")
+async def data_product_ossie(product_id: str, request: Request) -> Response:  # REQ-2238
+    """The terms the product reaches, as an Apache Ossie ontology document."""
+    from provisa.ossie.convert import OssieExportRefused
+    from provisa.ossie.ontology import ossie_ontology_yaml
+
+    snapshot, product = await _product(request, product_id, export=True)
+    try:
+        return Response(ossie_ontology_yaml(snapshot, product), media_type=_YAML)
+    except OssieExportRefused as exc:
+        raise ApiError(404, "data_products.no_terms", str(exc)) from exc
 
 
 @router.get("/data-products/{product_id}/contracts.json")

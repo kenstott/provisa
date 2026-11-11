@@ -555,6 +555,19 @@ async def test_the_glossary_its_role_categories_terms_and_links_are_created(glos
     assert result.published["term_assignment"] == 2 and result.published["glossary_term"] == 3
 
 
+async def test_a_class_is_linked_to_its_key_column_beside_its_table(glossary_api):
+    # REQ-2141 KEYS ON THE CLASS, REQ-2238: the key column's term is its table's Class.
+    glossary = _glossary()
+    glossary["refs"][0]["term_id"] = 1
+    result = await _export().publish(_glossary_snapshot(glossary))
+    assert result.ok, result.errors
+    definitions = {link for link in _link_kinds(glossary_api) if link[0] == "definition"}
+    assert definitions == {
+        ("definition", ((SALES_ENTRY, "", "SOURCE"), (_entry("sale"), "", "TARGET"))),
+        ("definition", ((SALES_ENTRY, "Schema.id", "SOURCE"), (_entry("sale"), "", "TARGET"))),
+    }
+
+
 async def test_a_stewards_links_and_labels_stand_and_provisas_stale_links_leave(glossary_api):
     await _export().publish(_glossary_snapshot(_glossary()))
     fake = glossary_api

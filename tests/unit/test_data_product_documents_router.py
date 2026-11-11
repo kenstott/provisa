@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """REQ-2158, REQ-2118: the product's Contracts panel reads every output port's ODCS contract as
-JSON, asking what reading the product asks; a catalog's pull is the metadata export's."""
+JSON, asking what reading the product asks; a catalog's pull is the metadata export's, the Ossie
+ontology of the terms the product reaches among it (REQ-2238)."""
 
 from __future__ import annotations
 
@@ -145,3 +146,20 @@ def test_a_port_with_no_contract_has_no_versions(versions_of):
         asyncio.run(router.data_product_contract_versions("prod", "wh.public.nope", object()))
     assert missing.value.status_code == 404
     assert "wh.public.orders" in missing.value.detail
+
+
+def test_the_ossie_ontology_is_a_pull_of_the_metadata_export(org):
+    with pytest.raises(ApiError) as refused:
+        asyncio.run(router.data_product_ossie("prod", object()))
+    assert refused.value.status_code == 403
+
+
+def test_a_product_reaching_no_term_has_no_ossie_ontology(org, monkeypatch):
+    async def entitled(org_id, feature):
+        return None
+
+    monkeypatch.setattr(router, "require_feature", entitled)
+    with pytest.raises(ApiError) as missing:
+        asyncio.run(router.data_product_ossie("prod", object()))
+    assert missing.value.status_code == 404
+    assert "'prod' reaches no term" in missing.value.detail
