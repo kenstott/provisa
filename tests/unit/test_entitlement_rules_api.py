@@ -769,8 +769,8 @@ async def test_granting_again_for_one_capability_extends_it_for_that_one(api):
     await _post_add(api, until=_TOMORROW, capabilities=["read", "traverse"])
     view = await _post_add(api, until=_NEXT_WEEK, capabilities=["read"])
     assert _ends_of(view) == [
-        ({"read": ["sales.orders"]}, datetime.fromisoformat(_NEXT_WEEK)),
         ({"traverse": ["sales.orders"]}, datetime.fromisoformat(_TOMORROW)),
+        ({"read": ["sales.orders"]}, datetime.fromisoformat(_NEXT_WEEK)),
     ]
 
 
