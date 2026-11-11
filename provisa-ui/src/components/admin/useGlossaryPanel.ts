@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useDetailParam } from "../list/useDetailParam";
 import { getStored, setStored } from "../../lib/browserStorage";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useScreenInputsReader } from "../../mcp/screenState";
@@ -54,38 +55,54 @@ export function writeStored(key: string, value: string): void {
 }
 
 export function useGlossaryPanel(canEdit: boolean) {
-  // REQ-1387: the selected term is mirrored to the ?term= query param, so a relationship link,
-  // a shared URL, or the back/forward buttons all resolve to the same term this state does.
+  // REQ-1387, REQ-2241: the selected term is the URL's ?term= (the shared detail parameter), so a
+  // relationship link, a shared URL, or Back and Forward all show the term it names.
   const [searchParams, setSearchParams] = useSearchParams();
+  const detail = useDetailParam("ontology");
   // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
   // the term, so it opens the list.
   const [ontology, setOntologyState] = useState(
-    () => !searchParams.has("term") && readStoredString("glossary.view") === "ontology",
+    () => detail.id === null && readStoredString("glossary.view") === "ontology",
   );
+  const parsed = detail.id === null ? NaN : Number(detail.id);
+  const selectedId = Number.isFinite(parsed) ? parsed : null;
+  const { open: openTerm, close: closeTerm } = detail;
+  const setSelectedId = useCallback(
+    (id: number | null) => {
+      writeStored("glossary.term", id === null ? "" : String(id));
+      if (id === null) closeTerm();
+      else openTerm(String(id));
+    },
+    [openTerm, closeTerm],
+  );
+  // Under the graph a term is not in the URL: reloading opens what was left, the graph. Back to
+  // the list, the term that was open is open again.
   const setOntology = (open: boolean) => {
     setOntologyState(open);
     writeStored("glossary.view", open ? "ontology" : "list");
+    const held = readStoredString("glossary.term");
+    if (open) closeTerm({ replace: true });
+    else if (held) openTerm(held, { replace: true });
   };
-  const [selectedId, setSelectedIdState] = useState<number | null>(() => {
-    const raw =
-      searchParams.get("term") ??
-      (searchParams.toString() === "" ? readStoredString("glossary.term") : null);
-    const parsed = raw ? Number(raw) : NaN;
-    return Number.isFinite(parsed) ? parsed : null;
-  });
-  const setSelectedId = useCallback((id: number | null) => {
-    setSelectedIdState(id);
-    writeStored("glossary.term", id === null ? "" : String(id));
+  // A visit with nothing in its URL reopens the term the reader left open.
+  const [reopened] = useState(() =>
+    searchParams.toString() === "" && !ontology ? readStoredString("glossary.term") : null,
+  );
+  useEffect(() => {
+    if (reopened) openTerm(reopened, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
   }, []);
   // The term open as one form (TermEditForm), or read. A URL's ?term= naming the remembered term
   // is that term reloaded, so its form reopens too.
-  const [editing, setEditingState] = useState(
-    () =>
+  const [editing, setEditingState] = useState(() => {
+    const opening = detail.id ?? reopened;
+    return (
       canEdit &&
-      selectedId !== null &&
-      readStoredString("glossary.term") === String(selectedId) &&
-      readStoredBool("glossary.editing", false),
-  );
+      opening !== null &&
+      readStoredString("glossary.term") === opening &&
+      readStoredBool("glossary.editing", false)
+    );
+  });
   const setEditing = useCallback((on: boolean) => {
     setEditingState(on);
     writeStoredBool("glossary.editing", on);
@@ -99,15 +116,24 @@ export function useGlossaryPanel(canEdit: boolean) {
     setSeededPanel(panelParam);
     if (panelParam !== null) setOntologyState(panelParam === "graph");
   }
-  const termParam = searchParams.get("term");
+  const termParam = detail.id;
   const [seededTerm, setSeededTerm] = useState(termParam);
   if (termParam !== seededTerm) {
     setSeededTerm(termParam);
-    if (termParam !== null && Number.isFinite(Number(termParam))) {
-      setSelectedIdState(Number(termParam));
-      setOntologyState(false);
-    }
+    if (termParam !== null) setOntologyState(false);
   }
+  // ?panel= is read once: the page's own state holds it from there.
+  useEffect(() => {
+    if (panelParam === null) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("panel");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [panelParam, setSearchParams]);
 
   // Polly's navigate: which panel, which term, and the graph's own controls.
   useNavPayload<{ panel?: "graph" | "terms"; term?: number; graph?: Record<string, unknown> }>(
@@ -115,7 +141,7 @@ export function useGlossaryPanel(canEdit: boolean) {
       if (payload.graph) writeGraphSettings(ONTOLOGY_SETTINGS, payload.graph);
       if (payload.panel) setOntologyState(payload.panel === "graph");
       if (payload.term !== undefined) {
-        setSelectedIdState(payload.term);
+        setSelectedId(payload.term);
         setOntologyState(false);
       }
     },
@@ -138,28 +164,13 @@ export function useGlossaryPanel(canEdit: boolean) {
   // Each term opens read, not in the form the previous term was left in; the term the page opened
   // on keeps its remembered form. Deferred for the same set-state-in-effect rule as the list
   // refresh in GlossaryTab.
-  const termOpened = useRef(selectedId);
+  const termOpened = useRef(selectedId ?? (reopened === null ? null : Number(reopened)));
   useEffect(() => {
     if (termOpened.current === selectedId) return;
     termOpened.current = selectedId;
     const timer = window.setTimeout(() => setEditing(false), 0);
     return () => window.clearTimeout(timer);
   }, [selectedId, setEditing]);
-
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        // Under the graph a term is not in the URL: reloading opens what was left, the graph.
-        if (selectedId === null || ontology) next.delete("term");
-        else next.set("term", String(selectedId));
-        next.delete("panel");
-        return next;
-      },
-      { replace: true },
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable per render, not per selection.
-  }, [selectedId, ontology]);
 
   return { ontology, setOntology, selectedId, setSelectedId, editing, setEditing };
 }

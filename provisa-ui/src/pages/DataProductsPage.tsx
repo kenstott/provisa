@@ -56,6 +56,7 @@ import {
   ListItems,
 } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { DeletingRows, PanelDeleteLock } from "../components/list/PanelDelete";
 import { usePanelDeleting } from "../components/list/panelActions";
@@ -155,25 +156,24 @@ export function DataProductsPage() {
   // REQ-2158: the open product's contracts as edited, by table id; each changed one is saved.
   const [contractDrafts, setContractDrafts] = useState<Record<number, DataContractInput>>({});
   const { saveDataContract } = useSaveDataContract();
-  // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
-  // documentation box, Analytics Hub) carries back to this page; it names the product to open and
-  // wins over the last-expanded row remembered in localStorage.
-  const [expanded, setExpandedState] = useState<string | null>(() => {
-    const linked = searchParams.get("product");
-    if (linked) return linked;
+  // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
+  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page. A
+  // visit without one reopens the last-expanded row remembered in localStorage.
+  const detail = useDetailParam("products");
+  const expanded = detail.id;
+  const [remembered] = useState(() => {
+    if (detail.id !== null) return null;
     try {
       return getStored(EXPANDED_STORAGE_KEY);
     } catch {
       return null;
     }
   });
-  // A link decides the page again whenever it changes while the page stays open.
-  const productParam = searchParams.get("product");
-  const [seededProduct, setSeededProduct] = useState(productParam);
-  if (productParam !== seededProduct) {
-    setSeededProduct(productParam);
-    if (productParam !== null) setExpandedState(productParam);
-  }
+  const reopen = detail.open;
+  useEffect(() => {
+    if (remembered) reopen(remembered, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
+  }, []);
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
@@ -185,18 +185,9 @@ export function DataProductsPage() {
     editing: editingId,
   });
   const setExpanded = (id: string | null) => {
-    setExpandedState(id);
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (id) n.set("product", id);
-        else n.delete("product");
-        // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
-        if (id !== p.get("product")) n.delete("contract");
-        return n;
-      },
-      { replace: true },
-    );
+    // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
+    if (id) detail.open(id);
+    else detail.close();
     try {
       if (id) setStored(EXPANDED_STORAGE_KEY, id);
       else removeStored(EXPANDED_STORAGE_KEY);
