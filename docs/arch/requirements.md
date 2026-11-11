@@ -26973,3 +26973,15 @@ Maintainer 2026-11-11: opening a detail view puts it in the address, so every de
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2242 · Protocol Conformance {#REQ-2242}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** constraint
+
+Maintainer 2026-11-11: Provisa never changes sqlglot's own classes at runtime. Every change to how a dialect tokenizes, parses or generates (today five assignments in provisa/transpiler: DuckDB's lambda_sql, Postgres's FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef's arg_types) is made in Provisa's own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses and expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa does not alter stock sqlglot for any other caller, and sqlglot's compiled build (sqlglot[c], mypyc), whose classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the plain build stays, and the measurement is recorded.
+
+**Code:** —
+
+**Tests:** —
