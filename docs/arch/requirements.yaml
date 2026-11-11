@@ -91751,7 +91751,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as the organisation structure). Accepting assigns the offer''s role to the requester with entitlements
     built from the product -- its datasets, with its data quality results and profiles where the offer includes
     them -- so no one writes an entitlement list by hand. Masks, row rules and anything else applied on
-    read come from the offer''s role, defined up front. A product with no offers cannot be requested.'
+    read come from the offer''s role, defined up front. A product with no offers cannot be requested. (Amended
+    2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11. A product owner can
+    put in an offer only a role they have the right to grant: the role picker lists only those, and saving
+    an offer with any other role is refused by name. Rights can change after an offer is published, so accepting
+    a bid checks again that the one accepting may grant the offer''s role; an open offer is checked against
+    the right of the owner who published it, and while that right is gone the offer is not accepted, its
+    owner is told, and the offer is listed for review.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
