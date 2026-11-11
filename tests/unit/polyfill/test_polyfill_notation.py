@@ -57,7 +57,7 @@ def test_a_hole_is_a_parameter_node_in_each_dialect(dialect: str, text: str):
 
 @pytest.mark.parametrize("dialect", _ENGINES)
 def test_a_dollar_inside_a_string_is_text(dialect: str):
-    tree = replacement("json_extract($a, '$[0]') || '$'", dialect, "f($a::text)")
+    tree = replacement("g($a, '$[0]') || '$'", dialect, "f($a::text)")
     assert holes(tree) == ("a",)
     strings = {n.this for n in tree.find_all(exp.Literal) if n.is_string}
     assert strings == {"$[0]", "$"}

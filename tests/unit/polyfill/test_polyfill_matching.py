@@ -110,7 +110,7 @@ def test_a_hole_written_twice_matches_the_same_subtree_twice():
 def test_holes_match_nested_subtrees():
     rule = "array_upper($a::anyarray, $d::integer)"
     bound = _matched(rule, "array_upper(array_fill(1, ARRAY[2]), 1 + 0)")
-    assert bound == {"a": "array_fill(1, ARRAY[2])", "d": "1 + 0"}
+    assert bound == {"a": "ARRAY_FILL(1, ARRAY[2])", "d": "1 + 0"}
 
 
 def test_a_pattern_of_a_typed_node_matches_that_node():
@@ -148,7 +148,7 @@ def test_graft_copies_and_leaves_the_replacement_and_statement_untouched():
     assert first == second and first is not second
     assert first.this is not bindings["a"]
     assert form.sql("duckdb") == "LENGTH($a)"
-    assert statement.sql("postgres") == "f(ARRAY[1])"
+    assert statement.sql("postgres") == "F(ARRAY[1])"
 
 
 def test_graft_does_not_rebind_a_hole_inside_what_it_put():
@@ -167,7 +167,7 @@ def test_graft_of_an_unbound_hole_is_refused():
 @pytest.mark.parametrize(
     ("engine", "form", "expected"),
     [
-        ("duckdb", "list_transform($a, _x -> _x + $n)", "LIST_TRANSFORM([1], _x -> _x + 2)"),
+        ("duckdb", "list_transform($a, _x -> _x + $n)", "LIST_TRANSFORM([1], LAMBDA _x : _x + 2)"),
         ("trino", "transform($a, _x -> _x + $n)", "TRANSFORM(ARRAY[1], _x -> _x + 2)"),
         ("clickhouse", "arrayMap(_x -> _x + $n, $a)", "arrayMap(_x -> _x + 2, [1])"),
     ],
