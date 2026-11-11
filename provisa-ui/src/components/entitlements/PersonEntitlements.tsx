@@ -423,6 +423,7 @@ function ListRow({
                 size="xs"
                 c="dimmed"
                 td="line-through"
+                w="fit-content"
                 data-testid={`person-list-${list.kind}-superseded`}
               >
                 {t("entitlements.person.superseded", {

@@ -28,6 +28,7 @@ import { tomorrow, untilEndOf } from "../../lib/grantUntil";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 const EVERY = "*";
+const NO_WRAP = { whiteSpace: "nowrap" } as const;
 
 /** What `rule` ends, in words: the whole grant, or each capability and where. */
 function describeEnds(t: TFunction, ends: Record<string, string[]>): string {
@@ -125,7 +126,7 @@ export function ExpiryRules({
         <Table withRowBorders data-testid="expiry-rules-table">
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>{t("entitlements.expiry.colEndsOn")}</Table.Th>
+              <Table.Th style={NO_WRAP}>{t("entitlements.expiry.colEndsOn")}</Table.Th>
               <Table.Th>{t("entitlements.expiry.colEnds")}</Table.Th>
               <Table.Th>{t("entitlements.expiry.colReason")}</Table.Th>
               <Table.Th />
@@ -219,7 +220,7 @@ function ExpiryRow({
   const dim = rule.passed ? "dimmed" : undefined;
   return (
     <Table.Tr data-testid={testId} data-passed={rule.passed}>
-      <Table.Td>
+      <Table.Td style={NO_WRAP}>
         <Text size="sm" c={dim} ff="monospace">
           {rule.ends_at.slice(0, 10)}
         </Text>
