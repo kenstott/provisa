@@ -76,7 +76,17 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     expected = graft(replacement(form, written_in(dialect), rule.pattern), bindings)
     if dialect == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
-    assert written.sql(dialect) == expected.sql(dialect)
+    # A dialect that quotes every identifier (Snowflake) writes the same column quoted.
+    assert _unquoted(written).sql(dialect) == _unquoted(expected).sql(dialect)
+
+
+def _unquoted(tree: exp.Expr) -> exp.Expr:
+    def plain(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Identifier) and node.quoted:
+            return exp.to_identifier(node.name)
+        return node
+
+    return tree.copy().transform(plain)
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -213,7 +223,7 @@ def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str
 
 
 def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
-    out = transpile('SELECT pg_catalog."array_length"(ARRAY[1, 2], 1) AS v', "duckdb")
+    out = transpile('SELECT pg_catalog."array_length"(ARRAY[[1, 2]], 2) AS v', "duckdb")
     assert "JSON_ARRAY_LENGTH" in out.upper(), out
 
 
