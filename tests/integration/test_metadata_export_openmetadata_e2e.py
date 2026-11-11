@@ -32,7 +32,6 @@ from tests.integration.metadata_export_server import (
     GLOSSARY_TERM,
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
-    ORDERS_CONTRACT,
     PRODUCT,
     PRODUCT_FIELDS,
     RLS_FILTER,
@@ -207,8 +206,8 @@ async def test_the_data_product_holds_its_members(published, token):
 
 
 async def test_each_member_carries_its_odcs_contract(published, token):
-    """REQ-2118: the member's ODCS 3.1 contract, imported onto its table, read back out of
-    OpenMetadata as ODCS."""
+    """REQ-2118: the member's ODCS 3.1 contract -- the one its product's default offer gives
+    (REQ-2180) -- imported onto its table, read back out of OpenMetadata as ODCS."""
     orders = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}")
     contract = await _get(
         token, "/api/v1/dataContracts/entity", entityId=orders["id"], entityType="table"
@@ -218,14 +217,14 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     # OpenMetadata 2.0.5 keeps no imported ODCS ``version``: its import keeps the contract
     # entity's own revision and its export reports that (ODCSConverter.toODCS/fullReplace).
     assert odcs["version"] == str(contract["version"])
-    # What Provisa sent, as OpenMetadata keeps it: the member's name, its contract's status
-    # (active is OpenMetadata's APPROVED, and back), and the description's three parts in one.
-    terms = ORDERS_CONTRACT["terms"]
+    # What Provisa sent, as OpenMetadata keeps it: the member's name, the status of the contract
+    # its product's default offer gives (REQ-2180: a live product's are active, OpenMetadata's
+    # APPROVED, and back), and the description its product writes once, three parts in one.
     assert odcs["name"] == "orders"
-    assert odcs["status"] == ORDERS_CONTRACT["status"]
+    assert odcs["status"] == "active"
     assert odcs["description"] == {
-        "purpose": f"{ORDERS_CONTRACT['description']}\n\n**Limitations:**\n"
-        f"{terms['limitations']}\n\n**Usage:**\n{terms['usage']}"
+        "purpose": f"{PRODUCT_FIELDS['purpose']}\n\n**Limitations:**\n"
+        f"{PRODUCT_FIELDS['limitations']}\n\n**Usage:**\n{PRODUCT_FIELDS['usage']}"
     }
     (schema,) = odcs["schema"]
     columns = {p["name"]: p for p in schema["properties"]}

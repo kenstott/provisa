@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import insert
 
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.openlineage import to_events
@@ -89,12 +89,14 @@ async def _store(control_plane):
         await db.close()
 
 
-async def _contract(conn, table_id: int):
-    return (
-        await conn.execute_core(
-            select(registered_tables.c.contract).where(registered_tables.c.id == table_id)
-        )
-    ).scalar_one()
+async def _contracts(conn, built, product_id: str) -> dict[int, Any]:
+    """The contracts the product's default offer gives after a build derives them (REQ-2180)."""
+    from provisa.api.offer_derivation import rederive_all
+    from provisa.core.repositories import data_product_offer as offers
+
+    await rederive_all(conn, await built.state(conn))
+    (offer,) = await offers.list_offers(conn, product_id)
+    return await offers.contracts(conn, offer["id"])
 
 
 @pytest.mark.asyncio
@@ -175,23 +177,32 @@ async def test_a_member_moved_to_another_domain_is_refused_while_it_is_a_member(
 
 
 @pytest.mark.asyncio
-async def test_a_table_has_one_contract_while_it_is_a_member_of_any_product(control_plane):
+async def test_a_table_has_a_contract_under_each_product_it_is_a_member_of(
+    control_plane, monkeypatch
+):
+    """REQ-2180: a member's contracts are its products' offers' -- one under each product it is a
+    member of, derived by the build -- and it loses a product's when it leaves that product."""
+    from provisa.core.repositories import data_product_offer as offers
+    from tests.unit.offer_build import installed
+
+    built = installed(monkeypatch)
     async with _store(control_plane) as db, db.acquire() as conn:
-        assert await _contract(conn, 1) is None
+        for pid in ("c360", "churn"):
+            await offers.add_default(conn, pid, by=None)
+        assert await _contracts(conn, built, "c360") == {}
         await repo.set_members(conn, "c360", table_ids=[1], commands=[])
-        drafted = await _contract(conn, 1)
-        assert drafted["version"] == "0.1.0"
-        # REQ-2158: a contract holds no columns; its latest saved version snapshots the member's
-        assert [c["name"] for c in drafted["versions"][-1]["columns"]] == ["id"]
+        c360 = await _contracts(conn, built, "c360")
+        assert list(c360) == [1]
+        # A contract's schema is the member's columns as the offer's role reads them.
+        assert [f.name for f in c360[1].terms.fields] == ["id"]
 
         await repo.set_members(conn, "churn", table_ids=[1], commands=[])
-        assert await _contract(conn, 1) == drafted  # joining a second product keeps it
-        assert {m["product_id"] for m in await repo.member_contracts(conn)} == {"c360", "churn"}
+        assert list(await _contracts(conn, built, "churn")) == [1]
+        assert await _contracts(conn, built, "c360") == c360  # joining a second keeps the first
 
         await repo.set_members(conn, "c360", table_ids=[], commands=[])
-        assert await _contract(conn, 1) == drafted  # still a member of churn
-        await repo.set_members(conn, "churn", table_ids=[], commands=[])
-        assert await _contract(conn, 1) is None  # no product's output port any more
+        assert await _contracts(conn, built, "c360") == {}
+        assert list(await _contracts(conn, built, "churn")) == [1]  # still a member of churn
 
 
 @pytest.mark.asyncio

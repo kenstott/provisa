@@ -137,8 +137,6 @@ async def data_product_contract_versions(
     """The saved versions of the contract an offer gives on one dataset, oldest first, each with
     when and by whom it was saved and its differences from the one before (REQ-2180), asking what
     reading the product asks."""
-    require_capability_request(request, "data_product_read")
-    require_active_org_id(request)
     snapshot, product = await _product(request, product_id, export=False)
     exports = {o.name: o for o in snapshot.offers.get(product.id, ())}
     contract = None if offer not in exports else exports[offer].contracts.get(member)

@@ -15,6 +15,7 @@ ontology of the terms the product reaches among it (REQ-2238)."""
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -24,10 +25,16 @@ from provisa.api.metadata_export import build_snapshot
 from provisa.control_plane.entitlements import EntitlementError, Tier
 from datetime import UTC, datetime
 
-from provisa.api.metadata_export.odps import OfferExport
+from provisa.api.metadata_export.model import OfferExport
 from provisa.core import offer_contracts
 from provisa.core.models import DataProduct, DataProductOffer
 from tests.integration.metadata_export_fixture import ORG_ID, PROD, governed_config
+
+
+class _Asked(list):
+    """What the router asked, in order; ``snapshot`` the one the org's snapshot answers with."""
+
+    snapshot: Any
 
 
 @pytest.fixture
@@ -37,7 +44,10 @@ def org(monkeypatch):
         DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
-    asked: list[str] = []
+    # REQ-2180: the snapshot carries the product's offers and their contracts.
+    snapshot.offers = {"prod": (_default_offer(snapshot),)}
+    asked = _Asked()
+    asked.snapshot = snapshot
 
     async def snapshot_of(org_id, *, product_id):
         # REQ-2158: the snapshot is built for the one product asked for.
@@ -51,13 +61,6 @@ def org(monkeypatch):
     monkeypatch.setattr(router, "require_active_org_id", lambda r: ORG_ID)
     monkeypatch.setattr(router, "require_feature", not_entitled)
     monkeypatch.setattr("provisa.api.metadata_export.publishing.org_snapshot", snapshot_of)
-
-    async def offer_exports(product_id):
-        # REQ-2180: the product's offers and their contracts, as the store holds them.
-        asked.append(f"offers:{product_id}")
-        return [_default_offer(snapshot)]
-
-    monkeypatch.setattr(router, "offer_exports", offer_exports)
     return asked
 
 
@@ -99,7 +102,7 @@ def test_the_panel_reads_every_contract_without_the_export(org):
         "default/wh.public.order_totals",
     }
     assert contracts["default/wh.public.orders"]["kind"] == "DataContract"
-    assert org == ["data_product_read", "snapshot:prod", "offers:prod"]
+    assert org == ["data_product_read", "snapshot:prod"]
 
 
 def test_a_catalogs_pull_is_the_metadata_exports(org):
@@ -115,7 +118,7 @@ def test_a_rows_contract_is_read_alone_without_the_export(org):
     )
     assert contract["kind"] == "DataContract"
     assert contract["schema"][0]["physicalName"] == "wh.public.orders"
-    assert org == ["data_product_read", "snapshot:prod", "offers:prod"]
+    assert org == ["data_product_read", "snapshot:prod"]
 
 
 def test_a_port_with_no_contract_names_the_ports_there_are(org):
@@ -128,7 +131,7 @@ def test_a_port_with_no_contract_names_the_ports_there_are(org):
 
 
 @pytest.fixture
-def versions_of(org, monkeypatch):
+def versions_of(org):
     one = _contract(["id", "note"])
     two = _contract(["id"], one)
     export = OfferExport(
@@ -141,13 +144,7 @@ def versions_of(org, monkeypatch):
         duration_days=None,
         contracts={"wh.public.orders": two},
     )
-
-    async def offer_exports(product_id):
-        org.append(f"offers:{product_id}")
-        return [export]
-
-    monkeypatch.setattr(router, "offer_exports", offer_exports)
-    monkeypatch.setattr(router, "require_active_org_id", lambda r: ORG_ID)
+    org.snapshot.offers = {"prod": (export,)}
     return org
 
 
@@ -167,7 +164,7 @@ def test_a_rows_versions_are_read_with_when_and_by_whom_and_their_differences(ve
         }
     ]
     assert versions[1]["saved_at"] is not None and versions[1]["saved_by"] is None
-    assert versions_of == ["data_product_read", "offers:prod"]
+    assert versions_of == ["data_product_read", "snapshot:prod"]
 
 
 def test_a_port_with_no_contract_has_no_versions(versions_of):
