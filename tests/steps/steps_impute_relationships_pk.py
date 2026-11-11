@@ -23,19 +23,40 @@ def shared_data():
 
 
 class _FakeResult:
+    def __init__(self, rows=()):
+        self._rows = list(rows)
+
     def fetchone(self):
-        return None  # no pre-existing properties to merge
+        return self._rows[0] if self._rows else None
 
     def fetchall(self):
-        return []
+        return list(self._rows)
 
 
 class _FakeConn:
+    """The node_ids table held in memory: what register_node_ids reads and writes through a
+    model connection (a select of held ids by composite_id, then an insert of the new ones and
+    an update of the changed ones inside one transaction)."""
+
     def __init__(self):
         self._next_id = 100
+        self._held: dict[str, tuple[int, str, dict]] = {}
 
-    async def execute_core(self, _stmt):
-        return _FakeResult()
+    async def execute_core(self, stmt):
+        # select(composite_id, id, kind, properties).where(composite_id.in_([...]))
+        wanted = stmt.whereclause.right.value
+        return _FakeResult((cid, *self._held[cid]) for cid in wanted if cid in self._held)
+
+    async def execute_core_many(self, stmt, rows):
+        if stmt.is_insert:
+            for row in rows:
+                self._next_id += 1
+                kind = next(v for k, v in row.items() if k not in ("composite_id", "properties"))
+                self._held[row["composite_id"]] = (self._next_id, kind, row["properties"])
+        else:  # the update of a changed kind or properties
+            for row in rows:
+                held_id = self._held[row["b_composite_id"]][0]
+                self._held[row["b_composite_id"]] = (held_id, row["b_kind"], row["b_properties"])
 
     @asynccontextmanager
     async def transaction(self):
