@@ -95054,35 +95054,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine
     does natively with no difference is left out. Each page states that rule at its top and counts the features
     left out as native, and the conformance check is what makes the omission hold: a feature left out that
-    answers otherwise than PostgreSQL fails the run. Beside the pages, a generated summary shows each feature
-    across the engines (native, polyfilled, differs, refused) for choosing an engine. Both come from the
-    one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11.
-    A grid row''s polyfill is written as a rule in a notation the translator itself executes, not described
-    beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray,
-    1)) and, for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a);
-    trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot
-    in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts
-    the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling.
-    A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or
-    literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to
-    an array''s depth, choosing by a value''s type, a check that refuses a bad value at run time), the rule''s
-    replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim,
-    with the helper''s name and one-line purpose where one is used, so what the docs show is what runs.
-    Each engine''s page counts its rows that are rules and those that use helpers. (Amended 2026-11-11,
-    THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be
-    just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement,
-    the row''s rule is that function''s name, the function does the matching and the rewrite on the tree,
-    and the documentation prints the name with its one-line purpose. Every row still has a rule; the count
-    of rules that are only a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES
-    ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s
-    limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid
-    covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate
-    an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source
-    with its own semantics, and the documentation says so once; a difference that comes from the source
-    is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific
-    source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source
-    type (and, where it matters, its version or a setting) that either keeps an operation from being pushed
-    to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
+    answers otherwise than PostgreSQL fails the run. [SUPERSEDED by REQ-2236, 2026-11-11 -- the summary
+    is one table per engine, not a cross-engine matrix. Kept here for history; do not implement against
+    it.] Beside the pages, a generated summary shows each feature across the engines (native, polyfilled,
+    differs, refused) for choosing an engine. [END SUPERSEDED BLOCK] Both come from the one grid in code.
+    (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11. A grid row''s
+    polyfill is written as a rule in a notation the translator itself executes, not described beside the
+    code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray, 1)) and,
+    for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a); trino: cardinality($a)),
+    or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot in their own dialects into
+    trees with placeholder nodes, and a rule matches tree against tree and grafts the matched subtrees into
+    the replacement, so applying a rule is AST manipulation, never string handling. A write polyfill is
+    a rule of the same form whose pattern is a value going in (a cast, a parameter or literal of a type,
+    an assigned column). Where a polyfill is logic a rule cannot state (recursing to an array''s depth,
+    choosing by a value''s type, a check that refuses a bad value at run time), the rule''s replacement
+    names a helper, and the helper is the exception. The documentation prints each rule verbatim, with the
+    helper''s name and one-line purpose where one is used, so what the docs show is what runs. Each engine''s
+    page counts its rows that are rules and those that use helpers. (Amended 2026-11-11, THE ESCAPE HATCH
+    IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be just the name of
+    its rewrite function: where a polyfill cannot be stated as a pattern and replacement, the row''s rule
+    is that function''s name, the function does the matching and the rewrite on the tree, and the documentation
+    prints the name with its one-line purpose. Every row still has a rule; the count of rules that are only
+    a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES ONLY; SOURCES GET
+    HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s limitations,
+    as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid covers the
+    serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate an engine
+    pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source with its
+    own semantics, and the documentation says so once; a difference that comes from the source is not a
+    polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific source
+    or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source type
+    (and, where it matters, its version or a setting) that either keeps an operation from being pushed to
+    it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
     documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY
     CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above.
     The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source
@@ -95120,7 +95122,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     It is expensive, so it is a long-term objective and never a release gate; the release gates stay as
     REQ-1989 states them. Connectors that run in containers can be covered on a schedule; the paid warehouses
     run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated
-    pages print, for each row, the last run that verified it.'
+    pages print, for each row, the last run that verified it. (Amended 2026-11-11, THE SUMMARY IS PIVOTED,
+    ONE TABLE PER ENGINE:) Maintainer 2026-11-11: a feature-by-engine matrix with a column per dialect is
+    unreadable; it is fine to store the grid that way, not to show it. The summary page is one section per
+    engine, each the same table as that engine''s own page: one row per feature that is not native there
+    (feature, read polyfill, read limitations, write polyfill, write limitations), the native features counted,
+    not listed.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -95209,3 +95216,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
     colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
     with arrows; dashed lines mean pending or indirect.'
+- id: REQ-2240
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-11: a list such as Registered Tables gets long for a developer, so rows
+    can be selected and deleted together. Selection lives in the shared list table, so every list page has
+    it the same way: a checkbox column, shift-click to select a range, and a header checkbox that selects
+    every row the current filter shows; a plain row click still opens the detail panel. Once anything is
+    selected a bar shows the count with Delete and Clear; Delete asks once, naming the rows. The server
+    deletes them in one call through the same guard a single delete runs: what can be deleted is deleted,
+    and each row refused (for example a table a view, relationship or product uses) is named with its reason,
+    as the bulk accept of reviewed terms reports what it decided and what it refused. It is available in
+    every environment to whoever may delete those rows. (Amended 2026-11-11, EACH DEPENDENT IS A LINK:)
+    Maintainer 2026-11-11: when a delete is refused because other objects still refer to the row (the "Cannot
+    delete X yet" dialog, and each refusal of a bulk delete), every object named is itself a link that opens
+    that object''s own detail panel on its page, where it can be changed or deleted; there is no separate
+    per-kind "Open the page" link. (Amended 2026-11-11, A DEPENDENT IS NAMED AS ITS PAGE NAMES IT:) Maintainer
+    2026-11-11: each object named in a refused delete is shown by the label its own page shows (a relationship
+    as its two tables, e.g. users -> inquiries; a view or table by its table name), never by an internal
+    identifier such as users-to-inquiries, so it can be found where the link leads.'
