@@ -91,6 +91,7 @@ const LIVE_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const search = () =>

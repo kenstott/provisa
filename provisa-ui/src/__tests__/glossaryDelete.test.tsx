@@ -95,6 +95,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 describe("GlossaryTab delete (REQ-2198)", () => {

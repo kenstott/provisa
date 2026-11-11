@@ -61,6 +61,8 @@ import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeG
 import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
+import { OntologyImportsView } from "./ontologyImport/OntologyImportsView";
+import { ImportsToggle } from "./ontologyImport/ImportsToggle";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
@@ -188,6 +190,8 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
+  // REQ-2237: the ontology imports in place of the list, for a curator.
+  const [imports, setImports] = useState(false);
   // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
@@ -526,6 +530,7 @@ export function GlossaryTab() {
               aria-label={t("glossaryTab.stewardshipHint")}
               onClick={() => {
                 setOntology(false);
+                setImports(false);
                 setSelectedId(null);
                 setDetail(null);
               }}
@@ -534,7 +539,14 @@ export function GlossaryTab() {
               <ClipboardList size={16} aria-hidden />
             </ActionIcon>
           </Tip>
-          <OntologyToggle open={ontology} onChange={setOntology} />
+          <OntologyToggle
+            open={ontology && !imports}
+            onChange={(open) => {
+              setImports(false);
+              setOntology(open);
+            }}
+          />
+          {canEdit && <ImportsToggle open={imports} onChange={setImports} />}
           {canEdit ? (
             // The AI drafts, both behind one sparkle: relationships between the terms, and the
             // definitions the terms lack.
@@ -595,7 +607,14 @@ export function GlossaryTab() {
       </Group>
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
-      {ontology ? (
+      {imports && canEdit ? (
+        <OntologyImportsView
+          terms={terms}
+          domainOptions={addDomainOptions}
+          domainsEnabled={domainsEnabled}
+          defaultDomains={defaultFindDomains(viewDomains, addDomainOptions)}
+        />
+      ) : ontology ? (
         <OntologyView search={query} />
       ) : (
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>

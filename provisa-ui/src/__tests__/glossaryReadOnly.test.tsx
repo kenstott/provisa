@@ -108,6 +108,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** Mount the tab and open Revenue. */

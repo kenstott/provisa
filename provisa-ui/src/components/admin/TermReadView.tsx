@@ -138,6 +138,26 @@ export function TermReadView({
             ? [{ label: t("glossaryTab.retireOnLabel"), value: term.retire_on ?? "—" }]
             : []),
           { label: t("glossaryTab.excludeFromExportLabel"), value: yesNo(term.export_excluded) },
+          // REQ-2237: the IRI of the imported concept the term was aligned with as the same entity,
+          // or was made from. It is curator work: the term is kept when its columns leave.
+          ...(term.iri
+            ? [
+                {
+                  label: t("ontologyImport.iriLabel"),
+                  testId: "glossary-detail-iri",
+                  value: (
+                    <Stack gap={2}>
+                      <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>
+                        {term.iri}
+                      </Text>
+                      <Text size="xs" c="dimmed" data-testid="glossary-detail-curated-by-iri">
+                        {t("ontologyImport.curatedByIri")}
+                      </Text>
+                    </Stack>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
 
