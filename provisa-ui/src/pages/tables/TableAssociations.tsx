@@ -29,7 +29,8 @@ export function TableAssociations({
   relationships,
   leading = [],
 }: {
-  table: RegisteredTable;
+  /** The table, by its id: all the associations are read by it. */
+  table: Pick<RegisteredTable, "id">;
   relationships: Relationship[];
   /** Fields listed first: the data product, where it is read rather than chosen. */
   leading?: DetailField[];

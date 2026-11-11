@@ -99,10 +99,8 @@ function panel() {
       owner
       seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
-      lineageMembers={new Set(["pet_store.visits"])}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}

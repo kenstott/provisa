@@ -89,7 +89,6 @@ function panel(over: {
       owner={over.owner}
       seesConsumers={over.seesConsumers ?? over.owner}
       lineageLoading={over.loading ?? false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={over.lineageGraph}
       onEdit={vi.fn()}

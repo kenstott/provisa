@@ -168,7 +168,6 @@ function panelFromMetaAlone() {
       owner
       seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}

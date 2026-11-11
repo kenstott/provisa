@@ -214,7 +214,6 @@ function panel(
       lineageLoading={false}
       lineageError=""
       lineageGraph={LINEAGE}
-      contractsVersion={0}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}

@@ -254,7 +254,6 @@ const panel = (lineage: ProductLineage | null, owner = true) =>
       lineageLoading={false}
       lineageError=""
       lineageGraph={lineage}
-      contractsVersion={0}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}

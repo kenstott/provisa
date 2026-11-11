@@ -66,7 +66,6 @@ function panel() {
       owner
       seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       onEdit={vi.fn()}
