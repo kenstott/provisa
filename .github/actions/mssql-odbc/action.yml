@@ -28,6 +28,12 @@ runs:
         } | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
         curl $CURL_OPTS "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
           | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
-        sudo apt-get $APT_OPTS update -q
+        # Refresh only Microsoft's list: a full `apt-get update` reaches every Ubuntu mirror, and
+        # an outage there (resolute InRelease, run 43036808445) failed this step though msodbcsql18
+        # is not on Ubuntu's. The runner image's own Ubuntu lists stay for the dependencies.
+        sudo apt-get $APT_OPTS update -q \
+          -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/mssql-release.list \
+          -o Dir::Etc::sourceparts=- \
+          -o APT::Get::List-Cleanup=0
         sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q msodbcsql18 unixodbc-dev
         odbcinst -q -d -n "ODBC Driver 18 for SQL Server"

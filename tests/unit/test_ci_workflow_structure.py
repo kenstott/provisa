@@ -1222,3 +1222,31 @@ def test_focused_tests_refuses_an_integration_file_by_name(tests):
 def test_focused_tests_passes_files_that_need_no_stack():
     done = _refusal("tests/unit/test_a.py tests/unit/test_b.py::test_c")
     assert done.returncode == 0 and done.stdout == ""
+
+
+def test_the_odbc_install_refreshes_only_microsofts_package_list():
+    """A full `apt-get update` reaches every Ubuntu mirror: an outage there failed the ODBC step
+    (run 43036808445) though msodbcsql18 is Microsoft's. The retry and timeout options stay."""
+    body = yaml.safe_load((REPO / ".github" / "actions" / "mssql-odbc" / "action.yml").read_text())
+    (step,) = [s for s in body["runs"]["steps"] if "msodbcsql18" in s.get("run", "")]
+    script = re.sub(r"\\\n\s*", " ", step["run"])
+    code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    updates = [line for line in code if "apt-get" in line and " update" in line]
+    assert len(updates) == 1
+    for option in (
+        "-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/mssql-release.list",
+        "-o Dir::Etc::sourceparts=-",
+        "-o APT::Get::List-Cleanup=0",
+        "$APT_OPTS",
+    ):
+        assert option in updates[0], option
+    assert "$CURL_OPTS" in script
+    assert "APT_OPTS" in step["env"] and "CURL_OPTS" in step["env"]
+
+
+def test_every_odbc_install_goes_through_the_one_action_that_refreshes_only_microsofts_list():
+    """No workflow installs msodbcsql18 itself: the action is the one place that does."""
+    for path in WORKFLOWS:
+        assert "msodbcsql18" not in path.read_text(), path.name
+    users = [p.name for p in WORKFLOWS if "./.github/actions/mssql-odbc" in p.read_text()]
+    assert users, "no workflow uses the mssql-odbc action"
