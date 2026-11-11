@@ -526,7 +526,14 @@ describe("buildErdElements — junction relationships", () => {
 
   it("the erd-junction tag draws the junction as the graph's one diamond, legs in its grape", () => {
     // REQ-2239 (A JUNCTION IS A DIAMOND): the one exception to the single node shape.
-    const erd = buildErdElements([pets, companions], [viaRel()], domains, new Set(), NO_HIDDEN, "all");
+    const erd = buildErdElements(
+      [pets, owners, companions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "all",
+    );
     const spec = erdGraph(erd, []);
     expect(spec.nodes.find((n) => n.id === "t:11")?.type).toBe("junction");
     expect(spec.nodes.find((n) => n.id === "t:10")?.type).toBe("table");
