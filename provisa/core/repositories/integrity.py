@@ -361,6 +361,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_vectors", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
+    _part("glossary_term_statements", "term_id", "glossary_term"),  # REQ-2237
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
     _part("glossary_term_edges", "to_term_id", "glossary_term"),
     # --- to a tag ------------------------------------------------------------------------------

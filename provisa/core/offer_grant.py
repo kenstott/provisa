@@ -12,7 +12,8 @@
 
 Accepting assigns the offer's role to the requester with entitlement entries built from the
 product -- its datasets (or a sample's views), its data quality results and its profiles as the
-offer includes them -- so no one writes an entitlement list by hand. Masks, row rules and anything
+offer includes them -- so no one writes an entitlement list by hand. A synthetic offer gives the
+datasets, which its role reads through each column's fake (REQ-1494), never a real record. Masks, row rules and anything
 else applied on read come from the role, defined up front.
 
 THE DURATION. An offer's duration dates what accepting adds. A requester who does not hold the
@@ -29,7 +30,7 @@ the entries it added, with the expiry they were added with, and the role when th
 It does not bring an extended date back.
 """
 
-# Requirements: REQ-2180, REQ-2219, REQ-2077
+# Requirements: REQ-2180, REQ-2219, REQ-2077, REQ-1494
 
 from __future__ import annotations
 
@@ -58,18 +59,14 @@ async def entries(conn: "Connection", product_id: str, offer: DataProductOffer) 
     """The entitlement entries accepting ``offer`` adds, as the list names them: the product's
     datasets, or a sample's views alone (never the tables beneath them); with the data quality
     results the product owns on them where the offer includes them, and their profiles where it
-    includes those. A synthetic offer is refused: no read serves a role the product's synthetic
-    data, and its datasets' entries would give real rows."""
+    includes those. A synthetic offer gives the datasets: its role reads every column of them
+    through the column's fake (a role-wide fake mask, provisa.api.app_loaders), never a real
+    record, so each dataset needs its profiler and each column its fake."""
     datasets = await offers.dataset_ids(conn, product_id)
     if offer.data_level == "synthetic":
         await _require_profilers(conn, datasets)
-        raise OfferRefused(
-            "synthetic_not_served",
-            "a synthetic offer cannot be accepted yet: no read serves a role the product's "
-            "synthetic data, and granting its datasets would give real records",
-            status=409,
-        )
-    tables: list[int] = list(offer.sample_views) if offer.data_level == "sample" else datasets
+        await _require_fakes(conn, datasets)
+    tables: list[int] = list(offer.sample_views if offer.data_level == "sample" else datasets)
     for dataset in datasets:
         if offer.dq_results:
             tables += await offers.quality_tables(conn, product_id, dataset)
@@ -88,6 +85,18 @@ async def _require_profilers(conn: "Connection", datasets: Sequence[int]) -> Non
             f"{', '.join(missing)} has no profiler",
             status=409,
             datasets=", ".join(missing),
+        )
+
+
+async def _require_fakes(conn: "Connection", datasets: Sequence[int]) -> None:
+    missing = await offers.without_fake(conn, datasets)
+    if missing:
+        raise OfferRefused(
+            "synthetic_needs_fake",
+            f"a synthetic offer's role reads every column through its fake, and "
+            f"{', '.join(missing)} declares none",
+            status=409,
+            columns=", ".join(missing),
         )
 
 

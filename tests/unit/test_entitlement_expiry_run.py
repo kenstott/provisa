@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2219, EXPIRY RULES END EVERY CAPABILITY THEY NAME: the scheduled entitlement expiry run.
-Ahead of each expiry rule, by the expiring-soon event's own setting, it emits an
-entitlements.expiring_soon event; once the date has passed, an entitlements.expired event. Each is
-an entry in the org's administrative trail, once per rule and date, and where mail is configured
-the person and the org's admins are told."""
+"""REQ-2077, REQ-2219, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES: each org's one expiry run. It
+sweeps the role grants (test_role_grants.py), and ahead of each entry's expiry rule, by the one
+expiring-soon setting, it emits an entitlements.expiring_soon event; once the date has passed, an
+entitlements.expired event. Each is an entry in the org's administrative trail, once per rule and
+date, and where mail is configured one notice per person and role names the role when it is
+ending and each entry that is."""
 
-# Requirements: REQ-2219
+# Requirements: REQ-2077, REQ-2219
 
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.auth import role_grants
 from provisa.core import settings_catalog
 from provisa.core.schema_org import admin_audit_log, user_directory, user_role_assignments
 from provisa.entitlements import expiry_run, store
@@ -56,13 +58,18 @@ async def _trail(db) -> list[tuple[str, str, str]]:
 @pytest.fixture
 def threshold(monkeypatch):
     days = {"value": 7}
-    monkeypatch.setattr(expiry_run, "expiring_soon_days", lambda: days["value"])
+    monkeypatch.setattr(expiry_run, "notice_window", lambda: timedelta(days=days["value"]))
     return days
 
 
-def test_the_threshold_is_a_declared_setting_of_its_own():
-    [setting] = [s for s in settings_catalog.DECLARED if s.key == expiry_run.SETTING]
-    assert (setting.type, setting.unit, setting.req) == ("int", "days", "REQ-2219")
+def test_one_expiring_soon_setting_covers_the_grant_and_its_entries():
+    keys = {s.key for s in settings_catalog.DECLARED}
+    assert role_grants.NOTICE_SETTING == "auth.role_grant_notice_days"
+    assert role_grants.NOTICE_SETTING in keys
+    assert "entitlements.expiring_soon_days" not in keys
+    assert expiry_run.notice_window is role_grants.notice_window
+    [setting] = [s for s in settings_catalog.DECLARED if s.key == role_grants.NOTICE_SETTING]
+    assert (setting.type, setting.unit) == ("int", "days")
     assert setting.default == 7 and setting.min == 1
 
 
@@ -100,7 +107,7 @@ async def test_the_run_emits_each_event_into_the_trail_once(control_plane, thres
     assert len(await _trail(db)) == 2
 
 
-async def test_the_events_own_setting_is_the_threshold(control_plane, threshold):
+async def test_the_one_setting_is_the_entries_threshold(control_plane, threshold):
     db = control_plane.org()
     await _rule(db, "alice", _NOW + timedelta(days=10))
     assert (await expiry_run.run(db, _NOW)).expiring == []
@@ -130,16 +137,7 @@ async def test_a_withdrawn_rule_emits_nothing(control_plane, threshold):
     assert (run.expiring, run.expired) == ([], [])
 
 
-async def test_the_person_and_the_admins_are_told_and_the_admins_of_an_end(
-    control_plane, monkeypatch
-):
-    db = control_plane.org()
-    sent: list[tuple[str, str, str]] = []
-
-    async def _send(org_id, to, subject, body, *, kind):
-        sent.append((to, subject, kind))
-
-    monkeypatch.setattr("provisa.auth.role_grants.send_notice", _send)
+async def _people(db) -> None:
     async with db.acquire() as conn:
         await conn.execute_core(
             insert(user_role_assignments).values(user_id="boss", role_id="org_admin", domain_id="*")
@@ -152,24 +150,151 @@ async def test_the_person_and_the_admins_are_told_and_the_admins_of_an_end(
                 ]
             )
         )
-    soon = expiry_run.Due("ada", ExpiryRule("viewer", _NOW + timedelta(days=3), {}))
-    gone = expiry_run.Due("ada", ExpiryRule("analyst", _NOW, {"read": ("finance",)}))
-    await expiry_run._tell(db, "acme", expiry_run.Run([soon], [gone]))
-    when = expiry_run._when(soon.rule.ends_at)
+
+
+@pytest.fixture
+def sent(monkeypatch) -> list[tuple[str, str, str, str]]:
+    out: list[tuple[str, str, str, str]] = []
+
+    async def _send(org_id, to, subject, body, *, kind):
+        out.append((to, subject, body, kind))
+
+    monkeypatch.setattr("provisa.auth.role_grants.send_notice", _send)
+    return out
+
+
+def _outcome(grants=None, entries=None) -> expiry_run.Outcome:
+    return expiry_run.Outcome(
+        grants or role_grants.Sweep([], [], [], []), entries or expiry_run.Run([], [])
+    )
+
+
+async def test_one_notice_names_the_ending_role_and_each_ending_entry(control_plane, sent):
+    db = control_plane.org()
+    await _people(db)
+    role_end = _NOW + timedelta(days=5)
+    first = ExpiryRule("viewer", _NOW + timedelta(days=2), {"read": ("finance",)})
+    second = ExpiryRule("viewer", _NOW + timedelta(days=4), {"*": ("sales.orders",)})
+    grant = role_grants.Grant("ada", "viewer", "*", role_end)
+    entries = expiry_run.Run([expiry_run.Due("ada", second), expiry_run.Due("ada", first)], [])
+    await expiry_run._tell(db, "acme", _outcome(role_grants.Sweep([], [], [grant], []), entries))
+    when = expiry_run._when
+    body = "\n".join(
+        [
+            f"The role viewer in acme ends {when(role_end)}.",
+            f"read: finance in the role viewer ends {when(first.ends_at)}.",
+            f"*: sales.orders in the role viewer ends {when(second.ends_at)}.",
+        ]
+    )
+    subject = f"role viewer in acme ends {when(role_end)}"
     assert sorted(sent) == sorted(
         [
-            ("ada@example.com", f"Your access in acme ends {when}", "entitlement_expiry"),
-            ("boss@example.com", f"ada's access in acme ends {when}", "entitlement_expiry"),
-            ("boss@example.com", "ada's access in acme ended", "entitlement_expiry"),
+            ("ada@example.com", f"Your {subject}", body, "role_grant"),
+            ("boss@example.com", f"ada's {subject}", body, "role_grant"),
         ]
     )
 
 
+async def test_entries_ending_under_a_grant_that_carries_on_name_only_the_entries(
+    control_plane, sent
+):
+    db = control_plane.org()
+    await _people(db)
+    rule = ExpiryRule("viewer", _NOW + timedelta(days=3), {"read": ("finance",)})
+    await expiry_run._tell(
+        db, "acme", _outcome(entries=expiry_run.Run([expiry_run.Due("ada", rule)], []))
+    )
+    when = expiry_run._when(rule.ends_at)
+    body = f"read: finance in the role viewer ends {when}."
+    assert sorted(sent) == sorted(
+        [
+            (
+                "ada@example.com",
+                f"Your access in the role viewer in acme ends {when}",
+                body,
+                "role_grant",
+            ),
+            (
+                "boss@example.com",
+                f"ada's access in the role viewer in acme ends {when}",
+                body,
+                "role_grant",
+            ),
+        ]
+    )
+
+
+async def test_the_admins_are_told_of_what_ended_in_one_notice(control_plane, sent):
+    db = control_plane.org()
+    await _people(db)
+    gone = role_grants.Grant("ada", "analyst", "*", _NOW)
+    ended = ExpiryRule("analyst", _NOW, {"read": ("finance",)})
+    unused = role_grants.Grant("ada", "reader", "sales", _NOW)
+    outcome = _outcome(
+        role_grants.Sweep([gone], [unused], [], []),
+        expiry_run.Run([], [expiry_run.Due("ada", ended)]),
+    )
+    await expiry_run._tell(db, "acme", outcome)
+    when = expiry_run._when(_NOW)
+    assert sorted(sent) == sorted(
+        [
+            (
+                "boss@example.com",
+                "ada's role analyst in acme was removed",
+                "The role analyst in acme was removed: the grant expired.\n"
+                f"read: finance in the role analyst ended {when}.",
+                "role_grant",
+            ),
+            (
+                "boss@example.com",
+                "ada's role reader in acme was removed",
+                "The role reader in the domain sales in acme was removed: the grant went unused.",
+                "role_grant",
+            ),
+        ]
+    )
+
+
+async def test_the_one_run_sweeps_the_grants_and_records_the_entries(control_plane, monkeypatch):
+    from provisa.api import app as app_module
+
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(user_role_assignments).values(
+                user_id="ada",
+                role_id="org_admin",
+                domain_id="*",
+                expires_at=_NOW - timedelta(minutes=1),
+            )
+        )
+    entry = await _rule(db, "bob", _NOW - timedelta(hours=1))
+    state = app_module.state
+    monkeypatch.setattr(type(state), "model_db", property(lambda s: db))
+    config = SimpleNamespace(multitenancy=False, mail=SimpleNamespace(provider=""))
+    monkeypatch.setattr(state, "config", config, raising=False)
+    outcome = await expiry_run.run_org("acme")
+    assert [(g.user_id, g.role_id) for g in outcome.grants.expired] == [("ada", "org_admin")]
+    assert [d.rule.rule_key for d in outcome.entries.expired] == [entry]
+    async with db.acquire() as conn:
+        rows = (await conn.execute_core(select(admin_audit_log))).fetchall()
+    assert sorted((r.action, r.subject_id) for r in rows) == [
+        (expiry_run.EXPIRED, "bob"),
+        ("role.expired", "ada"),
+    ]
+
+
 @pytest.mark.parametrize(("provider", "told"), [("smtp", True), ("", False)])
-async def test_notices_go_wherever_mail_is_configured(monkeypatch, provider, told):
+async def test_notices_go_wherever_mail_is_configured_single_org_included(
+    monkeypatch, provider, told
+):
     from provisa.api import app as app_module
 
     calls: list[str] = []
+
+    async def _sweep(db, *, notify):
+        calls.append(f"sweep notify={notify}")
+        return role_grants.Sweep([], [], [], [])
 
     async def _run(db, now):
         calls.append("run")
@@ -178,6 +303,7 @@ async def test_notices_go_wherever_mail_is_configured(monkeypatch, provider, tol
     async def _tell(db, org_id, outcome):
         calls.append("told")
 
+    monkeypatch.setattr(expiry_run, "sweep", _sweep)
     monkeypatch.setattr(expiry_run, "run", _run)
     monkeypatch.setattr(expiry_run, "_tell", _tell)
     state = app_module.state
@@ -185,7 +311,8 @@ async def test_notices_go_wherever_mail_is_configured(monkeypatch, provider, tol
     config = SimpleNamespace(multitenancy=False, mail=SimpleNamespace(provider=provider))
     monkeypatch.setattr(state, "config", config, raising=False)
     await expiry_run.run_org("acme")
-    assert calls == (["run", "told"] if told else ["run"])
+    expected = [f"sweep notify={told}", "run"]
+    assert calls == ([*expected, "told"] if told else expected)
 
 
 def test_each_org_runs_on_the_scheduler_once():

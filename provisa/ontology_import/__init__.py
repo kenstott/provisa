@@ -21,6 +21,11 @@ grounds through the model's own columns and tables only by way of the terms it a
 steward's decisions: every item becomes a draft term carrying its definition and IRI (or, aligned
 as the same entity, the existing term takes the IRI), and every approved alignment becomes an
 edge. Nothing is approved on a steward's behalf, and a term aligned with nothing stays a Concept.
+
+A whole release -- every module file of it in one zip archive -- is read by :mod:`.release`,
+its own ``owl:imports`` resolved inside the archive and nothing fetched. What an ontology states
+that a term does not model is kept on the term (:mod:`.kept`), shown on its page, and written
+back out by :mod:`.export` (RDF) and provisa.ossie.ontology (Ossie), so an import round-trips.
 """
 
 # Requirements: REQ-2237

@@ -672,6 +672,9 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
     # default, and TEXT's own converter is just `str`, tolerant of any Python type — so this was
     # never visible until a binary-preferring client (asyncpg) exercised the DIRECT route.
     type_str = type_str.upper()
+    if type_str.startswith("ARRAY("):
+        # Trino's name of an array type, array(integer): PostgreSQL's array of its element.
+        return _trino_array_bvtype(type_str)
     # A parameterized type name (DuckDB's "DECIMAL(18,2)", "NUMERIC(10,2)", "VARCHAR(20)",
     # "TIMESTAMP(3)") names the same wire type as its bare base: an exact lookup missed it and fell
     # to TEXT, whose binary converter then crashed on a Decimal. Array suffixes ("[]") are kept.
@@ -692,6 +695,18 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         array = _ARRAY_OF.get(_sql_type_to_bvtype(type_str.rstrip("[]")))
         return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
+
+
+def _trino_array_bvtype(type_str: str) -> BVType:
+    """The wire type of Trino's array type ``type_str`` (array(array(integer))): PostgreSQL has
+    one array type of an element, whatever its dimensions, and any other list is sent as JSON."""
+    import sqlglot.expressions as exp
+
+    element = exp.DataType.build(type_str, dialect="trino")
+    while element.is_type(exp.DataType.Type.ARRAY):
+        element = element.expressions[0]
+    array = _ARRAY_OF.get(_sql_type_to_bvtype(element.sql(dialect="postgres")))
+    return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
 
 
 _WIRE_FAMILIES = (
