@@ -91729,7 +91729,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from the product itself -- its member tables and columns -- so no one writes an entitlement list by
     hand. Masks, row rules and anything else applied on read are defined up front, on the listed roles and
     the product, so what a consumer gets is known before anyone asks. A product whose list is empty cannot
-    be requested.'
+    be requested. (Amended 2026-11-11, AN OPEN PRODUCT NEEDS NO APPROVAL:) Maintainer 2026-11-11. A product
+    can be marked open: a request for it is granted at once, through its listed role (viewer by default)
+    with the entitlements built from the product, and recorded like any approval, with no owner to wait
+    for. It is meant for common reference data many people need, such as the organisation structure.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
