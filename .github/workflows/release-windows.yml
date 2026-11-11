@@ -114,6 +114,20 @@ jobs:
           name: platform-connectors
           path: provisa/core
 
+      - name: Read WSL rootfs pin
+        id: rootfs
+        shell: pwsh
+        run: |
+          foreach ($line in Get-Content packaging/windows/rootfs.pin) {
+            if ($line -match '^\s*(url|sha256)\s*=\s*(\S+)\s*$') { "$($Matches[1])=$($Matches[2])" >> $env:GITHUB_OUTPUT }
+          }
+
+      - name: Cache WSL rootfs
+        uses: actions/cache@v4
+        with:
+          path: packaging/windows/rootfs-cache
+          key: wsl-rootfs-${{ steps.rootfs.outputs.url }}-${{ steps.rootfs.outputs.sha256 }}
+
       - name: Build container-tier installer (WSL2, Inno Setup)
         shell: pwsh
         env:

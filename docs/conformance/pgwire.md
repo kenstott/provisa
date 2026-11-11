@@ -633,6 +633,10 @@ None.
 
 ## Deliberate differences
 
+### Polyfills
+
+On an engine that is not PostgreSQL, Provisa gives PostgreSQL's behaviour by a polyfill: a read polyfill for how a feature's values and operations are computed, a write polyfill for how its values reach the engine. Each polyfill states its limitations, and a feature that cannot be polyfilled is refused by name with a SQLSTATE and message. The [polyfill pages](polyfill/index.md) list them per engine. A difference the pages state is deliberate.
+
 ### Writes
 
 `INSERT`, `UPDATE`, and `DELETE` are supported where the write maps onto the model through governed table writes. A write needing structure the model lacks is refused by name. `BEGIN`/`COMMIT`/`ROLLBACK` are a no-op by design.
@@ -671,7 +675,7 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 
 Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
 
-Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
+Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own: its native answer, or the answer of a polyfill. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
 
 One group is skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index access method support and index maintenance functions a client can call, such as `brin_summarize_range`, are ordinary functions with a result on each engine.
 
@@ -4039,7 +4043,7 @@ Each cell reads exact / equivalent / refused by name / differs.
 
 ### Text search
 
-On DuckDB, Trino and ClickHouse these functions are served for constants only. A column argument is refused by name:
+On DuckDB, Trino and ClickHouse the read polyfill for these functions serves constants only. A column argument is refused by name:
 
 - `json_to_tsvector`
 - `jsonb_to_tsvector`
@@ -4052,7 +4056,7 @@ On DuckDB, Trino and ClickHouse these functions are served for constants only. A
 - `ts_stat`
 - `ts_rewrite`
 
-These read a text column row by row: `to_tsvector`, `plainto_tsquery` and `phraseto_tsquery` of `text`, the document of `ts_match_tt` and `ts_match_tq`, and the word of `ts_lexize`. The engine reads the text as PostgreSQL's default parser does, with the `english` or `simple` configuration (the `english_stem` or `simple` dictionary). A text the parser reads in a way these forms do not cover is refused by name, row by row. Such a text holds a dot, an at sign, a slash, an ampersand, a hyphen or an angle bracket outside an email address, URL, host, file path, hyphenated word, number or tag. A configuration or dictionary must be a constant. A column is read as text only where the statement says it is text: a cast such as `body::text`, or a `||` concatenation. Without that, `to_tsvector(body)` is refused, because the `json` overload would answer differently.
+The read polyfill reads a text column row by row for these: `to_tsvector`, `plainto_tsquery` and `phraseto_tsquery` of `text`, the document of `ts_match_tt` and `ts_match_tq`, and the word of `ts_lexize`. The engine reads the text as PostgreSQL's default parser does, with the `english` or `simple` configuration (the `english_stem` or `simple` dictionary). A text the parser reads in a way these forms do not cover is refused by name, row by row. Such a text holds a dot, an at sign, a slash, an ampersand, a hyphen or an angle bracket outside an email address, URL, host, file path, hyphenated word, number or tag. A configuration or dictionary must be a constant. A column is read as text only where the statement says it is text: a cast such as `body::text`, or a `||` concatenation. Without that, `to_tsvector(body)` is refused, because the `json` overload would answer differently.
 
 Every `tsquery` argument, of any function, must be a constant: a literal such as `'a & b'::tsquery`, or `to_tsquery`, `plainto_tsquery`, `phraseto_tsquery` or `websearch_to_tsquery` of constants. So `ts_rank(to_tsvector(body::text), to_tsquery('english', 'a'))` is served, and a `tsquery` column is refused.
 

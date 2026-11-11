@@ -13,7 +13,8 @@
 Reads every lane's JUnit XML (``<dir>/<lane>/junit.xml``, as each job uploads it) and writes a
 Markdown table: lane, passed, failed, errors, skipped, and the first line of each failure, so a
 failure can be routed without opening every job. A skip counts against its lane: a lane with any
-skip is not green. Exits non-zero when any lane is not green.
+skip is not green. A lane directory without a junit.xml, or no artifacts directory at all, is
+named as a lane with no results. Exits non-zero when any lane is not green.
 
 Usage: lane_report.py <artifacts-dir> [<run-url>]
 """
@@ -34,10 +35,11 @@ class LaneResult:
     errors: int = 0
     skipped: int = 0
     problems: list[str] = field(default_factory=list)
+    no_results: bool = False
 
     @property
     def green(self) -> bool:
-        return self.failed == 0 and self.errors == 0 and self.skipped == 0
+        return not self.no_results and self.failed == 0 and self.errors == 0 and self.skipped == 0
 
 
 def read_lane(lane: str, junit: Path) -> LaneResult:
@@ -62,20 +64,32 @@ def read_lane(lane: str, junit: Path) -> LaneResult:
 
 
 def report(artifacts: Path, run_url: str = "") -> tuple[str, bool]:
-    lanes = sorted(p for p in artifacts.iterdir() if (p / "junit.xml").is_file())
-    results = [read_lane(p.name, p / "junit.xml") for p in lanes]
+    lane_dirs = sorted(p for p in artifacts.iterdir() if p.is_dir()) if artifacts.is_dir() else []
+    results = [
+        read_lane(p.name, p / "junit.xml")
+        if (p / "junit.xml").is_file()
+        else LaneResult(p.name, no_results=True)
+        for p in lane_dirs
+    ]
     lines = [
         "| lane | passed | failed | errors | skipped | |",
         "| --- | ---: | ---: | ---: | ---: | --- |",
     ]
     for r in results:
         mark = "ok" if r.green else "**not green**"
+        if r.no_results:
+            mark = "**no results**"
         lines.append(f"| {r.lane} | {r.passed} | {r.failed} | {r.errors} | {r.skipped} | {mark} |")
     for r in results:
         if r.problems:
             lines += ["", f"### {r.lane}", *[f"- {p}" for p in r.problems[:50]]]
             if len(r.problems) > 50:
                 lines.append(f"- ... and {len(r.problems) - 50} more")
+    if not artifacts.is_dir():
+        lines += ["", f"No results: the artifacts directory {artifacts} does not exist."]
+    for r in results:
+        if r.no_results:
+            lines += ["", f"No results: lane {r.lane} wrote no junit.xml."]
     if run_url:
         lines += ["", f"Run: {run_url}"]
     return "\n".join(lines) + "\n", all(r.green for r in results) and bool(results)
