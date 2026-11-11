@@ -81,7 +81,7 @@ export function ImportOntologyDialog({
             data-testid="ontology-import-file"
           />
         </FormField>
-        <FormField size="short" help={t("ontologyImport.formatHelp")}>
+        <FormField size="medium" help={t("ontologyImport.formatHelp")}>
           <Select
             label={t("ontologyImport.format")}
             placeholder={t("ontologyImport.formatFromName")}
