@@ -1,0 +1,15 @@
+{
+  "yourData": {
+    "title": "הנתונים שלך",
+    "loading": "קורא את הטבלאות שנרשמו זה עתה…",
+    "openQuery": "פתיחה בחוקר השאילתות",
+    "otherWays": "דרכים נוספות להגיע לטבלה זו",
+    "graphql": "שאילתת GraphQL",
+    "pgwire": "מחרוזת חיבור ללקוח SQL‏ (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "קריאה לכלי MCP",
+    "copy": "העתקת {{what}}",
+    "close": "סגירה"
+  }
+}

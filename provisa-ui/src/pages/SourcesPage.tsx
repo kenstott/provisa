@@ -126,6 +126,7 @@ import {
   type RemoteSeed,
 } from "./sources/sourceSeed";
 import { PanelWorking } from "./sources/PanelWorking";
+import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -587,10 +588,16 @@ export function SourcesPage() {
 
   // The source the short create step just made is selected and its detail opens in edit, with
   // everything the step did not ask for at its default: read from the list as it is now.
+  // REQ-2234: the panel opens first on registering its tables; the edit is there once that
+  // step closes.
+  const [afterSave, setAfterSave] = useState<string | null>(null);
   const openCreated = async (id: string) => {
     const fresh = await refetchSources();
     const made = fresh.data?.sources.find((x) => x.id === id);
-    if (made) handleEdit(made);
+    if (made) {
+      handleEdit(made);
+      setAfterSave(id);
+    }
   };
 
   const handleCancelForm = () => {
@@ -1045,10 +1052,10 @@ export function SourcesPage() {
         sourceType === "dbt"
           ? `/admin/dbt/refresh/${sourceId}`
           : sourceType === "openapi"
-          ? `/admin/openapi/refresh/${sourceId}`
-          : sourceType === "grpc"
-            ? `/admin/grpc-remote/refresh/${sourceId}`
-            : `/admin/sources/graphql-remote/${sourceId}/refresh`;
+            ? `/admin/openapi/refresh/${sourceId}`
+            : sourceType === "grpc"
+              ? `/admin/grpc-remote/refresh/${sourceId}`
+              : `/admin/sources/graphql-remote/${sourceId}/refresh`;
       const resp = await fetch(url, { method: "POST" });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -1463,12 +1470,12 @@ export function SourcesPage() {
         form.type === "dbt"
           ? handleDbtRegister
           : carrierOf(form.type) === "openapi"
-          ? handleOpenapiRegister
-          : form.type === "grpc"
-            ? handleGrpcRegister
-            : carrierOf(form.type) === "graphql"
-              ? handleGraphqlRegister
-              : handleCreate
+            ? handleOpenapiRegister
+            : form.type === "grpc"
+              ? handleGrpcRegister
+              : carrierOf(form.type) === "graphql"
+                ? handleGraphqlRegister
+                : handleCreate
       }
       style={{ margin: 0 }}
     >
@@ -1505,7 +1512,9 @@ export function SourcesPage() {
     </FormLayout>
   );
   const working =
-    discoverSourceId && discoverSourceType ? (
+    afterSave !== null && afterSave === expanded ? (
+      <AfterSaveSteps sourceId={afterSave} onClose={() => setAfterSave(null)} />
+    ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}
         onBack={() => {
@@ -1559,18 +1568,18 @@ export function SourcesPage() {
           form.type === "dbt"
             ? handleDbtRegister
             : carrierOf(form.type) === "openapi"
-            ? handleOpenapiRegister
-            : form.type === "grpc"
-              ? handleGrpcRegister
-              : carrierOf(form.type) === "graphql"
-                ? handleGraphqlRegister
-                : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
-                  // "Add Dataset" button (each file needs its own createSource+registerTable
-                  // call, not one createSource for a single "kaggle" type — which does not
-                  // exist as a SourceType) — the outer submit has nothing of its own to do.
-                  form.type === "kaggle"
-                  ? (e: React.FormEvent) => e.preventDefault()
-                  : handleCreate
+              ? handleOpenapiRegister
+              : form.type === "grpc"
+                ? handleGrpcRegister
+                : carrierOf(form.type) === "graphql"
+                  ? handleGraphqlRegister
+                  : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
+                    // "Add Dataset" button (each file needs its own createSource+registerTable
+                    // call, not one createSource for a single "kaggle" type — which does not
+                    // exist as a SourceType) — the outer submit has nothing of its own to do.
+                    form.type === "kaggle"
+                    ? (e: React.FormEvent) => e.preventDefault()
+                    : handleCreate
         }
       >
         <FormIdentifiers>
@@ -1711,6 +1720,7 @@ export function SourcesPage() {
       ? t("sourcesPage.panelNewSource")
       : (selectedSource?.id ?? discoverSourceId ?? mappingSourceId ?? "");
   const closePanel = () => {
+    setAfterSave(null);
     setDiscoverSourceId(null);
     setDiscoverSourceType(null);
     setMappingSourceId(null);

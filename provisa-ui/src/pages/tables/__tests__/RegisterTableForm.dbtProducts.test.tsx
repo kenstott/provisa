@@ -101,6 +101,7 @@ function renderForm() {
       onContinue={onContinue}
       onCancel={() => {}}
       onProductsRegistered={onProductsRegistered}
+      onRegisteredMany={vi.fn()}
       setError={vi.fn()}
     />,
   );

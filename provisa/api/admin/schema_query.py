@@ -117,6 +117,7 @@ from provisa.api.admin.types import (
     ScheduledTaskType,
     SourceType,
     SystemHealthType,
+    TableAccessType,
     TagAssignmentType,
     TagParamValueType,
     TagType,
@@ -1597,6 +1598,30 @@ class Query:  # REQ-021, REQ-042
             if named is not None:
                 column.data_type, column.subtype = base_type(column.data_type), named
         return columns
+
+    @strawberry.field
+    async def table_access(
+        self, info: StrawberryInfo, table_id: int, role: str
+    ) -> TableAccessType:  # REQ-2234
+        """How ``role`` reaches a registered table: each access method, ready to copy."""
+        require_capability(info, "table_registration")
+        from provisa.api.admin._table_access import table_access
+        from provisa.api.admin.capabilities import require_inspectable_role
+        from provisa.api.app import state
+        from provisa.api.metadata_export.publishing import serving_endpoints
+        from provisa.core.request_context import require_current_org
+        from provisa.security.meta_role import ensure_meta_role, refuse_named_meta_role
+
+        # REQ-1620: the role may be the set the person acts as ("Role: All"), served as its
+        # meta-role, as compileQuery reads it.
+        named = sorted({r.strip() for r in role.split(",") if r.strip()})
+        refuse_named_meta_role(named)
+        for role_name in named:
+            require_inspectable_role(info, role_name)
+        role_id = named[0] if len(named) == 1 else ensure_meta_role(state, named)
+        base_url = state.config.mail.base_url if state.config else None
+        endpoints = serving_endpoints(state, require_current_org(), base_url)
+        return await table_access(state, role_id, table_id, endpoints)
 
     @strawberry.field
     async def sample_openapi_columns(

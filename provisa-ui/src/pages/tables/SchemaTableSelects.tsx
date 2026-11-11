@@ -38,6 +38,7 @@ export function SchemaTableSelects({
   allRegistered,
   starting,
   startingTimedOut,
+  withTable = true,
 }: {
   sourceId: string;
   schemaName: string;
@@ -54,6 +55,8 @@ export function SchemaTableSelects({
   allRegistered: boolean;
   starting: boolean;
   startingTimedOut: boolean;
+  /** REQ-2234: false where several tables are picked from a list instead. */
+  withTable?: boolean;
 }) {
   const { t } = useTranslation();
   const picked = tables.find((tbl) => tbl.name === tableName);
@@ -83,46 +86,48 @@ export function SchemaTableSelects({
           </select>
         </label>
       </FormField>
-      <FormField size="medium">
-        <label>
-          {t("registerTableForm.tableLabel")}
-          {needs.length > 0 && (
-            <Tip text={lookupNeeds(t, needs)} testId="register-table-lookup-tip">
-              <span
-                role="img"
-                aria-label={lookupNeeds(t, needs)}
-                data-testid="register-table-lookup-mark"
-                style={{ display: "inline-flex", marginInlineStart: 6, verticalAlign: "-2px" }}
-              >
-                <KeyRound size={14} />
-              </span>
-            </Tip>
-          )}
-          <select
-            className="form-select"
-            value={tableName}
-            onChange={(e) => setTableName(e.target.value)}
-            disabled={!schemaName || loadingTables || allRegistered}
-            data-testid="register-table-table-select"
-          >
-            <option value="">
-              {starting
-                ? t("registerTableForm.tableStarting")
-                : loadingTables
-                  ? t("registerTableForm.tableLoading")
-                  : allRegistered
-                    ? t("registerTableForm.tableAllRegistered")
-                    : t("registerTableForm.tablePlaceholder")}
-            </option>
-            <TableOptions tables={tables} isRegistered={isRegistered} requiredOf={requiredOf} />
-          </select>
-          {startingTimedOut && (
-            <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">
-              {t("registerTableForm.tableStartingTimedOut")}
-            </Text>
-          )}
-        </label>
-      </FormField>
+      {withTable && (
+        <FormField size="medium">
+          <label>
+            {t("registerTableForm.tableLabel")}
+            {needs.length > 0 && (
+              <Tip text={lookupNeeds(t, needs)} testId="register-table-lookup-tip">
+                <span
+                  role="img"
+                  aria-label={lookupNeeds(t, needs)}
+                  data-testid="register-table-lookup-mark"
+                  style={{ display: "inline-flex", marginInlineStart: 6, verticalAlign: "-2px" }}
+                >
+                  <KeyRound size={14} />
+                </span>
+              </Tip>
+            )}
+            <select
+              className="form-select"
+              value={tableName}
+              onChange={(e) => setTableName(e.target.value)}
+              disabled={!schemaName || loadingTables || allRegistered}
+              data-testid="register-table-table-select"
+            >
+              <option value="">
+                {starting
+                  ? t("registerTableForm.tableStarting")
+                  : loadingTables
+                    ? t("registerTableForm.tableLoading")
+                    : allRegistered
+                      ? t("registerTableForm.tableAllRegistered")
+                      : t("registerTableForm.tablePlaceholder")}
+              </option>
+              <TableOptions tables={tables} isRegistered={isRegistered} requiredOf={requiredOf} />
+            </select>
+            {startingTimedOut && (
+              <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">
+                {t("registerTableForm.tableStartingTimedOut")}
+              </Text>
+            )}
+          </label>
+        </FormField>
+      )}
     </>
   );
 }
