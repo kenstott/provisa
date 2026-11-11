@@ -85630,7 +85630,35 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   feature: roles-and-capabilities-capabilities
   priority: MUST
   type: behavioral
-  description: "A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant it is absent from the user's held roles on every request, however the request arrives, and an expired org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant of it that no request has depended on for longer than that, counted from the later of the grant's last use and its creation, is removed. A request depended on a role when that role served it as the single acting role, or, acting as several roles (a named set or All), when the role is granted a table the governed statement read; acting as All does not count every held role as used. The grant's last use (last_used_at) is recorded at most once a day per grant, after the statement's audit row lands. A sweep on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records each in the org's administrative trail as role.expired or role.removed_inactive. Wherever mail is configured (mail.provider), a self-hosted single-org deployment included, the holder and the org's administrators are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires or is removed for going unused, once per coming end (again after a grant is used and falls idle again, or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail is configured the trail entry is the record. Security notices are sent whatever a user's email opt-in says. A grant given again states its expiry anew. Roles from an identity provider's claims or role mappings are the provider's to time-limit, and derived roles and meta-roles never expire. The grant form takes an optional until date (the grant ends at the close of that day), the role form takes remove after N days unused, and the grant list shows each grant's end and last use."
+  description: 'A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role
+    may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant
+    it is absent from the user''s held roles on every request, however the request arrives, and an expired
+    org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant
+    of it that no request has depended on for longer than that, counted from the later of the grant''s last
+    use and its creation, is removed. A request depended on a role when that role served it as the single
+    acting role, or, acting as several roles (a named set or All), when the role is granted a table the
+    governed statement read; acting as All does not count every held role as used. The grant''s last use
+    (last_used_at) is recorded at most once a day per grant, after the statement''s audit row lands. A sweep
+    on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records
+    each in the org''s administrative trail as role.expired or role.removed_inactive. Wherever mail is configured
+    (mail.provider), a self-hosted single-org deployment included, the holder and the org''s administrators
+    are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires
+    or is removed for going unused, once per coming end (again after a grant is used and falls idle again,
+    or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail
+    is configured the trail entry is the record. Security notices are sent whatever a user''s email opt-in
+    says. A grant given again states its expiry anew. Roles from an identity provider''s claims or role
+    mappings are the provider''s to time-limit, and derived roles and meta-roles never expire. The grant
+    form takes an optional until date (the grant ends at the close of that day), the role form takes remove
+    after N days unused, and the grant list shows each grant''s end and last use. (Amended 2026-11-11, EXPIRY
+    IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer 2026-11-11. Expiry belongs to two things and only two.
+    A role grant may expire (REQ-2077): at that instant the whole role ends for that person, with every
+    entitlement under it. Each entitlement entry of a grant may expire on its own date: on that date that
+    entry alone ends, and the role and the rest of the list carry on (a person can hold viewer with no end
+    and a list in which some entries expire); an entry never outlives its grant, and a date past the grant''s
+    is refused. A rule that ends a whole grant is the grant''s own expiry, not a second mechanism. One expiring-soon
+    setting, one scheduled run and one notice cover both: the notice names the role when it is ending and
+    each entry that is. Each person''s access shows one timeline: each grant, and the dated entries under
+    it.'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -91793,7 +91821,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     changes its contracts'' versions, and a change that removes or masks a column is a breaking one. (Amended
     2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:) Maintainer 2026-11-11. Where a product''s contracts are
     shown -- to its owner and to a requester -- they are shown per offer, not as one fixed list: the product
-    lists its offers, and each offer opens to the contracts it gives, one per dataset.'
+    lists its offers, and each offer opens to the contracts it gives, one per dataset. (Amended 2026-11-11,
+    AN OFFER''S DURATION DATES THE ENTRIES IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration.
+    Accepting it when the requester already holds the offer''s role adds the product''s entitlements to
+    that grant as entries expiring after the duration; when the requester does not hold the role, the role
+    grant is made with them, and both end after the duration. Without a duration nothing accepted expires.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94140,7 +94172,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     event ahead of each; that event''s own setting is the expiring-soon threshold, and the UI highlights
     by it. An expiry rule whose end date is already past is refused, as a list''s end date is. Effective
     access per capability includes the capabilities a role inherits from its parent roles, each shown with
-    the role it comes from.'
+    the role it comes from. (Amended 2026-11-11, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer
+    2026-11-11. Expiry belongs to two things and only two. A role grant may expire (REQ-2077): at that instant
+    the whole role ends for that person, with every entitlement under it. Each entitlement entry of a grant
+    may expire on its own date: on that date that entry alone ends, and the role and the rest of the list
+    carry on (a person can hold viewer with no end and a list in which some entries expire); an entry never
+    outlives its grant, and a date past the grant''s is refused. A rule that ends a whole grant is the grant''s
+    own expiry, not a second mechanism. One expiring-soon setting, one scheduled run and one notice cover
+    both: the notice names the role when it is ending and each entry that is. Each person''s access shows
+    one timeline: each grant, and the dated entries under it.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
