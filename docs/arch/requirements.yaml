@@ -91780,7 +91780,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     includes them -- so the contracts are every contract the product can give, and a requester reads the
     ones an offer would give before bidding. What is written by hand is only what all of a product''s contracts
     share (owner, description, freshness and support terms), entered once on the product. Changing an offer
-    changes its contracts'' versions, and a change that removes or masks a column is a breaking one.'
+    changes its contracts'' versions, and a change that removes or masks a column is a breaking one. (Amended
+    2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:) Maintainer 2026-11-11. Where a product''s contracts are
+    shown -- to its owner and to a requester -- they are shown per offer, not as one fixed list: the product
+    lists its offers, and each offer opens to the contracts it gives, one per dataset.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
