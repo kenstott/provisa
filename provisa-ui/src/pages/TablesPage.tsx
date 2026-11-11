@@ -604,8 +604,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setNewRegistration(registration);
   };
   // A view handed over from the SQL editor's + View is created here, with every setting.
-  useNavPayload<{ createView?: Registration }>((payload) => {
+  // REQ-2234: one table picked on a source's Register tables step is created here, with every
+  // setting, as one picked on this page is.
+  useNavPayload<{ createView?: Registration; createTable?: Registration }>((payload) => {
     if (payload.createView) startCreating(payload.createView);
+    if (payload.createTable) startCreating(payload.createTable);
   });
 
   // One Save registers the table with every setting its form holds, then shows it.
