@@ -18,19 +18,31 @@ provider's lists are the store's mirror of their last sign-in, where enforcement
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
 from provisa.entitlements.index import (
+    DATA_PLANE_CAPABILITIES,
+    WILDCARD,
     Finding,
     ObjectIndex,
     build_index,
+    capability_scopes,
     check_lists,
     matches,
 )
-from provisa.entitlements.lists import IDP, PROVISA, ExpiryRule, HeldEntitlements, effective_lists
-from provisa.entitlements.runtime import role_defaults
+from provisa.entitlements.lists import (
+    IDP,
+    PROVISA,
+    EffectiveList,
+    ExpiryRule,
+    HeldEntitlements,
+    effective_lists,
+)
+from provisa.entitlements.mask import EntitlementMask
+from provisa.entitlements.runtime import principal_mask, role_defaults
 
 _NOTHING_HELD = HeldEntitlements()
 _EVERY_CAPABILITY = "*"
@@ -145,3 +157,140 @@ def access_view(state: Any, principal: str, role_id: str, now: datetime) -> Acce
         any(not r.ends for r in passed),
         _findings(state, role_id, role, lists),
     )
+
+
+#: The lists a data-plane capability's reach passes through (``provisa.entitlements.mask``).
+_DATA_PLANE_CHAIN: dict[str, tuple[str, ...]] = {
+    "read": ("domains", "tables", "columns", "metrics"),
+    "traverse": ("domains", "tables", "relationships"),
+    "execute": ("domains", "commands"),
+    "consume": ("domains", "data_products"),
+}
+
+
+@dataclass(frozen=True)
+class RoleOrigin:
+    """Where one role's part of a capability came from: per kind of list that applied, its
+    origin (idp, provisa or role). Empty: no list applied, so the role's whole reach."""
+
+    role_id: str
+    lists: dict[str, str]
+
+
+@dataclass(frozen=True)
+class CapabilityView:
+    """One capability over the roles a request acts as: the union of each role's reach.
+    ``identifiers`` is the readable expansion, None for an unscoped capability."""
+
+    capability: str
+    kind: str | None
+    identifiers: tuple[str, ...] | None
+    origins: tuple[RoleOrigin, ...]
+    model_version: tuple
+
+
+def _mask_reach(mask: EntitlementMask, capability: str) -> set[str]:
+    """The identifiers of the objects ``mask`` reaches for a data-plane ``capability``."""
+    kinds = DATA_PLANE_CAPABILITIES[capability][1]
+    return {
+        ".".join(o.spelled)
+        for o in mask.index.objects
+        if o.kind in kinds and mask.bits >> o.bit & 1
+    }
+
+
+def _listed(
+    held: HeldEntitlements, role_id: str, capability: str, kind: str, lists: Mapping
+) -> tuple[tuple[str, ...], str | None]:
+    """A list-scoped capability's identifiers for ``role_id`` and the origin that decided them:
+    the rows Provisa holds for the capability alone, else the kind's list, else every one."""
+    own = [r for r in held.lists if r.role_id == role_id and r.capability == capability]
+    if own:
+        return tuple(i for r in own for i in r.identifiers), PROVISA
+    listed: EffectiveList | None = lists.get(kind)
+    if listed is None:
+        return (WILDCARD,), None
+    return listed.identifiers, listed.origin
+
+
+def capability_views(
+    state: Any, principal: str, role_ids: Iterable[str], held: HeldEntitlements, now: datetime
+) -> list[CapabilityView]:
+    """``principal``'s capabilities acting as ``role_ids`` at ``now``, each with where it applies:
+    per capability, the union over the roles that grant it (REQ-2219: several roles combine by
+    union per capability). The data plane's capabilities are a role's whenever it has a schema,
+    and their expansion is its mask; another scoped capability's is its kind's list."""
+    scopes = capability_scopes()
+    version = (state.schema_boot_id, state.schema_version)
+    scoped: dict[str, set[str]] = {}
+    unscoped: set[str] = set()
+    origins: dict[str, list[RoleOrigin]] = {}
+    idp = state.idp_entitlements.get(principal, {})
+    for role_id in role_ids:
+        role = state.roles[role_id]
+        lists = effective_lists(role_id, idp, held, role_defaults(role))
+        mask = principal_mask(state, principal, role_id, held, now)
+        if mask is not None:
+            for capability, chain in _DATA_PLANE_CHAIN.items():
+                scoped.setdefault(capability, set()).update(_mask_reach(mask, capability))
+                origins.setdefault(capability, []).append(
+                    RoleOrigin(role_id, {k: lists[k].origin for k in chain if k in lists})
+                )
+        for capability in role.get("capabilities") or ():
+            kind = scopes.get(capability)
+            if kind is None:
+                unscoped.add(capability)
+                origins.setdefault(capability, []).append(RoleOrigin(role_id, {}))
+                continue
+            identifiers, origin = _listed(held, role_id, capability, kind, lists)
+            scoped.setdefault(capability, set()).update(identifiers)
+            origins.setdefault(capability, []).append(
+                RoleOrigin(role_id, {} if origin is None else {kind: origin})
+            )
+    return [
+        CapabilityView(
+            capability,
+            scopes.get(capability),
+            tuple(sorted(scoped[capability])) if capability in scoped else None,
+            tuple(origins[capability]),
+            version,
+        )
+        for capability in sorted(origins)
+    ]
+
+
+@dataclass(frozen=True)
+class ExpiryPreview:
+    """What a rule would end on its date, per capability, computed from the person's reach then."""
+
+    removes: dict[str, tuple[str, ...]]
+    removes_nothing: bool
+
+
+def preview_expiry(
+    state: Any,
+    principal: str,
+    role_id: str,
+    ends_at: datetime,
+    ends: Mapping[str, Iterable[str]],
+    *,
+    replacing: str | None = None,
+) -> ExpiryPreview:
+    """What a rule on ``principal``'s grant of ``role_id`` ending ``ends`` at ``ends_at`` removes
+    from what they would reach then, every other rule in force applied; ``replacing`` names a rule
+    the new one replaces, left out of both sides. An expiry only removes bits from the mask: what
+    is outside it, and what the identity provider's lists speak for, it cannot end."""
+    held = state.held_entitlements.get(principal, _NOTHING_HELD)
+    rules = tuple(r for r in held.expiries if r.rule_key is None or r.rule_key != replacing)
+    rule = ExpiryRule(role_id, ends_at, {c: tuple(ids) for c, ids in ends.items()})
+    before = principal_mask(state, principal, role_id, replace(held, expiries=rules), ends_at)
+    after = principal_mask(
+        state, principal, role_id, replace(held, expiries=(*rules, rule)), ends_at
+    )
+    removes: dict[str, tuple[str, ...]] = {}
+    if before is not None and after is not None:
+        for capability in DATA_PLANE_CAPABILITIES:
+            gone = _mask_reach(before, capability) - _mask_reach(after, capability)
+            if gone:
+                removes[capability] = tuple(sorted(gone))
+    return ExpiryPreview(removes, not removes)
