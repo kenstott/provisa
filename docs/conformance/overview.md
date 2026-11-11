@@ -35,6 +35,12 @@ Deliberate differences group by cause, which also indicates the workaround.
 
 **Add-ins.** APOC procedures, GDS algorithms, custom SPARQL functions, and Postgres extensions appear in conformance suites. Where a procedure is commonly needed, Provisa offers it as a command. For others, run it in your own store by querying Provisa live (via `SERVICE` in SPARQL or `apoc.bolt.load` in Neo4j) or by loading the governed graph into it.
 
+## Polyfills
+
+Most engines Provisa serves are not PostgreSQL, so a pgwire client's PostgreSQL behaviour is supplied by a polyfill. A feature's read polyfill computes its values and operations on the engine. Its write polyfill carries values into the engine in literals, parameters, predicates and writes. A polyfill states its limitations, and a feature that cannot be polyfilled is refused by name with a SQLSTATE.
+
+The [polyfill pages](polyfill/index.md) show the grid, one page per engine, generated from the code the translator runs. The conformance runs check it: a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL fails the run, and so does a refusal or difference the grid does not state.
+
 ## Tool verification
 
 Each tool entry gives the tool version and the date it was verified, plus how it was verified.

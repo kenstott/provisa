@@ -26963,3 +26963,13 @@ Maintainer 2026-11-11: a list such as Registered Tables gets long for a develope
 **Code:** —
 
 **Tests:** —
+
+### REQ-2241 · Admin UI {#REQ-2241}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+
+Maintainer 2026-11-11: opening a detail view puts it in the address, so every detail view has a precise link (not a search) and Back returns to it. On every list page, opening a row's detail panel writes that object's identity to the URL, and so does choosing a tab in the panel, as a new history entry; closing the panel removes them. Loading the URL, following a link, or going Back or Forward restores the same panel on the same tab. Each page uses one parameter naming its object, read and written in one shared place, so every link into a detail view (for example from a refused delete, [REQ-2240](#REQ-2240)) is that same URL.
+
+**Code:** —
+
+**Tests:** —

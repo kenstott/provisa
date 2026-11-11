@@ -38,7 +38,7 @@ from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
-from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
+from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
@@ -1890,6 +1890,9 @@ def clickhouse_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
 
 
 #: The targets whose own null-on-failure cast sqlglot does not write (REQ-778).
+#: The dialects whose cast does not read an array's text form ('{1,2}'), array_in's.
+_ARRAY_TEXT_UNREAD = ("trino", "presto", "athena", "clickhouse")
+
 _OWN_TRY_CASTS = {
     "postgres": postgres_try_casts,
     "snowflake": snowflake_try_casts,
@@ -2006,6 +2009,11 @@ def transpile(
     # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
     # functions, so what they write of their own text is not read as a statement's.
     lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
+    if target_dialect in _ARRAY_TEXT_UNREAD and "{" in pg_sql:
+        # REQ-2171: an array's text form as its elements, before a function's form reads it.
+        lowered = array_inputs(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(

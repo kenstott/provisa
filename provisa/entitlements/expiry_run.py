@@ -8,33 +8,37 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The scheduled entitlement expiry run (REQ-2219, EXPIRY RULES END EVERY CAPABILITY THEY NAME).
+"""Each org's one expiry run (REQ-2077, REQ-2219: EXPIRY IS ON THE GRANT AND ON ITS ENTRIES).
 
-Access ends at a rule's date on every request (the mask and the list-scoped reach read the rules
-as of now); each org's run (:func:`run_org`, on the scheduler) records it. Per expiry rule Provisa
-holds:
+Expiry belongs to a role grant and to each entitlement entry of it. Access ends at either's date on
+every request: an expired grant is not held (``provisa.auth.role_grants.in_force``), and the mask
+and the list-scoped reach read an entry's rule as of now. The run (:func:`run_org`, on the
+scheduler) records it, and one setting, ``auth.role_grant_notice_days``, is the expiring-soon
+threshold for both:
 
-- ahead of its date, by ``entitlements.expiring_soon_days`` (the event's own setting), an
-  ``entitlements.expiring_soon`` event;
-- once its date has passed, an ``entitlements.expired`` event.
+- the grants: the sweep (``provisa.auth.role_grants.sweep``) deletes the expired and the unused
+  into the trail and finds those ending within the threshold;
+- the entries: per expiry rule, an ``entitlements.expiring_soon`` event ahead of its date by the
+  threshold, and an ``entitlements.expired`` event once it has passed, each an entry in the org's
+  administrative trail once per rule and date (a changed date is a new one).
 
-Each event is an entry in the org's administrative trail, once per rule and date: a changed date
-is a new one. Where mail is configured, as for role grants (``provisa.auth.role_grants``), the
-person and the org's admins are told of an expiring-soon rule, and the admins of an expired one.
+Where mail is configured, one notice per person and role names the role when it is ending and each
+entry that is: to the person and the org's admins ahead of the end, and to the admins after it.
 """
 
-# Requirements: REQ-2219
+# Requirements: REQ-2077, REQ-2219
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Container, Mapping
+from collections.abc import Container, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from provisa.auth.role_grants import Grant, Sweep, notice_window, sweep
 from provisa.core.schema_org import admin_audit_log
 from provisa.entitlements import store
 from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
@@ -48,17 +52,9 @@ log = logging.getLogger(__name__)
 
 JOB_ID = "entitlements:expiry_run"
 RUN_MINUTES = 15
-SETTING = "entitlements.expiring_soon_days"
 EXPIRING_SOON = "entitlements.expiring_soon"
 EXPIRED = "entitlements.expired"
-_MAIL_KIND = "entitlement_expiry"
-
-
-def expiring_soon_days() -> int:
-    """How many days ahead of a rule's date its expiring-soon event is emitted."""
-    from provisa.core import settings_registry
-
-    return int(settings_registry.value(SETTING))
+_MAIL_KIND = "role_grant"
 
 
 @dataclass(frozen=True)
@@ -131,7 +127,7 @@ async def run(db: "Database", now: datetime) -> Run:
     async with db.acquire() as conn:
         held = await store.load_held(conn)
         emitted = await _emitted(conn)
-    outcome = due(held, emitted, now, timedelta(days=expiring_soon_days()))
+    outcome = due(held, emitted, now, notice_window())
     for action, events in ((EXPIRING_SOON, outcome.expiring), (EXPIRED, outcome.expired)):
         for d in events:
             await record_admin_action(
@@ -140,58 +136,112 @@ async def run(db: "Database", now: datetime) -> Run:
     return outcome
 
 
-def _what(rule: ExpiryRule) -> str:
-    if not rule.ends:
-        return f"the role {rule.role_id}"
-    named = "; ".join(f"{c}: {', '.join(ids)}" for c, ids in sorted(rule.ends.items()))
-    return f"{named} in the role {rule.role_id}"
+@dataclass(frozen=True)
+class Ending:
+    """What of one person's grant of one role ends: the role, when ``grants`` (its grants, by
+    domain) end, and each entry in ``entries``."""
+
+    principal: str
+    role_id: str
+    grants: tuple[tuple[Grant, str | None], ...]  # each with why it was removed, once it was
+    entries: tuple[ExpiryRule, ...]
+
+
+def endings(grants: Iterable[tuple[Grant, str | None]], entries: Iterable[Due]) -> list[Ending]:
+    """``grants`` and ``entries`` by person and role: one notice each."""
+    by: dict[tuple[str, str], tuple[list, list]] = {}
+    for g, why in grants:
+        by.setdefault((g.user_id, g.role_id), ([], []))[0].append((g, why))
+    for d in entries:
+        by.setdefault((d.principal, d.rule.role_id), ([], []))[1].append(d.rule)
+    return [
+        Ending(principal, role_id, tuple(gs), tuple(sorted(es, key=lambda r: r.ends_at)))
+        for (principal, role_id), (gs, es) in sorted(by.items())
+    ]
 
 
 def _when(at: datetime) -> str:
     return at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _notice(d: Due, org_id: str, *, holder: bool) -> tuple[str, str]:
-    who = "Your" if holder else f"{d.principal}'s"
-    return (
-        f"{who} access in {org_id} ends {_when(d.rule.ends_at)}",
-        f"{who} access to {_what(d.rule)} in the organization {org_id} ends "
-        f"{_when(d.rule.ends_at)}.",
+def _entry(rule: ExpiryRule) -> str:
+    return "; ".join(f"{c}: {', '.join(ids)}" for c, ids in sorted(rule.ends.items()))
+
+
+def _lines(e: Ending, org_id: str, *, ended: bool) -> list[str]:
+    lines = []
+    for g, why in e.grants:
+        scope = "" if g.domain_id == "*" else f" in the domain {g.domain_id}"
+        if ended:
+            lines.append(f"The role {e.role_id}{scope} in {org_id} was removed: {why}.")
+        else:
+            lines.append(f"The role {e.role_id}{scope} in {org_id} ends {_when(g.at)}.")
+    verb = "ended" if ended else "ends"
+    lines.extend(
+        f"{_entry(r)} in the role {e.role_id} {verb} {_when(r.ends_at)}." for r in e.entries
     )
+    return lines
 
 
-def _ended(d: Due, org_id: str) -> tuple[str, str]:
-    return (
-        f"{d.principal}'s access in {org_id} ended",
-        f"{d.principal}'s access to {_what(d.rule)} in the organization {org_id} ended "
-        f"{_when(d.rule.ends_at)}.",
-    )
+def _notice(e: Ending, org_id: str, *, holder: bool) -> tuple[str, str]:
+    """The notice of what of ``e`` is ending (``holder``: to its holder)."""
+    who = "Your" if holder else f"{e.principal}'s"
+    if e.grants:
+        at = min(g.at for g, _why in e.grants)
+        subject = f"{who} role {e.role_id} in {org_id} ends {_when(at)}"
+    else:
+        at = e.entries[0].ends_at
+        subject = f"{who} access in the role {e.role_id} in {org_id} ends {_when(at)}"
+    return subject, "\n".join(_lines(e, org_id, ended=False))
 
 
-async def _tell(db: "Database", org_id: str, outcome: Run) -> None:
+def _ended(e: Ending, org_id: str) -> tuple[str, str]:
+    """The notice to the admins of what of ``e`` ended."""
+    if e.grants:
+        subject = f"{e.principal}'s role {e.role_id} in {org_id} was removed"
+    else:
+        subject = f"{e.principal}'s access in the role {e.role_id} in {org_id} ended"
+    return subject, "\n".join(_lines(e, org_id, ended=True))
+
+
+@dataclass(frozen=True)
+class Outcome:
+    grants: Sweep
+    entries: Run
+
+
+async def _tell(db: "Database", org_id: str, outcome: Outcome) -> None:
     from provisa.auth.role_grants import emails_of, send_notice
     from provisa.core.org_membership import org_admin_user_ids
 
+    g = outcome.grants
+    soon = endings([(x, None) for x in (*g.expiring, *g.going_unused)], outcome.entries.expiring)
+    gone = endings(
+        [(x, "the grant expired") for x in g.expired]
+        + [(x, "the grant went unused") for x in g.inactive],
+        outcome.entries.expired,
+    )
     admins = await org_admin_user_ids(db)
     async with db.acquire() as conn:
-        emails = await emails_of(conn, [*admins, *(d.principal for d in outcome.expiring)])
+        emails = await emails_of(conn, [*admins, *(e.principal for e in soon)])
     admin_emails = sorted({emails[a] for a in admins if a in emails})
-    for d in outcome.expiring:
-        if d.principal in emails:
-            subject, body = _notice(d, org_id, holder=True)
-            await send_notice(org_id, emails[d.principal], subject, body, kind=_MAIL_KIND)
+    for e in soon:
+        if e.principal in emails:
+            subject, body = _notice(e, org_id, holder=True)
+            await send_notice(org_id, emails[e.principal], subject, body, kind=_MAIL_KIND)
         for to in admin_emails:
-            subject, body = _notice(d, org_id, holder=False)
+            subject, body = _notice(e, org_id, holder=False)
             await send_notice(org_id, to, subject, body, kind=_MAIL_KIND)
-    for d in outcome.expired:
+    for e in gone:
         for to in admin_emails:
-            subject, body = _ended(d, org_id)
+            subject, body = _ended(e, org_id)
             await send_notice(org_id, to, subject, body, kind=_MAIL_KIND)
 
 
-async def run_org(org_id: str) -> Run:
-    """``org_id``'s expiry run, by the scheduler. Notices go wherever mail is configured
-    (``mail.provider``); where it is not, the trail entry is the record."""
+async def run_org(org_id: str) -> Outcome:
+    """``org_id``'s expiry run, by the scheduler: its grants swept, its entries' events emitted,
+    and notices sent wherever mail is configured (``mail.provider``), a single-org deployment
+    included; where it is not, the trail entry is the record and no grant is marked as told."""
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
 
@@ -200,17 +250,22 @@ async def run_org(org_id: str) -> Run:
         db = state.model_db
         assert db is not None, "the org's model store is bound with its runtime"
         assert state.config is not None, "the deployment's configuration is loaded"
-        outcome = await run(db, datetime.now(UTC))
-        if state.config.mail.provider:
+        notify = bool(state.config.mail.provider)
+        outcome = Outcome(await sweep(db, notify=notify), await run(db, datetime.now(UTC)))
+        if notify:
             await _tell(db, org_id, outcome)
     finally:
         reset_current_org(token)
-    if outcome.expiring or outcome.expired:
+    g, e = outcome.grants, outcome.entries
+    if g.expired or g.inactive or e.expiring or e.expired:
         log.info(
-            "org %s: %d entitlement expiry rule(s) expiring soon, %d expired",
+            "org %s: %d expired and %d unused role grant(s) removed; "
+            "%d entitlement entr(ies) expiring soon, %d expired",
             org_id,
-            len(outcome.expiring),
-            len(outcome.expired),
+            len(g.expired),
+            len(g.inactive),
+            len(e.expiring),
+            len(e.expired),
         )
     return outcome
 
@@ -220,7 +275,7 @@ def run_job_id(org_id: str) -> str:
 
 
 def register_org(scheduler: "AsyncIOScheduler", org_id: str) -> None:
-    """Run ``org_id``'s entitlement expiry every RUN_MINUTES. A job already held is kept."""
+    """Run ``org_id``'s expiry every RUN_MINUTES. A job already held is kept."""
     from apscheduler.triggers.interval import IntervalTrigger
 
     job_id = run_job_id(org_id)

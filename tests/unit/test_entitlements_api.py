@@ -21,12 +21,19 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import insert, select
 
 from provisa.api.admin.entitlements_router import router
 from provisa.api.errors import ApiError
+from provisa.auth import role_grants
 from provisa.auth.models import AuthIdentity
-from provisa.core.schema_org import admin_audit_log, entitlement_expiries, entitlements
+from provisa.core.schema_org import (
+    admin_audit_log,
+    entitlement_expiries,
+    entitlements,
+    roles,
+    user_role_assignments,
+)
 from provisa.entitlements import runtime, store
 from provisa.entitlements.mask import MaskCache
 from provisa.security.rights import Capability
@@ -471,22 +478,56 @@ async def test_effective_access_shows_what_an_expiry_ended(api):
     assert body["grant_ended"] is False
 
 
-async def test_a_grant_wide_expiry_is_reported_as_ending_the_grant(api):
-    async with api.db.acquire() as conn:
-        await store.add_expiry(
-            conn,
-            "alice",
-            "viewer",
-            datetime.now(UTC) - timedelta(hours=1),
-            {},
-            set_by="admin",
-            reason="left",
+async def _hold(api_, principal, role="viewer", expires_at=None, domain="*"):
+    """``principal`` holds a grant of ``role`` Provisa made, until ``expires_at``."""
+    async with api_.db.acquire() as conn:
+        await conn.upsert(
+            roles,
+            {"id": role, "capabilities": [], "domain_access": ["*"]},
+            index_elements=["id"],
+            update_columns=[],
         )
-        api.state.held_entitlements = await store.load_held(conn)
+        await conn.execute_core(
+            insert(user_role_assignments).values(
+                user_id=principal, role_id=role, domain_id=domain, expires_at=expires_at
+            )
+        )
+
+
+async def test_a_grant_whose_own_expiry_passed_is_reported_as_ended(api):
+    # REQ-2219, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES: what ends a whole grant is its expiry.
+    await _hold(api, "alice")
+    async with api.db.acquire() as conn:
+        await role_grants.end_grant(conn, "alice", "viewer", datetime.now(UTC) - timedelta(hours=1))
     body = (
         await api.client.get("/admin/entitlements/effective?principal=alice&role_id=viewer")
     ).json()
     assert body["grant_ended"] is True
+
+
+async def test_an_entry_that_names_nothing_is_refused_by_the_store(api):
+    async with api.db.acquire() as conn:
+        with pytest.raises(ValueError, match="the whole grant's is its own"):
+            await store.add_expiry(
+                conn,
+                "alice",
+                "viewer",
+                datetime.now(UTC) + timedelta(days=1),
+                {},
+                set_by="admin",
+                reason="left",
+            )
+        with pytest.raises(ValueError, match="the whole grant's is its own"):
+            await store.add_expiry(
+                conn,
+                "alice",
+                "viewer",
+                datetime.now(UTC) + timedelta(days=1),
+                {"read": []},
+                set_by="admin",
+                reason="left",
+            )
+        assert await store.load_held(conn) == {}
 
 
 async def test_resetting_a_list_withdraws_the_expiry_it_was_set_with(api, clock):

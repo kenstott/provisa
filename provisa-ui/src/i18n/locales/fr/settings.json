@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Préavis avant la fin d'une attribution de rôle",
-        "help": "Combien de jours avant qu'une attribution de rôle expire, ou soit supprimée faute d'usage, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Préavis d'expiration des habilitations",
-        "help": "Combien de jours avant la date d'une règle d'expiration d'habilitation l'événement « expire bientôt » est émis et la personne ainsi que les administrateurs de l'organisation sont prévenus par e-mail. Les écrans d'habilitations mettent en évidence les règles aussi proches de leur date."
+        "label": "Préavis avant la fin d'une attribution de rôle ou de ses entrées",
+        "help": "Combien de jours avant la fin d'une attribution de rôle, ou de l'une de ses entrées de droits, ou avant sa suppression pour inutilisation, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
       }
     },
     "server": {
