@@ -99,7 +99,7 @@ jobs:
   # for its platform (py3-none-<platform tag>) and holding only that platform's blobs: one universal
   # wheel of every platform's DuckDB 2.0 extensions (crypto included) passed PyPI's 100 MB per-file
   # limit. collect.py fills each in priority order (crypto, mssql, snowflake, bigquery, mongo,
-  # gsheets, airport, firebird) and prints, by name, any it leaves out to stay under the limit.
+  # airport, firebird) and prints, by name, any it leaves out to stay under the limit.
   # pip/uv pick the running platform's wheel; the runtime
   # (provisa.federation.duckdb_extensions.stage_bundled_extensions) copies its blobs out on first run,
   # so `provisa[embedded]` gets the extensions through PyPI/Artifactory, never extensions.duckdb.org.
