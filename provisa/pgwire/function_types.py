@@ -125,6 +125,13 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     return None
 
 
+def argument_type(arg: exp.Expr) -> str | None:
+    """PostgreSQL's name of the type a statement says of ``arg``, None where it does not say one
+    (a column, an untyped literal, a call whose overload is not known). REQ-2236's typed holes read
+    an argument's type this way."""
+    return _arg_type(arg, None, True)
+
+
 def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
     """The names a call may be written as, and its arguments in order; None for no call."""
     if isinstance(expression, exp.Dot):
@@ -208,6 +215,12 @@ def _fits(argument: str | None, parameter: str) -> bool:
             and argument in MULTIRANGE_TYPES
         )
     )
+
+
+def fits(argument: str | None, parameter: str) -> bool:
+    """Whether an argument of type ``argument`` (None: not said) fits a parameter of type
+    ``parameter``, as overload resolution here fits it."""
+    return _fits(argument, parameter)
 
 
 #: The polymorphic parameters of each family that take an element, or an array of one.
