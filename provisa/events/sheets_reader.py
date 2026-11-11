@@ -18,8 +18,12 @@ Table picker offers, read by the DuckDB engine's ``read_gsheet`` view as the spr
 sheet), the first sheet. Its first row is the header naming the columns; every later row that
 holds a value is a row of the table.
 
-The rows are read with ``values.batchGet`` (``valueRenderOption=UNFORMATTED_VALUE``), a range of
-rows at a time, for as many rows as the sheet has: nothing is exported and nothing is capped.
+A landing makes two Sheets API read requests: one ``spreadsheets.get`` for the sheets' titles and
+grid sizes, and one ``values.batchGet`` (``valueRenderOption=UNFORMATTED_VALUE``) whose single
+range is the sheet's whole grid, header row and every row under it: nothing is exported and
+nothing is capped. A replica build's batch size divides the rows read; it never makes another
+request. A read the API refuses with HTTP 429 (the per-minute read quota) is retried with the
+truncated exponential backoff Google documents for it.
 Unformatted, a date, a time or a timestamp is the spreadsheet's serial number (days since
 1899-12-30), so each cell is converted by its registered column's type before the rows become
 Arrow record batches of the registered column types, which the landing path writes as the
@@ -34,6 +38,8 @@ reading as the service account itself: the spreadsheet is shared with it.
 from __future__ import annotations
 
 import asyncio
+import random
+import time
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -46,9 +52,21 @@ from provisa.core.ir_types import to_ir
 #: What a Sheets read asks for: reading, nothing more.
 SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly"
 API = "https://sheets.googleapis.com/v4/spreadsheets"
-#: The rows one range of a read holds, at most: a page of the sheet per request.
+#: The rows of a whole load's batches; a load still reads its sheet in one request.
 PAGE_ROWS = 5_000
-_TIMEOUT = 60.0
+#: Google stops processing one Sheets API request at 180 seconds
+#: (https://developers.google.com/sheets/api/limits, "Behavior and limitations").
+_TIMEOUT = 180.0
+#: The HTTP status of a Sheets API time-based quota error ("Read requests per minute per user").
+_QUOTA_EXCEEDED = 429
+#: Truncated exponential backoff, as https://developers.google.com/sheets/api/limits ("Resolve
+#: time-based quota errors") documents it: retry n waits min(2**n + random_number_milliseconds,
+#: maximum_backoff), random_number_milliseconds at most 1,000 and recalculated per retry,
+#: maximum_backoff "typically 32 or 64 seconds", then retries at maximum_backoff up to a maximum
+#: number of retries. Seven retries wait 1, 2, 4, 8, 16, 32 and 32 seconds (95 or more in all),
+#: past the minute after which the page says the quota is refilled.
+MAXIMUM_BACKOFF = 32.0
+MAXIMUM_RETRIES = 7
 #: Day 0 of a spreadsheet's serial dates.
 _SERIAL_EPOCH = datetime(1899, 12, 30)
 _MS_PER_DAY = 86_400_000
@@ -106,18 +124,34 @@ def _a1(title: str, first_row: int, last_row: int, columns: int) -> str:
 class SheetsApi:
     """One spreadsheet, read through the Sheets API with a token ``token()`` gives."""
 
-    def __init__(self, spreadsheet: str, token: Callable[[], str], client: httpx.Client) -> None:
+    def __init__(
+        self,
+        spreadsheet: str,
+        token: Callable[[], str],
+        client: httpx.Client,
+        sleep: Callable[[float], None] = time.sleep,
+        jitter: Callable[[], float] = lambda: random.randint(0, 1000) / 1000,
+    ) -> None:
         self._spreadsheet = spreadsheet
         self._token = token
         self._client = client
+        self._sleep = sleep
+        self._jitter = jitter
 
     def _get(self, path: str, params: dict[str, str | list[str]]) -> dict:
-        answer = self._client.get(
-            f"{API}/{self._spreadsheet}{path}",
-            params=params,
-            headers={"Authorization": f"Bearer {self._token()}"},
-            timeout=_TIMEOUT,
-        )
+        retry = 0
+        while True:
+            answer = self._client.get(
+                f"{API}/{self._spreadsheet}{path}",
+                params=params,
+                headers={"Authorization": f"Bearer {self._token()}"},
+                timeout=_TIMEOUT,
+            )
+            if answer.status_code != _QUOTA_EXCEEDED or retry == MAXIMUM_RETRIES:
+                break
+            # The documented backoff (MAXIMUM_BACKOFF): 1 + jitter, 2 + jitter, ... capped.
+            self._sleep(min(2**retry + self._jitter(), MAXIMUM_BACKOFF))
+            retry += 1
         if answer.status_code != 200:
             raise SheetsReadError(
                 f"The Google Sheets API refused a read of spreadsheet {self._spreadsheet}: "
@@ -223,8 +257,9 @@ def _positions(header: list[Any], columns: list[tuple[str, str]], where: str) ->
 def row_batches(
     api: SheetsApi, source: Any, table: Any, columns: list[tuple[str, str]], batch_rows: int
 ) -> Iterator[list[dict]]:
-    """``table``'s rows as dicts of its registered ``columns``, typed by them, a range of at
-    most ``batch_rows`` sheet rows at a time, until the sheet's last row."""
+    """``table``'s rows as dicts of its registered ``columns``, typed by them, at most
+    ``batch_rows`` to a batch. The sheet is read in one ``values.batchGet`` whose one range is
+    its whole grid, the header row with every row under it."""
     where = f"Table {source.id}.{table.table_name}"
     sheet = sheet_of(api.sheets(), source, table)
     grid = sheet.get("gridProperties", {})
@@ -232,29 +267,27 @@ def row_batches(
     width = int(grid.get("columnCount", 0))
     if last_row == 0 or width == 0:
         raise SheetsReadError(f"{where}: sheet {sheet['title']!r} is empty, with no header row")
-    (header_rows,) = api.ranges([_a1(sheet["title"], 1, 1, width)])
-    if not header_rows:
+    (values,) = api.ranges([_a1(sheet["title"], 1, last_row, width)])
+    if not values or not values[0]:
         raise SheetsReadError(f"{where}: sheet {sheet['title']!r} has no header row")
-    positions = _positions(header_rows[0], columns, where)
-    page = max(1, min(batch_rows, PAGE_ROWS))
-    first = 2
-    while first <= last_row:
-        last = min(first + page - 1, last_row)
-        (values,) = api.ranges([_a1(sheet["title"], first, last, width)])
-        rows = []
-        for offset, values_row in enumerate(values):
-            if all(v is None or v == "" for v in values_row):
-                continue  # a blank sheet row holds no row of the table
-            at = f"{where}, sheet row {first + offset}"
-            rows.append(
-                {
-                    name: cell(values_row[i] if i < len(values_row) else None, ir, f"{at} {name!r}")
-                    for (name, ir), i in zip(columns, positions)
-                }
-            )
-        if rows:
+    positions = _positions(values[0], columns, where)
+    size = max(1, batch_rows)
+    rows: list[dict] = []
+    for offset, values_row in enumerate(values[1:]):
+        if all(v is None or v == "" for v in values_row):
+            continue  # a blank sheet row holds no row of the table
+        at = f"{where}, sheet row {offset + 2}"
+        rows.append(
+            {
+                name: cell(values_row[i] if i < len(values_row) else None, ir, f"{at} {name!r}")
+                for (name, ir), i in zip(columns, positions)
+            }
+        )
+        if len(rows) == size:
             yield rows
-        first = last + 1
+            rows = []
+    if rows:
+        yield rows
 
 
 def _registered_columns(table: Any) -> list[tuple[str, str]]:

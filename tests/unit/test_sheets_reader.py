@@ -10,8 +10,10 @@
 
 """REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT: "A Google Sheets source likewise
 lands through the Google Sheets API where the engine has no gsheets extension"): a registered
-sheet is read with values.batchGet, unformatted, a range of rows at a time to the sheet's last
-row, its serial dates converted by the registered column types, and built into Arrow of those
+sheet is read with one values.batchGet of its whole grid, unformatted -- a landing makes two
+Sheets API requests, however many rows it has and whatever its batch size -- a read refused for
+the per-minute quota (HTTP 429) is retried with Google's documented truncated exponential
+backoff, its serial dates converted by the registered column types, and built into Arrow of those
 types for the landing path. Signed in with the source's own service account key, reading as the
 service account itself."""
 
@@ -122,9 +124,10 @@ class _Spreadsheet:
             rows = rows[:-1]  # the API leaves a range's trailing empty rows out
         return rows
 
-    def ranges_asked(self) -> list[str]:
+    def ranges_asked(self) -> list[list[str]]:
+        """Each values.batchGet request's ranges."""
         return [
-            parse_qs(urlparse(str(r.url)).query)["ranges"][0]
+            parse_qs(urlparse(str(r.url)).query)["ranges"]
             for r in self.requests
             if r.url.path.endswith("/values:batchGet")
         ]
@@ -203,32 +206,31 @@ def test_a_table_naming_no_sheet_is_refused_naming_the_sheets():
 # --- reading by range ----------------------------------------------------------------------
 
 
-def test_the_rows_are_read_a_range_at_a_time_to_the_sheets_last_row():
+def test_the_sheet_is_read_in_one_batchget_of_its_whole_grid():
     spreadsheet = _Spreadsheet({"Orders": _ORDERS}, row_count=7, column_count=3)
     columns = [("id", "bigint"), ("placed", "date"), ("note", "text")]
     batches = list(row_batches(_api(spreadsheet), _source(), _table(), columns, 3))
-    assert spreadsheet.ranges_asked() == [
-        "'Orders'!A1:C1",  # the header
-        "'Orders'!A2:C4",
-        "'Orders'!A5:C7",
-    ]
+    # One range: the header row and every row under it, to the sheet's last row.
+    assert spreadsheet.ranges_asked() == [["'Orders'!A1:C7"]]
+    assert len(spreadsheet.requests) == 2  # the sheets' properties, then the one batchGet
     assert batches == [
         [
             {"id": 1, "placed": date(2023, 3, 15), "note": "first"},
             {"id": 2, "placed": date(2023, 3, 16), "note": None},
-        ],
-        [
             {"id": 3, "placed": None, "note": "third"},
-            {"id": 4, "placed": date(2023, 3, 18), "note": "5"},
         ],
+        [{"id": 4, "placed": date(2023, 3, 18), "note": "5"}],
     ]
 
 
-def test_no_page_is_larger_than_the_page_bound(monkeypatch):
-    monkeypatch.setattr(sheets_reader, "PAGE_ROWS", 2)
-    spreadsheet = _Spreadsheet({"Orders": _ORDERS}, row_count=6, column_count=3)
-    list(row_batches(_api(spreadsheet), _source(), _table(), [("id", "bigint")], 1000))
-    assert spreadsheet.ranges_asked()[1:] == ["'Orders'!A2:C3", "'Orders'!A4:C5", "'Orders'!A6:C6"]
+def test_the_batch_size_divides_the_rows_and_never_adds_a_request():
+    rows = [["id"]] + [[n] for n in range(1, 12_001)]
+    spreadsheet = _Spreadsheet({"Orders": rows}, row_count=len(rows), column_count=1)
+    batches = list(row_batches(_api(spreadsheet), _source(), _table(), [("id", "bigint")], 2))
+    assert len(spreadsheet.requests) == 2
+    assert spreadsheet.ranges_asked() == [["'Orders'!A1:A12001"]]
+    assert len(batches) == 6_000 and all(len(batch) == 2 for batch in batches)
+    assert [row["id"] for batch in batches for row in batch] == list(range(1, 12_001))
 
 
 def test_a_registered_column_missing_from_the_header_is_refused_by_name():
@@ -241,7 +243,7 @@ def test_a_sheet_title_with_a_quote_is_quoted_in_its_range():
     spreadsheet = _Spreadsheet({"Bob's": [["id"], [1]]}, row_count=2, column_count=1)
     rows = list(row_batches(_api(spreadsheet), _source(), _table("Bob's"), [("id", "bigint")], 10))
     assert rows == [[{"id": 1}]]
-    assert spreadsheet.ranges_asked()[0] == "'Bob''s'!A1:A1"
+    assert spreadsheet.ranges_asked() == [["'Bob''s'!A1:A2"]]
 
 
 def test_a_refusal_by_the_api_names_the_spreadsheet_and_googles_reason():
@@ -253,6 +255,86 @@ def test_a_refusal_by_the_api_names_the_spreadsheet_and_googles_reason():
     api = SheetsApi(SHEET_ID, lambda: "tok", httpx.Client(transport=httpx.MockTransport(refuse)))
     with pytest.raises(SheetsReadError, match=r"sheet-123: The caller does not have.*HTTP 403"):
         api.sheets()
+
+
+# --- the per-minute quota: truncated exponential backoff ------------------------------------
+
+_QUOTA = {"error": {"message": "Quota exceeded for quota metric 'Read requests'"}}
+
+
+def _quota_then(spreadsheet: _Spreadsheet, refusals: int):
+    answered: list[int] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        answered.append(1)
+        if len(answered) <= refusals:
+            return httpx.Response(429, json=_QUOTA)
+        return spreadsheet(request)
+
+    return answer
+
+
+def test_a_read_refused_for_the_quota_waits_two_to_the_n_plus_jitter_and_is_retried():
+    spreadsheet = _Spreadsheet({"Orders": _ORDERS}, row_count=7, column_count=3)
+    waits: list[float] = []
+    api = SheetsApi(
+        SHEET_ID,
+        lambda: "tok",
+        httpx.Client(transport=httpx.MockTransport(_quota_then(spreadsheet, 3))),
+        sleep=waits.append,
+        jitter=lambda: 0.25,
+    )
+    assert [sheet["title"] for sheet in api.sheets()] == ["Orders"]
+    # https://developers.google.com/sheets/api/limits: 1 + jitter, 2 + jitter, 4 + jitter, ...
+    assert waits == pytest.approx([1.25, 2.25, 4.25], rel=1e-14)
+    assert len(spreadsheet.requests) == 1
+
+
+def test_the_backoff_is_truncated_at_the_maximum_and_gives_up_after_the_last_retry():
+    waits: list[float] = []
+    asked: list[int] = []
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        asked.append(1)
+        return httpx.Response(429, json=_QUOTA)
+
+    api = SheetsApi(
+        SHEET_ID,
+        lambda: "tok",
+        httpx.Client(transport=httpx.MockTransport(refuse)),
+        sleep=waits.append,
+        jitter=lambda: 1.0,
+    )
+    with pytest.raises(SheetsReadError, match=r"sheet-123: Quota exceeded.*HTTP 429"):
+        api.sheets()
+    assert sheets_reader.MAXIMUM_BACKOFF == pytest.approx(32.0, rel=1e-14)
+    assert sheets_reader.MAXIMUM_RETRIES == 7
+    assert waits == pytest.approx([2.0, 3.0, 5.0, 9.0, 17.0, 32.0, 32.0], rel=1e-14)
+    assert len(asked) == sheets_reader.MAXIMUM_RETRIES + 1
+
+
+def test_the_jitter_is_at_most_a_second():
+    api = SheetsApi(SHEET_ID, lambda: "tok", httpx.Client())
+    assert all(0.0 <= api._jitter() <= 1.0 for _ in range(1_000))
+
+
+def test_a_refusal_other_than_the_quota_is_not_retried():
+    asked: list[int] = []
+    waits: list[float] = []
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        asked.append(1)
+        return httpx.Response(403, json={"error": {"message": "no"}})
+
+    api = SheetsApi(
+        SHEET_ID,
+        lambda: "tok",
+        httpx.Client(transport=httpx.MockTransport(refuse)),
+        sleep=waits.append,
+    )
+    with pytest.raises(SheetsReadError, match="HTTP 403"):
+        api.sheets()
+    assert len(asked) == 1 and waits == []
 
 
 # --- the source's own service account -------------------------------------------------------
@@ -327,6 +409,24 @@ async def test_a_replica_build_reads_arrow_of_the_registered_types(monkeypatch):
     assert table.schema.types == [pa.int64(), pa.date32(), pa.string()]
     assert table.column("id").to_pylist() == [1, 2, 3, 4]
     assert table.column("placed").to_pylist()[0] == date(2023, 3, 15)
+
+
+@pytest.mark.asyncio
+async def test_one_landing_makes_two_sheets_api_requests(monkeypatch):
+    # The live warehouse-lane test lands the fixture sheet at batch size 2 and then loads it
+    # whole: four requests in all, where paging by the batch size made hundreds and met HTTP 429.
+    rows = [["id", "name"]] + [[f"w{n}", f"Widget {n}"] for n in range(1, 1_000)]
+    spreadsheet = _Spreadsheet({"gs": rows}, row_count=1_000, column_count=26)
+    loader = _loader(monkeypatch, spreadsheet)
+    table = _table("gs", [_column("id", "varchar"), _column("name", "varchar")])
+    columns = [("id", "text"), ("name", "text")]
+    replica = loader.replica_source(_source(), table, columns)
+    landed = pa.Table.from_batches([b async for b in replica.batches(2)])
+    assert landed.num_rows == 999
+    assert len(spreadsheet.requests) == 2
+    assert spreadsheet.ranges_asked() == [["'gs'!A1:Z1000"]]
+    assert len(await loader(_source(), table)) == 999
+    assert len(spreadsheet.requests) == 4
 
 
 @pytest.mark.asyncio
