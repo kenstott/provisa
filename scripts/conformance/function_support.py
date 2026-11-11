@@ -144,11 +144,12 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString
 
 import psycopg
 import yaml
 from psycopg import pq
+from psycopg import sql as psql
 
 import function_report
 import pgwire_catalog_types as catalog
@@ -377,14 +378,14 @@ _TIMEOFDAY = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}:\d{2}\.\d{6} \d{4} 
 #: One field of a record's text: record_out quotes anything but a plain word, doubling the quotes.
 _FIELD = r'(?:"(?:[^"]|"")*"|[^,"()]*)'
 
-_INTEGERS = ("3", "(-7)", "42")
-_DECIMALS = ("0.5", "(-2.25)", "100")
-_STRINGS = ("'abc'", "'Hello World'", "'12'")
+_INTEGERS: tuple[LiteralString, LiteralString, LiteralString] = ("3", "(-7)", "42")
+_DECIMALS: tuple[LiteralString, LiteralString, LiteralString] = ("0.5", "(-2.25)", "100")
+_STRINGS: tuple[LiteralString, LiteralString, LiteralString] = ("'abc'", "'Hello World'", "'12'")
 
 #: Three literals of each type format_type names, cast to it where they are used. Enough to tell
 #: a sign, a case and a digit string apart; the first of the floats is a valid fraction, which an
 #: ordered-set aggregate's direct argument needs.
-SAMPLES: dict[str, tuple[str, str, str]] = {
+_SAMPLE_ROWS: dict[LiteralString, tuple[LiteralString, LiteralString, LiteralString]] = {
     "smallint": _INTEGERS,
     "integer": _INTEGERS,
     "bigint": ("3", "(-7)", "5000000000"),
@@ -466,6 +467,8 @@ SAMPLES: dict[str, tuple[str, str, str]] = {
     "int8multirange": ("'{[1,5),[7,9)}'", "'{}'", "'{(,3]}'"),
     "nummultirange": ("'{[1.5,2.5)}'", "'{}'", "'{(,3]}'"),
 }
+
+SAMPLES: dict[str, tuple[str, str, str]] = dict(_SAMPLE_ROWS.items())
 
 _RANGES = '\'{"[1,5)","[7,9)"}\'', "'{}'", "'{\"(,3]\"}'"
 
@@ -3341,16 +3344,38 @@ def _measure_calls(
 def seed_columns(pg_dsn: str, out: Path) -> None:
     """``COLUMN_TABLE`` in the job's PostgreSQL, and ``out``, its model table entry (the instance's
     ``extra-tables``). It comes before the instance starts, as any job's own fixture does."""
-    types = list(SAMPLES)
-    columns = [(sample_column(t), t) for t in types]
-    declared = ", ".join(["id integer", *(f"{name} {typ}" for name, typ in columns)])
+    types = list(_SAMPLE_ROWS)
+    columns: list[tuple[str, LiteralString]] = [(sample_column(t), t) for t in types]
+    relation = psql.Identifier(catalog.FIXTURE_SCHEMA, COLUMN_TABLE)
+    declared = psql.SQL(", ").join(
+        [
+            psql.SQL("id integer"),
+            *(
+                psql.SQL("{} {}").format(psql.Identifier(name), psql.SQL(typ))
+                for name, typ in columns
+            ),
+        ]
+    )
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog.FIXTURE_SCHEMA}".encode())
-        conn.execute(f"DROP TABLE IF EXISTS {COLUMN_RELATION}".encode())
-        conn.execute(f"CREATE TABLE {COLUMN_RELATION} ({declared})".encode())
+        conn.execute(
+            psql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                psql.Identifier(catalog.FIXTURE_SCHEMA)
+            )
+        )
+        conn.execute(psql.SQL("DROP TABLE IF EXISTS {}").format(relation))
+        conn.execute(psql.SQL("CREATE TABLE {} ({})").format(relation, declared))
         for row in range(VALUE_ROWS):
-            values = [str(row + 1), *(_cast(SAMPLES[t][row], t) for t in types)]
-            conn.execute(f"INSERT INTO {COLUMN_RELATION} VALUES ({', '.join(values)})".encode())
+            # Each sample is cast to its own type: no sample type is one CONCRETE rewrites.
+            values = [
+                psql.Literal(row + 1),
+                *(
+                    psql.SQL("{}::{}").format(psql.SQL(_SAMPLE_ROWS[t][row]), psql.SQL(t))
+                    for t in types
+                ),
+            ]
+            conn.execute(
+                psql.SQL("INSERT INTO {} VALUES ({})").format(relation, psql.SQL(", ").join(values))
+            )
     registered = catalog.registered_columns(
         [("id", "integer"), *columns],
         lambda column: catalog._sized_numeric(pg_dsn, column, COLUMN_TABLE),
