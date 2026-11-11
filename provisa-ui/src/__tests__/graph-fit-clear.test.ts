@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: dd346d1d-4d6d-40e9-aebd-d6771c705d63
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -67,14 +68,17 @@ function stage(w: number, h: number, legendBottom: number, model: BB) {
   return { cy, rendered };
 }
 
-// A wide diagram: a plain fit fills the width and centres it, its top 10px under the canvas's.
+// A wide diagram: a plain fit fills the canvas's width and centres it down the canvas.
 const WIDE: BB = { x1: 0, y1: 0, x2: 1200, y2: 700, w: 1200, h: 700 };
 
 describe("fitClear", () => {
   it("is a plain fit with no legend", () => {
     const { cy, rendered } = stage(1200, 720, 0, WIDE);
     fitClear(cy, 10);
-    expect(rendered().y1).toBeCloseTo(10, 9);
+    // Width-bound: 1180px across, centred down the 720px canvas.
+    const z = 1180 / 1200;
+    expect(rendered().x1).toBeCloseTo(10, 9);
+    expect(rendered().y1).toBeCloseTo((720 - 700 * z) / 2, 9);
   });
 
   it("fits the diagram below the legend when a plain fit runs under it", () => {
