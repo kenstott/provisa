@@ -94891,7 +94891,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     it, never written by hand: an engine''s own rows on data the engine holds itself, a direct row on that
     source alone, a hint on its engine and source pair (with the source''s version or setting where the
     hint depends on it). Each engine''s page states that when the engine reads a source it attaches directly,
-    it may push work into that source, so a result can depend on the pair, and its hints are the cases known.'
+    it may push work into that source, so a result can depend on the pair, and its hints are the cases known.
+    (Amended 2026-11-11, EACH ENGINE HAS A BASELINE PAIR:) Maintainer 2026-11-11. Each engine''s rows are
+    made and verified on its baseline: the place its data mostly lives. Trino''s baseline is Trino with
+    PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB''s is its own
+    store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric),
+    their own or Iceberg tables. The baseline is printed as the rows'' provenance, and a hint exists only
+    for a pair that differs from it.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
