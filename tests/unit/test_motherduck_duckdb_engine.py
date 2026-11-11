@@ -31,16 +31,16 @@ def _source(**kw: Any):
     return SimpleNamespace(**{**base, **kw})
 
 
-def test_on_duckdb_2_a_motherduck_source_needs_its_postgres_endpoint_reader():
+def test_on_duckdb_2_a_motherduck_source_is_a_replica_landed_through_its_postgres_endpoint():
     # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
     # LANDS THROUGH ITS POSTGRES ENDPOINT): MotherDuck's extension does not load on DuckDB 2.0.
     from provisa.federation.engine import build_duckdb_engine
 
     engine = build_duckdb_engine()
-    assert "motherduck" not in engine.connectors
-    assert "MotherDuck's Postgres-endpoint reader" in (
-        engine.unreachable_reason("motherduck") or ""
-    )
+    assert "motherduck" not in engine.connectors  # not attached ...
+    assert engine.unreachable_reason("motherduck") is None
+    landed = engine.complete_reach().connectors["motherduck"]  # ... landed
+    assert not landed.reads_in_place
 
 
 def test_the_motherduck_connector_attaches_where_its_extension_loads():

@@ -4,66 +4,35 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""E2E: Google Sheets read through DuckDB's `gsheets` COMMUNITY EXTENSION (REQ-899, REQ-1097).
+"""E2E: a Google Sheets source on the DuckDB engine is a replica landed through the Google Sheets
+API (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT: "A Google Sheets source likewise
+lands through the Google Sheets API where the engine has no gsheets extension"; REQ-1142,
+ATTACHABLE MEANS STAGED; NOT ATTACHABLE MEANS REPLICA).
 
-Google Sheets is neither a direct driver (provisa/executor/drivers/registry.py has no factory for
-it) nor a Trino connector — the ONLY way Provisa reaches it is DuckDBGsheetsConnector
-(provisa/federation/connector_duckdb.py:260), one of the seven REQ-899 DuckDB community-extension
-connectors wired into the DuckDB partial-federator engine (provisa/federation/engine.py
-build_duckdb_engine). Like Firebird (test_firebird_source_e2e.py) there is no coordinator process
-to talk to: the engine IS an in-process DuckDB connection (provisa.federation.duckdb_backend.
-DuckDBBackend / DuckDBFederationRuntime), and reaching Sheets means that connection LOADs the
-`gsheets` DuckDB extension and issues ``CREATE VIEW "<id>" AS SELECT * FROM read_gsheet('<sheet>')``
-— exactly the DDL DuckDBGsheetsConnector.details() builds (mechanism SCAN — read in place, no
-attach, REQ-951). The spreadsheet id comes from Source.federation_hints["spreadsheet_id"]; auth is
-a DuckDB SECRET (TYPE gsheet), which the extension REQUIRES even for a publicly-viewable sheet —
-confirmed empirically below: ``read_gsheet()`` against DuckDB gsheets' own public documentation demo
-sheet (11QdEasMWbETbFVxry-SsD8jVcdYIT1zBQszcF84MdE8) fails with "No 'gsheet' secret found" until a
-secret is registered. This test drives that real seam directly against an in-process DuckDB
-connection, the same one DuckDBBackend wraps, using a live ``PROVIDER access_token`` secret built
-from the project's Google service-account credentials (REQ-1097 setup: GOOGLE_APPLICATION_CREDENTIALS).
+The engine runs DuckDB 2.0, and DuckDB's `gsheets` community extension has no 2.0 build: its
+INSTALL is refused (community-extensions.duckdb.org answers HTTP 404 for v2.0.0), so the engine has
+no live reach for a sheet and never attaches or loads gsheets. A sheet is landed instead: Provisa's
+Sheets reader (provisa/events/sheets_reader.py, wired by build_adapter_loaders) reads it with
+values.batchGet, signed in with the source's service account key, and the landing path writes the
+rows as the replica, which queries read.
 
 Runs live in the warehouse lane
 -------------------------------
-The Sheets API is enabled for the GCP project referenced by GOOGLE_APPLICATION_CREDENTIALS /
-GOOGLE_CLOUD_PROJECT (in .env), and the key_file service-account secret is accepted by the DuckDB
-gsheets extension, so this test runs end to end against a DURABLE fixture sheet: the service account
-has zero Drive storage quota (a non-Workspace SA cannot own Drive files, so spreadsheets.create is a
-hard 403), therefore it reads an existing sheet owned by a real Drive user and shared with the SA as
-reader — header id,name + the _WIDGETS rows — through the REAL connector DDL. The fixture id is
-GSHEETS_TEST_SHEET_ID (.env). scripts/test-all sets PROVISA_GSHEETS_LIVE=1 in the warehouse lane
-(where the GOOGLE_ creds load) so it executes there every run.
+The Sheets API is enabled for the GCP project of GOOGLE_APPLICATION_CREDENTIALS /
+GOOGLE_CLOUD_PROJECT (.env). The service account has zero Drive storage quota (a non-Workspace SA
+cannot own Drive files, so spreadsheets.create is a hard 403), so both tests read a DURABLE fixture
+sheet owned by a real Drive user and shared with the SA as reader -- header id,name + the _WIDGETS
+rows -- whose id is GSHEETS_TEST_SHEET_ID (.env).
 """
 
 from __future__ import annotations
 
-import json
 import os
-import subprocess
-import sys
+import types
 
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
-
-# The read_gsheet() call is a DuckDB C-extension network call that CANNOT be interrupted from
-# Python (SIGALRM only runs between bytecodes, never during a blocking C call), so it runs in a
-# killable subprocess with a hard timeout — a misconfigured gsheets auth would otherwise hang the
-# suite forever. Uses the service-account key_file secret (a raw access_token secret drops the
-# gsheets extension into an interactive OAuth wait that never returns headless).
-_DUCKDB_READ_SCRIPT = """
-import json, sys
-import duckdb
-sheet_id, view_id, creds_path = sys.argv[1], sys.argv[2], sys.argv[3]
-c = duckdb.connect()
-c.execute("INSTALL gsheets FROM community"); c.execute("LOAD gsheets")
-c.execute(
-    f"CREATE SECRET gsheet_itest (TYPE gsheet, PROVIDER key_file, FILEPATH '{creds_path}')"
-)
-c.execute(f'CREATE VIEW "{view_id}" AS SELECT * FROM read_gsheet(\\'{sheet_id}\\')')
-rows = c.execute(f'SELECT id, name FROM "{view_id}" ORDER BY id').fetchall()
-print(json.dumps([[str(r[0]), r[1]] for r in rows]))
-"""
 
 _CREDS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 _PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
@@ -76,72 +45,146 @@ pytestmark.append(
     )
 )
 
-# ids are non-numeric on purpose: DuckDB read_gsheet type-infers numeric-looking cells to DOUBLE
-# regardless of the sheet's TEXT cell format (empirically: stringValue "1" -> column DOUBLE 1.0),
-# so a "1"/"2"/"3" id would read back as "1.0" and never round-trip. Text ids read as VARCHAR.
 _WIDGETS = [("w1", "Widget A"), ("w2", "Widget B"), ("w3", "Widget C")]
 
-# REQ-1097: the service account backing GOOGLE_APPLICATION_CREDENTIALS has ZERO Drive storage quota
-# — a service account on a non-Workspace GCP project cannot own Drive files, so spreadsheets.create
-# returns 403 storageQuotaExceeded and it can never seed a throwaway sheet. The product path is READ
-# (DuckDBGsheetsConnector reads an existing sheet live via the gsheets extension), so this test reads
-# a DURABLE fixture: a sheet owned by a real Drive user, shared with the SA as reader, holding a
-# header row (id,name) + the _WIDGETS rows. Its id is GSHEETS_TEST_SHEET_ID (loaded from .env).
+# REQ-1097: the durable fixture sheet (see the module docstring); the warehouse lane sets it.
 _FIXTURE_SHEET_ID = os.environ.get("GSHEETS_TEST_SHEET_ID", "")
 
 
-def test_google_sheets_read_through_duckdb_engine():
-    """Drive the REAL DuckDBGsheetsConnector.details() view DDL through the DuckDB gsheets extension
-    (the seam provisa.federation.duckdb_backend uses — REQ-899/1097). No landing: read_gsheet reads
-    the source live. The DuckDB read runs in a killable subprocess (see _DUCKDB_READ_SCRIPT)."""
+def _fixture_source(source_id: str):
     from provisa.core.models import Source, SourceType
-    from provisa.federation.connector_duckdb import DuckDBGsheetsConnector
 
-    # Opt-in gate: the live read exercises the third-party DuckDB `gsheets` C extension, whose
-    # service-account auth behavior is version-dependent and, if it rejects the key_file secret,
-    # drops into an interactive OAuth wait. The subprocess timeout below bounds that, but running it
-    # by default (even bounded) makes an ~90s failure the common case on any machine whose gsheets
-    # extension/token setup isn't fully wired. Require an explicit opt-in so default/CI runs skip
-    # fast; set PROVISA_GSHEETS_LIVE=1 (with GOOGLE_APPLICATION_CREDENTIALS granting Sheets+Drive and
-    # a gsheets extension that accepts a key_file service-account secret) to run it live.
-    if not os.environ.get("PROVISA_GSHEETS_LIVE"):
-        pytest.skip(
-            "set PROVISA_GSHEETS_LIVE=1 to run the live DuckDB gsheets read (see docstring)"
-        )
-    if not _FIXTURE_SHEET_ID:
-        pytest.skip(
-            "GSHEETS_TEST_SHEET_ID not set — provision a Drive sheet (header id,name + Widget A/B/C) "
-            "shared with the service account as reader; the SA has 0 Drive quota and cannot self-seed"
-        )
-
-    sheet_id = _FIXTURE_SHEET_ID
-    src = Source(
-        id="gsheets_itest",
-        type=SourceType.google_sheets,
-        database=sheet_id,  # the connector reads the sheet id from database
+    assert _FIXTURE_SHEET_ID, (
+        "GSHEETS_TEST_SHEET_ID is the durable fixture sheet (header id,name + Widget A/B/C) shared "
+        "with the service account; the warehouse lane sets it"
     )
-    details = DuckDBGsheetsConnector().details(src)  # pure — assert the real DDL shape
-    assert "read_gsheet(" in details["view_ddl"]
-    assert sheet_id in details["view_ddl"]
+    return Source(
+        id=source_id,
+        type=SourceType.google_sheets,
+        database=_FIXTURE_SHEET_ID,
+        mapping={"credentials_json": _CREDS_PATH},
+    )
 
+
+def _first_sheet_table(source):
+    # The one table the Register Table picker offers, named after the source: the first sheet.
+    return types.SimpleNamespace(
+        table_name=source.id,
+        schema_name="main",
+        landing_filter=None,
+        columns=[
+            types.SimpleNamespace(name="id", data_type="varchar", native_filter_type=None),
+            types.SimpleNamespace(name="name", data_type="varchar", native_filter_type=None),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_google_sheets_read_through_duckdb_engine(tmp_path, monkeypatch):
+    """DuckDB 2.0 has no gsheets build, so the DuckDB engine reads a sheet from its replica:
+    federate() resolves it MATERIALIZED, the replica build reads it through the Sheets reader
+    build_adapter_loaders wires, and the replica answers the query. gsheets is never loaded."""
+    import json
+
+    import duckdb
+    import pyarrow as pa
+
+    from provisa.events.app_wiring import build_adapter_loaders
+    from provisa.events.source_loader import SourceRowLoader
+    from provisa.federation.duckdb_extensions import (
+        MANIFEST,
+        _needs,
+        install_statements,
+        running_version_platform,
+    )
+    from provisa.federation.engine import build_engine, duckdb_engine_connectors
+    from provisa.federation.strategy import Strategy, federate
+
+    version, platform = running_version_platform()
+    assert version.lstrip("v").startswith("2."), f"the engine's DuckDB is {version}, not 2.x"
+
+    # The fact the route rests on: gsheets does not install on this DuckDB -- the statements the
+    # server runs at start (install_extension_set) are refused, as community-extensions answers
+    # HTTP 404 for a v2.0.0 gsheets build.
+    probe = duckdb.connect()
     try:
-        out = subprocess.run(
-            [sys.executable, "-c", _DUCKDB_READ_SCRIPT, sheet_id, src.id, _CREDS_PATH],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=True,
-        )
-    except subprocess.TimeoutExpired:
-        pytest.fail(
-            "DuckDB gsheets read_gsheet hung >90s — the gsheets extension did not accept the "
-            "service-account key_file secret non-interactively"
-        )
-    except subprocess.CalledProcessError as e:
-        pytest.fail(f"DuckDB gsheets read failed: {e.stderr.strip()[-400:]}")
+        with pytest.raises(duckdb.Error):
+            for statement in install_statements("gsheets", from_community=True):
+                probe.execute(statement)
+    finally:
+        probe.close()
 
-    result = [tuple(r) for r in json.loads(out.stdout.strip().splitlines()[-1])]
-    assert result == list(_WIDGETS)
+    # The server's extension set on this DuckDB: every extension the engine's connectors need,
+    # gsheets aside, staged for the running version and platform (REQ-1142, ATTACHABLE MEANS
+    # STAGED).
+    needed = {need for connector in duckdb_engine_connectors() for need in _needs(connector)}
+    staged = tmp_path / "ext" / version / platform
+    staged.mkdir(parents=True)
+    (staged / MANIFEST).write_text(
+        json.dumps(
+            {
+                "duckdb": version,
+                "platform": platform,
+                "extensions": sorted(needed - {"gsheets"}),
+            }
+        )
+    )
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path / "ext"))
+
+    engine = build_engine("duckdb")
+    source = _fixture_source("gsheets_itest")
+    table = _first_sheet_table(source)
+    assert engine.reachable("google_sheets")
+    assert not engine.connectors["google_sheets"].reads_in_place
+    assert federate(source, engine) is Strategy.MATERIALIZED
+
+    state = types.SimpleNamespace(config=types.SimpleNamespace(sources=[]))
+    loaders = build_adapter_loaders(state, engine)
+    assert "google_sheets" in loaders  # the Sheets reader, not an engine attach
+
+    columns = [("id", "text"), ("name", "text")]
+    replica_source = SourceRowLoader(engine, adapter_loaders=loaders).replica_source(
+        state, source, table, columns
+    )
+    landed = pa.Table.from_batches([b async for b in replica_source.batches(1000)])
+
+    replica = duckdb.connect()
+    try:
+        replica.register("landed", landed)
+        replica.execute(f'CREATE TABLE "{source.id}" AS SELECT * FROM landed')
+        replica.unregister("landed")
+        rows = replica.execute(f'SELECT id, name FROM "{source.id}" ORDER BY id').fetchall()
+        gsheets_loaded = replica.execute(
+            "SELECT count(*) FROM duckdb_extensions() WHERE extension_name = 'gsheets' AND loaded"
+        ).fetchone()[0]
+    finally:
+        replica.close()
+    assert rows == _WIDGETS
+    assert gsheets_loaded == 0
+
+
+@pytest.mark.asyncio
+async def test_google_sheets_lands_through_the_sheets_api():
+    """REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT: a Google Sheets source lands
+    through the Google Sheets API where the engine has no gsheets extension): the real loader
+    build_adapter_loaders wires reads the durable fixture sheet with values.batchGet, signed in
+    with the service account key as a source enters it (a path), into Arrow of the registered
+    column types -- what the landing path writes as the replica. No DuckDB extension is loaded."""
+    import pyarrow as pa
+
+    from provisa.events.sheets_reader import make_google_sheets_loader
+
+    source = _fixture_source("gsheets_land")
+    table = _first_sheet_table(source)
+    loader = make_google_sheets_loader()
+    reader = loader.replica_source(source, table, [("id", "text"), ("name", "text")])
+    landed = pa.Table.from_batches([b async for b in reader.batches(2)])
+    assert landed.schema.types == [pa.string(), pa.string()]
+    assert sorted(zip(landed.column("id").to_pylist(), landed.column("name").to_pylist())) == list(
+        _WIDGETS
+    )
+    rows = await loader(source, table)
+    assert sorted((r["id"], r["name"]) for r in rows) == list(_WIDGETS)
 
 
 if __name__ == "__main__":

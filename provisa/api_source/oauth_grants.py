@@ -14,7 +14,9 @@ Two kinds are exchanged here for the short-lived token a call is sent with:
 
 - an OAuth2 refresh token, a person's standing approval of a client (RFC 6749 section 6);
 - a Google service account reading as a named account of a Workspace domain that has delegated
-  to it: an assertion the account's key signs is exchanged for the token (RFC 7523).
+  to it: an assertion the account's key signs is exchanged for the token (RFC 7523);
+- a Google service account reading as itself, what a file shared with the account is read as
+  (:func:`service_account_token`, a Google Sheets source, REQ-1998).
 
 A token is kept in this process until shortly before the issuer says it lapses, and nowhere
 else. A credential the issuer refuses is a :class:`CredentialRefused` carrying the issuer's own
@@ -173,9 +175,9 @@ def _exchange(token_url: str, form: dict[str, str], credential: str) -> dict:
     return resp.json()
 
 
-def _service_account_key(auth: ApiAuthGoogleServiceAccount) -> dict:
+def _service_account_key(text: str) -> dict:
     try:
-        key = json.loads(resolve_secrets(auth.key))
+        key = json.loads(resolve_secrets(text))
     except ValueError:
         # The text is the credential, so the parser's message, which quotes it, is not passed on.
         raise ServiceAccountKeyInvalid("The service account key is not JSON") from None
@@ -188,20 +190,37 @@ def _service_account_key(auth: ApiAuthGoogleServiceAccount) -> dict:
 
 
 def _service_account_grant(auth: ApiAuthGoogleServiceAccount) -> str:
-    held_key = _held_key(auth.type, auth.key, auth.subject, " ".join(sorted(auth.scopes)))
+    return _signed_grant(auth.key, auth.subject, auth.scopes)
+
+
+def service_account_token(key: str, scopes: list[str]) -> str:
+    """The access token of the service account whose key (JSON, as Google issues it) is ``key``,
+    reading as itself under ``scopes``: what a file shared with the account is read with. Held
+    as :func:`access_token`'s are."""
+    return _signed_grant(key, None, scopes)
+
+
+def _signed_grant(key_text: str, subject: str | None, scopes: list[str]) -> str:
+    """The token an assertion signed with the key ``key_text`` is exchanged for: reading as
+    ``subject``, an account of a domain that delegated ``scopes`` to the service account, or,
+    with none, as the service account itself."""
+    held_key = _held_key(
+        "google_service_account", key_text, subject or "", " ".join(sorted(scopes))
+    )
     held = _held(held_key)
     if held is not None:
         return held
-    key = _service_account_key(auth)
+    key = _service_account_key(key_text)
     now = int(time.time())
     claims = {
         "iss": key["client_email"],
-        "sub": auth.subject,
-        "scope": " ".join(auth.scopes),
+        "scope": " ".join(scopes),
         "aud": key["token_uri"],
         "iat": now,
         "exp": now + _ASSERTION_LIFETIME,
     }
+    if subject is not None:
+        claims["sub"] = subject
     try:
         assertion = jwt.encode(claims, key["private_key"], algorithm="RS256")
     except (ValueError, TypeError, jwt.PyJWTError):
@@ -209,10 +228,11 @@ def _service_account_grant(auth: ApiAuthGoogleServiceAccount) -> str:
         raise ServiceAccountKeyInvalid(
             "The service account key's private_key is not a key an assertion can be signed with"
         ) from None
+    reading_as = subject if subject is not None else "itself"
     body = _exchange(
         key["token_uri"],
         {"grant_type": _JWT_BEARER, "assertion": assertion},
-        f"Service account {key['client_email']} reading as {auth.subject}",
+        f"Service account {key['client_email']} reading as {reading_as}",
     )
     _hold(
         held_key, body["access_token"], float(body["expires_in"]) if "expires_in" in body else None

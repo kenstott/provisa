@@ -38,7 +38,7 @@ import re
 import struct
 import threading
 import weakref
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -140,6 +140,37 @@ def _q(sql: str) -> QueryNoTemplate:
     """psycopg types its query parameter as a LiteralString to catch string-built SQL; this SQL is
     the governed pipeline's output with its values bound as parameters, not interpolated."""
     return cast(QueryNoTemplate, sql)
+
+
+def quoted_select(schema: str, table: str, names: list[str]) -> pg_sql.Composed:
+    """A read of ``names`` from ``schema.table``, every identifier quoted."""
+    return pg_sql.SQL("SELECT {} FROM {}.{}").format(
+        pg_sql.SQL(", ").join(pg_sql.Identifier(name) for name in names),
+        pg_sql.Identifier(schema),
+        pg_sql.Identifier(table),
+    )
+
+
+def stream_rows(
+    settings: dict[str, Any], query: pg_sql.Composed, batch_rows: int
+) -> Iterator[list[dict[str, Any]]]:
+    """The rows ``query`` reads from the Postgres-wire endpoint ``settings`` name, over a
+    connection of its own (outside the source pools; the endpoint need not be a PostgreSQL
+    server), ``batch_rows`` at a time as dicts keyed by column name; the connection is closed
+    however the iteration ends."""
+    with psycopg.connect(**settings) as conn:
+        cursor = conn.cursor()
+        names: list[str] = []
+        batch: list[dict[str, Any]] = []
+        for row in cursor.stream(query, size=batch_rows):
+            if not names:
+                names = [d.name for d in cursor.description or []]
+            batch.append(dict(zip(names, row)))
+            if len(batch) >= batch_rows:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
 
 def _wait_s(default: float) -> float:
