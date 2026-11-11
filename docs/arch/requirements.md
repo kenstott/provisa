@@ -26899,3 +26899,17 @@ Maintainer 2026-11-10, a future objective. Every connector is built on one of a 
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2236 · Protocol Conformance {#REQ-2236}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** structural
+
+Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL's answer on an engine that is not PostgreSQL is called a polyfill: a PostgreSQL feature an engine lacks, or holds differently, is supplied by Provisa so a PostgreSQL client gets PostgreSQL's behaviour unchanged. Each feature has a read polyfill -- how its values and operations are computed on the engine and returned -- and a write polyfill -- how its values reach the engine in literals, parameters, predicates and writes (INSERT, UPDATE). The code holds one grid, the single source of this knowledge, keyed by feature and engine: for each, the read polyfill and its limitations and the write polyfill and its limitations. A blank polyfill means the engine does it natively; a blank limitation means none; otherwise the limitation states each difference from PostgreSQL, or that the feature is refused, with the error a client sees. The translator takes its forms from the grid, so a polyfill exists exactly where the grid says it does. The documentation shows the same grid, generated from the code, never written by hand: per engine, column 1 the feature (for example array sorting), then the read polyfill, its limitations, the write polyfill, its limitations. The conformance runs check the grid: a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL is a failure, and so is a refusal or difference the grid does not state.
+
+**Use case:** A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by feature, what is native, what is polyfilled and how, and what differs or is refused, and that page cannot drift from what the product does.
+
+**Code:** —
+
+**Tests:** —
