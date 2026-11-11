@@ -94866,7 +94866,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source
     type (and, where it matters, its version or a setting) that either keeps an operation from being pushed
     to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
-    documentation lists it under that source as a known difference and its fix.'
+    documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY
+    CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above.
+    The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source
+    a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector''s
+    dialect has its rows and its page. What the grid does not cover is the second order: an engine reading
+    a source it attaches directly, pushing work into that source with the source''s semantics. That is the
+    combinatorial explosion, and it is handled by hints as bugs are found, as stated above.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
