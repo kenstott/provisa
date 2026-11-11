@@ -40,8 +40,9 @@ brand scale (theme.ts).
 | accent (hover, selection, focus) | brand-6 | brand-4 |
 
 Sizes: a node is 180px wide (an ERD table with columns grows in height, never in width), 44px
-tall with two lines. Name 11px weight 600; second line 9px uppercase. Edges are 1px. Group label
-10px uppercase, weight 700, letter-spaced.
+tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
+and the type's line share it; the type's line is uppercase). Edges are 1px. Group label 10px
+uppercase, weight 700.
 
 ## Nodes
 
@@ -68,16 +69,23 @@ tall with two lines. Name 11px weight 600; second line 9px uppercase. Edges are 
 ## Groups
 
 Dashed, lightly tinted boxes: a 1.5px dashed border in the group's hue at 55%, a 6% fill of the
-hue, the label uppercase on the top border. The hue is derived from the group's id (one hue per
-domain, everywhere). A collapsed group is drawn as a node of type `group`.
+hue, the label uppercase on the top border, on a canvas-coloured backing. The hue is derived from
+the group's id (one hue per domain, everywhere). A collapsed group keeps its box, empty, at its
+least size; lines to its members end on it, dashed. Under the lanes preset each lane is boxed and
+titled the same way.
 
 ## Canvas
 
 - A dot grid (CSS on the stage, 16px pitch), in the canvas token.
-- Controls bottom-left, always the same order: zoom in, zoom out, fit, full screen, download
-  (SVG, PNG, JPEG, and JSON where the view gives it). Shown on hover or keyboard focus.
-- One legend, bottom-right: the types drawn, each a band swatch, icon and name.
-- One hover state: the node hovered and everything connected lit (accent), the rest faded to 20%.
+- Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
+  screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
+  the view gives it. Shown on hover or keyboard focus.
+- One legend, top-right (clear of the application's floating buttons at the bottom-right): the
+  types drawn, each a band swatch, icon and name.
+- Top-left: what the view lays over the canvas (the ERD's tables new since a save), then the hint.
+- One hover state: the node hovered and what it brings forward lit (accent), the rest faded to
+  20%. What a node brings forward is its own lines and their ends, unless the view says more
+  (the lane diagram's paths along the lanes).
 - One selection state: a 2px accent border, a soft accent halo.
 - Focus (a view's named nodes): the selection's look, and fitted into view, never zoomed past 1.5.
 - A filter (a view's matches): matches in accent, the rest dimmed to 15%.
