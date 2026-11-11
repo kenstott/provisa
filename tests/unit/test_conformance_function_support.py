@@ -1865,8 +1865,8 @@ def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
         def __exit__(self, *_: Any) -> None:
             return None
 
-        def execute(self, sql: str) -> None:
-            statements.append(sql)
+        def execute(self, sql: bytes) -> None:
+            statements.append(sql.decode())
 
     monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
     monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
