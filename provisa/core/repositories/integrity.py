@@ -162,6 +162,8 @@ KINDS: dict[str, Kind] = {
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
     "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "ontology_import": Kind("glossary_ontology_imports", "id"),  # REQ-2237
+    "ontology_item": Kind("glossary_ontology_items", "id"),  # REQ-2237
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
 }
 
@@ -377,6 +379,16 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_drafts", "scan_id", "term_scan"),
     _link("glossary_term_drafts", "match_term_id", "glossary_term"),
     _link("glossary_term_drafts", "term_id", "glossary_term"),
+    # --- to an ontology import, and the terms it aligns ----------------------------------------
+    # REQ-2237: an import's items and alignments go with it, and an item's alignments with the
+    # item. An item outlives the term it became, as a draft does; a proposal to align with a term
+    # goes with the term, since there is nothing left to align with.
+    _part("glossary_ontology_items", "import_id", "ontology_import"),
+    _link("glossary_ontology_items", "term_id", "glossary_term"),
+    _part("glossary_ontology_alignments", "import_id", "ontology_import"),
+    _part("glossary_ontology_alignments", "item_id", "ontology_item"),
+    _part("glossary_ontology_alignments", "other_item_id", "ontology_item"),
+    _part("glossary_ontology_alignments", "term_id", "glossary_term"),
 )
 
 
