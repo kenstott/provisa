@@ -1250,3 +1250,25 @@ def test_every_odbc_install_goes_through_the_one_action_that_refreshes_only_micr
         assert "msodbcsql18" not in path.read_text(), path.name
     users = [p.name for p in WORKFLOWS if "./.github/actions/mssql-odbc" in p.read_text()]
     assert users, "no workflow uses the mssql-odbc action"
+
+
+def test_no_workflow_or_action_installs_playwright_with_a_full_apt_refresh():
+    """`playwright install --with-deps` runs a full `apt-get update`, which fails (apt exit 100)
+    when an Ubuntu mirror is unreachable. The runner image carries Chromium's system libraries,
+    so every install is plain `playwright install chromium`, through the setup-ui action."""
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for line in path.read_text().splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            assert "--with-deps" not in line or "playwright" not in line, f"{path.name}: {line}"
+        assert "chromium-with-deps" not in path.read_text(), path.name
+    action = yaml.safe_load((REPO / ".github" / "actions" / "setup-ui" / "action.yml").read_text())
+    commands = [s["run"] for s in action["runs"]["steps"] if "playwright" in s.get("run", "")]
+    assert commands == ["npx playwright install chromium"]
+
+
+@pytest.mark.parametrize("name", ["ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml"])
+def test_the_trino_and_swap_ui_lanes_install_plain_chromium(name):
+    body = yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
+    (job,) = body["jobs"].values()
+    assert job["with"]["ui"] == "chromium"

@@ -69,7 +69,7 @@ jobs:
       # its 6-service amd64 cold boot, on top of pinot/hive_s3/hive's own 300s-per-test budgets,
       # and the single worker runs every spec file serially (REQ-1763 amendment).
       timeout: 150
-      ui: chromium-with-deps
+      ui: chromium
       # CI: every webServer is started by the harness. PROVISA_E2E_LANE=trino declares the Trino
       # webServer and keeps the control plane on the compose Postgres. PG_PORT / TRINO_PORT pin
       # what docker-compose.core.yml publishes so playwright.config.ts's `docker compose port`
