@@ -1150,11 +1150,8 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.audit.sla_monitor import register_org_sla
 
         register_org_sla(scheduler, org_id)
-        # REQ-2077: and its role grants, swept of the expired and the unused.
-        from provisa.auth.role_grants import register_org_role_grants
-
-        register_org_role_grants(scheduler, org_id)
-        # REQ-2219: and its entitlement expiry rules, each's expiring-soon and expired events.
+        # REQ-2077, REQ-2219: and its one expiry run: role grants swept of the expired and the
+        # unused, each entitlement entry's expiring-soon and expired events, one notice for both.
         from provisa.entitlements.expiry_run import register_org as register_org_expiry_run
 
         register_org_expiry_run(scheduler, org_id)

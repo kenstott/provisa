@@ -273,9 +273,9 @@ async def test_kinds_names_the_kind_that_scopes_each_capability(api):
 
 
 async def test_kinds_carries_the_expiring_soon_threshold(api, monkeypatch):
-    # REQ-2219: the expiring-soon event's own setting, which the UI highlights by.
+    # REQ-2077, REQ-2219: the one expiring-soon setting, for a grant and its entries.
     assert (await _kinds(api))["expiring_soon_days"] == 7
-    monkeypatch.setenv("PROVISA_ENTITLEMENT_EXPIRING_SOON_DAYS", "3")
+    monkeypatch.setenv("PROVISA_GRANT_NOTICE_DAYS", "3")
     assert (await _kinds(api))["expiring_soon_days"] == 3
 
 
