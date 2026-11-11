@@ -1902,13 +1902,24 @@ def _numeric_rules(want: str, got: str) -> Rules:
         return None
 
 
+def _union(found: Iterable[Rules]) -> Rules:
+    """The rules every part needed, or None when any part differs."""
+    parts = list(found)
+    rules: frozenset[str] = frozenset()
+    for part in parts:
+        if part is None:
+            return None
+        rules |= part
+    return rules
+
+
 def _array_rules(want: str, got: str, element: Callable[[str, str], Rules]) -> Rules:
     """An array of numbers, element by element."""
     a, b = want.strip("{}").split(","), got.strip("{}").split(",")
     if len(a) != len(b):
         return None
     found = [_SAME if x == y else element(x, y) for x, y in zip(a, b, strict=True)]
-    return None if None in found else frozenset().union(*found)
+    return _union(found)
 
 
 def _unmatched(want: Iterable, got: Iterable, same: Callable) -> tuple[list, list]:
@@ -1943,14 +1954,12 @@ def _parsed_rules(a: Any, b: Any) -> Rules:
         if a.keys() != b.keys():
             return None
         found = [_parsed_rules(a[key], b[key]) for key in a]
-        if None in found:
-            return None
-        return frozenset().union(*found, {JSON_KEY_ORDER} if list(a) != list(b) else ())
+        return _union([*found, frozenset({JSON_KEY_ORDER}) if list(a) != list(b) else frozenset()])
     if isinstance(a, list):
         if len(a) != len(b):
             return None
         found = list(map(_parsed_rules, a, b))
-        return None if None in found else frozenset().union(*found)
+        return _union(found)
     return _SAME if a == b else None
 
 
@@ -2220,7 +2229,7 @@ def compare(
 
     def row_rules(x: tuple, y: tuple) -> Rules:
         found = [value(wv, gv, oid) for wv, gv, oid in zip(x, y, fields, strict=True)]
-        return None if None in found else frozenset().union(*found)
+        return _union(found)
 
     def order(row: tuple) -> list[tuple[bool, str]]:
         return [(value_ is None, value_ or "") for value_ in row]
@@ -3336,12 +3345,12 @@ def seed_columns(pg_dsn: str, out: Path) -> None:
     columns = [(sample_column(t), t) for t in types]
     declared = ", ".join(["id integer", *(f"{name} {typ}" for name, typ in columns)])
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog.FIXTURE_SCHEMA}")
-        conn.execute(f"DROP TABLE IF EXISTS {COLUMN_RELATION}")
-        conn.execute(f"CREATE TABLE {COLUMN_RELATION} ({declared})")
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog.FIXTURE_SCHEMA}".encode())
+        conn.execute(f"DROP TABLE IF EXISTS {COLUMN_RELATION}".encode())
+        conn.execute(f"CREATE TABLE {COLUMN_RELATION} ({declared})".encode())
         for row in range(VALUE_ROWS):
             values = [str(row + 1), *(_cast(SAMPLES[t][row], t) for t in types)]
-            conn.execute(f"INSERT INTO {COLUMN_RELATION} VALUES ({', '.join(values)})")
+            conn.execute(f"INSERT INTO {COLUMN_RELATION} VALUES ({', '.join(values)})".encode())
     registered = catalog.registered_columns(
         [("id", "integer"), *columns],
         lambda column: catalog._sized_numeric(pg_dsn, column, COLUMN_TABLE),
@@ -3906,8 +3915,14 @@ def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:
     return 1 if doc["engines_incomplete"] else 0
 
 
+def _doc() -> str:
+    if __doc__ is None:
+        raise RuntimeError("function_support has no module docstring")
+    return __doc__
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=_doc().split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     m = sub.add_parser("measure")
     m.add_argument("--engine", required=True)
