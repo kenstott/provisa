@@ -87,20 +87,21 @@
         </p>
         <p>
           Four runtimes implement the contract, one each for Node, Python, Go and Rust. On those
-          runtimes sit a handful of bases: OpenAPI and REST, GraphQL, gRPC, OData, and files. A
+          runtimes sit a handful of bases: OpenAPI and REST, GraphQL, gRPC and OData. A
           named source such as Stripe or Jira is one of those bases plus a short configuration
           giving its URL, how it signs in and a few fixed values. Hand-built connectors are
           kept for the few sources whose logic fits no base.
         </p>
         <p>
-          The SQL family is the other root. PostgreSQL, Snowflake, Oracle and their relatives
-          already speak SQL, and the query engines read them natively with no runtime in between.
+          The other root is everything the query engines read natively, with no runtime in between:
+          SQL databases and warehouses, files and lakes such as Parquet, Delta and Iceberg, and stores
+          like MongoDB, Kafka and Elasticsearch.
         </p>
 
         <figure class="tree" aria-labelledby="tree-cap">
           <svg viewBox="0 0 340 472" role="img" aria-labelledby="tree-title tree-desc">
             <title id="tree-title">The connector tree</title>
-            <desc id="tree-desc">One source contract is implemented by four runtimes: Node, Python, Go and Rust. The bases (OpenAPI and REST, GraphQL, gRPC, OData, files) are built on those runtimes, and named sources are built on the bases. Your own code sits directly on a runtime. The SQL family is a second root, read natively by the query engines, with PostgreSQL, Snowflake, Oracle and BigQuery beneath it.</desc>
+            <desc id="tree-desc">One source contract is implemented by four runtimes: Node, Python, Go and Rust. The bases (OpenAPI and REST, GraphQL, gRPC, OData) are built on those runtimes, and named sources are built on the bases. Your own code sits directly on a runtime. A second root is what the query engines read natively: SQL databases, files and lakes, and native stores.</desc>
 
             <rect class="n-root" x="50" y="4" width="240" height="46" rx="10" />
             <text class="t-b" x="170" y="24" text-anchor="middle">One source contract</text>
@@ -125,12 +126,10 @@
             <rect class="chip" x="132" y="170" width="68" height="26" rx="13" />
             <rect class="chip" x="208" y="170" width="46" height="26" rx="13" />
             <rect class="chip" x="12" y="204" width="58" height="26" rx="13" />
-            <rect class="chip" x="78" y="204" width="52" height="26" rx="13" />
             <text class="t-s" x="68" y="187" text-anchor="middle">OpenAPI · REST</text>
             <text class="t-s" x="166" y="187" text-anchor="middle">GraphQL</text>
             <text class="t-s" x="231" y="187" text-anchor="middle">gRPC</text>
             <text class="t-s" x="41" y="221" text-anchor="middle">OData</text>
-            <text class="t-s" x="104" y="221" text-anchor="middle">Files</text>
 
             <rect class="n-own" x="271" y="144" width="62" height="96" rx="12" />
             <text class="t-s" x="302" y="184" text-anchor="middle">Your</text>
@@ -146,14 +145,14 @@
             <text class="t-k" x="170" y="356" text-anchor="middle">THE OTHER ROOT</text>
 
             <rect class="n-sql" x="50" y="368" width="240" height="46" rx="10" />
-            <text class="t-b" x="170" y="388" text-anchor="middle">SQL family</text>
-            <text class="t-m" x="170" y="405" text-anchor="middle">read natively by the query engines</text>
+            <text class="t-b" x="170" y="388" text-anchor="middle">Read natively</text>
+            <text class="t-m" x="170" y="405" text-anchor="middle">by the query engines</text>
 
             <path class="e" d="M170 414V428" />
             <rect class="n" x="2" y="428" width="336" height="40" rx="10" />
-            <text class="t-m" x="170" y="453" text-anchor="middle">PostgreSQL · Snowflake · Oracle · BigQuery · …</text>
+            <text class="t-m" x="170" y="453" text-anchor="middle">PostgreSQL · Snowflake · Parquet · Iceberg · MongoDB · …</text>
           </svg>
-          <figcaption id="tree-cap">One contract, four runtimes, a handful of bases, then the named sources. The SQL family is the other root.</figcaption>
+          <figcaption id="tree-cap">One contract, four runtimes, a handful of bases, then the named sources. What the engines read natively is the other root.</figcaption>
         </figure>
 
         <h2 id="conformance">Every connector inherits its base's tests</h2>
