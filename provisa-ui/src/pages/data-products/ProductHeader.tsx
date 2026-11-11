@@ -146,6 +146,11 @@ export function ProductHeader({
           <Empty text={t("dataProductsTab.tablesEmpty")} />
         )}
         {outputTables.length > 0 && (
+          <Text size="xs" c="dimmed">
+            {t("dataProductsTab.tablesLabel")}
+          </Text>
+        )}
+        {outputTables.length > 0 && (
           <List size="sm" data-testid={`data-product-detail-graphql-queries-${product.id}`}>
             {outputTables.map((tb) => {
               const graphql = graphqlExample(reader, tb);
@@ -220,11 +225,10 @@ export function ProductHeader({
         )}
       </Stack>
       {/* Every value of the product: the read view shows them all. */}
-      <Collapsibles id="data-product.header">
+      <Collapsibles id="data-product.header" testId={`data-product-card-details-${product.id}`}>
         <CollapsibleItem
           value="details"
           defaultOpen={false}
-          testId={`data-product-card-details-${product.id}`}
           controlTestId={`data-product-card-details-${product.id}-toggle`}
           title={
             <Text size="sm" fw={500}>

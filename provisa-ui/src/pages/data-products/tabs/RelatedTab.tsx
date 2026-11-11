@@ -26,6 +26,7 @@ import { ClampedDetail } from "../ClampedDetail";
 import { ConsumersList } from "../dataProductDq";
 import { Empty, Muted } from "../DetailCard";
 import { modelName, type CoreEdge, type ProductCore } from "../productCore";
+import { LineagePending } from "./LineagePending";
 
 /** A product sharing one or more of this product's datasets. */
 export interface SharingProduct {
@@ -64,6 +65,8 @@ export function RelatedTab({
   canEdit,
   seesConsumers,
   lineageGraph,
+  lineageLoading,
+  lineageError,
   sharing,
   relationships,
   onTagsChanged,
@@ -74,6 +77,8 @@ export function RelatedTab({
   canEdit: boolean;
   seesConsumers: boolean;
   lineageGraph: ProductLineage | null;
+  lineageLoading: boolean;
+  lineageError: string;
   sharing: SharingProduct[];
   relationships: Relationship[];
   onTagsChanged: () => void;
@@ -189,14 +194,16 @@ export function RelatedTab({
               ))}
             </List>
           )}
-          {/* REQ-2174: the ontology, focused on the product. */}
-          <OntologySnippet
-            preset={productPreset(productId)}
-            name={core.product.name}
-            testId="graph-panel"
-          />
         </Section>
       )}
+      {/* REQ-2174: the ontology, focused on the product: the terms it reaches and beyond. */}
+      <Section testId={`data-product-card-graph-${productId}`} label={t("graph3d.panelTitle")}>
+        <OntologySnippet
+          preset={productPreset(productId)}
+          name={core.product.name}
+          testId="graph-panel"
+        />
+      </Section>
       {core.tags !== undefined && (
         <Section testId={`data-product-card-tags-${productId}`} label={t("dataProductCore.tags")}>
           {canEdit ? (
@@ -237,16 +244,23 @@ export function RelatedTab({
         </Section>
       )}
       {/* REQ-2160, REQ-2219: who reads the product, one hop downstream; its owner's alone. */}
-      {seesConsumers && lineageGraph && (
+      {seesConsumers && (
         <Section
           testId={`data-product-card-consumers-${productId}`}
           label={t("dataProductCore.consumers")}
         >
-          <ConsumersList
-            consumers={lineageGraph.consumers}
-            ports={core.tables}
-            testId={`data-product-detail-consumers-${productId}`}
-          />
+          <Text size="xs" c="dimmed">
+            {t("dataProductCore.consumersHint")}
+          </Text>
+          {lineageGraph ? (
+            <ConsumersList
+              consumers={lineageGraph.consumers}
+              ports={core.tables}
+              testId={`data-product-detail-consumers-${productId}`}
+            />
+          ) : (
+            <LineagePending loading={lineageLoading} error={lineageError} />
+          )}
         </Section>
       )}
       {outputTables.length > 0 && (

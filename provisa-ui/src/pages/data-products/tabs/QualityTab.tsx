@@ -27,6 +27,7 @@ import { COLOR, dqStatus } from "../dataProductClaims";
 import { DqRulesModal } from "../DqRulesModal";
 import { modelName, restModelName, type CoreTable } from "../productCore";
 import { sqlExample, type TableRef } from "../tableExamples";
+import { LineagePending, OwnerOnlyList } from "./LineagePending";
 
 /** REQ-2157: the data quality section's rows, in order. */
 const DQ_ROWS = ["expectations", "promises", "related"] as const;
@@ -36,6 +37,8 @@ export function QualityTab({
   owner,
   dq,
   lineageGraph,
+  lineageLoading,
+  lineageError,
   outputTables,
   dqTables,
 }: {
@@ -43,6 +46,8 @@ export function QualityTab({
   owner: boolean;
   dq: ProductDq | undefined;
   lineageGraph: ProductLineage | null;
+  lineageLoading: boolean;
+  lineageError: string;
   outputTables: CoreTable[] | undefined;
   dqTables: CoreTable[] | undefined;
 }) {
@@ -139,117 +144,130 @@ export function QualityTab({
     );
   };
 
-  if (!dq) {
+  /** The product's checks and their latest results. */
+  const dqChecks = () => {
+    if (!dq) return null;
     return (
-      <Text size="sm" c="dimmed" data-testid={`data-product-quality-pending-${productId}`}>
-        {t("dataProductsTab.detail.lineageLoading")}
-      </Text>
-    );
-  }
-  return (
-    <Stack gap="sm" data-testid={`data-product-card-dataQuality-${productId}`}>
-      <Text size="xs" c="dimmed">
-        {t("dataProductsTab.detail.dataQualityHint")}
-      </Text>
-      {/* REQ-2132: the product's promises, the checks it makes on its tables. */}
-      <ClaimsCallout
-        kind="promises"
-        checks={dq.promises}
-        testId={`data-product-detail-promises-${productId}`}
-      />
-      {outputTables !== undefined && outputTables.length > 0 && (
-        <List size="sm" data-testid={`data-product-detail-tables-${productId}`}>
-          {outputTables.map((tb) => (
-            <List.Item key={tb.id} ff="monospace">
-              {modelName(tb)}
-              <DqIcon
-                checks={dq.promises}
-                tableId={tb.id}
-                testId={`data-product-detail-port-dq-${tb.id}`}
-              />
-            </List.Item>
-          ))}
-        </List>
-      )}
-      {shownDqRows.every((row) => dq[row].length === 0) &&
-      (!owner || dq.unattached.length === 0) ? (
-        <Text size="sm" c="dimmed">
-          {t("dataProductsTab.detail.dataQualityEmpty")}
+      <Stack gap="sm" data-testid={`data-product-card-dataQuality-${productId}`}>
+        <Text size="xs" c="dimmed">
+          {t("dataProductsTab.detail.dataQualityHint")}
         </Text>
-      ) : (
-        // REQ-2157: three expandable rows -- the product's expectations on its inputs, its
-        // promises on its members, and the related checks others make on either.
-        <div data-testid={`data-product-detail-dq-tables-${productId}`}>
-          <Collapsibles id="data-product.dq-rows">
-            {shownDqRows.map((row) => {
-              const status = dqStatus(dq[row]);
-              return (
-                <CollapsibleItem
-                  key={row}
-                  value={row}
-                  testId={`data-product-detail-dq-${row}-${productId}`}
-                  controlTestId={`data-product-detail-dq-${row}-${productId}-toggle`}
-                  title={
-                    <Group gap={6} wrap="nowrap">
-                      <Text size="sm" fw={500}>
-                        {t(`dataProductCore.dqRow_${row}`)}
-                      </Text>
-                      <Badge size="sm" variant="light" color="gray">
-                        {dq[row].length}
-                      </Badge>
-                      {status && (
-                        <Badge size="sm" variant="light" color={COLOR[status]}>
-                          {t(`dataProductCore.status_${status}`)}
-                        </Badge>
-                      )}
-                    </Group>
-                  }
-                >
-                  {dq[row].length === 0 ? (
-                    <Text size="sm" c="dimmed">
-                      {t("dataProductCore.dqRowEmpty")}
-                    </Text>
-                  ) : (
-                    <List size="sm">{dq[row].map((c) => dqItem(c, row === "related"))}</List>
-                  )}
-                </CollapsibleItem>
-              );
-            })}
-          </Collapsibles>
-        </div>
-      )}
-      {/* The product's own checks that scan neither an input nor a member: the owner's. */}
-      {(owner ? dq.unattached : []).map((c) => (
-        <Alert
-          key={c.checker_table_id}
-          color="yellow"
-          title={t("dataProductCore.orphan")}
-          data-testid={`data-product-detail-dq-${productId}-orphan-${c.checker_table_id}`}
-        >
-          {t("dataProductCore.orphanWarning", {
-            checker: restModelName(c),
-            table: restModelName(c.checked_table),
-          })}
-        </Alert>
-      ))}
-      {/* REQ-2126, REQ-2132: the owner's inputs and its expectations of them. */}
-      {owner && lineageGraph && (
-        <Stack gap={4} data-testid={`data-product-card-inputPorts-${productId}`}>
-          <Text size="sm" fw={500}>
-            {t("dataProductsTab.detail.field.inputPorts")}
+        {/* REQ-2132: the product's promises, the checks it makes on its tables. */}
+        <ClaimsCallout
+          kind="promises"
+          checks={dq.promises}
+          testId={`data-product-detail-promises-${productId}`}
+        />
+        {outputTables !== undefined && outputTables.length > 0 && (
+          <List size="sm" data-testid={`data-product-detail-tables-${productId}`}>
+            {outputTables.map((tb) => (
+              <List.Item key={tb.id} ff="monospace">
+                {modelName(tb)}
+                <DqIcon
+                  checks={dq.promises}
+                  tableId={tb.id}
+                  testId={`data-product-detail-port-dq-${tb.id}`}
+                />
+              </List.Item>
+            ))}
+          </List>
+        )}
+        {shownDqRows.every((row) => dq[row].length === 0) &&
+        (!owner || dq.unattached.length === 0) ? (
+          <Text size="sm" c="dimmed">
+            {t("dataProductsTab.detail.dataQualityEmpty")}
           </Text>
-          <ClaimsCallout
-            kind="expectations"
-            checks={lineageGraph.dq.expectations}
-            testId={`data-product-detail-expectations-${productId}`}
-          />
-          <InputsList
-            inputs={lineageGraph.inputs}
-            expectations={lineageGraph.dq.expectations}
-            testId={`data-product-detail-inputs-${productId}`}
-          />
-        </Stack>
-      )}
+        ) : (
+          // REQ-2157: three expandable rows -- the product's expectations on its inputs, its
+          // promises on its members, and the related checks others make on either.
+          <div data-testid={`data-product-detail-dq-tables-${productId}`}>
+            <Collapsibles id="data-product.dq-rows">
+              {shownDqRows.map((row) => {
+                const status = dqStatus(dq[row]);
+                return (
+                  <CollapsibleItem
+                    key={row}
+                    value={row}
+                    testId={`data-product-detail-dq-${row}-${productId}`}
+                    controlTestId={`data-product-detail-dq-${row}-${productId}-toggle`}
+                    title={
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm" fw={500}>
+                          {t(`dataProductCore.dqRow_${row}`)}
+                        </Text>
+                        <Badge size="sm" variant="light" color="gray">
+                          {dq[row].length}
+                        </Badge>
+                        {status && (
+                          <Badge size="sm" variant="light" color={COLOR[status]}>
+                            {t(`dataProductCore.status_${status}`)}
+                          </Badge>
+                        )}
+                      </Group>
+                    }
+                  >
+                    {dq[row].length === 0 ? (
+                      <Text size="sm" c="dimmed">
+                        {t("dataProductCore.dqRowEmpty")}
+                      </Text>
+                    ) : (
+                      <List size="sm">{dq[row].map((c) => dqItem(c, row === "related"))}</List>
+                    )}
+                  </CollapsibleItem>
+                );
+              })}
+            </Collapsibles>
+          </div>
+        )}
+        {/* The product's own checks that scan neither an input nor a member: the owner's. */}
+        {(owner ? dq.unattached : []).map((c) => (
+          <Alert
+            key={c.checker_table_id}
+            color="yellow"
+            title={t("dataProductCore.orphan")}
+            data-testid={`data-product-detail-dq-${productId}-orphan-${c.checker_table_id}`}
+          >
+            {t("dataProductCore.orphanWarning", {
+              checker: restModelName(c),
+              table: restModelName(c.checked_table),
+            })}
+          </Alert>
+        ))}
+      </Stack>
+    );
+  };
+
+  return (
+    <Stack gap="md" data-testid={`data-product-quality-${productId}`}>
+      {dq ? dqChecks() : <LineagePending loading={lineageLoading} error={lineageError} />}
+      {/* REQ-2126, REQ-2132, REQ-2160: the inputs and the product's expectations of them, always
+          shown: the owner's list, or whose it is. */}
+      <Stack gap={4} data-testid={`data-product-card-inputPorts-${productId}`}>
+        <Text size="sm" fw={500}>
+          {t("dataProductsTab.detail.field.inputPorts")}
+        </Text>
+        <Text size="xs" c="dimmed">
+          {t("dataProductCore.inputsHint")}
+        </Text>
+        {!owner ? (
+          <OwnerOnlyList />
+        ) : lineageGraph ? (
+          <>
+            <ClaimsCallout
+              kind="expectations"
+              checks={lineageGraph.dq.expectations}
+              testId={`data-product-detail-expectations-${productId}`}
+            />
+            <InputsList
+              inputs={lineageGraph.inputs}
+              expectations={lineageGraph.dq.expectations}
+              testId={`data-product-detail-inputs-${productId}`}
+            />
+          </>
+        ) : (
+          <LineagePending loading={lineageLoading} error={lineageError} />
+        )}
+      </Stack>
       {/* REQ-1934: the owner adds checks on each dataset's profile from the tables page's bar. */}
       {owner && outputTables !== undefined && outputTables.length > 0 && (
         <Collapsibles id={`data-product.profile-checks.${productId}`}>

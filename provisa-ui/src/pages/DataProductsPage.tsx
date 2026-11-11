@@ -107,7 +107,7 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  const { selectedRoles, availableRoles } = useAuth();
+  const { selectedRoles, availableRoles, actingRoles } = useAuth();
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
@@ -511,6 +511,7 @@ export function DataProductsPage() {
         tables={tables}
         sharing={sharingOf(selectedProduct.id)}
         relationships={relationships}
+        actingRole={actingRoles}
         editForm={editingId === selectedProduct.id ? formCard : undefined}
         onTagsChanged={() => setCoreVersion((v) => v + 1)}
         onEdit={(focus) => openEdit(selectedProduct, focus)}

@@ -43,7 +43,6 @@ import { RelatedTab, type SharingProduct } from "./tabs/RelatedTab";
 import { RequestsTab } from "./tabs/RequestsTab";
 import { PRODUCT_TABS, type ProductTab } from "./tabs/productTabs";
 import { TablePreviewPane } from "../tables/TablePreviewPane";
-import { useAuth } from "../../context/AuthContext";
 
 
 interface DataProductDetailPanelProps {
@@ -77,6 +76,8 @@ interface DataProductDetailPanelProps {
   sharing?: SharingProduct[];
   /** The model's relationships, for each dataset's associations. */
   relationships?: Relationship[];
+  /** The role (or roles) the reader acts as: a preview's rows and the profile are read as it. */
+  actingRole?: string | null;
   /** The edit form, in place of the header's values while the product is edited; the tabs stay. */
   editForm?: ReactNode;
   /** REQ-1634: a tag was put on the product or taken off; its core is read again. */
@@ -97,6 +98,9 @@ interface DataProductDetailPanelProps {
   statusActions: DataProductStatus;
 }
 
+/** A tab keeps its content inside it: what cannot wrap scrolls within the tab. */
+const TAB_BODY = { overflowX: "auto", overflowWrap: "anywhere" } as const;
+
 export function DataProductDetailPanel({
   p,
   core,
@@ -113,6 +117,7 @@ export function DataProductDetailPanel({
   tables = [],
   sharing = [],
   relationships = [],
+  actingRole = null,
   editForm,
   onTagsChanged,
   onEdit,
@@ -127,7 +132,6 @@ export function DataProductDetailPanel({
 }: DataProductDetailPanelProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { actingRoles } = useAuth();
   const [tab, setTab] = useState<ProductTab>("offers");
   // A dataset whose rows are looked at, in place of the tabs.
   const [preview, setPreview] = useState<ListedTable | null>(null);
@@ -259,7 +263,7 @@ export function DataProductDetailPanel({
     return (
       <div className="split-pane__fill" data-testid={`data-product-preview-${p.id}`}>
         {actions}
-        <TablePreviewPane table={preview} role={actingRoles} onBack={() => setPreview(null)} />
+        <TablePreviewPane table={preview} role={actingRole} onBack={() => setPreview(null)} />
       </div>
     );
   }
@@ -277,7 +281,7 @@ export function DataProductDetailPanel({
             </Tabs.Tab>
           ))}
         </Tabs.List>
-        <Tabs.Panel value="offers" pt="sm">
+        <Tabs.Panel value="offers" pt="sm" style={TAB_BODY}>
           <OffersTab
             productId={p.id}
             owner={owner}
@@ -290,20 +294,22 @@ export function DataProductDetailPanel({
             onBid={() => setBids((n) => n + 1)}
           />
         </Tabs.Panel>
-        <Tabs.Panel value="quality" pt="sm">
+        <Tabs.Panel value="quality" pt="sm" style={TAB_BODY}>
           <QualityTab
             productId={p.id}
             owner={owner}
             dq={lineageGraph?.dq}
             lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
             outputTables={outputTables}
             dqTables={dqTables}
           />
         </Tabs.Panel>
-        <Tabs.Panel value="profile" pt="sm">
-          <ProfileTab productId={p.id} owner={owner} />
+        <Tabs.Panel value="profile" pt="sm" style={TAB_BODY}>
+          <ProfileTab productId={p.id} owner={owner} role={actingRole} />
         </Tabs.Panel>
-        <Tabs.Panel value="lineage" pt="sm">
+        <Tabs.Panel value="lineage" pt="sm" style={TAB_BODY}>
           <LineageTab
             productId={p.id}
             loading={lineageLoading}
@@ -312,13 +318,15 @@ export function DataProductDetailPanel({
             relationLabel={relationLabel}
           />
         </Tabs.Panel>
-        <Tabs.Panel value="related" pt="sm">
+        <Tabs.Panel value="related" pt="sm" style={TAB_BODY}>
           <RelatedTab
             productId={p.id}
             core={core}
             canEdit={canEdit}
             seesConsumers={seesConsumers}
             lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
             sharing={sharing}
             relationships={relationships}
             onTagsChanged={onTagsChanged}
@@ -326,7 +334,7 @@ export function DataProductDetailPanel({
           />
         </Tabs.Panel>
         {owner && (
-          <Tabs.Panel value="requests" pt="sm">
+          <Tabs.Panel value="requests" pt="sm" style={TAB_BODY}>
             <RequestsTab key={bids} productId={p.id} datasets={datasets} />
           </Tabs.Panel>
         )}

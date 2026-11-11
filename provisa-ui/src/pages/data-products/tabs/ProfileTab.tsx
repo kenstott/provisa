@@ -17,20 +17,27 @@ import { useTranslation } from "react-i18next";
 import { Alert, Loader, Text } from "@mantine/core";
 import { fetchProductProfiles, type ProductProfile } from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
-import { useAuth } from "../../../context/AuthContext";
 import { SanitizedProfilePanel } from "../../tables/LatestProfilePanel";
 
-export function ProfileTab({ productId, owner }: { productId: string; owner: boolean }) {
+export function ProfileTab({
+  productId,
+  owner,
+  role,
+}: {
+  productId: string;
+  owner: boolean;
+  /** The role the profile is shown as; none acting, nothing is read. */
+  role: string | null;
+}) {
   const { t } = useTranslation();
-  const { actingRoles } = useAuth();
   const [read, setRead] = useState<{ profiles: ProductProfile[] | null; error: string | null }>({
     profiles: null,
     error: null,
   });
   useEffect(() => {
-    if (!actingRoles) return;
+    if (!role) return;
     let live = true;
-    fetchProductProfiles(productId, actingRoles).then(
+    fetchProductProfiles(productId, role).then(
       (profiles) => live && setRead({ profiles, error: null }),
       (e: unknown) =>
         live && setRead({ profiles: null, error: e instanceof Error ? e.message : String(e) }),
@@ -38,7 +45,7 @@ export function ProfileTab({ productId, owner }: { productId: string; owner: boo
     return () => {
       live = false;
     };
-  }, [productId, actingRoles]);
+  }, [productId, role]);
 
   if (read.error) {
     return (
