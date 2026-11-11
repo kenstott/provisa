@@ -7,10 +7,16 @@ description: >-
   Bounded: core 2/6 once sat in this install for its whole job (run 37690884511). Each transfer
   gives up and is retried, apt waits a bounded time for the lock; the caller bounds the step
   (`timeout-minutes` cannot be set inside a composite action).
+
+  Survives an Ubuntu archive outage (runs 43056312618, 43059293707 timed out fetching unixodbc,
+  odbcinst, libodbc2 from the mirrors): the .deb set (msodbcsql18 and its dependency closure) is
+  cached, keyed on the package versions. A hit installs from the cached files with dpkg, no
+  network. A miss downloads, installs and saves. A failed install stays a failure.
 runs:
   using: composite
   steps:
-    - name: Install Microsoft ODBC Driver 18 for SQL Server
+    - name: Resolve the msodbcsql18 package set
+      id: resolve
       shell: bash
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -35,5 +41,52 @@ runs:
           -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/mssql-release.list \
           -o Dir::Etc::sourceparts=- \
           -o APT::Get::List-Cleanup=0
+        # The closure, simulated against the local lists (no download): every package the install
+        # would unpack, name=version. The cache key hashes it, so a new msodbcsql18 or a new
+        # dependency version is a new key.
+        sudo ACCEPT_EULA=Y apt-get $APT_OPTS install -s -q msodbcsql18 unixodbc-dev \
+          | awk '/^Inst /{v=$3; sub(/^\(/, "", v); print $2 "=" v}' | sort > "$RUNNER_TEMP/odbc-closure.txt"
+        msodbc_version="$(apt-cache policy msodbcsql18 | awk '/Candidate:/{print $2}')"
+        test -n "$msodbc_version"
+        grep -q '^msodbcsql18=' "$RUNNER_TEMP/odbc-closure.txt"
+        deps_hash="$(sha256sum "$RUNNER_TEMP/odbc-closure.txt" | cut -c1-16)"
+        echo "msodbcsql18 $msodbc_version; closure:"
+        cat "$RUNNER_TEMP/odbc-closure.txt"
+        echo "key=mssql-odbc-debs-$(lsb_release -rs)-$(dpkg --print-architecture)-msodbcsql18-${msodbc_version}-deps-${deps_hash}" >> "$GITHUB_OUTPUT"
+        echo "dir=$RUNNER_TEMP/odbc-debs" >> "$GITHUB_OUTPUT"
+
+    - name: Cache the msodbcsql18 .deb set
+      id: debs
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.resolve.outputs.dir }}
+        key: ${{ steps.resolve.outputs.key }}
+
+    - name: Install Microsoft ODBC Driver 18 from the cached .debs
+      if: steps.debs.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        DEB_DIR: ${{ steps.resolve.outputs.dir }}
+      run: |
+        set -euo pipefail
+        # Offline: dpkg unpacks and configures the whole set together, nothing is fetched.
+        sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive dpkg -i "$DEB_DIR"/*.deb
+        odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+
+    - name: Install Microsoft ODBC Driver 18 for SQL Server
+      if: steps.debs.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        APT_OPTS: -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=300
+        DEB_DIR: ${{ steps.resolve.outputs.dir }}
+      run: |
+        set -euo pipefail
+        # Download the set (the dependencies from Ubuntu as before), keep the files for the
+        # cache's post-step save (which runs only if the job succeeds), then install.
+        sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q --download-only msodbcsql18 unixodbc-dev
+        mkdir -p "$DEB_DIR"
+        cp /var/cache/apt/archives/*.deb "$DEB_DIR"/
         sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y -q msodbcsql18 unixodbc-dev
         odbcinst -q -d -n "ODBC Driver 18 for SQL Server"

@@ -1250,3 +1250,50 @@ def test_every_odbc_install_goes_through_the_one_action_that_refreshes_only_micr
         assert "msodbcsql18" not in path.read_text(), path.name
     users = [p.name for p in WORKFLOWS if "./.github/actions/mssql-odbc" in p.read_text()]
     assert users, "no workflow uses the mssql-odbc action"
+
+
+_MSSQL_ODBC = REPO / ".github" / "actions" / "mssql-odbc" / "action.yml"
+
+
+def _odbc_steps() -> list[dict]:
+    return yaml.safe_load(_MSSQL_ODBC.read_text())["runs"]["steps"]
+
+
+def test_the_mssql_odbc_action_caches_the_deb_set():
+    """An Ubuntu archive outage (runs 43056312618, 43059293707) must not fail the install: the
+    msodbcsql18 .deb set is cached."""
+    caches = [s for s in _odbc_steps() if str(s.get("uses", "")).startswith("actions/cache")]
+    assert len(caches) == 1
+    assert caches[0]["with"]["path"] and caches[0]["with"]["key"]
+    miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
+    assert "--download-only" in miss["run"]
+    assert "/var/cache/apt/archives/*.deb" in miss["run"]
+
+
+def test_a_mssql_odbc_cache_hit_installs_offline():
+    hit = next(s for s in _odbc_steps() if "== 'true'" in s.get("if", ""))
+    assert "cache-hit" in hit["if"]
+    assert "dpkg -i" in hit["run"]
+    assert not re.search(r"apt-get|curl|apt update", hit["run"]), "a hit must not touch the network"
+    assert "ACCEPT_EULA=Y" in hit["run"]
+
+
+def test_the_mssql_odbc_cache_key_includes_the_package_versions():
+    steps = _odbc_steps()
+    resolve = next(s for s in steps if s.get("id") == "resolve")
+    cache = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache"))
+    assert cache["with"]["key"] == "${{ steps.resolve.outputs.key }}"
+    assert "apt-cache policy msodbcsql18" in resolve["run"]
+    assert "msodbcsql18-${msodbc_version}" in resolve["run"]
+    assert "install -s" in resolve["run"] and "sha256sum" in resolve["run"]
+    assert "deps-${deps_hash}" in resolve["run"]
+
+
+def test_the_mssql_odbc_install_keeps_its_retries_and_has_no_fallback():
+    for step in _odbc_steps():
+        if "run" not in step:
+            continue
+        assert "|| true" not in step["run"] and "continue-on-error" not in step
+    miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
+    assert "Acquire::Retries=5" in miss["env"]["APT_OPTS"]
+    assert "ACCEPT_EULA=Y" in miss["run"]
