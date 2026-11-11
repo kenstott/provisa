@@ -20,6 +20,7 @@
 
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
+import { SIZE } from "../provisa-graph/tokens";
 
 export type Lane = "term" | "column" | "table" | "product";
 
@@ -409,7 +410,8 @@ export function drawnCrossings(links: LaneLink[], at: (id: string) => At): numbe
 
 /** The term lane's vertical gap, as ELK spaces the term lane's nodes. */
 const TERM_GAP = 14;
-const TERM_HEIGHT = 26;
+/** A term's height as ProvisaGraph draws it (REQ-2239): blocks stacked closer would overlap. */
+export const TERM_HEIGHT = SIZE.nodeHeight;
 /** How wide a row of terms with no line out of the lane runs before it wraps. */
 const UNLINKED_ROW = 480;
 const TERM_ROUNDS = 4;

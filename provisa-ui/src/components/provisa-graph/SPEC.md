@@ -46,7 +46,7 @@ uppercase, weight 700.
 
 ## Nodes
 
-- One shape: a rounded rectangle, radius 4, a 1px border.
+- One shape (save the junction's diamond, below): a rounded rectangle, radius 4, a 1px border.
 - A band on its leading (left) edge, 6px wide, in the type's colour. The type colour is Mantine's
   shade 6 of the type's hue (`NODE_TYPES`).
 - An icon, the type's (lucide's), drawn as the node's background image at the band's right, in
@@ -54,6 +54,15 @@ uppercase, weight 700.
 - A two-line label: the name, then the type's name in uppercase. A node with `lines` lists them
   under a rule, left-aligned, in monospace.
 - A fold node (`kind: "more"`) is the same box, dashed, with no band.
+- **The one exception: a junction is a diamond** (REQ-2239, amended 2026-11-11, A JUNCTION IS A
+  DIAMOND). A junction table (an associative table that exists to connect others, REQ-1588) is
+  drawn as Chen's relationship diamond, the form readers know from ER and UML. It keeps its band's
+  colour (grape: the border, and the fill a tint of it), its icon above its name and type, no body,
+  and its legs (`tone: "via"`). It is `NODE_TYPES.junction.shape`; the stylesheet's only diamond rule
+  is `node[shape = "diamond"]`, and no other type may take a shape. The ERD marks a junction from
+  erd-model's `erd-junction` tag. The diamond is 150 × 90, has no under-glow (cytoscape draws none
+  for a diamond), and its selection is its border at 2.5px with no halo. The legend draws its
+  swatch as a small diamond.
 - A term's status: draft italic, deprecated at 55% opacity, retired at 35%.
 
 ## Edges
@@ -62,8 +71,10 @@ uppercase, weight 700.
   (taxi); nothing else changes.
 - Arrowheads only where direction means something: `arrow: "target" | "source" | "both"`
   (ontology relationships, lineage, an ERD's cardinality). The default is none.
-- `dashed`: pending or indirect (a term link, a line to a collapsed group, a fold node's line).
+- `dashed`: pending or indirect (a line to a collapsed group, a line to a fold node).
 - `tone: "via"`: the legs through an ERD junction, in the junction's grape.
+- Lines whose direction carries meaning (the lane diagram's term links, lineage, ontology
+  relationships) are solid with arrows; dashed means pending or indirect, never direction.
 - A label is 9px, on a canvas-coloured backing, never rotated.
 
 ## Groups
