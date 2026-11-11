@@ -300,12 +300,30 @@ export function ProvisaGraph({
   const isolatedRef = useRef<Set<string>>(new Set());
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
-  /** The marks a draw starts without: the focus, the filter. */
-  const applyMarks = useCallback((cy: Core) => {
-    const c = cy as unknown as CyInstance;
-    latest.current.onFocused?.(markFocused(c, latest.current.focused));
-    markFilter(c, latest.current.filter);
+  // Whether the drawing carries a focus or a filter now: one never set (a view that names none)
+  // is never cleared.
+  const marked = useRef({ focus: false, filter: false });
+  /** Marks the focus, or clears the one marked before. */
+  const applyFocus = useCallback((cy: Core, ids: string[]) => {
+    if (ids.length === 0 && !marked.current.focus) return;
+    marked.current.focus = ids.length > 0;
+    latest.current.onFocused?.(markFocused(cy as unknown as CyInstance, ids));
   }, []);
+  /** Marks the filter, or clears the one marked before. */
+  const applyFilter = useCallback((cy: Core, filter: GraphFilter | null) => {
+    if (filter === null && !marked.current.filter) return;
+    marked.current.filter = filter !== null;
+    markFilter(cy as unknown as CyInstance, filter);
+  }, []);
+  /** The marks a draw starts without: the focus, the filter. */
+  const applyMarks = useCallback(
+    (cy: Core) => {
+      marked.current = { focus: false, filter: false };
+      applyFocus(cy, latest.current.focused);
+      applyFilter(cy, latest.current.filter);
+    },
+    [applyFocus, applyFilter],
+  );
 
   // ── the drawing ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -481,12 +499,12 @@ export function ProvisaGraph({
   // ── the marks ────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const cy = cyRef.current;
-    if (cy) latest.current.onFocused?.(markFocused(cy as unknown as CyInstance, focused));
-  }, [focused, drawnAt]);
+    if (cy) applyFocus(cy, focused);
+  }, [focused, drawnAt, applyFocus]);
   useEffect(() => {
     const cy = cyRef.current;
-    if (cy) markFilter(cy as unknown as CyInstance, filter);
-  }, [filter, drawnAt]);
+    if (cy) applyFilter(cy, filter);
+  }, [filter, drawnAt, applyFilter]);
   // What is hovered or picked is lit with what it brings forward, and the rest fades; a line
   // hovered lights itself and its two ends.
   useEffect(() => {
@@ -639,7 +657,12 @@ export function ProvisaGraph({
         onMouseLeave={() => setHoveredGroup(null)}
       >
         <div ref={setBox} className="pg-canvas" aria-label={ariaLabel} data-scheme={isDark ? "dark" : "light"} />
-        {overlay && <div className="pg-overlay">{overlay}</div>}
+        {(overlay || (hint && !bare)) && (
+          <div className="pg-corner">
+            {overlay && <div className="pg-overlay">{overlay}</div>}
+            {hint && !bare && <div className="pg-hint">{hint}</div>}
+          </div>
+        )}
         {preset === "layered" && onCollapsedChange && (
           <GroupResize
             cyRef={cyRef as MutableRefObject<CyInstance | null>}
@@ -664,7 +687,6 @@ export function ProvisaGraph({
               testId={testId}
             />
             <GraphLegend types={drawnTypes} typeName={typeName} />
-            {hint && <div className="pg-hint">{hint}</div>}
           </>
         )}
         {tip && body && (

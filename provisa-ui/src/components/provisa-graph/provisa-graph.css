@@ -27,19 +27,25 @@
   position: absolute;
   inset: 0;
 }
-.pg-overlay {
+/* Top left: what the view lays over the canvas (an ERD's new tables), then the hint. */
+.pg-corner {
   position: absolute;
   top: 8px;
   inset-inline-start: 8px;
   z-index: 10;
+  display: grid;
+  gap: 6px;
   max-width: 280px;
   max-height: 40%;
+  pointer-events: none;
+}
+.pg-overlay {
   overflow-y: auto;
+  pointer-events: auto;
 }
 .pg-controls,
 .pg-legend {
   position: absolute;
-  bottom: 8px;
   z-index: 10;
   padding: 2px;
   border: 1px solid var(--mantine-color-default-border);
@@ -47,6 +53,7 @@
   background: var(--mantine-color-body);
 }
 .pg-controls {
+  bottom: 8px;
   inset-inline-start: 8px;
   opacity: 0;
   transition: opacity 0.15s;
@@ -55,13 +62,15 @@
 .pg-controls:focus-within {
   opacity: 1;
 }
+/* The one legend: top right, clear of the controls and of the application's floating buttons. */
 .pg-legend {
+  top: 8px;
   inset-inline-end: 8px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
   align-items: center;
-  max-width: calc(100% - 260px);
+  max-width: calc(100% - 320px);
   padding: 4px 8px;
   font-size: var(--mantine-font-size-xs);
   color: var(--mantine-color-dimmed);
@@ -78,9 +87,6 @@
   border-radius: 1px;
 }
 .pg-hint {
-  position: absolute;
-  top: 8px;
-  inset-inline-end: 10px;
   font-size: 11px;
   color: var(--mantine-color-dimmed);
   pointer-events: none;

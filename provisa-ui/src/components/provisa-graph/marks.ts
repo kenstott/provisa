@@ -49,14 +49,15 @@ export interface GraphFilter {
 export function markFilter(cy: CyInstance, filter: GraphFilter | null): void {
   const marked = new Set(filter?.marked ?? []);
   const lit = new Set(filter?.lit ?? []);
-  cy.batch(() => {
-    cy.elements().removeClass(MARK.dim).removeClass(MARK.match);
-    if (filter === null) return;
+  cy.batch(() =>
     cy.elements().forEach((el) => {
+      el.removeClass(MARK.dim);
+      el.removeClass(MARK.match);
+      if (filter === null) return;
       if (!lit.has(el.id())) el.addClass(MARK.dim);
       if (marked.has(el.id())) el.addClass(MARK.match);
-    });
-  });
+    }),
+  );
 }
 
 /** What hovering or picking brings forward: the nodes and the lines between them. */
@@ -80,7 +81,7 @@ export function nearOf(cy: CyInstance, id: string): Neighbourhood {
 }
 
 /** The hover and selection state: ``picked`` bordered, what ``near`` holds lit and everything else
- * faded; no ``near``, nothing faded. Kinds in ``still`` (a group, a lane's box) are never faded. */
+ * faded; no ``near``, nothing faded. A group, a lane's box and a frame are never faded. */
 export function markHover(
   cy: CyInstance,
   picked: string | null,

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2239: a graph's controls, in one bar at the canvas's bottom-left, always in this order: zoom
+// REQ-2239: a graph's controls, in one vertical bar at the canvas's bottom-left, always in this order: zoom
 // in, zoom out, fit, full screen, and one download with the file types under it; a copy of the
 // graph as text where the view gives one. Shown while the pointer is over the graph or a control in
 // it has the keyboard's focus (provisa-graph.css). The menu and the hints are drawn inside the
@@ -16,7 +16,7 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Group, Menu } from "@mantine/core";
+import { ActionIcon, Menu, Stack } from "@mantine/core";
 import { Check, Copy, Download, Expand, Shrink } from "lucide-react";
 import { FitScreenIcon, ZoomInIcon, ZoomOutIcon } from "../graph/GraphIcons";
 import type { CyInstance } from "../graph/cytoscape-types";
@@ -88,16 +88,15 @@ export function GraphControls({
     json: t("erdModal.downloadJson"),
   };
   return (
-    <Group
+    <Stack
       gap={2}
-      wrap="nowrap"
       className="pg-controls"
       role="toolbar"
-      aria-orientation="horizontal"
+      aria-orientation="vertical"
       aria-label={t("canvasControls.toolbarLabel")}
       data-testid={`${testId}-canvas-bar`}
     >
-      <Tip text={t("canvasControls.zoomIn")} position="top" named inPlace>
+      <Tip text={t("canvasControls.zoomIn")} position="right" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
@@ -108,7 +107,7 @@ export function GraphControls({
           <ZoomInIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={t("canvasControls.zoomOut")} position="top" named inPlace>
+      <Tip text={t("canvasControls.zoomOut")} position="right" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
@@ -119,7 +118,7 @@ export function GraphControls({
           <ZoomOutIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={t("erdModal.fitAll")} position="top" named inPlace>
+      <Tip text={t("erdModal.fitAll")} position="right" named inPlace>
         <ActionIcon
           variant="subtle"
           size="md"
@@ -130,7 +129,7 @@ export function GraphControls({
           <FitScreenIcon size={15} />
         </ActionIcon>
       </Tip>
-      <Tip text={fullLabel} position="top" named inPlace>
+      <Tip text={fullLabel} position="right" named inPlace>
         <ActionIcon
           variant={full ? "light" : "subtle"}
           size="md"
@@ -142,9 +141,9 @@ export function GraphControls({
           {full ? <Shrink size={15} /> : <Expand size={15} />}
         </ActionIcon>
       </Tip>
-      <Menu position="top-start" withinPortal={false} transitionProps={{ duration: 0 }}>
+      <Menu position="right-end" withinPortal={false} transitionProps={{ duration: 0 }}>
         <Menu.Target>
-          <Tip text={t("erdModal.download")} position="top" named inPlace>
+          <Tip text={t("erdModal.download")} position="right" named inPlace>
             <ActionIcon
               variant="subtle"
               size="md"
@@ -157,7 +156,7 @@ export function GraphControls({
         </Menu.Target>
         <Menu.Dropdown data-testid={`${testId}-download-menu`}>
           {items.map(({ key, label }) => (
-            <Tip key={key} text={hints[key]} position="top" inPlace>
+            <Tip key={key} text={hints[key]} position="right" inPlace>
               <Menu.Item onClick={exports[key]} data-testid={`${testId}-export-${key}`}>
                 {label}
               </Menu.Item>
@@ -166,7 +165,7 @@ export function GraphControls({
         </Menu.Dropdown>
       </Menu>
     {copy && (
-        <Tip text={copied ? copy.done : copy.label} position="top" named inPlace>
+        <Tip text={copied ? copy.done : copy.label} position="right" named inPlace>
           <ActionIcon
             variant="subtle"
             size="md"
@@ -178,6 +177,6 @@ export function GraphControls({
           </ActionIcon>
         </Tip>
       )}
-    </Group>
+    </Stack>
   );
 }
