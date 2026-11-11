@@ -28,7 +28,7 @@ person and the org's admins are told of an expiring-soon rule, and the admins of
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Container, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -81,7 +81,7 @@ def _event_key(action: str, rule_key: str | None, ends_at: str) -> tuple[str, st
 
 def due(
     held: Mapping[str, HeldEntitlements],
-    emitted: set[tuple[str, str | None, str]],
+    emitted: Container[tuple[str, str | None, str]],
     now: datetime,
     within: timedelta,
 ) -> Run:
