@@ -210,7 +210,15 @@
         "check_removed": "Verificação de qualidade {{subject}} removida",
         "check_changed": "Verificação de qualidade {{subject}} alterada",
         "description_changed": "Descrição alterada",
-        "terms_changed": "Termos alterados: {{subject}}"
+        "terms_changed": "Termos alterados: {{subject}}",
+        "field_masked": "Campo {{subject}} mascarado ({{after}})",
+        "field_unmasked": "Campo {{subject}} não está mais mascarado",
+        "row_rule_added": "Regra de linha adicionada: {{subject}}",
+        "row_rule_removed": "Regra de linha removida: {{subject}}",
+        "data_level_changed": "Nível dos dados alterado de {{before}} para {{after}}",
+        "dq_results_changed": "Resultados de qualidade alterados de {{before}} para {{after}}",
+        "profiles_changed": "Perfis alterados de {{before}} para {{after}}",
+        "duration_changed": "Duração alterada de {{before}} para {{after}}"
       },
       "howToUse": {
         "column": {

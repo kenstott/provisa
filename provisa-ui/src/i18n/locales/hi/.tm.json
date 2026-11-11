@@ -10168,5 +10168,13 @@
   "hi/dataProductsTab.json::dataProductsTab.detailPanel": "Data product detail",
   "hi/dataProductOffers.json::dataProductOffers.sampleViewsPlaceholder": "Pick one or more views",
   "hi/dataProductOffers.json::dataProductOffers.breakingIn": "Breaking change in v{{version}}",
-  "hi/dataProductOffers.json::dataProductOffers.contractDocument": "Contract document"
+  "hi/dataProductOffers.json::dataProductOffers.contractDocument": "Contract document",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.field_masked": "Field {{subject}} masked ({{after}})",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.field_unmasked": "Field {{subject}} no longer masked",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.row_rule_added": "Row rule added: {{subject}}",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.row_rule_removed": "Row rule removed: {{subject}}",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.data_level_changed": "Data level changed from {{before}} to {{after}}",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.dq_results_changed": "Quality results changed from {{before}} to {{after}}",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.profiles_changed": "Profiles changed from {{before}} to {{after}}",
+  "hi/dataProductsTab.json::dataProductsTab.contract.change.duration_changed": "Duration changed from {{before}} to {{after}}"
 }

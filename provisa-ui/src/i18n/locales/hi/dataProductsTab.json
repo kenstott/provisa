@@ -210,7 +210,15 @@
         "check_removed": "गुणवत्ता जाँच {{subject}} हटाई गई",
         "check_changed": "गुणवत्ता जाँच {{subject}} बदली गई",
         "description_changed": "विवरण बदला गया",
-        "terms_changed": "शर्तें बदली गईं: {{subject}}"
+        "terms_changed": "शर्तें बदली गईं: {{subject}}",
+        "field_masked": "फ़ील्ड {{subject}} मास्क किया गया ({{after}})",
+        "field_unmasked": "फ़ील्ड {{subject}} अब मास्क नहीं है",
+        "row_rule_added": "पंक्ति नियम जोड़ा गया: {{subject}}",
+        "row_rule_removed": "पंक्ति नियम हटाया गया: {{subject}}",
+        "data_level_changed": "डेटा स्तर {{before}} से {{after}} में बदला",
+        "dq_results_changed": "क्वालिटी परिणाम {{before}} से {{after}} में बदले",
+        "profiles_changed": "प्रोफ़ाइल {{before}} से {{after}} में बदले",
+        "duration_changed": "अवधि {{before}} से {{after}} में बदली"
       },
       "howToUse": {
         "column": {

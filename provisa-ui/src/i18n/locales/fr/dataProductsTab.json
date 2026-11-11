@@ -210,7 +210,15 @@
         "check_removed": "Contrôle qualité {{subject}} supprimé",
         "check_changed": "Contrôle qualité {{subject}} modifié",
         "description_changed": "Description modifiée",
-        "terms_changed": "Conditions modifiées : {{subject}}"
+        "terms_changed": "Conditions modifiées : {{subject}}",
+        "field_masked": "Champ {{subject}} masqué ({{after}})",
+        "field_unmasked": "Champ {{subject}} n'est plus masqué",
+        "row_rule_added": "Règle de ligne ajoutée : {{subject}}",
+        "row_rule_removed": "Règle de ligne retirée : {{subject}}",
+        "data_level_changed": "Niveau de données passé de {{before}} à {{after}}",
+        "dq_results_changed": "Résultats de qualité passés de {{before}} à {{after}}",
+        "profiles_changed": "Profils passés de {{before}} à {{after}}",
+        "duration_changed": "Durée passée de {{before}} à {{after}}"
       },
       "howToUse": {
         "column": {

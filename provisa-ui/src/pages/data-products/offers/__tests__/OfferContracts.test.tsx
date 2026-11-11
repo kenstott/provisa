@@ -12,8 +12,7 @@
 // contracts list): each offer opens to its contracts, one collapsed row per dataset, headed by the
 // dataset, its version, SLA headline, last check and a warning where its newest version breaks a
 // reader; a row opens to the offer's terms on the dataset and to its ODCS document, read when that
-// opens from the offer's contract routes; a link naming a contract opens it. Output Ports stay in
-// the panel's header.
+// opens from the offer's contract routes. Output Ports stay in the panel's header.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
@@ -350,20 +349,6 @@ describe("an offer's contracts (REQ-2180)", () => {
     expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "default", "pg.public.visits");
     expect(screen.getByTestId("data-contract-1")).toBeInTheDocument();
     expect(screen.queryByTestId("data-contract-2")).toBeNull();
-  });
-
-  it("open the contract a link names by its offer and address", async () => {
-    await panel(3, "/data-products?product=pet_health&contract=default/pg.public.vets");
-    expect(await screen.findByTestId("data-contract-2")).toBeInTheDocument();
-    expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "default", "pg.public.vets");
-    expect(screen.queryByTestId("data-contract-1")).toBeNull();
-    expect(screen.queryByTestId("data-contract-3")).toBeNull();
-  });
-
-  it("open the contract a link names by its dataset's address alone", async () => {
-    await panel(3, "/data-products?product=pet_health&contract=pg.public.visits");
-    expect(await screen.findByTestId("data-contract-3")).toBeInTheDocument();
-    expect(fetchProductContract).toHaveBeenCalledWith("pet_health", "default", "pg.public.visits");
   });
 
   it("warn where the newest version breaks a reader, naming it", async () => {

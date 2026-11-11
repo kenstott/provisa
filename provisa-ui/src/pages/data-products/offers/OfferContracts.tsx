@@ -12,13 +12,11 @@
 // offer gives, one row per dataset, each headed by its dataset, version, SLA headline, last check
 // and a warning where its newest version breaks a reader. A row opens to the offer's terms on the
 // dataset -- its columns as the offer's role sees them in the tables page's columns table (REQ-2239),
-// its row rules in words -- and to its ODCS document, read when that opens (ContractView). REQ-2158:
-// rows start closed and several may be open at once; a link naming a contract (``?contract=``, as
-// ``<offer>/<source.schema.table>``, the dataset's address or its table name) opens it.
+// its row rules in words -- and to its ODCS document, read when that opens (ContractView). Rows
+// start closed and several may be open at once.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
 import { Alert, Badge, Button, Group, List, Loader, Stack, Text } from "@mantine/core";
 import { Eye, TriangleAlert } from "lucide-react";
 import {
@@ -36,7 +34,7 @@ import type { ContractVersion } from "../../../types/admin";
 import { ColumnsTable } from "../../tables/ColumnsTable";
 import { ContractView, type ContractViewer } from "../ContractView";
 import { modelName, type CoreTable } from "../productCore";
-import { contractColumns, linkedDataset, memberOf } from "./offerTerms";
+import { contractColumns, memberOf } from "./offerTerms";
 
 /** What a contract's heading and its document read besides the offer: the product's datasets as
  *  the meta domain names them, its lineage (the checks on each), and who reads it. */
@@ -193,7 +191,6 @@ function DatasetContract({
   port,
   context,
   onPreview,
-  revealDocument,
 }: {
   productId: string;
   offer: Offer;
@@ -201,7 +198,6 @@ function DatasetContract({
   port: CoreTable | undefined;
   context: ContractContext | null;
   onPreview: (tableId: number) => void;
-  revealDocument: boolean;
 }) {
   const { t } = useTranslation();
   const terms = entry.contract.terms;
@@ -257,10 +253,7 @@ function DatasetContract({
         </Text>
       )}
       {context && port && (
-        <Collapsibles
-          id={`data-product.${productId}.offer.${offer.id}.document.${entry.table_id}`}
-          reveal={revealDocument ? "document" : null}
-        >
+        <Collapsibles id={`data-product.${productId}.offer.${offer.id}.document.${entry.table_id}`}>
           <CollapsibleItem
             value="document"
             defaultOpen={false}
@@ -293,9 +286,7 @@ export function OfferContracts({
   onPreview: (tableId: number) => void;
 }) {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
   const ports = context?.ports ?? [];
-  const linked = linkedDataset(offer, ports, params.get("contract"));
   if (offer.contracts.length === 0) {
     return (
       <Text size="sm" c="dimmed">
@@ -304,10 +295,7 @@ export function OfferContracts({
     );
   }
   return (
-    <Collapsibles
-      id={`data-product.offer.${productId}.${offer.id}.datasets`}
-      reveal={linked === null ? null : String(linked)}
-    >
+    <Collapsibles id={`data-product.offer.${productId}.${offer.id}.datasets`}>
       {offer.contracts.map((entry) => {
         const port = ports.find((p) => p.id === entry.table_id);
         return (
@@ -333,7 +321,6 @@ export function OfferContracts({
               port={port}
               context={context}
               onPreview={onPreview}
-              revealDocument={linked === entry.table_id}
             />
           </CollapsibleItem>
         );

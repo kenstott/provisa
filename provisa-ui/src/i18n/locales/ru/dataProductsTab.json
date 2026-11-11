@@ -210,7 +210,15 @@
         "check_removed": "Проверка качества {{subject}} удалена",
         "check_changed": "Проверка качества {{subject}} изменена",
         "description_changed": "Описание изменено",
-        "terms_changed": "Условия изменены: {{subject}}"
+        "terms_changed": "Условия изменены: {{subject}}",
+        "field_masked": "Поле {{subject}} маскировано ({{after}})",
+        "field_unmasked": "Поле {{subject}} больше не маскируется",
+        "row_rule_added": "Добавлено правило строк: {{subject}}",
+        "row_rule_removed": "Удалено правило строк: {{subject}}",
+        "data_level_changed": "Уровень данных изменён: {{before}} → {{after}}",
+        "dq_results_changed": "Результаты качества изменены: {{before}} → {{after}}",
+        "profiles_changed": "Профили изменены: {{before}} → {{after}}",
+        "duration_changed": "Срок изменён: {{before}} → {{after}}"
       },
       "howToUse": {
         "column": {

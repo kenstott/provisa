@@ -24,9 +24,8 @@ import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { Tip } from "../../../components/Tip";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { linkedDataset, offerSummary } from "./offerTerms";
+import { offerSummary } from "./offerTerms";
 import { OfferContracts, type ContractContext } from "./OfferContracts";
-import { useSearchParams } from "react-router-dom";
 
 export interface OfferCardProps {
   offer: Offer;
@@ -114,9 +113,6 @@ export function OfferCard({
   context = null,
 }: OfferCardProps) {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
-  // A link naming one of this offer's contracts opens it.
-  const linked = linkedDataset(offer, context?.ports ?? [], params.get("contract")) !== null;
   const [bidding, setBidding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const testId = `offer-card-${offer.id}`;
@@ -252,10 +248,7 @@ export function OfferCard({
           }}
         />
       )}
-      <Collapsibles
-        id={`data-product.offer.${productId}.${offer.id}`}
-        reveal={linked ? "contracts" : null}
-      >
+      <Collapsibles id={`data-product.offer.${productId}.${offer.id}`}>
         <CollapsibleItem
           value="contracts"
           defaultOpen={false}

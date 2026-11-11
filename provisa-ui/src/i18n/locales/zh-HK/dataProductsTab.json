@@ -210,7 +210,15 @@
         "check_removed": "已移除質素檢查 {{subject}}",
         "check_changed": "質素檢查 {{subject}} 已更改",
         "description_changed": "描述已更改",
-        "terms_changed": "條款已更改：{{subject}}"
+        "terms_changed": "條款已更改：{{subject}}",
+        "field_masked": "欄位 {{subject}} 已遮罩（{{after}}）",
+        "field_unmasked": "欄位 {{subject}} 不再遮罩",
+        "row_rule_added": "已新增行規則：{{subject}}",
+        "row_rule_removed": "已移除行規則：{{subject}}",
+        "data_level_changed": "數據級別由 {{before}} 改為 {{after}}",
+        "dq_results_changed": "質素結果由 {{before}} 改為 {{after}}",
+        "profiles_changed": "剖析由 {{before}} 改為 {{after}}",
+        "duration_changed": "期限由 {{before}} 改為 {{after}}"
       },
       "howToUse": {
         "column": {

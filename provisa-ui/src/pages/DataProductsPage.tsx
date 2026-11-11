@@ -41,13 +41,7 @@ import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/
 import { ProductMapButton } from "../components/graph3d/OntologyGraph";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import {
-  ListTable,
-  ListHead,
-  ListRow,
-  ListEmpty,
-  ListItems,
-} from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
@@ -170,7 +164,6 @@ export function DataProductsPage() {
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
-    contract: searchParams.get("contract"),
     search,
     toReviewOnly,
     creating,
@@ -183,8 +176,6 @@ export function DataProductsPage() {
         const n = new URLSearchParams(p);
         if (id) n.set("product", id);
         else n.delete("product");
-        // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
-        if (id !== p.get("product")) n.delete("contract");
         return n;
       },
       { replace: true },
@@ -251,7 +242,6 @@ export function DataProductsPage() {
   }, [tables]);
   const memberFunctions = (id: string) =>
     functions.filter((fn) => (fn.productIds ?? []).includes(id));
-
 
   const openCreate = () => {
     setFormFocus(undefined);
