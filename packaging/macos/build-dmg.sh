@@ -325,14 +325,47 @@ sign_jar_natives() {
 }
 
 # ── Code signing ──────────────────────────────────────────────────────────────
+# The one way this script signs code: Developer ID, hardened runtime, Apple's secure timestamp,
+# through codesign_retry. Arguments are extra codesign options, then the files to sign.
+sign_code() {
+  codesign_retry --force --sign "${APPLE_DEVELOPER_ID}" --options runtime --timestamp "$@"
+}
+
+# The Mach-O files under a directory, one per line, found by their magic number: the runtime's
+# executables carry no extension, and a .so is not always one. A fat header shares Java's class-file
+# magic (0xcafebabe); a fat binary's next word is its architecture count, a class file's its version
+# (45 and up). Symlinks are skipped: codesign signs the file a link points at.
+macho_files() {
+  python3 -I - "$1" <<'PY'
+import os, struct, sys
+THIN = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce"}
+for root, dirs, files in os.walk(sys.argv[1]):
+    dirs.sort()
+    for name in sorted(files):
+        path = os.path.join(root, name)
+        if os.path.islink(path):
+            continue
+        with open(path, "rb") as f:
+            head = f.read(8)
+        if head[:4] in THIN or (
+            head[:4] in (b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
+            and len(head) == 8
+            and 0 < struct.unpack(">I" if head[0] == 0xCA else "<I", head[4:])[0] < 45
+        ):
+            print(path)
+PY
+}
+
+# DuckDB extensions are Mach-O with DuckDB's own signature appended after the image; codesign
+# refuses them ("main executable failed strict validation"), and re-signing would break the DuckDB
+# signature they are loaded under. They are listed apart, not signed.
+DUCKDB_EXTENSION_GLOB='*.duckdb_extension'
+
 sign_app() {
   if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
     info "APPLE_DEVELOPER_ID not set — skipping signing."
     return
   fi
-
-  local id="${APPLE_DEVELOPER_ID}"
-  local sign_flags=(--force --sign "$id" --options runtime --timestamp)
 
   # Apple requires every code object inside the bundle to be signed with
   # Developer ID + secure timestamp before the outer bundle is signed.
@@ -349,16 +382,74 @@ sign_app() {
   )
   for f in "${sign_targets[@]}"; do
     [ -f "$f" ] || continue
-    codesign_retry "${sign_flags[@]}" "$f"
+    sign_code "$f"
     info "  Signed: ${f#"${APP_BUNDLE}/"}"
   done
 
   info "Signing app bundle..."
-  codesign_retry "${sign_flags[@]}" --verbose \
-    --entitlements "${SCRIPT_DIR}/entitlements.plist" \
-    "${APP_BUNDLE}"
+  sign_code --verbose --entitlements "${SCRIPT_DIR}/entitlements.plist" "${APP_BUNDLE}"
 
   ok "App bundle signed."
+}
+
+# ── Sign the native runtime payload (core edition) ───────────────────────────
+# The runtime ships in the DMG beside the .app, and the DMG is notarized, so Apple checks every
+# Mach-O in it: the interpreter, libpython, and each extension module pip installed. Each is signed
+# like the .app's own code (sign_code); executables also take the entitlements the .app is signed
+# with. Batches keep every codesign call under CODESIGN_TIMEOUT while not paying one process per file.
+SIGN_BATCH="${SIGN_BATCH:-25}"
+sign_native_payload() {
+  if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
+    info "APPLE_DEVELOPER_ID not set — skipping native runtime signing."
+    return
+  fi
+  local runtime="${NATIVE_PAYLOAD_DIR}/runtime"
+  local f kind libraries=() executables=() i
+  while IFS= read -r f; do
+    # shellcheck disable=SC2053
+    [[ "$f" == $DUCKDB_EXTENSION_GLOB ]] && continue
+    kind="$(file -b "$f")"
+    if [[ "$kind" == *executable* ]]; then executables+=("$f"); else libraries+=("$f"); fi
+  done < <(macho_files "$runtime")
+  info "Signing the native runtime (${#libraries[@]} libraries, ${#executables[@]} executables)..."
+  for ((i = 0; i < ${#libraries[@]}; i += SIGN_BATCH)); do
+    sign_code "${libraries[@]:i:SIGN_BATCH}"
+  done
+  # Executables last: each loads the libraries above.
+  for ((i = 0; i < ${#executables[@]}; i += SIGN_BATCH)); do
+    sign_code --entitlements "${SCRIPT_DIR}/entitlements.plist" "${executables[@]:i:SIGN_BATCH}"
+  done
+  ok "Native runtime signed."
+}
+
+# ── Verify the handoff: the .app and every signed Mach-O of the payload ──────
+# Run by the notarize job right after it unpacks stage-<edition>.tar, before anything goes to
+# Apple: a signature the handoff broke, or a binary left unsigned, fails here and names the file.
+# Each must verify strictly, chain to Apple (Developer ID, not ad hoc), and carry a secure timestamp.
+verify_signed() {
+  local f details bad=0
+  if ! codesign --verify --deep --strict "${APP_BUNDLE}"; then
+    err "${APP_BUNDLE} does not verify after the handoff."
+    bad=1
+  fi
+  if [ "$EDITION" = "core" ]; then
+    while IFS= read -r f; do
+      # shellcheck disable=SC2053
+      if [[ "$f" == $DUCKDB_EXTENSION_GLOB ]]; then
+        info "  Not signable by codesign (DuckDB-signed extension): ${f#"${SCRIPT_DIR}/"}"
+        continue
+      fi
+      # codesign -dv prints "Timestamp=" for a secure timestamp, "Signed Time=" for a local clock.
+      details="$(codesign -dv "$f" 2>&1)" || details=""
+      if ! codesign --verify --strict -R='anchor apple generic' "$f" \
+         || [[ "$details" != *$'\n'Timestamp=* ]]; then
+        err "${f#"${SCRIPT_DIR}/"} is not Developer ID signed with a secure timestamp after the handoff."
+        bad=1
+      fi
+    done < <(macho_files "${NATIVE_PAYLOAD_DIR}/runtime")
+  fi
+  if [ "$bad" -ne 0 ]; then exit 1; fi
+  ok "The .app$([ "$EDITION" = "core" ] && echo " and the native runtime") verify."
 }
 
 # ── Create DMG ────────────────────────────────────────────────────────────────
@@ -427,12 +518,15 @@ stage_app() {
 #   stage  build and sign Provisa.app, write dist/stage-<edition>.tar. CI's build job.
 #   dmg    create the DMG from an already built (and, in CI, notarized + stapled) Provisa.app
 #          unpacked beside this script. CI's notarize job.
+#   verify check the unpacked handoff: the .app and the native runtime are Developer ID signed.
+#          CI's notarize job, before it submits anything.
 #   (none) both, for a local build; nothing is notarized.
 main() {
   local step="${1:-all}"
   case "$step" in
     stage|dmg|all) ;;
-    *) err "usage: build-dmg.sh [stage|dmg]"; exit 2 ;;
+    verify) verify_signed; return ;;
+    *) err "usage: build-dmg.sh [stage|dmg|verify]"; exit 2 ;;
   esac
   printf '\n%bProvisa DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
@@ -453,6 +547,9 @@ main() {
     bake_version         # write Contents/Resources/VERSION before signing seals the bundle
     sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
     sign_app
+    if [ "$EDITION" = "core" ]; then
+      sign_native_payload # every Mach-O of the hidden runtime, before the stage tar carries it
+    fi
   fi
   if [ "$step" = "stage" ]; then
     stage_app

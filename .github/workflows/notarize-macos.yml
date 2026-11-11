@@ -129,9 +129,12 @@ jobs:
           APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
         run: |
           tar -xf "dmg/stage-${{ matrix.app_edition }}.tar" -C packaging/macos
-          # The handoff keeps the signature intact, or it fails here, naming the bundle.
-          codesign --verify --deep --strict packaging/macos/Provisa.app \
-            || { echo "::error::packaging/macos/Provisa.app (stage-${{ matrix.app_edition }}.tar) does not verify after the handoff"; exit 1; }
+          # The handoff keeps every signature intact, or it fails here, naming each file: the .app
+          # (codesign --verify --deep --strict) and, for Core, every Mach-O of the native runtime
+          # the DMG carries beside it (Developer ID, secure timestamp).
+          chmod +x packaging/macos/build-dmg.sh
+          PROVISA_EDITION="${{ matrix.app_edition }}" packaging/macos/build-dmg.sh verify \
+            || { echo "::error::stage-${{ matrix.app_edition }}.tar does not verify after the handoff (the files are named above)"; exit 1; }
           chmod +x packaging/macos/notarize-dmg.sh
           packaging/macos/notarize-dmg.sh --app packaging/macos/Provisa.app
 

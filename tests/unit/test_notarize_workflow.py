@@ -140,14 +140,11 @@ def test_core_and_container_notarize_the_app_then_build_the_dmg_from_it_then_not
     assert app["if"] == "${{ matrix.app_edition != '' }}"
     assert "notarize-dmg.sh --app packaging/macos/Provisa.app" in app["run"]
     assert 'tar -xf "dmg/stage-${{ matrix.app_edition }}.tar"' in app["run"]
-    # The handoff is verified right after the untar and before anything is submitted.
+    # The handoff is verified right after the untar and before anything is submitted: the .app and,
+    # for Core, the native runtime the DMG carries beside it (verify_signed in build-dmg.sh).
     run = app["run"]
-    assert (
-        run.index("tar -xf")
-        < run.index("codesign --verify --deep --strict")
-        < run.index("notarize-dmg.sh --app")
-    )
-    assert "codesign --verify --deep --strict packaging/macos/Provisa.app" in run
+    verify = 'PROVISA_EDITION="${{ matrix.app_edition }}" packaging/macos/build-dmg.sh verify'
+    assert run.index("tar -xf") < run.index(verify) < run.index("notarize-dmg.sh --app")
     assert "does not verify after the handoff" in run
     assert set(app["env"]) == set(_SECRETS)
     build = steps["Build the DMG from the stapled app"]
@@ -184,6 +181,144 @@ def test_build_dmg_stages_the_app_and_the_native_payload_and_makes_the_dmg_in_a_
     assert main.index("stage_app") < main.index("create_dmg")
     assert 'if [ "$step" != "dmg" ]; then' in main
     assert 'if [ "$step" = "stage" ]; then' in main
+
+
+# ── The native runtime the Core DMG carries beside the .app (run 43018393659) ──────────────────
+# Apple rejected the Core DMG of alpha.509: its hidden runtime/ held some 500 Mach-O files that were
+# not Developer ID signed with a secure timestamp. The stage step signs them all; the notarize job
+# verifies them after the handoff, naming each that fails.
+
+_THIN = b"\xcf\xfa\xed\xfe" + b"\x00" * 28
+_FAT = b"\xca\xfe\xba\xbe\x00\x00\x00\x02" + b"\x00" * 24
+_JAVA_CLASS = b"\xca\xfe\xba\xbe\x00\x00\x00\x34" + b"\x00" * 24
+
+
+def _payload(tmp_path: Path) -> Path:
+    """A build-dmg.sh beside a native-payload/runtime holding each kind of file it meets."""
+    macos = tmp_path / "macos"
+    runtime = macos / "native-payload/runtime"
+    (macos / "Provisa.app/Contents/MacOS").mkdir(parents=True)
+    for rel, body in {
+        "bin/python3.12": _THIN,
+        "lib/libpython3.12.dylib": _THIN,
+        "lib/site-packages/zstandard/backend_c.cpython-312-darwin.so": _THIN,
+        "lib/site-packages/fat/_fat.abi3.so": _FAT,
+        "lib/site-packages/jpype/Foo.class": _JAVA_CLASS,
+        "lib/site-packages/zstandard/__init__.py": b"import os\n",
+        "lib/site-packages/duckdb_extension_httpfs/httpfs.duckdb_extension": _THIN,
+    }.items():
+        (runtime / rel).parent.mkdir(parents=True, exist_ok=True)
+        (runtime / rel).write_bytes(body)
+    (runtime / "bin/python3").symlink_to("python3.12")
+    for name in ("build-dmg.sh", "entitlements.plist"):
+        (macos / name).write_bytes((_REPO / "packaging/macos" / name).read_bytes())
+    return macos
+
+
+def _fake_tools(tmp_path: Path, unsigned: str = "") -> Path:
+    """codesign logs each call; `-dv` reports a secure timestamp, and any file whose path contains
+    ``unsigned`` fails --verify. `file` calls python3.12 an executable, everything else a bundle."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "codesign").write_text(
+        "#!/bin/bash\n"
+        f'echo "$*" >> {tmp_path}/calls\n'
+        'last="${*: -1}"\n'
+        f'if [ -n "{unsigned}" ] && [[ "$last" == *"{unsigned}"* ]]; then exit 1; fi\n'
+        'if [ "$1" = "-dv" ]; then printf "Identifier=x\\nTimestamp=Nov 11, 2026\\n" >&2; fi\n'
+        "exit 0\n"
+    )
+    (bin_dir / "file").write_text(
+        '#!/bin/bash\n[[ "$2" == *python3.12 ]] && echo "Mach-O 64-bit executable arm64" '
+        '|| echo "Mach-O 64-bit bundle arm64"\n'
+    )
+    for tool in ("codesign", "file"):
+        (bin_dir / tool).chmod(0o755)
+    (tmp_path / "calls").write_text("")
+    return bin_dir
+
+
+def _build_dmg(macos: Path, bin_dir: Path, program: str) -> subprocess.CompletedProcess:
+    """Run ``program`` in bash with build-dmg.sh's functions defined (its main is not run)."""
+    lib = macos / "lib.sh"
+    lib.write_text((macos / "build-dmg.sh").read_text().replace('\nmain "$@"\n', "\n"))
+    return subprocess.run(
+        ["bash", "-c", f'set -euo pipefail\nsource "{lib}"\n{program}'],
+        capture_output=True,
+        text=True,
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "PROVISA_EDITION": "core"},
+    )
+
+
+def test_macho_files_finds_every_mach_o_by_magic_and_nothing_else(tmp_path):
+    macos = _payload(tmp_path)
+    runtime = macos / "native-payload/runtime"
+    result = _build_dmg(macos, _fake_tools(tmp_path), f'macho_files "{runtime}"')
+    assert result.returncode == 0, result.stderr
+    found = {Path(line).relative_to(runtime).as_posix() for line in result.stdout.split()}
+    assert found == {
+        "bin/python3.12",
+        "lib/libpython3.12.dylib",
+        "lib/site-packages/zstandard/backend_c.cpython-312-darwin.so",
+        "lib/site-packages/fat/_fat.abi3.so",
+        "lib/site-packages/duckdb_extension_httpfs/httpfs.duckdb_extension",
+    }
+
+
+def test_the_native_runtime_is_signed_like_the_app_with_executables_last(tmp_path):
+    macos = _payload(tmp_path)
+    result = _build_dmg(
+        macos,
+        _fake_tools(tmp_path),
+        "APPLE_DEVELOPER_ID='Developer ID Application: X'\nsign_native_payload",
+    )
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls").read_text().splitlines()
+    flags = "--force --sign Developer ID Application: X --options runtime --timestamp"
+    assert all(call.startswith(flags) for call in calls), calls
+    signed = " ".join(calls)
+    for rel in ("libpython3.12.dylib", "backend_c.cpython-312-darwin.so", "_fat.abi3.so"):
+        assert rel in signed
+    # codesign refuses a DuckDB-signed extension; it is not passed to it.
+    assert "duckdb_extension" not in signed
+    # The executable is signed after the libraries it loads, with the .app's entitlements.
+    assert "python3.12" in calls[-1]
+    assert f"--entitlements {macos}/entitlements.plist" in calls[-1]
+    assert not any("--entitlements" in call for call in calls[:-1])
+
+
+def test_the_build_signs_the_native_runtime_before_the_stage_tar_carries_it():
+    source = (_REPO / "packaging/macos/build-dmg.sh").read_text()
+    main = source.split("main() {")[1]
+    assert main.index("sign_app") < main.index("sign_native_payload") < main.index("stage_app")
+    # One signing routine: every codesign_retry call goes through sign_code.
+    code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))
+    assert code.count("codesign_retry ") == 1
+    assert (
+        'codesign_retry --force --sign "${APPLE_DEVELOPER_ID}" --options runtime --timestamp'
+        in code
+    )
+
+
+def test_the_handoff_verify_passes_when_every_mach_o_is_signed(tmp_path):
+    macos = _payload(tmp_path)
+    result = _build_dmg(macos, _fake_tools(tmp_path), "main verify")
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls").read_text()
+    assert f"--verify --deep --strict {macos}/Provisa.app" in calls
+    assert "-R=anchor apple generic" in calls
+    assert "backend_c.cpython-312-darwin.so" in calls
+    assert "Not signable by codesign (DuckDB-signed extension)" in result.stdout
+
+
+def test_the_handoff_verify_fails_and_names_an_unsigned_runtime_binary(tmp_path):
+    macos = _payload(tmp_path)
+    result = _build_dmg(macos, _fake_tools(tmp_path, unsigned="backend_c"), "main verify")
+    assert result.returncode == 1
+    assert (
+        "native-payload/runtime/lib/site-packages/zstandard/backend_c.cpython-312-darwin.so "
+        "is not Developer ID signed with a secure timestamp after the handoff." in result.stderr
+    )
 
 
 def test_the_notarize_script_waits_less_than_its_job_limit_and_staples_through_the_retry():
