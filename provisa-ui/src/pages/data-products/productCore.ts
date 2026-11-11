@@ -49,9 +49,7 @@ export const PRODUCT_FIELDS = [
 ] as const;
 
 /** A view's column name as the GraphQL field it is (REQ-416). */
-type Field<C extends string> = C extends `${infer H}_${infer T}`
-  ? `${H}${Capitalize<Field<T>>}`
-  : C;
+type Field<C extends string> = C extends `${infer H}_${infer T}` ? `${H}${Capitalize<Field<T>>}` : C;
 
 type ProductRow = Record<Field<(typeof PRODUCT_FIELDS)[number]>, unknown>;
 
@@ -340,10 +338,7 @@ export function restModelName(t: {
 
 /** What a product's membership rows reach, those the role can read; undefined when the role's
  * schema holds no membership (REQ-1634). */
-function reachedBy<M, T>(
-  rows: M[] | null | undefined,
-  reach: (m: M) => T | null | undefined,
-): T[] | undefined {
+function reachedBy<M, T>(rows: M[] | null | undefined, reach: (m: M) => T | null | undefined): T[] | undefined {
   return rowsOf(rows)?.flatMap((m) => {
     const t = reach(m);
     return t ? [t] : [];
@@ -483,10 +478,7 @@ export async function loadProductCore(
   // SQL and JSON:API read the same row under its physical column names, not GraphQL's; its custom
   // properties come over JSON:API as JSON, not a string.
   const productRow = Object.fromEntries(
-    Object.entries(fields).map(([k, v]) => [
-      k.replace(/_(.)/g, (_, c: string) => c.toUpperCase()),
-      v,
-    ]),
+    Object.entries(fields).map(([k, v]) => [k.replace(/_(.)/g, (_, c: string) => c.toUpperCase()), v]),
   ) as ProductRow;
   if (!doc) throw new Error(`No data product ${product} over JSON:API`);
   productRow.customProperties = doc.attributes.custom_properties;
