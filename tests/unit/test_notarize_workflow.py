@@ -197,8 +197,11 @@ def test_the_notarize_workflow_can_be_dispatched_on_its_own_for_a_version():
     call = workflow["on"]["workflow_call"]
     assert call["inputs"]["version"]["required"] is True
     assert set(call["secrets"]) == set(_SECRETS)
-    # Nothing is built: no step of the workflow runs a DMG build script.
-    assert "build-dmg" not in yaml.safe_dump(workflow["jobs"])
+    # Nothing is rebuilt: the only build script it runs makes a DMG from the stapled .app.
+    jobs = yaml.safe_dump(workflow["jobs"])
+    assert "build-dmg.sh stage" not in jobs
+    assert "build-dmg-obs" not in jobs
+    assert "build-dmg-demo" not in jobs
     # The release metadata, not a hand-typed name, says which DMGs a version has.
     meta = workflow["jobs"]["metadata"]["steps"][-1]
     assert meta["uses"] == "./.github/actions/release-metadata"
@@ -217,8 +220,8 @@ def test_a_manual_run_reads_the_dmgs_of_the_run_that_built_them():
 def test_the_notarize_workflow_never_prints_a_secret():
     text = (_WORKFLOWS / "notarize-macos.yml").read_text()
     script = (_REPO / "packaging/macos/notarize-dmg.sh").read_text()
-    # Secrets reach the script only as env of the one step, and nothing echoes them.
-    assert text.count("secrets.APPLE_NOTARYTOOL_PASSWORD") == 1
+    # Secrets reach the script only as env of the two notarizing steps, and nothing echoes them.
+    assert text.count("secrets.APPLE_NOTARYTOOL_PASSWORD") == 2  # the app step, the DMG step
     for line in script.splitlines():
         if line.lstrip().startswith(("info", "ok", "err", "echo", "printf")):
             assert "APPLE_NOTARYTOOL_PASSWORD" not in line
