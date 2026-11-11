@@ -17,6 +17,7 @@
     "register_one": "Register {{count}} table",
     "register_other": "Register {{count}} tables",
     "refused": "{{table}} was not registered: {{message}}",
-    "skip": "Skip registering tables"
+    "skip": "Skip registering tables",
+    "domainRequired": "Choose the domain the tables are registered in."
   }
 }

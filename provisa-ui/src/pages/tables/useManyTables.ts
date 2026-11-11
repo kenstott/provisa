@@ -109,36 +109,35 @@ export function useManyTables(choice: ManyTablesChoice) {
   const register = async (): Promise<TableRegistrationOutcome[]> => {
     setRegistering(true);
     try {
-      const inputs = await Promise.all(
-        ticked.map(async (name) => {
-          const tbl = offered.find((o) => o.name === name) as TableMetadata;
-          const read = readings[name] as Extract<Reading, { state: "read" }>;
-          const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
-          const [alias, uniqueConstraints] = await Promise.all([
-            choice.suggestTableAlias(name, choice.domainId, sourceId),
-            fetchTableUniqueConstraints(sourceId, schemaName, name),
-          ]);
-          const registration = registrationOf({
-            sourceId,
-            domainId: choice.domainId,
-            regionInput: choice.regionInput,
-            schemaName,
-            tableName: name,
-            alias,
-            description: tbl.comment ?? "",
-            watermarkColumn: defaultWatermark(columns, choice.sourceType),
-            columns: registeredColumns(columns, null),
-            uniqueConstraints,
-            pagingKind: tbl.pagingKind ?? null,
-            pagination: tbl.pagination ?? null,
-            pagingCeilingRows: tbl.pagingCeilingRows ?? null,
-            extra: { discover: false },
-          });
-          // As the editor's Save sends a table registered alone (useCreateTable).
-          const draft = draftFromRegistration(registration);
-          return registrationInput(draft, registration, draft.cacheTtl ?? null);
-        }),
-      );
+      // One table after another: the alias each is suggested is one lazy query, and a second
+      // call while one is in flight aborts it.
+      const inputs: Record<string, unknown>[] = [];
+      for (const name of ticked) {
+        const tbl = offered.find((o) => o.name === name) as TableMetadata;
+        const read = readings[name] as Extract<Reading, { state: "read" }>;
+        const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
+        const alias = await choice.suggestTableAlias(name, choice.domainId, sourceId);
+        const uniqueConstraints = await fetchTableUniqueConstraints(sourceId, schemaName, name);
+        const registration = registrationOf({
+          sourceId,
+          domainId: choice.domainId,
+          regionInput: choice.regionInput,
+          schemaName,
+          tableName: name,
+          alias,
+          description: tbl.comment ?? "",
+          watermarkColumn: defaultWatermark(columns, choice.sourceType),
+          columns: registeredColumns(columns, null),
+          uniqueConstraints,
+          pagingKind: tbl.pagingKind ?? null,
+          pagination: tbl.pagination ?? null,
+          pagingCeilingRows: tbl.pagingCeilingRows ?? null,
+          extra: { discover: false },
+        });
+        // As the editor's Save sends a table registered alone (useCreateTable).
+        const draft = draftFromRegistration(registration);
+        inputs.push(registrationInput(draft, registration, draft.cacheTtl ?? null));
+      }
       return await registerTables(inputs);
     } finally {
       setRegistering(false);
@@ -154,7 +153,7 @@ export function useManyTables(choice: ManyTablesChoice) {
   ) => {
     setError(null);
     if (!domainId) {
-      setError(t("registerTableForm.errorRequiredFields"));
+      setError(t("registerManyTables.domainRequired"));
       return;
     }
     try {

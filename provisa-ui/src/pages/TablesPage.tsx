@@ -1066,8 +1066,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     previewTable === null &&
     editingViewDef === null;
   const panelTitle =
+    // The step says it is Your data itself; the panel stays the registration's.
     registeredMany !== null
-      ? translate("yourData.title")
+      ? translate("tablesPage.panelRegisterTable")
       : newRegistration !== null
         ? translate(viewsOnly ? "tablesPage.panelNewView" : "tablesPage.panelRegisterTable")
         : showForm && !viewsOnly

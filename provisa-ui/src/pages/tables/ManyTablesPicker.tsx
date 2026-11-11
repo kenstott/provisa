@@ -58,6 +58,8 @@ export function ManyTablesList({
               ? t("registerManyTables.noTables")
               : t("registerManyTables.tickedCount", { count: ticked.length })
         }
+        // What is ticked is said above the list, not under it.
+        inputWrapperOrder={["label", "description", "input", "error"]}
         value={ticked}
         onChange={setTicked}
         data-testid="register-many-tables"

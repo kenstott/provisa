@@ -311,9 +311,15 @@ export function RegisterTableForm({
     setColumns([]);
     setDqContract("");
     setDqScanned(null);
-    setDqVisibleTo(roles.map((r) => r.id));
     setCypher("");
     setPreviewRows([]);
+  }, [sourceId]);
+  // A checker's results are seen by every role until the operator narrows them. The roles may
+  // arrive after the source is chosen (a form opened on a source, REQ-2234): only this follows
+  // them, so the schema picked meanwhile is kept.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the default grant follows the roles as they load
+    setDqVisibleTo(roles.map((r) => r.id));
   }, [sourceId, roles]);
 
   // REQ-1663: declared after the cascade reset so it lands on the same commit and wins — the schema
