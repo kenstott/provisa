@@ -85658,7 +85658,13 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     is refused. A rule that ends a whole grant is the grant''s own expiry, not a second mechanism. One expiring-soon
     setting, one scheduled run and one notice cover both: the notice names the role when it is ending and
     each entry that is. Each person''s access shows one timeline: each grant, and the dated entries under
-    it.'
+    it. (Amended 2026-11-11, EXPIRY IS THE LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds
+    a role once, and an entitlement entry once; when either is granted again (by an offer, an admin, any
+    grant), its expiry becomes the latest of the expiries that granted it, and no expiry is later than any
+    date. An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
+    Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
+    an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
+    Dec to no end date").'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -91825,7 +91831,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     AN OFFER''S DURATION DATES THE ENTRIES IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration.
     Accepting it when the requester already holds the offer''s role adds the product''s entitlements to
     that grant as entries expiring after the duration; when the requester does not hold the role, the role
-    grant is made with them, and both end after the duration. Without a duration nothing accepted expires.'
+    grant is made with them, and both end after the duration. Without a duration nothing accepted expires.
+    (Amended 2026-11-11, EXPIRY IS THE LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role
+    once, and an entitlement entry once; when either is granted again (by an offer, an admin, any grant),
+    its expiry becomes the latest of the expiries that granted it, and no expiry is later than any date.
+    An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
+    Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
+    an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
+    Dec to no end date").'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94180,7 +94193,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     outlives its grant, and a date past the grant''s is refused. A rule that ends a whole grant is the grant''s
     own expiry, not a second mechanism. One expiring-soon setting, one scheduled run and one notice cover
     both: the notice names the role when it is ending and each entry that is. Each person''s access shows
-    one timeline: each grant, and the dated entries under it.'
+    one timeline: each grant, and the dated entries under it. (Amended 2026-11-11, EXPIRY IS THE LATEST
+    OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once; when
+    either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the expiries
+    that granted it, and no expiry is later than any date. An operator who needs a hard end on some access
+    makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone added; it
+    does not bring an extended date back. Before a bid, an offer''s summary states any extension accepting
+    it would make ("extends your viewer role from 31 Dec to no end date").'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
