@@ -2025,6 +2025,17 @@ CREATE TABLE IF NOT EXISTS user_idp_attributes (
     PRIMARY KEY (user_id, name)
 );
 
+-- REQ-2219 (IDENTITY PROVIDER ROLES ARE MIRRORED): the role claims each user's identity provider
+-- sent at their last sign-in, where roles come from its claims, so the roles a person holds are
+-- listed with the identity provider as their origin. Read-only in Provisa.
+CREATE TABLE IF NOT EXISTS user_idp_roles (
+    user_id   TEXT NOT NULL,
+    role_id   TEXT NOT NULL,
+    domain_id TEXT NOT NULL,
+    seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, role_id, domain_id)
+);
+
 CREATE TABLE IF NOT EXISTS email_send_authority_audit (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email_address   TEXT NOT NULL,

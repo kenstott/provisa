@@ -1829,6 +1829,18 @@ user_idp_attributes = Table(
     Column("seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2219 (IDENTITY PROVIDER ROLES ARE MIRRORED): the role claims each user's identity provider
+# sent at their last sign-in, as (role, domain) pairs, where roles come from its claims. Rewritten
+# at sign-in when they changed; never administered.
+user_idp_roles = Table(
+    "user_idp_roles",
+    metadata,
+    Column("user_id", Text, primary_key=True),
+    Column("role_id", Text, primary_key=True),
+    Column("domain_id", Text, primary_key=True),
+    Column("seen_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # REQ-1330: who granted/revoked/verified consent to mail an address, and when. See the matching
 # block in schema.sql.
 email_send_authority_audit = Table(

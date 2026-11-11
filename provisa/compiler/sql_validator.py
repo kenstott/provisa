@@ -169,9 +169,14 @@ def _qualified_calls_as_calls(tree: exp.Expr) -> None:  # REQ-039, REQ-2167
     where ``pg_catalog."lower"(x)`` is a Dot of the schema and the call. As a column it is
     refused, its schema naming no relation in scope, and the columns inside it are never
     judged. It becomes the Dot every other qualified call is: a function call, whose arguments,
-    ORDER BY and FILTER are judged as the expressions they are."""
+    ORDER BY and FILTER are judged as the expressions they are. The call is recognized by its
+    node -- a WithinGroup, or a Filter over a function or a WithinGroup -- and any other shape
+    stays a column, judged as one (REQ-039)."""
     for col in list(tree.find_all(exp.Column)):
-        if isinstance(col.this, (exp.Identifier, exp.Star)):
+        call = col.this
+        if isinstance(call, exp.Filter):
+            call = call.this
+        if not isinstance(call, (exp.WithinGroup, exp.Func)):
             continue
         qualifiers = [col.args[k] for k in ("catalog", "db", "table") if col.args.get(k)]
         col.replace(exp.Dot.build([*qualifiers, col.this]))
