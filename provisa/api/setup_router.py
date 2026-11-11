@@ -84,6 +84,40 @@ def _name_local_mcp_principal(admin_db, user_id: str) -> None:  # REQ-1105
     settings_registry.store(admin_db, {local_principal.SETTING: user_id}, updated_by=user_id)
 
 
+LOCAL_ADMIN_USERNAME = "local-admin"
+
+
+async def _seat_local_admin(admin_db) -> None:  # REQ-1105, REQ-1913
+    """A no-sign-in install (auth provider none) has no bootstrap admin, so nothing would name the
+    local MCP principal and the always-on connector would refuse every call. Create an administrator
+    nobody can sign in as -- its password is a random secret held nowhere, as the MCP test
+    principal's is -- seat it as a single-tenant bootstrap admin, and name it ``mcp.principal``.
+    Idempotent: an account already seated under the name is reused."""
+    import uuid
+
+    async with admin_db.acquire() as conn:
+        existing = await conn.execute_core(
+            select(local_users.c.id).where(local_users.c.username == LOCAL_ADMIN_USERNAME)
+        )
+        row = existing.fetchone()
+        if row is not None:
+            admin_id = row[0]
+        else:
+            admin_id = str(uuid.uuid4())
+            unusable = bcrypt.hashpw(secrets.token_urlsafe(32).encode("utf-8"), bcrypt.gensalt())
+            await conn.execute_core(
+                insert(local_users).values(
+                    id=admin_id,
+                    username=LOCAL_ADMIN_USERNAME,
+                    password_hash=unusable.decode("utf-8"),
+                    display_name="Local admin",
+                    is_active=True,
+                )
+            )
+    await _seat_bootstrap_admin(admin_id)
+    _name_local_mcp_principal(admin_db, admin_id)
+
+
 def _idp_override() -> str | None:
     v = os.environ.get("PROVISA_IDP", "").strip()
     return v if v else None
@@ -189,7 +223,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 await write_verifier(pool, admin_id, "admin", "admin")
                 if not multitenant:
                     await _seat_bootstrap_admin(admin_id)
-                _name_local_mcp_principal(pool, admin_id)
+                    _name_local_mcp_principal(pool, admin_id)
 
     cfg["auth"] = auth_section
     # multitenancy is a top-level config field (models.py), not part of the auth section.
@@ -391,6 +425,9 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         cfg["auth"] = {"provider": "none"}
         _apply_naming(cfg)
         write_config(cfg_path, cfg)
+        if body.mode == "single":
+            assert state.admin_db is not None
+            await _seat_local_admin(state.admin_db)
         await _load_and_build(str(cfg_path))
         return {"success": True, "provider": "none"}
 
@@ -433,7 +470,9 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         await write_verifier(admin_db, admin_id, body.admin_username, body.admin_password)
         if body.mode == "single":
             await _seat_bootstrap_admin(admin_id)
-        _name_local_mcp_principal(admin_db, admin_id)
+            # REQ-1105: only a single-tenant admin holds data. A multi-mode setup seats a platform
+            # admin, which is control-plane only, so nothing is named there.
+            _name_local_mcp_principal(admin_db, admin_id)
         # REQ-124: the browser exchanges its password for a signed session token at
         # /auth/login, so the basic provider needs a signing key from the moment setup
         # writes the config — otherwise the first sign-in from the UI answers 503.
