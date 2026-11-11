@@ -35485,7 +35485,11 @@
     a call. (Amended 2026-11-11, A LOCAL MCP SERVER ACTS FOR A PRINCIPAL ITS OPERATOR NAMES:) Maintainer
     2026-11-11: over stdio, where no token arrives, the operator''s local MCP configuration names the principal
     the process acts for, beside the role it pins; that principal''s entitlements apply to every call. A
-    stdio MCP server whose configuration names no principal refuses every call, naming what is missing.'
+    stdio MCP server whose configuration names no principal refuses every call, naming what is missing.
+    (Amended 2026-11-11, FIRST-RUN SETUP NAMES THE LOCAL PRINCIPAL:) Maintainer 2026-11-11. On an install
+    whose local MCP connector is always on (the desktop tier), the first-run setup that creates the bootstrap
+    admin also sets the local MCP principal (mcp.principal) to that admin, so the connector acts for that
+    person from the start. The operator can change it in Settings like any other setting.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
