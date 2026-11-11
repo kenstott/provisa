@@ -35475,9 +35475,14 @@
   feature: mcp-server-identity
   priority: MUST
   type: behavioral
-  description: Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer
-    tokens to Provisa roles, enabling secure per-caller MCP authentication before exposing MCP off the
-    loopback.
+  description: 'Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer
+    tokens to Provisa roles, enabling secure per-caller MCP authentication before exposing MCP off the loopback.
+    (Amended 2026-11-11, AN MCP CALL RUNS AS A PRINCIPAL WITH ITS ENTITLEMENTS:) Maintainer 2026-11-11:
+    the MCP server needs more than a role; it needs a principal with entitlements. Every MCP call, on every
+    MCP transport, runs as a principal: the person (or service principal) the call is made for, with the
+    role it acts as and that principal''s entitlements (REQ-2219) narrowing what the role reaches, exactly
+    as the same principal''s queries on any other client are narrowed. A role alone is not enough to run
+    a call.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
