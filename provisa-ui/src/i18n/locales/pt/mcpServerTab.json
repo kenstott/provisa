@@ -9,8 +9,10 @@
     "transportLabel": "Transporte",
     "stdioRoleLabel": "Função stdio vinculada",
     "stdioRoleNone": "nenhuma definida — chamadas stdio exigem <code>{{envVar}}</code>",
+    "principalLabel": "Principal local",
+    "principalNone": "nenhum definido — chamadas locais são recusadas até que <code>{{envVar}}</code> indique um",
     "maxRowsLabel": "Limite de linhas (run_sql)",
-    "enableHint": "O servidor MCP é opcional. Defina a variável de ambiente <code>{{enableEnvVar}}</code> com uma porta e reinicie o serviço para habilitá-lo. Para o transporte stdio local, defina também <code>{{roleEnvVar}}</code> com uma função do provisa.",
+    "enableHint": "O servidor MCP é opcional. Defina a variável de ambiente <code>{{enableEnvVar}}</code> com uma porta e reinicie o serviço para habilitá-lo. Para o transporte stdio local, defina também <code>{{roleEnvVar}}</code> com uma função do provisa e <code>{{principalEnvVar}}</code> com o principal (id de usuário) em nome do qual essas chamadas atuam.",
     "toolsHeading": "Ferramentas expostas",
     "colTool": "Ferramenta",
     "colDescription": "Descrição"

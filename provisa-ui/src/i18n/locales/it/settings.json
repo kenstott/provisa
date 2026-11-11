@@ -601,6 +601,10 @@
         "label": "Ruolo locale MCP",
         "help": "Il ruolo con cui vengono eseguite le chiamate MCP locali (stdio); finché non è impostato, tali chiamate vengono rifiutate. Protetta da conferma perché concede l'accesso di quel ruolo a chiunque possa avviare il client locale."
       },
+      "principal": {
+        "label": "Principal locale MCP",
+        "help": "Il principal (id utente) per cui agiscono le chiamate MCP locali (stdio), accanto al ruolo locale; i diritti di quella persona restringono il ruolo. Finché non è impostato, quelle chiamate vengono rifiutate. Protetto perché chiunque possa avviare il client locale agisce con l'accesso di quella persona."
+      },
       "external_url": {
         "label": "Indirizzo esterno MCP",
         "help": "L'indirizzo MCP mostrato agli utenti quando la distribuzione si trova dietro un proxy."

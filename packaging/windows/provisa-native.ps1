@@ -103,7 +103,7 @@ function Native-Env([string]$ControlPlaneUrl) {
   # user, so the governed MCP role is admin. Override any by exporting the env before launch.
   if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
   if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
-  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'org_admin' }
   # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the claude_desktop_config
   # stdio bridge (mcp-proxy), which works over http. Its "Add custom connector" URL path is brokered
   # from Anthropic's servers (needs a public internet HTTPS endpoint), so TLS buys nothing locally.
