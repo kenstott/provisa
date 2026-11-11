@@ -601,6 +601,10 @@
         "label": "Lokale MCP-Rolle",
         "help": "Die Rolle, als die lokale (stdio) MCP-Aufrufe ausgeführt werden; solange sie nicht gesetzt ist, werden diese Aufrufe abgelehnt. Bestätigungspflichtig, da sie jedem, der den lokalen Client starten kann, den Zugriff dieser Rolle gewährt."
       },
+      "principal": {
+        "label": "Lokaler MCP-Prinzipal",
+        "help": "Der Prinzipal (Benutzer-ID), für den lokale (stdio-)MCP-Aufrufe neben der lokalen Rolle handeln; die Berechtigungen dieser Person schränken die Rolle ein. Solange er nicht gesetzt ist, werden diese Aufrufe abgelehnt. Geschützt, weil damit jeder, der den lokalen Client starten kann, mit dem Zugriff dieser Person handelt."
+      },
       "external_url": {
         "label": "Externe MCP-Adresse",
         "help": "Die MCP-Adresse, die Benutzern angezeigt wird, wenn das Deployment hinter einem Proxy steht."

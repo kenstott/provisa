@@ -11,10 +11,11 @@
 """Read-only MCP server status for the admin UI (REQ-1008).
 
 Reflects the SAME runtime/env configuration ``start_mcp_server`` reads
-(PROVISA_MCP_PORT / PROVISA_MCP_ROLE / PROVISA_MCP_MAX_ROWS). No new persisted
+(PROVISA_MCP_PORT / PROVISA_MCP_ROLE / PROVISA_MCP_PRINCIPAL / PROVISA_MCP_MAX_ROWS). No new persisted
 config is invented and no fallback is applied: an unset port means the server is
 disabled, an unset stdio role is reported as null (the transport fails loud on
-use, exactly as ``_pinned_stdio_role`` does).
+use, exactly as ``_pinned_stdio_role`` does), and so is an unset principal (REQ-1105: a local
+call is refused until one is named).
 """
 
 # complexity-gate: allow-ble=1 reason="the SSE chat stream converts any LLM/transport failure into a
@@ -60,6 +61,16 @@ _TOOLS = [
 ]
 
 
+def bridge_command() -> str | None:
+    """The host-accessible interpreter that runs the bundled mcp-proxy stdio bridge for Claude
+    Desktop (REQ-1104). Set ONLY by the native launchers (scripts/provisa,
+    packaging/windows/provisa-native.ps1): the ~/.provisa/runtime python that ships mcp-proxy.
+    Deliberately NOT sys.executable: on the container tier that would be the in-VM python, which
+    host Claude Desktop cannot launch. Set, the install's local MCP connector is always on -- the
+    desktop tier (REQ-1105)."""
+    return os.environ.get("PROVISA_MCP_BRIDGE_COMMAND") or None
+
+
 def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
     """The Streamable HTTP URL a client (e.g. Claude Desktop) connects to (REQ-1102).
 
@@ -100,6 +111,7 @@ def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
 
 def mcp_status(request: Request | None = None) -> dict:
     """The MCP server's effective config, read from the same env the start hook uses."""
+    from provisa.api.mcp import local_principal
     from provisa.core import settings_registry
 
     port = settings_registry.value("mcp.port")  # REQ-1913; 0 = not started
@@ -127,18 +139,18 @@ def mcp_status(request: Request | None = None) -> dict:
         "url": url,
         # Whether that URL is https -> the UI leads with the native custom-connector flow. REQ-1106.
         "tls": tls,
-        # The host-accessible interpreter that runs the bundled mcp-proxy stdio bridge for Claude
-        # Desktop (REQ-1104). Set ONLY by the native launcher (PROVISA_MCP_BRIDGE_COMMAND = the
-        # ~/.provisa/runtime python that ships mcp-proxy). Deliberately NOT sys.executable: on the
-        # container tier that would be the in-VM python, which host Claude Desktop cannot launch.
-        # None -> the panel shows the "supply your own bridge" note instead of a broken config.
-        "bridge_command": os.environ.get("PROVISA_MCP_BRIDGE_COMMAND") or None,
+        # The stdio bridge's interpreter (REQ-1104). None -> the panel shows the "supply your own
+        # bridge" note instead of a broken config.
+        "bridge_command": bridge_command(),
         "bridge_args": bridge_args,
         "stdio_role": role,
+        # REQ-1105: the principal local calls act for, beside the role; null -> they are refused.
+        "principal": settings_registry.value(local_principal.SETTING),
         "max_rows": max_rows,
         "tools": _TOOLS,
         "enable_env_var": "PROVISA_MCP_PORT",
         "role_env_var": "PROVISA_MCP_ROLE",
+        "principal_env_var": local_principal.ENV,
     }
 
 
@@ -148,7 +160,8 @@ async def get_mcp_server(request: Request):  # REQ-1008
 
     Open to every org member (the Explore page reads the connect address), trimmed for a caller
     without ``observability`` to that address and the bridge needed to use it; the port,
-    transport, bound role, row cap, tool list and environment variable names are the observer's.
+    transport, bound role, local principal, row cap, tool list and environment variable names
+    are the observer's.
     """
     status = mcp_status(request)
     if has_capability_request(request, "observability"):

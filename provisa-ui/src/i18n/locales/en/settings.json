@@ -601,6 +601,10 @@
         "label": "MCP local role",
         "help": "The role local (stdio) MCP calls run as; until it is set those calls are refused. Guarded because it grants that role's access to anyone who can start the local client."
       },
+      "principal": {
+        "label": "MCP local principal",
+        "help": "The principal (user id) local (stdio) MCP calls act for, beside the local role; that person's entitlements narrow the role. Until it is set those calls are refused. Guarded because it acts with that person's access for anyone who can start the local client."
+      },
       "external_url": {
         "label": "MCP external address",
         "help": "The MCP address shown to users when the deployment sits behind a proxy."

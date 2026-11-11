@@ -9,8 +9,10 @@
     "transportLabel": "トランスポート",
     "stdioRoleLabel": "バインド済みstdioロール",
     "stdioRoleNone": "未設定 — stdio呼び出しには <code>{{envVar}}</code> が必要です",
+    "principalLabel": "ローカルプリンシパル",
+    "principalNone": "未設定 — <code>{{envVar}}</code> で指定されるまで、ローカル呼び出しは拒否されます",
     "maxRowsLabel": "行数上限（run_sql）",
-    "enableHint": "MCPサーバーはオプトインです。環境変数 <code>{{enableEnvVar}}</code> にポートを設定し、サービスを再起動すると有効になります。ローカルのstdioトランスポートの場合は、<code>{{roleEnvVar}}</code> にprovisaロールも設定してください。",
+    "enableHint": "MCPサーバーはオプトインです。環境変数 <code>{{enableEnvVar}}</code> にポートを設定し、サービスを再起動すると有効になります。ローカルのstdioトランスポートの場合は、<code>{{roleEnvVar}}</code> にprovisaロールを、<code>{{principalEnvVar}}</code> にそれらの呼び出しが代理として動作するプリンシパル（ユーザーID）を設定してください。",
     "toolsHeading": "公開ツール",
     "colTool": "ツール",
     "colDescription": "説明"

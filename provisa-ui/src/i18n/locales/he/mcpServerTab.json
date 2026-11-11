@@ -9,8 +9,10 @@
     "transportLabel": "תעבורה",
     "stdioRoleLabel": "תפקיד stdio מקושר",
     "stdioRoleNone": "לא הוגדר — קריאות stdio דורשות <code>{{envVar}}</code>",
+    "principalLabel": "ישות מקומית",
+    "principalNone": "לא הוגדרה — קריאות מקומיות נדחות עד ש-<code>{{envVar}}</code> יציין אחת",
     "maxRowsLabel": "תקרת שורות (run_sql)",
-    "enableHint": "שרת ה-MCP הוא בהצטרפה מפורשת. יש להגדיר את משתנה הסביבה <code>{{enableEnvVar}}</code> לפורט ולהפעיל מחדש את השירות כדי להפעילו. עבור תעבורת stdio מקומית, יש להגדיר גם את <code>{{roleEnvVar}}</code> לתפקיד provisa.",
+    "enableHint": "שרת ה-MCP הוא בהצטרפה מפורשת. יש להגדיר את משתנה הסביבה <code>{{enableEnvVar}}</code> לפורט ולהפעיל מחדש את השירות כדי להפעילו. עבור תעבורת stdio מקומית, יש להגדיר גם את <code>{{roleEnvVar}}</code> לתפקיד provisa ואת <code>{{principalEnvVar}}</code> לישות (מזהה משתמש) שבשמה הקריאות פועלות.",
     "toolsHeading": "כלים חשופים",
     "colTool": "כלי",
     "colDescription": "תיאור"
