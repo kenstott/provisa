@@ -78,6 +78,7 @@ from provisa.api.admin.types import (
     RoleTtlInput,
     SourceInput,
     TableInput,
+    TableRegistrationOutcome,
     ColumnInput,
     TagAssignmentInput,
     TagInput,
@@ -4016,6 +4017,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         require_capability(info, "table_registration", domain_id=input.domain_id)
         return await _ops.register_table(info, input)
+
+    @strawberry.mutation
+    async def register_tables(
+        self, info: StrawberryInfo, inputs: list[TableInput]
+    ) -> list[TableRegistrationOutcome]:  # REQ-2234
+        """Several tables registered in one action, each by registerTable."""
+        from provisa.api.admin._batch_registration import register_tables
+
+        return await register_tables(info, inputs)
 
     @strawberry.mutation
     async def register_entity(self, info: StrawberryInfo, input: "EntityInput") -> MutationResult:

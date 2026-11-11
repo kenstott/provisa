@@ -398,6 +398,10 @@ Run `ANALYZE` on all registered tables for a source. Improves join-order and bro
 
 Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` and `draft`, in one transaction, so a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
 
+#### `registerTables(inputs: [TableInput!]!) → [TableRegistrationOutcome!]!`
+
+Register several tables in one action. Each input is registered by `registerTable`, with the same rights and checks as registering it alone. Each outcome names its table (`tableName`) and carries what its registration answered (`result`): a table one of the checks refuses is answered with its refusal, and the others are registered.
+
 #### `updateTable(input: TableInput!) → MutationResult`
 
 Update an existing table's alias, description, column metadata, MV settings, live-delivery config and the settings the input carries (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in one transaction, so a refusal of any one saves nothing. A setting left out keeps its stored value. Requires `table_registration`.

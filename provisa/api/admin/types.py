@@ -2054,6 +2054,14 @@ class MutationResult:  # REQ-533
     params: JsonScalar | None = None
 
 
+@strawberry.type
+class TableRegistrationOutcome:  # REQ-2234
+    """One table of several registered in one action: what its own registration answered."""
+
+    table_name: str
+    result: MutationResult
+
+
 # --- Compile / Submit types ---
 
 
