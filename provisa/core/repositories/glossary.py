@@ -29,12 +29,13 @@ both (``core.glossary.agent_view``).
 from provisa.core import model_change
 from typing import TYPE_CHECKING, Any
 
+import json
 import logging
 import re
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import delete as _delete, func, or_, select, update
+from sqlalchemy import delete as _delete, func, insert, or_, select, update
 
 from provisa.core.glossary import (
     GROUNDED,
@@ -59,6 +60,7 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
+    glossary_term_statements,
     glossary_terms,
     registered_tables,
     relationships,
@@ -948,7 +950,53 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
     # which are exactly the two cases the declared rows exist to answer.
     term["domains"] = sorted((await term_domains(conn)).get(term_id, set()))
+    # REQ-2237: what an imported ontology stated about it that a term does not model.
+    term["statements"] = (await term_statements(conn, [term_id])).get(term_id, [])
     return term
+
+
+async def term_statements(
+    conn: "Connection", term_ids: "list[int] | None" = None
+) -> dict[int, list[dict]]:  # REQ-2237
+    """Each term's kept statements (provisa/ontology_import/kept.py), in the order kept: of
+    ``term_ids``, or of every term."""
+    query = select(glossary_term_statements.c.term_id, glossary_term_statements.c.statement)
+    if term_ids is not None:
+        query = query.where(glossary_term_statements.c.term_id.in_(term_ids))
+    rows = (
+        await conn.execute_core(
+            query.order_by(glossary_term_statements.c.term_id, glossary_term_statements.c.ordinal)
+        )
+    ).fetchall()
+    out: dict[int, list[dict]] = {}
+    for term_id, statement in rows:
+        out.setdefault(term_id, []).append(json.loads(statement))
+    return out
+
+
+async def keep_statements(
+    conn: "Connection", term_id: int, statements: "list[dict]"
+) -> None:  # REQ-2237
+    """Keep ``statements`` on the term, after those it holds; one it holds already is not kept
+    twice."""
+    held = (await term_statements(conn, [term_id])).get(term_id, [])
+    seen = {json.dumps(s, sort_keys=True) for s in held}
+    rows = []
+    for statement in statements:
+        text = json.dumps(statement, sort_keys=True)
+        if text in seen:
+            continue
+        seen.add(text)
+        rows.append(
+            {
+                "term_id": term_id,
+                "ordinal": len(held) + len(rows),
+                "kind": statement["kind"],
+                "statement": text,
+            }
+        )
+    if rows:
+        await conn.execute_core_many(insert(glossary_term_statements), rows)
 
 
 async def create_abstract_term(
@@ -1702,6 +1750,11 @@ async def export_graph(conn: "Connection") -> dict:
         "edges": edges,
         "experts": experts,
         "domains": domains,
+        # REQ-2237: each term's kept statements, written back out by the ontology exports.
+        "statements": [
+            {"term_id": term_id, "statements": held}
+            for term_id, held in sorted((await term_statements(conn)).items())
+        ],
     }
 
 
