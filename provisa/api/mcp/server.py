@@ -455,22 +455,26 @@ def build_mcp_server(state: Any):
             _end_session(session)
         return PermissionError(role_probe.NOT_PERMITTED if identity is not None else str(refused))
 
-    async def _as_principal(fn: Any, args: tuple, kwargs: dict) -> Any:
-        """Run ``fn`` as the call's principal (REQ-1105). A remote call's was bound by the
+    async def _as_principal(make_coro: Any) -> Any:
+        """Run the call ``make_coro`` makes as the call's principal (REQ-1105). A remote call's was bound by the
         transport from its token; a local call acts for the principal the operator named, found
         in the call's org, and is refused by name when there is none."""
         if _request_identity.get() is not None:
-            return await fn(*args, **kwargs)
+            return await make_coro()
         from provisa.api.mcp import local_principal
         from provisa.audit.context import audit_identity_scope
 
-        local_principal.configured_principal()  # no principal named: refused before anything
-        pinned = {r.strip() for r in _pinned_stdio_role().split(",") if r.strip()}
-        identity = await local_principal.resolve(state, require_current_org(), sorted(pinned))
+        from provisa.core import settings_registry
+
+        # The roles the identity holds are the operator's pin; a tool that acts as a role
+        # requires the pin itself (_pinned_stdio_role), and one that acts as none does not.
+        pin = settings_registry.value("mcp.role") or ""
+        pinned = sorted({r.strip() for r in pin.split(",") if r.strip()})
+        identity = await local_principal.resolve(state, require_current_org(), pinned)
         reset = _local_identity.set(identity)
         try:
             with audit_identity_scope(identity.user_id, "mcp"):
-                return await fn(*args, **kwargs)
+                return await make_coro()
         finally:
             _local_identity.reset(reset)
 
@@ -494,7 +498,8 @@ def build_mcp_server(state: Any):
                     try:
                         result = await run_on_request_thread(
                             lambda: _within_request(
-                                lambda: _as_principal(fn, args, kwargs), f"MCP {fn.__name__}"
+                                lambda: _as_principal(lambda: fn(*args, **kwargs)),
+                                f"MCP {fn.__name__}",
                             )
                         )
                     except RoleNotHeld as refused:
@@ -632,14 +637,16 @@ def build_mcp_server(state: Any):
         with collecting() as found:
             result = await run_on_request_thread(
                 lambda: _within_request(
-                    lambda: tools.run_sql(
-                        state,
-                        _role(role),
-                        sql,
-                        limit=limit,
-                        offset=offset,
-                        redirect=redirect,
-                        redirect_format=redirect_format,
+                    lambda: _as_principal(
+                        lambda: tools.run_sql(
+                            state,
+                            _role(role),
+                            sql,
+                            limit=limit,
+                            offset=offset,
+                            redirect=redirect,
+                            redirect_format=redirect_format,
+                        )
                     ),
                     "MCP run_sql",
                 )

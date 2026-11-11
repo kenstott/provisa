@@ -62,9 +62,9 @@ def configured_principal() -> str:
 
 async def _in_org(state: Any, principal: str, org_id: str) -> bool:
     """Whether ``principal`` is in ``org_id``. Under multitenancy: a member it can work in, as
-    every session-binding path reads membership. One org: a local account, a member, or someone
-    who has signed in to it."""
-    from provisa.core.schema_admin import local_users, user_org_memberships
+    every session-binding path reads membership. One org: an active local account, a member, or
+    someone who has signed in to it."""
+    from provisa.core.schema_admin import local_users
     from provisa.core.schema_org import user_directory
 
     if state.admin_db is None:
@@ -76,17 +76,11 @@ async def _in_org(state: Any, principal: str, org_id: str) -> bool:
         if getattr(state, "multitenancy", False):
             return False
         local = await conn.execute_core(
-            select(local_users.c.id).where(local_users.c.id == principal)
-        )
-        if local.first() is not None:
-            return True
-        member = await conn.execute_core(
-            select(user_org_memberships.c.user_id).where(
-                user_org_memberships.c.user_id == principal,
-                user_org_memberships.c.org_id == org_id,
+            select(local_users.c.id).where(
+                local_users.c.id == principal, local_users.c.is_active.is_(True)
             )
         )
-        if member.first() is not None:
+        if local.first() is not None:
             return True
     async with state.model_db.acquire() as conn:
         signed_in = await conn.execute_core(

@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from provisa.api.mcp import tools
+from tests.unit.mcp_local_principal import act_for
 from tests.unit.test_mcp_server import _FakeJobStore, _make_state
 
 
@@ -261,10 +262,12 @@ def test_the_render_timeout_is_an_operator_setting_with_a_floor():
     )
 
 
-async def test_the_server_s_render_graph_answers_an_mcp_png_image(renderer):
+async def test_the_server_s_render_graph_answers_an_mcp_png_image(renderer, monkeypatch):
     from provisa.api.mcp.server import build_mcp_server
 
-    mcp = build_mcp_server(_make_state())
+    state = _make_state()
+    act_for(monkeypatch, state)  # REQ-1105: a local call acts for the principal named
+    mcp = build_mcp_server(state)
     elements = tools.cytoscape_elements([{"r": PLACED}])
     with patch("subprocess.run", MagicMock(return_value=_Done())):
         content = await mcp.call_tool("render_graph", {"elements": elements, "theme": "dark"})
