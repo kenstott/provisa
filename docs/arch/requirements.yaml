@@ -91732,7 +91732,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     be requested. (Amended 2026-11-11, AN OPEN PRODUCT NEEDS NO APPROVAL:) Maintainer 2026-11-11. A product
     can be marked open: a request for it is granted at once, through its listed role (viewer by default)
     with the entitlements built from the product, and recorded like any approval, with no owner to wait
-    for. It is meant for common reference data many people need, such as the organisation structure.'
+    for. It is meant for common reference data many people need, such as the organisation structure. (Amended
+    2026-11-11, PRODUCT ACCESS COMES IN TWO SIZES:) Maintainer 2026-11-11, simplifying the entitlements
+    built from a product: there are two, and the approval (or the open grant) gives one of them -- the product''s
+    datasets, or its datasets with their data quality results and profiles. Masks, row rules and anything
+    else applied on read come from the listed role, defined up front.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
