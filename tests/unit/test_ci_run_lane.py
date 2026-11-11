@@ -343,7 +343,7 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     assert marker == (
         "requires_warehouse and not requires_salesforce and not requires_athena and not requires_servicenow "
         "and not requires_microsoft_365 and not requires_google_workspace and not requires_quickbooks "
-        "and not requires_shopify and not requires_fabric and not requires_polly_bakeoff"
+        "and not requires_shopify and not requires_polly_bakeoff"
     )
     assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
     # Every other lane excludes the live tests through the base exclusion or its own marker.
@@ -855,8 +855,6 @@ _NO_CI_LANE = {
     "requires_google_workspace",
     "requires_quickbooks",
     "requires_shopify",
-    # Maintainer 2026-11-11: out of CI until the CI service principal has Admin on the Fabric workspace.
-    "requires_fabric",
 }
 
 
