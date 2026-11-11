@@ -53,6 +53,7 @@ describe("RegisterTableForm names the domain it registers into", () => {
         onContinue={onContinue}
         onCancel={() => {}}
         onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

@@ -132,6 +132,10 @@ Arguments: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repli
 
 Artifacts that a pending alias rename or column drop would break. It is advisory. The admin UI shows this before saving and the administrator decides. Must be called *before* saving, because the dependents were authored against the exposed name the column currently carries.
 
+#### `tableAccess(tableId: Int!, role: String!) → TableAccessType!`
+
+The ways `role` reaches a registered table, each ready to copy: `graphql` (a query for its first rows), `sql` (the statement a SQL client runs), `pgwire` (the connection string for that client), `rest` (the REST read) and `mcp` (the `run_sql` tool call). Every name comes from the role's compiled schema. `pgwire` is null when the pgwire listener is not started, and `rest` is null when the REST surface is not mounted. Both are null when the deployment names no public origin (`mail.base_url`). The caller must hold `role`, or hold `access_config`. A comma-separated set of roles is read as their meta-role, as `compileQuery` reads it. A table the role's schema does not serve is refused.
+
 ---
 
 ### Relationships
@@ -397,6 +401,10 @@ Run `ANALYZE` on all registered tables for a source. Improves join-order and bro
 #### `registerTable(input: TableInput!) → MutationResult`
 
 Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` and `draft`, in one transaction, so a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
+
+#### `registerTables(inputs: [TableInput!]!) → [TableRegistrationOutcome!]!`
+
+Register several tables in one action. Each input is registered by `registerTable`, with the same rights and checks as registering it alone. Each outcome names its table (`tableName`) and carries the answer of that table's registration (`result`). A table that a check refuses gets that refusal as its result, and `registerTables` still registers the others.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 

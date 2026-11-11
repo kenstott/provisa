@@ -1,0 +1,23 @@
+{
+  "registerManyTables": {
+    "modeLabel": "Combien de tables",
+    "modeOne": "Une table",
+    "modeSeveral": "Plusieurs tables",
+    "tablesLabel": "Tables",
+    "listing": "Liste des tables en cours…",
+    "noTables": "Ce schéma ne contient aucune table.",
+    "tickedCount_one": "{{count}} table cochée. Chacune est enregistrée avec les valeurs par défaut qu'elle recevrait seule.",
+    "tickedCount_other": "{{count}} tables cochées. Chacune est enregistrée avec les valeurs par défaut qu'elle recevrait seule.",
+    "reading": "Lecture de ses colonnes…",
+    "readFailed": "Impossible de lire ses colonnes : {{error}}",
+    "registered": "Déjà enregistrée.",
+    "needsDeclared": "Saisie requise : sa source ne décrit pas ses colonnes. Enregistrez-la séparément.",
+    "needsNoColumns": "Saisie requise : aucune colonne n'a été trouvée. Enregistrez-la séparément.",
+    "needsUntyped": "Saisie requise : aucun type trouvé pour {{columns}}. Enregistrez-la séparément.",
+    "register_one": "Enregistrer {{count}} table",
+    "register_other": "Enregistrer {{count}} tables",
+    "refused": "{{table}} n'a pas été enregistrée : {{message}}",
+    "skip": "Ignorer l'enregistrement des tables",
+    "domainRequired": "Choisissez le domaine dans lequel les tables sont enregistrées."
+  }
+}
