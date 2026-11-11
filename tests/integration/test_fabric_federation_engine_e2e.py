@@ -24,7 +24,11 @@ import pytest
 
 from tests.env_creds import unset
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.requires_warehouse,
+    pytest.mark.requires_fabric,
+]
 
 pytest.importorskip("pyodbc", reason="pyodbc required")
 pytest.importorskip("azure.identity", reason="azure-identity required")
