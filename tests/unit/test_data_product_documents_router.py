@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2158, REQ-2118: the product's Contracts panel reads every output port's ODCS contract as
-JSON, asking what reading the product asks; a catalog's pull is the metadata export's, the Ossie
+"""REQ-2158, REQ-2118, REQ-2180: a product's offers show the ODCS contracts they give as JSON,
+asking what reading the product asks; a catalog's pull is the metadata export's, the Ossie
 ontology of the terms the product reaches among it (REQ-2238)."""
 
 from __future__ import annotations
@@ -22,8 +22,11 @@ from provisa.api.admin import data_product_documents_router as router
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import build_snapshot
 from provisa.control_plane.entitlements import EntitlementError, Tier
-from provisa.core.contract_versions import recorded
-from provisa.core.models import DataContract, DataProduct, VersionColumn
+from datetime import UTC, datetime
+
+from provisa.api.metadata_export.odps import OfferExport
+from provisa.core import offer_contracts
+from provisa.core.models import DataProduct, DataProductOffer
 from tests.integration.metadata_export_fixture import ORG_ID, PROD, governed_config
 
 
@@ -48,83 +51,111 @@ def org(monkeypatch):
     monkeypatch.setattr(router, "require_active_org_id", lambda r: ORG_ID)
     monkeypatch.setattr(router, "require_feature", not_entitled)
     monkeypatch.setattr("provisa.api.metadata_export.publishing.org_snapshot", snapshot_of)
+
+    async def offer_exports(product_id):
+        # REQ-2180: the product's offers and their contracts, as the store holds them.
+        asked.append(f"offers:{product_id}")
+        return [_default_offer(snapshot)]
+
+    monkeypatch.setattr(router, "offer_exports", offer_exports)
     return asked
+
+
+_AT = datetime(2026, 11, 11, tzinfo=UTC)
+
+
+def _contract(columns, previous=None):
+    offer = DataProductOffer(name="default", role_id="viewer")
+    seen = [offer_contracts.SeenColumn(c, "integer") for c in columns]
+    terms = offer_contracts.terms(
+        offer, seen, row_rules=[], sample_views=[], checks=[], profiles=[]
+    )
+    return offer_contracts.recorded(previous, terms, at=_AT)
+
+
+def _default_offer(snapshot) -> OfferExport:
+    members = {"wh.public.orders", "wh.public.customers", "wh.public.order_totals"}
+    return OfferExport(
+        name="default",
+        role_id="viewer",
+        data_level="full",
+        dq_results=True,
+        profiles=False,
+        open=False,
+        duration_days=None,
+        contracts={
+            t.ref.fqn(): _contract([c.name for c in t.columns])
+            for t in snapshot.tables
+            if t.ref.fqn() in members
+        },
+    )
 
 
 def test_the_panel_reads_every_contract_without_the_export(org):
     contracts = asyncio.run(router.data_product_contracts("prod", object()))
-    assert set(contracts) == {"wh.public.orders", "wh.public.customers", "wh.public.order_totals"}
-    assert contracts["wh.public.orders"]["kind"] == "DataContract"
-    assert org == ["data_product_read", "snapshot:prod"]
+    assert set(contracts) == {
+        "default/wh.public.orders",
+        "default/wh.public.customers",
+        "default/wh.public.order_totals",
+    }
+    assert contracts["default/wh.public.orders"]["kind"] == "DataContract"
+    assert org == ["data_product_read", "snapshot:prod", "offers:prod"]
 
 
 def test_a_catalogs_pull_is_the_metadata_exports(org):
     with pytest.raises(ApiError) as refused:
-        asyncio.run(router.data_product_contract("prod", "wh.public.orders", object()))
+        asyncio.run(router.data_product_contract("prod", "default", "wh.public.orders", object()))
     assert refused.value.status_code == 403
 
 
 def test_a_rows_contract_is_read_alone_without_the_export(org):
-    # REQ-2158: a contract row of the product's list reads its own port's contract when it opens.
-    contract = asyncio.run(router.data_product_contract_json("prod", "wh.public.orders", object()))
+    # REQ-2180: an offer's contract on a dataset is read on its own when it opens.
+    contract = asyncio.run(
+        router.data_product_contract_json("prod", "default", "wh.public.orders", object())
+    )
     assert contract["kind"] == "DataContract"
     assert contract["schema"][0]["physicalName"] == "wh.public.orders"
-    assert org == ["data_product_read", "snapshot:prod"]
+    assert org == ["data_product_read", "snapshot:prod", "offers:prod"]
 
 
 def test_a_port_with_no_contract_names_the_ports_there_are(org):
     with pytest.raises(ApiError) as missing:
-        asyncio.run(router.data_product_contract_json("prod", "wh.public.nope", object()))
+        asyncio.run(
+            router.data_product_contract_json("prod", "default", "wh.public.nope", object())
+        )
     assert missing.value.status_code == 404
-    assert "wh.public.orders" in missing.value.detail
-
-
-class _Plane:
-    """The model store's one read of this route: the product's member contracts."""
-
-    def __init__(self, rows: list[dict]) -> None:
-        self.rows = rows
-
-    def acquire(self):
-        return self
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
+    assert "default/wh.public.orders" in missing.value.detail
 
 
 @pytest.fixture
 def versions_of(org, monkeypatch):
-    def members(*columns: str) -> list[VersionColumn]:
-        return [VersionColumn(name=c, type="integer") for c in columns]
+    one = _contract(["id", "note"])
+    two = _contract(["id"], one)
+    export = OfferExport(
+        name="default",
+        role_id="viewer",
+        data_level="full",
+        dq_results=True,
+        profiles=False,
+        open=False,
+        duration_days=None,
+        contracts={"wh.public.orders": two},
+    )
 
-    one = recorded(None, DataContract(version="1.0.0"), [], members("id", "note"))
-    two = recorded(one, DataContract(version="2.0.0"), [], members("id"))
-    row = {
-        "id": 1,
-        "product_id": "prod",
-        "source_id": "wh",
-        "schema_name": "public",
-        "table_name": "orders",
-        "contract": two.model_dump(mode="json"),
-    }
+    async def offer_exports(product_id):
+        org.append(f"offers:{product_id}")
+        return [export]
 
-    async def member_contracts(conn, product_id):
-        org.append(f"members:{product_id}")
-        return [row]
-
-    monkeypatch.setattr("provisa.api.app.state.model_db", _Plane([row]))
-    monkeypatch.setattr("provisa.core.repositories.data_product.member_contracts", member_contracts)
+    monkeypatch.setattr(router, "offer_exports", offer_exports)
+    monkeypatch.setattr(router, "require_active_org_id", lambda r: ORG_ID)
     return org
 
 
 def test_a_rows_versions_are_read_with_when_and_by_whom_and_their_differences(versions_of):
     versions = asyncio.run(
-        router.data_product_contract_versions("prod", "wh.public.orders", object())
+        router.data_product_contract_versions("prod", "default", "wh.public.orders", object())
     )
-    assert [v["contract"]["version"] for v in versions] == ["1.0.0", "2.0.0"]
+    assert [v["version"] for v in versions] == ["1.0.0", "2.0.0"]
     assert versions[0]["changes"] == []
     assert versions[1]["changes"] == [
         {
@@ -136,16 +167,16 @@ def test_a_rows_versions_are_read_with_when_and_by_whom_and_their_differences(ve
         }
     ]
     assert versions[1]["saved_at"] is not None and versions[1]["saved_by"] is None
-    # A version is its own document, not a copy of the history before it.
-    assert "versions" not in versions[1]["contract"]
-    assert versions_of == ["data_product_read", "members:prod"]
+    assert versions_of == ["data_product_read", "offers:prod"]
 
 
 def test_a_port_with_no_contract_has_no_versions(versions_of):
     with pytest.raises(ApiError) as missing:
-        asyncio.run(router.data_product_contract_versions("prod", "wh.public.nope", object()))
+        asyncio.run(
+            router.data_product_contract_versions("prod", "default", "wh.public.nope", object())
+        )
     assert missing.value.status_code == 404
-    assert "wh.public.orders" in missing.value.detail
+    assert "wh.public.nope" in missing.value.detail
 
 
 def test_the_ossie_ontology_is_a_pull_of_the_metadata_export(org):

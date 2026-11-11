@@ -232,6 +232,8 @@ data_products = Table(  # REQ-1634
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # REQ-2219: who created it, set on insert only; it grants nothing.
     Column("created_by", Text),
+    # REQ-2180: the freshness every contract of the product promises, in seconds.
+    Column("freshness", Integer),
 )
 
 naming_rules = Table(
@@ -1356,6 +1358,80 @@ data_product_commands = Table(
         nullable=False,
     ),
     PrimaryKeyConstraint("product_id", "command_name"),
+)
+
+# REQ-2180 OFFERS: a product's offers (see schema.sql).
+data_product_offers = Table(
+    "data_product_offers",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("data_level", Text, nullable=False, server_default="full"),
+    Column("sample_views", JSON, nullable=False, default=list, server_default="[]"),
+    Column("dq_results", Boolean, nullable=False, server_default=true()),
+    Column("profiles", Boolean, nullable=False, server_default=false()),
+    Column("open", Boolean, nullable=False, server_default=false()),
+    Column("duration_days", Integer),
+    Column("version", Integer, nullable=False, server_default="1"),
+    Column("published_by", Text),
+    Column("review", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("product_id", "name"),
+    CheckConstraint(
+        "data_level IN ('full', 'sample', 'synthetic')",
+        name="data_product_offers_data_level_check",
+    ),
+)
+
+# REQ-2180: each offer's contract for each dataset of its product, versioned on its own.
+data_product_offer_contracts = Table(
+    "data_product_offer_contracts",
+    metadata,
+    Column(
+        "offer_id",
+        Integer,
+        ForeignKey("data_product_offers.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("contract", JSON, nullable=False),
+    PrimaryKeyConstraint("offer_id", "table_id"),
+)
+
+# REQ-2180: a bid, or the cancel of an accepted one, as the request it fired through the outbound
+# request hook, and its outcome (see schema.sql).
+data_product_bids = Table(
+    "data_product_bids",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_id", Text, nullable=False, unique=True),
+    Column("kind", Text, nullable=False, server_default="bid"),
+    Column("cancels", Integer, ForeignKey("data_product_bids.id", ondelete="CASCADE")),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("offer_id", Integer, ForeignKey("data_product_offers.id", ondelete="SET NULL")),
+    Column("offer_version", Integer, nullable=False),
+    Column("terms", JSON, nullable=False),
+    Column("requester", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("hook", Text, nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decline_reason", Text),
+    # none_as_null: a bid with nothing granted (None) is SQL NULL, never the JSON value null.
+    Column("granted", JSON(none_as_null=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
+        name="data_product_bids_status_check",
+    ),
 )
 
 tracked_webhooks = Table(

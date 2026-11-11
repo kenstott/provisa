@@ -164,6 +164,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "names",
         # REQ-2216: how the org is told of a request (email, events only, or both).
         "requests",
+        # REQ-2180: where the org's access requests go, and the secret reference they are signed with.
+        "offer_hook",
     }
     for deployment_wide in (
         "federation_engine",

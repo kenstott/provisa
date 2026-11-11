@@ -89,7 +89,14 @@ def test_catalog_bindings_are_not_part_of_the_model():
 
 @pytest.mark.parametrize(
     "key",
-    ["metadata_export.endpoint", "catalogs", "redirect.base_url", "cache.redis_url", "cache"],
+    [
+        "metadata_export.endpoint",
+        "catalogs",
+        "redirect.base_url",
+        "cache.redis_url",
+        "cache",
+        "offer_hook",  # REQ-2180: the system an environment's access requests go to
+    ],
 )
 def test_settings_naming_an_external_target_or_a_runtime_stay_behind(key):
     assert not ec.carries_setting(key)

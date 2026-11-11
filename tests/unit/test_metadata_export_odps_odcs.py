@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2118, REQ-2158: a data product's ODPS document and its members' declared ODCS contracts.
+"""REQ-2118, REQ-2158, REQ-2180: a data product's ODPS document and the ODCS contracts its offers
+give on its members (REQ-2180, CONTRACTS ARE DERIVED FROM THE OFFERS).
 
 Each document is validated against the standard's own JSON Schema (tests/fixtures/standards), so
 what a catalog importing the standard reads is what the standard defines.
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,14 +30,16 @@ from provisa.api.admin.system_health import HTTP_SURFACES
 from provisa.api.metadata_export import build_snapshot
 from provisa.api.metadata_export.odps import (
     UNVERSIONED,
+    OfferExport,
     contract_id,
     logical_type,
     odcs_contract,
     odps_document,
+    offer_contract,
     product_documents,
 )
 from provisa.api.metadata_export.publishing import serving_endpoints
-from provisa.core import data_contracts
+from provisa.core import data_contracts, offer_contracts
 from provisa.core.models import (
     Column,
     ContractSlaProperty,
@@ -97,13 +101,63 @@ def _snapshot(orders_contract: DataContract | None = None, **product):
     return snapshot, built
 
 
+_AT = datetime(2026, 11, 11, tzinfo=UTC)
+
+
+def _offers(snapshot, product, *, skip=(), masked=None, unread=(), freshness=None, **terms):
+    """The product's default offer as the export writes it (REQ-2180): its contract on each member
+    but ``skip`` (names), each column read but ``unread``, ``masked`` {column: mask kind}."""
+    from provisa.core.models import DataProductOffer
+
+    offer = DataProductOffer(name="default", role_id="viewer", **terms)
+    masked = masked or {}
+    members = {m.fqn() for m in product.members}
+    contracts = {
+        table.ref.fqn(): offer_contracts.recorded(
+            None,
+            offer_contracts.terms(
+                offer,
+                [
+                    offer_contracts.SeenColumn(
+                        c.name, c.data_type, read=c.name not in unread, mask=masked.get(c.name)
+                    )
+                    for c in table.columns
+                ],
+                row_rules=_ROW_RULES.get(table.name, []),
+                sample_views=[],
+                checks=[],
+                profiles=[f"{table.name}_profile"],
+            ),
+            at=_AT,
+        )
+        for table in snapshot.tables
+        if table.ref.fqn() in members and table.name not in skip
+    }
+    return [
+        OfferExport(
+            name=offer.name,
+            role_id=offer.role_id,
+            data_level=offer.data_level,
+            dq_results=offer.dq_results,
+            profiles=offer.profiles,
+            open=offer.open,
+            duration_days=offer.duration_days,
+            contracts=contracts,
+            freshness=freshness,
+        )
+    ]
+
+
+_ROW_RULES = {"orders": ["only the orders of the reader's region"]}
+
+
 def _errors(validator: Draft201909Validator, document: dict) -> list[str]:
     return [f"{list(e.absolute_path)}: {e.message}" for e in validator.iter_errors(document)]
 
 
-def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
+def test_the_odps_document_is_valid_odps_and_names_each_offers_contract():
     snapshot, product = _snapshot(ORDERS_CONTRACT, version="1.2.0", status="live")
-    document = odps_document(snapshot, product)
+    document = odps_document(snapshot, product, _offers(snapshot, product))
 
     assert _errors(ODPS, document) == []
     assert document["description"] == {
@@ -116,17 +170,31 @@ def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
         "active",  # ODPS's word for a live product
         "sales",
     )
+    # REQ-2180: a port per offer and dataset, naming the contract the offer gives on it; the
+    # per-table contract written by hand (ORDERS_CONTRACT) is superseded.
     ports = {port["name"]: port for port in document["outputPorts"]}
-    assert set(ports) == {"orders", "customers", "order_totals"}
+    assert set(ports) == {"orders (default)", "customers (default)", "order_totals (default)"}
     orders = next(t for t in snapshot.tables if t.name == "orders")
-    assert ports["orders"]["contractId"] == contract_id(orders)
-    assert ports["order_totals"]["type"] == "view"
-    # Each port is versioned by its contract, not by the product.
-    assert ports["orders"]["version"] == "2.0.0"
-    assert ports["customers"]["version"] == "0.1.0"
-    # The product has no SLA of its own: each contract holds its member's.
+    assert ports["orders (default)"]["contractId"] == f"{contract_id(orders)}/offers/default"
+    assert ports["order_totals (default)"]["type"] == "view"
+    # Each port is versioned by its offer's contract, not by the product.
+    assert {p["version"] for p in ports.values()} == {"1.0.0"}
+    terms = {p["property"]: p["value"] for p in ports["orders (default)"]["customProperties"]}
+    assert terms["role"] == "viewer"
+    assert terms["dataLevel"] == "full"
+    assert terms["rowRules"] == ["only the orders of the reader's region"]
     custom = {p["property"]: p["value"] for p in document["customProperties"]}
-    assert custom == {"cost_center": "CC-42"}
+    assert custom["cost_center"] == "CC-42"
+    (offer,) = custom["offers"]
+    assert (offer["name"], offer["role"], offer["dataQualityResults"], offer["profiles"]) == (
+        "default",
+        "viewer",
+        True,
+        False,
+    )
+    assert {c["id"] for c in offer["contracts"]} == {
+        p["contractId"] for p in document["outputPorts"]
+    }
     assert document["support"] == [
         {
             "channel": "support",
@@ -137,13 +205,13 @@ def test_the_odps_document_is_valid_odps_and_names_each_members_contract():
     ]
 
 
-def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags():
+def test_each_offer_contract_is_valid_odcs_with_its_schema_freshness_and_tags():
     snapshot, product = _snapshot(ORDERS_CONTRACT, version="1.2.0")
-    _, contracts = product_documents(snapshot, product)
+    _, contracts = product_documents(snapshot, product, _offers(snapshot, product))
 
     for contract in contracts.values():
         assert _errors(ODCS, contract) == []
-    orders = contracts["wh.public.orders"]
+    orders = contracts["default/wh.public.orders"]
     (schema,) = orders["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
     assert columns["amount"]["logicalType"] == "number"
@@ -159,7 +227,7 @@ def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags()
     assert "classification" not in columns["id"]
     assert schema["tags"] == ["rls_restricted"]
     assert MASK_PATTERN not in json.dumps(contracts)
-    # Its freshness, then the service levels it declares.
+    # Its freshness: the member's, where the product states none.
     assert orders["slaProperties"] == [
         {
             "property": "latency",
@@ -167,41 +235,43 @@ def test_each_member_contract_is_valid_odcs_with_its_schema_freshness_and_tags()
             "unit": "s",
             "description": "A read may trail its source by at most this long",
         },
-        {"property": "availability", "value": 99.9, "unit": "%"},
     ]
     # A member that declares no freshness makes no freshness promise.
-    assert "slaProperties" not in contracts["wh.public.customers"]
-    assert (orders["version"], orders["status"]) == ("2.0.0", "active")
+    assert "slaProperties" not in contracts["default/wh.public.customers"]
+    # REQ-2180: what every contract shares is written once on the product.
+    assert (orders["version"], orders["status"]) == ("1.0.0", "draft")
     assert orders["description"] == {
-        "purpose": "Every order placed",
-        "usage": "Join on id",
-        "limitations": "No refunds",
+        "purpose": "One view of each customer",
+        "usage": "Join on customer_id",
+        "limitations": "No orders before 2020",
     }
-    assert {"property": "noticePeriod", "value": "P3M"} in orders["customProperties"]
+    assert "noticePeriod" not in json.dumps(orders["customProperties"])
 
 
 def test_an_unversioned_product_says_so_and_an_unpublished_one_is_draft():
     snapshot, product = _snapshot()
-    document, contracts = product_documents(snapshot, product)
+    document, contracts = product_documents(snapshot, product, _offers(snapshot, product))
     assert document["version"] == UNVERSIONED
     assert document["status"] == "draft"
-    # Each member's first contract is a draft at 0.1.0, exported as one.
-    assert {(c["version"], c["status"]) for c in contracts.values()} == {("0.1.0", "draft")}
+    # Each offer contract's first version, a draft while its product is.
+    assert {(c["version"], c["status"]) for c in contracts.values()} == {("1.0.0", "draft")}
     assert _errors(ODPS, document) == []
 
 
-def test_a_member_with_no_contract_is_no_output_port():
-    # A checker table the product owns is a member it lists, with no contract (REQ-2157).
+def test_a_member_no_offer_gives_a_contract_on_is_no_output_port():
     config = governed_config()
-    config.tables[1].contract = None  # customers
     config.data_products = [
         DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products
-    document, contracts = product_documents(snapshot, product)
-    assert {p["name"] for p in document["outputPorts"]} == {"orders", "order_totals"}
-    assert "wh.public.customers" not in contracts
+    offers = _offers(snapshot, product, skip={"customers"})
+    document, contracts = product_documents(snapshot, product, offers)
+    assert {p["name"] for p in document["outputPorts"]} == {
+        "orders (default)",
+        "order_totals (default)",
+    }
+    assert "default/wh.public.customers" not in contracts
     # ... and it is named, never left out silently (REQ-2118).
     custom = {p["property"]: p["value"] for p in document["customProperties"]}
     assert custom["membersWithoutContract"] == ["customers"]
@@ -220,8 +290,9 @@ def test_a_checker_table_is_no_member_without_a_contract():
         next(t for t in snapshot.tables if t.name == n) for n in ("orders", "customers")
     )
     snapshot.assertions.append(_check(orders, customers, owner="prod"))
-    document = odps_document(snapshot, product)
-    assert "customProperties" not in document
+    document = odps_document(snapshot, product, _offers(snapshot, product, skip={"customers"}))
+    custom = {p["property"] for p in document["customProperties"]}
+    assert custom == {"offers"}
 
 
 def test_a_contract_names_the_product_it_belongs_to_in_its_own_field():
@@ -271,7 +342,7 @@ def test_a_retired_product_is_retired_with_no_output_ports():
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products
     assert product.members == ()
-    document, contracts = product_documents(snapshot, product)
+    document, contracts = product_documents(snapshot, product, [])
     assert document["status"] == "retired"
     assert contracts == {}
     assert _errors(ODPS, document) == []
@@ -316,7 +387,7 @@ def test_an_input_another_product_promises_is_an_input_port_with_the_products_ex
         _check(orders, customers, owner="prod", column="id"),  # prod's expectation of orders
         _check(orders, customers, owner="upstream"),  # upstream's promise: not prod's
     ]
-    document = odps_document(snapshot, product)
+    document = odps_document(snapshot, product, _offers(snapshot, product))
 
     assert _errors(ODPS, document) == []
     assert document["inputPorts"] == [
@@ -341,10 +412,10 @@ def test_an_input_another_product_promises_is_an_input_port_with_the_products_ex
         }
     ]
     ports = {port["name"]: port for port in document["outputPorts"]}
-    assert ports["order_totals"]["inputContracts"] == [
+    assert ports["order_totals (default)"]["inputContracts"] == [
         {"id": contract_id(orders), "version": "2.0.0"}
     ]
-    assert "inputContracts" not in ports["customers"]
+    assert "inputContracts" not in ports["customers (default)"]
 
 
 def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports():
@@ -375,7 +446,7 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
     (product,) = snapshot.data_products
     orders = next(t for t in snapshot.tables if t.name == "orders")
     snapshot.model_tags.append(ModelTag(tag_id="finance", is_system=False, asset=orders.ref))
-    document = odps_document(snapshot, product)
+    document = odps_document(snapshot, product, _offers(snapshot, product))
 
     assert _errors(ODPS, document) == []
     assert document["tenant"] == snapshot.org_id
@@ -400,8 +471,8 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
         ("lineage", "observability", f"{origin}/data-products/prod/lineage"),
         ("admin", "control", f"{origin}/admin/graphql"),
     ]
-    # None of these rides as a custom property.
-    assert "customProperties" not in document
+    # None of these rides as a custom property: the offers alone do (REQ-2180).
+    assert {p["property"] for p in document["customProperties"]} == {"offers"}
 
 
 # --- REQ-2118 (amended 2026-10-28): every ODCS element Provisa knows is derived ----------------
@@ -788,3 +859,63 @@ def test_a_great_expectations_check_is_a_library_rule_where_it_is_one(check_type
     else:
         assert {k: rule[k] for k in expected} == expected
         assert rule["type"] == "library"
+
+
+# --- REQ-2180: an offer's contract is the dataset as the offer's role sees it ----------------------
+
+
+def test_an_offer_contract_states_masked_columns_and_leaves_out_unread_ones():
+    snapshot, product = _snapshot(status="live")
+    (offer,) = _offers(snapshot, product, masked={"amount": "truncate"}, unread={"ssn"})
+    contract = offer_contract(snapshot, product, _orders(snapshot), offer)
+
+    assert _errors(ODCS, contract) == []
+    assert contract["id"] == f"{contract_id(_orders(snapshot))}/offers/default"
+    assert (contract["version"], contract["status"]) == ("1.0.0", "active")
+    props = {p["name"]: p for p in contract["schema"][0]["properties"]}
+    assert "ssn" not in props
+    assert props["amount"]["classification"] == "restricted"
+    assert {"property": "masked", "value": "truncate"} in props["amount"]["customProperties"]
+    assert "customProperties" not in props["id"]
+    custom = {p["property"]: p["value"] for p in contract["customProperties"]}
+    assert custom["rowRules"] == ["only the orders of the reader's region"]
+    assert (custom["offer"], custom["role"], custom["dataLevel"]) == ("default", "viewer", "full")
+    assert custom["dataQualityResults"] is True
+
+
+def test_profiles_are_stated_only_where_the_offer_includes_them():
+    snapshot, product = _snapshot()
+    (without,) = _offers(snapshot, product)
+    (included,) = _offers(snapshot, product, profiles=True)
+    orders = _orders(snapshot)
+    plain = {
+        p["property"]
+        for p in offer_contract(snapshot, product, orders, without)["customProperties"]
+    }
+    assert "profiles" not in plain
+    rich = {
+        p["property"]: p["value"]
+        for p in offer_contract(snapshot, product, orders, included)["customProperties"]
+    }
+    assert rich["profiles"] == ["orders_profile"]
+
+
+def test_the_products_freshness_is_every_contracts():
+    snapshot, product = _snapshot()
+    (offer,) = _offers(snapshot, product, freshness=60)
+    for table in (_orders(snapshot), next(t for t in snapshot.tables if t.name == "customers")):
+        (latency,) = offer_contract(snapshot, product, table, offer)["slaProperties"]
+        assert (latency["property"], latency["value"], latency["unit"]) == ("latency", 60, "s")
+
+
+def test_a_contracts_dq_promises_are_stated_whether_or_not_its_results_are_given():
+    snapshot, product = _snapshot()
+    orders = _orders(snapshot)
+    customers = next(t for t in snapshot.tables if t.name == "customers")
+    snapshot.assertions.append(_check(orders, customers, owner="prod", column="id"))
+    (offer,) = _offers(snapshot, product, dq_results=False)
+    contract = offer_contract(snapshot, product, orders, offer)
+    props = {p["name"]: p for p in contract["schema"][0]["properties"]}
+    assert props["id"]["quality"]
+    custom = {p["property"]: p["value"] for p in contract["customProperties"]}
+    assert custom["dataQualityResults"] is False
