@@ -703,8 +703,40 @@ def _duckdb_form(pg_sql: str) -> str:
     tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
     tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
     tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
+    _posix_zones_for_duckdb(tree)
     # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
     return tree.sql(dialect="duckdb", copy=tree.parent is not None)
+
+
+#: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number
+#: of arguments, and whether PostgreSQL reads a number in it as POSIX does (west of UTC) or as a
+#: numeric zone (make_timestamptz's, ISO 8601's: east).
+_ZONE_ARGUMENTS = {"timezone": (0, 2, True), "make_timestamptz": (6, 7, False)}
+
+
+def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
+    """In place: each zone a statement writes as a literal that PostgreSQL reads as a fixed
+    offset (``'12'``, ``'+05:30'``) written as the ICU zone of that offset, which DuckDB knows
+    (pg_zones); DuckDB has no zone of PostgreSQL's text."""
+    zones: list[tuple[exp.Expr, bool]] = [
+        (node.args["zone"], True) for node in tree.find_all(exp.AtTimeZone) if node.args.get("zone")
+    ]
+    for call in tree.find_all(exp.Anonymous):
+        at = _ZONE_ARGUMENTS.get(call.name.lower())
+        if at is not None and len(call.expressions) == at[1]:
+            zones.append((call.expressions[at[0]], at[2]))
+    for zone, posix in zones:
+        written = zone
+        while isinstance(written, exp.Cast):
+            written = written.this
+        if isinstance(written, exp.Literal) and written.is_string:
+            # On a zone's text alone: pg_zones reads every pinned zone's abbreviations at import.
+            from provisa.transpiler import pg_zones
+
+            read = pg_zones.icu_fixed_zone if posix else pg_zones.icu_numeric_zone
+            icu = read(written.this)
+            if icu is not None:
+                written.replace(exp.Literal.string(icu))
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167

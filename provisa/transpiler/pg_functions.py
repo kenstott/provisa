@@ -71,6 +71,22 @@ _SPELLED = {
 #: ceil and its kin cannot choose an overload for.
 _OF_A_DECIMAL = frozenset(f"numeric_{name}" for name in ("ceil", "floor", "round", "trunc"))
 
+#: The send functions of the object identifier types whose names the engine has no catalog to
+#: look up (regclass, regtype, regnamespace and regrole are the catalog's): the oid a name stands
+#: for is unknown, so a call of one on a name is refused by name, as its output function is.
+_NAMED_OBJECT_SENDS = frozenset(
+    f"{reg}send"
+    for reg in (
+        "regproc",
+        "regprocedure",
+        "regoper",
+        "regoperator",
+        "regconfig",
+        "regdictionary",
+        "regcollation",
+    )
+)
+
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
     r"\b(random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
@@ -87,6 +103,9 @@ _CALLED = re.compile(
                 *_SIZED_CALLS,
                 *(n for n, _ in _UDF_CALLS),
                 *(n for n, _, _ in function_macros.OVERLOADS),
+                # overlaps as a statement written again through sqlglot names it: its routine.
+                pg_syntax.OVERLAPS,
+                *_NAMED_OBJECT_SENDS,
             }
         )
     )
@@ -394,6 +413,15 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         elif name == "pg_size_pretty" and len(args) == 1:
             written = f"PROVISA_SIZE_PRETTY(CAST({text(args[0])} AS HUGEINT))"
     return node if written is None else sqlglot.parse_one(written, read="postgres")
+
+
+def _names_an_object(node: exp.Expr) -> bool:
+    """Whether ``node`` is a name cast to an object identifier type (``'now'::regproc``), not the
+    digits of an oid, which its input function reads as that oid."""
+    if not isinstance(node, exp.Cast):
+        return False
+    written = node.this.unnest()
+    return isinstance(written, exp.Literal) and written.is_string and not written.this.isdigit()
 
 
 def _is_kind(node: exp.Expr, *names: str) -> bool:
@@ -836,6 +864,8 @@ def _call(node: exp.Expr) -> exp.Expr:
     if named is None:
         return node
     name, args = named
+    if name in _NAMED_OBJECT_SENDS and len(args) == 1 and _names_an_object(args[0]):
+        raise function_macros.FunctionRefused(name, "duckdb")
     if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
         collated = _collation_named(args[0])
         if collated is not None:

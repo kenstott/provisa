@@ -27,7 +27,7 @@ from psycopg import pq
 from scripts.conformance.pgwire_function_probe import refused_by_name
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
-INT4, NUMERIC, BOOL, BIT = 23, 1700, 16, 1560
+INT4, NUMERIC, BOOL, BIT, TIMESTAMPTZ = 23, 1700, 16, 1560, 1184
 INT4RANGE, INT8RANGE, NUMRANGE = 3904, 3926, 3906
 
 #: (statement, PostgreSQL 17's result type, its rows' text)
@@ -68,6 +68,45 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
     ("SELECT pg_catalog.\"bit\"('101'::bit(3), 0::integer, false::boolean) AS v", BIT, ["101"]),
     # numeric(numeric, typmod): a typmod below the header leaves the value as it is.
     ('SELECT pg_catalog."numeric"(2.5::numeric, 3::integer) AS v', NUMERIC, ["2.5"]),
+    # A zone's text PostgreSQL reads as POSIX: '12' is twelve hours WEST of UTC.
+    (
+        "SELECT pg_catalog.\"date_add\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
+        "'-1 year 2 days'::interval, '12'::text) AS v",
+        TIMESTAMPTZ,
+        ["1999-03-03 05:00:00+00"],
+    ),
+    (
+        "SELECT pg_catalog.\"date_subtract\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
+        "'-1 year 2 days'::interval, '12'::text) AS v",
+        TIMESTAMPTZ,
+        ["2001-02-27 05:00:00+00"],
+    ),
+    (
+        "SELECT pg_catalog.\"date_trunc\"('year'::text, '2000-02-29 00:00:00-05'::timestamp with "
+        "time zone, '12'::text) AS v",
+        TIMESTAMPTZ,
+        ["2000-01-01 12:00:00+00"],
+    ),
+    (
+        'SELECT pg_catalog."make_timestamptz"(2000::integer, 2::integer, 29::integer, '
+        "23::integer, 59::integer, 59.5::double precision, '+05:30'::text) AS v",
+        TIMESTAMPTZ,
+        ["2000-02-29 18:29:59.5+00"],
+    ),
+    # A numeric zone, as make_timestamptz reads one: ISO 8601's sign, east of UTC.
+    (
+        'SELECT pg_catalog."make_timestamptz"(2000::integer, 2::integer, 29::integer, '
+        "12::integer, 0::integer, 0::double precision, '-3'::text) AS v",
+        TIMESTAMPTZ,
+        ["2000-02-29 15:00:00+00"],
+    ),
+    # timezone() of a POSIX zone: west of UTC.
+    (
+        "SELECT pg_catalog.\"timezone\"('+05:30'::text, '2000-02-29 12:00:00+00'::timestamp with "
+        "time zone) AS v",
+        1114,
+        ["2000-02-29 06:30:00"],
+    ),
 ]
 
 
@@ -109,6 +148,17 @@ REFUSED: list[tuple[str, str]] = [
     # A scale DuckDB's DECIMAL (38 digits at most) has no room for.
     ('SELECT pg_catalog."round"(1000::numeric, 42::integer) AS v', "round"),
     ('SELECT pg_catalog."trunc"(1000::numeric, 42::integer) AS v', "trunc"),
+    # The send of an object identifier type the engine has no catalog of names to look up.
+    ("SELECT pg_catalog.\"regprocsend\"('now'::regproc) AS v", "regprocsend"),
+    ("SELECT pg_catalog.\"regproceduresend\"('now()'::regprocedure) AS v", "regproceduresend"),
+    ("SELECT pg_catalog.\"regopersend\"('||/'::regoper) AS v", "regopersend"),
+    (
+        "SELECT pg_catalog.\"regoperatorsend\"('+(integer,integer)'::regoperator) AS v",
+        "regoperatorsend",
+    ),
+    ("SELECT pg_catalog.\"regconfigsend\"('english'::regconfig) AS v", "regconfigsend"),
+    ("SELECT pg_catalog.\"regdictionarysend\"('simple'::regdictionary) AS v", "regdictionarysend"),
+    ('SELECT pg_catalog."regcollationsend"(\'"C"\'::regcollation) AS v', "regcollationsend"),
 ]
 
 
@@ -119,3 +169,92 @@ def test_duckdb_refuses_by_name(conn: Any, sql: str, function: str):
     error = (res.error_message or b"").decode()
     assert refused_by_name(error), error
     assert error.split(":", 1)[1].strip().startswith(function), error
+
+
+@pytest.fixture
+def conn_without_crypto(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> Any:
+    """A connection to an engine whose install has not staged the crypto extension, as CI's."""
+    import provisa.federation.duckdb_extensions as extensions
+
+    monkeypatch.setattr(extensions, "load_staged", lambda con, name: False)
+    return request.getfixturevalue("conn")
+
+
+@pytest.mark.parametrize("bits", ["224", "384", "512"])
+def test_a_digest_without_the_crypto_extension_is_refused_by_name(
+    conn_without_crypto: Any, bits: str
+):
+    res = _answer(
+        conn_without_crypto, f"SELECT pg_catalog.\"sha{bits}\"('\\xdeadbeef'::bytea) AS v"
+    )
+    assert res.status == pq.ExecStatus.FATAL_ERROR
+    error = (res.error_message or b"").decode()
+    assert refused_by_name(error), error
+    assert error.split(":", 1)[1].strip().startswith(f"sha{bits}()"), error
+
+
+def test_an_oid_spelled_in_digits_is_sent_as_its_four_bytes(conn: Any):
+    res = _answer(conn, "SELECT pg_catalog.\"regprocsend\"('1299'::regproc) AS v")
+    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    assert (res.ftype(0), res.get_value(0, 0)) == (17, b"\\x00000513")
+
+
+#: overlaps of an interval period, as a statement written again through sqlglot names it: its
+#: routine's name, overlaps_timestamp (run 42935119044: the engine route of every overlaps call).
+OVERLAPS_WRITTEN_AGAIN = [
+    (
+        "SELECT OVERLAPS_TIMESTAMP(CAST(NULL AS TIMESTAMP), CAST(NULL AS INTERVAL), "
+        "CAST(NULL AS TIMESTAMP), CAST(NULL AS INTERVAL)) AS v",
+        None,
+    ),
+    (
+        "SELECT OVERLAPS_TIMESTAMP(CAST('2024-06-15 12:30:45' AS TIMESTAMP), "
+        "CAST('1 day 02:03:04' AS INTERVAL), CAST('2024-06-16 12:30:45' AS TIMESTAMP), "
+        "CAST('2024-06-15 12:30:45' AS TIMESTAMP)) AS v",
+        True,
+    ),
+    (
+        "SELECT OVERLAPS_TIMESTAMP(CAST('12:00' AS TIME), CAST('1 hour' AS INTERVAL), "
+        "CAST('13:30' AS TIME), CAST('1 hour' AS INTERVAL)) AS v",
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(("sql", "answer"), OVERLAPS_WRITTEN_AGAIN)
+def test_overlaps_by_its_routines_name_ends_an_interval_period(sql: str, answer: bool | None):
+    import duckdb
+
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    assert duckdb.connect().sql(transpile_to_duckdb(sql)).fetchall() == [(answer,)]
+
+
+@pytest.mark.parametrize(
+    ("written", "icu"),
+    [
+        ("12", "GMT-12:00"),
+        ("+05:30", "GMT-05:30"),
+        ("-3", "GMT+03:00"),
+        ("XYZ-2", "GMT+02:00"),
+        ("UTC", None),
+        ("America/New_York", None),
+        ("est", None),
+        ("24", None),
+        ("5:30:15", None),
+    ],
+)
+def test_a_posix_zone_of_a_fixed_offset_is_the_icu_zone_of_it(written: str, icu: str | None):
+    from provisa.transpiler.pg_zones import icu_fixed_zone
+
+    assert icu_fixed_zone(written) == icu
+
+
+@pytest.mark.parametrize(
+    ("written", "icu"),
+    [("+05:30", "GMT+05:30"), ("-3", "GMT-03:00"), ("+0530", "GMT+05:30"), ("12", None)],
+)
+def test_a_numeric_zone_is_the_icu_zone_east_of_utc(written: str, icu: str | None):
+    from provisa.transpiler.pg_zones import icu_numeric_zone
+
+    assert icu_numeric_zone(written) == icu
