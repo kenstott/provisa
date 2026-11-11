@@ -67,7 +67,7 @@ def test_a_dmg_build_job_does_not_notarize_and_hands_its_dmg_on_unnotarized(job_
     text = yaml.safe_dump(job["steps"])
     for secret in _SECRETS:
         assert secret not in text, f"{job_id} still gets {secret}"
-    assert "notarize" not in text.lower()
+    assert "notarize" not in text.lower().replace("-unnotarized", "")
     uploads = [s for s in job["steps"] if _is_upload(s)]
     assert [u["with"]["name"] for u in uploads] == [f"{_BUILD_JOBS[job_id]}-unnotarized"]
     # Not the artifact the release attaches: that one is the notarized DMG's.
