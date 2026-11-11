@@ -122,6 +122,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "org_secrets",
         "user_directory",
         "user_idp_attributes",
+        # REQ-2219: the role claims each identity provider sent at a sign-in to this environment,
+        # rewritten there at the next one, as user_idp_attributes is.
+        "user_idp_roles",
         # REQ-2219: what each person is entitled to within a role, and when it ends: grants
         # keyed by this environment's principals, as the directory is. A role's defaults
         # (roles.default_entitlements) travel with the role; a person's narrowing and expiry

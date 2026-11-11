@@ -239,6 +239,34 @@ async def _record_idp_attributes(db_pool, identity: AuthIdentity) -> None:  # RE
     _recorded_idp[key] = supplied
 
 
+# REQ-2219 (IDENTITY PROVIDER ROLES ARE MIRRORED): (org, environment, user) -> the role claims this
+# process last mirrored for the user there.
+_recorded_idp_roles: dict[tuple[str | None, str | None, str], list[RoleAssignment]] = {}
+
+
+@on_forget(size=lambda: len(_recorded_idp_roles))
+def _forget_recorded_idp_roles(org_id: str) -> None:
+    for key in [k for k in _recorded_idp_roles if k[0] == org_id]:
+        del _recorded_idp_roles[key]
+
+
+async def _record_idp_roles(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+    """Mirror the role claims this sign-in's token carries, as the identity provider's attributes
+    are recorded, so the roles a person holds are listed with the identity provider as their
+    origin. Read as enforcement reads them (:func:`resolve_assignments`); written only when they
+    differ from what this process last wrote."""
+    from provisa.core.request_context import current_env, current_org
+    from provisa.entitlements import roles
+
+    claimed = resolve_assignments(identity)
+    key = (current_org.get(), current_env.get(), identity.user_id)
+    if _recorded_idp_roles.get(key) == claimed:
+        return
+    async with db_pool.acquire() as conn:
+        await roles.mirror_idp_roles(conn, identity.user_id, claimed)
+    _recorded_idp_roles[key] = claimed
+
+
 _recorded_idp_lists: dict[tuple[str | None, str | None, str], dict] = {}
 
 
@@ -541,6 +569,8 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 update_columns=["email", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
+        if self._assignments_source == "claims":
+            await _record_idp_roles(self._db_pool, identity)
         await _record_idp_entitlements(self._db_pool, identity)
 
     async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
