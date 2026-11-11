@@ -169,6 +169,43 @@ ARRAY_LOWER = Feature(
     ),
 )
 
+#: A dimension's length, or NULL for a dimension the array does not have: its upper bound, as a
+#: list's index starts at 1. The engines' own lengths take no dimension and answer the first one's
+#: for any (DuckDB's refuses any other), so this is each one's array_length too.
+_DIMENSION_LENGTH: dict[str, str] = {
+    "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
+    r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
+    r"THEN json_array_length(to_json($a), '$' || "
+    r"repeat('[0]', CAST($d - 1 AS INTEGER))) END AS INTEGER)",
+    **_on_trino(
+        r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
+        r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
+        r"THEN CASE $d "
+        r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
+        r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
+        r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
+        r"'$[0]'), '$[0]')) "
+        r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
+        r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
+        r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
+        r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
+        r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
+        r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
+        r"'$[0]'), '$[0]')) "
+        r"END END AS INTEGER)"
+    ),
+    "clickhouse": "CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) > 0 "
+    "THEN countSubstrings(toTypeName($a), 'Array(') END AS Nullable(Int32)) "
+    "THEN CASE $d "
+    "WHEN 1 THEN JSONLength(toJSONString($a)) "
+    "WHEN 2 THEN JSONLength(toJSONString($a), 1) "
+    "WHEN 3 THEN JSONLength(toJSONString($a), 1, 1) "
+    "WHEN 4 THEN JSONLength(toJSONString($a), 1, 1, 1) "
+    "WHEN 5 THEN JSONLength(toJSONString($a), 1, 1, 1, 1) "
+    "WHEN 6 THEN JSONLength(toJSONString($a), 1, 1, 1, 1, 1) "
+    "END END AS Nullable(Int32))",
+}
+
 ARRAY_UPPER = Feature(
     "array_upper",
     FAMILY,
@@ -179,37 +216,7 @@ ARRAY_UPPER = Feature(
                 "array_upper($a::anyarray, $d::integer)",
                 {
                     **_on_sources("array_upper"),
-                    "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
-                    r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
-                    r"THEN json_array_length(to_json($a), '$' || "
-                    r"repeat('[0]', CAST($d - 1 AS INTEGER))) END AS INTEGER)",
-                    **_on_trino(
-                        r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
-                        r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
-                        r"THEN CASE $d "
-                        r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
-                        r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
-                        r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
-                        r"'$[0]'), '$[0]')) "
-                        r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
-                        r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
-                        r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
-                        r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
-                        r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
-                        r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
-                        r"'$[0]'), '$[0]')) "
-                        r"END END AS INTEGER)"
-                    ),
-                    "clickhouse": "CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) > 0 "
-                    "THEN countSubstrings(toTypeName($a), 'Array(') END AS Nullable(Int32)) "
-                    "THEN CASE $d "
-                    "WHEN 1 THEN JSONLength(toJSONString($a)) "
-                    "WHEN 2 THEN JSONLength(toJSONString($a), 1) "
-                    "WHEN 3 THEN JSONLength(toJSONString($a), 1, 1) "
-                    "WHEN 4 THEN JSONLength(toJSONString($a), 1, 1, 1) "
-                    "WHEN 5 THEN JSONLength(toJSONString($a), 1, 1, 1, 1) "
-                    "WHEN 6 THEN JSONLength(toJSONString($a), 1, 1, 1, 1, 1) "
-                    "END END AS Nullable(Int32))",
+                    **_DIMENSION_LENGTH,
                 },
             ),
         )
@@ -222,18 +229,8 @@ ARRAY_LENGTH = Feature(
     "The length of a dimension; NULL for a dimension the array does not have.",
     read=Side(
         rules=(
-            # DuckDB's own takes no dimension but the first, and refuses the call for any other: a
-            # dimension the list does not have is NULL, as array_upper's (a list counts from 1).
             # generate_subscripts(a, d) is read as its reverse-false form (pg_functions).
-            Rule(
-                "array_length($a::anyarray, $d::integer)",
-                {
-                    "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
-                    r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
-                    r"THEN json_array_length(to_json($a), '$' || "
-                    r"repeat('[0]', CAST($d - 1 AS INTEGER))) END AS INTEGER)",
-                },
-            ),
+            Rule("array_length($a::anyarray, $d::integer)", _DIMENSION_LENGTH),
         )
     ),
 )

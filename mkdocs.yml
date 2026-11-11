@@ -169,11 +169,25 @@ nav:
       - gRPC: conformance/grpc.md
       - MCP: conformance/mcp.md
       - Polyfills:
-          - Across the engines: conformance/polyfill/index.md
-          - DuckDB: conformance/polyfill/duckdb.md
-          - Trino: conformance/polyfill/trino.md
-          - ClickHouse: conformance/polyfill/clickhouse.md
-          - Other sources: conformance/polyfill/sources.md
+          - Across the dialects: conformance/polyfill/index.md
+          - "PostgreSQL": conformance/polyfill/postgres.md
+          - "DuckDB": conformance/polyfill/duckdb.md
+          - "Trino": conformance/polyfill/trino.md
+          - "Presto": conformance/polyfill/presto.md
+          - "Athena": conformance/polyfill/athena.md
+          - "ClickHouse": conformance/polyfill/clickhouse.md
+          - "Snowflake": conformance/polyfill/snowflake.md
+          - "Databricks": conformance/polyfill/databricks.md
+          - "BigQuery": conformance/polyfill/bigquery.md
+          - "T-SQL (SQL Server, Fabric, Synapse)": conformance/polyfill/tsql.md
+          - "Redshift": conformance/polyfill/redshift.md
+          - "MySQL": conformance/polyfill/mysql.md
+          - "SingleStore": conformance/polyfill/singlestore.md
+          - "SQLite": conformance/polyfill/sqlite.md
+          - "Oracle": conformance/polyfill/oracle.md
+          - "Hive": conformance/polyfill/hive.md
+          - "Exasol": conformance/polyfill/exasol.md
+          - "Druid": conformance/polyfill/druid.md
   - Clients:
       - Python Client: python-client.md
   - Administration:

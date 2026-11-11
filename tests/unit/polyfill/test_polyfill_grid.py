@@ -260,3 +260,12 @@ def test_every_page_states_its_rule_and_the_pages_are_one_per_dialect():
 def test_the_committed_pages_are_the_grids(path: str):
     """The pages cannot drift from the grid: scripts/gen_polyfill_docs.py writes them."""
     assert (_ROOT / path).read_text() == docs.pages(GRID)[path]
+
+
+def test_the_site_lists_every_page():
+    """mkdocs.yml's nav names each generated page, and no page the grid no longer writes."""
+    nav = (_ROOT / "mkdocs.yml").read_text()
+    listed = {
+        line.split(": ", 1)[1] for line in nav.splitlines() if "conformance/polyfill/" in line
+    }
+    assert listed == {path.removeprefix("docs/") for path in docs.pages(GRID)}
