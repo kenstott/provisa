@@ -1,0 +1,165 @@
+/* REQ-2239: the one 2D graph's frame (SPEC.md): a header row, then the stage -- the canvas on a dot
+   grid, the controls bottom-left, the legend bottom-right, an overlay top-left, a hint top-right.
+   The colours are the graph's tokens (tokens.ts), set on the stage per colour scheme. */
+.pg-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.pg-header {
+  flex-shrink: 0;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.pg-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--pg-canvas);
+  background-image: radial-gradient(var(--pg-grid) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.pg-canvas {
+  position: absolute;
+  inset: 0;
+}
+/* Top left: what the view lays over the canvas (an ERD's new tables), then the hint. */
+.pg-corner {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  z-index: 10;
+  display: grid;
+  gap: 6px;
+  max-width: 280px;
+  max-height: 40%;
+  pointer-events: none;
+}
+.pg-overlay {
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.pg-controls,
+.pg-legend {
+  position: absolute;
+  z-index: 10;
+  padding: 2px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+}
+.pg-controls {
+  bottom: 8px;
+  inset-inline-start: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.pg-stage:hover .pg-controls,
+.pg-controls:focus-within {
+  opacity: 1;
+}
+.pg-copied {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-start: calc(100% + 6px);
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  font-size: var(--mantine-font-size-xs);
+  white-space: nowrap;
+}
+/* The one legend: top right, clear of the controls and of the application's floating buttons. */
+.pg-legend {
+  top: 8px;
+  inset-inline-end: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  max-width: calc(100% - 320px);
+  padding: 4px 8px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mantine-color-dimmed);
+}
+.pg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pg-legend-swatch {
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 1px;
+}
+/* The junction's diamond (REQ-2239, A JUNCTION IS A DIAMOND). */
+.pg-legend-swatch--diamond {
+  width: 8px;
+  height: 8px;
+  margin: 0 1px;
+  transform: rotate(45deg);
+}
+.pg-hint {
+  font-size: 11px;
+  color: var(--mantine-color-dimmed);
+  pointer-events: none;
+}
+/* A card stays while the pointer is on it, so its links can be followed: the tip surface passes the
+   pointer through, its content does not. */
+.pg-tip {
+  pointer-events: auto;
+  display: grid;
+  gap: 2px;
+}
+.pg-tip b {
+  font-weight: 600;
+}
+.pg-tip-body {
+  color: var(--mantine-color-dimmed);
+  line-height: 1.4;
+}
+/* What the card is attached to: the node on the drawing, or a point on a line. */
+.pg-tip-anchor {
+  position: absolute;
+  pointer-events: none;
+}
+/* A group's resize box and its corner handles. */
+.pg-resize {
+  position: absolute;
+  z-index: 200;
+  box-sizing: border-box;
+  border: 2px dashed;
+  border-radius: var(--mantine-radius-sm);
+  pointer-events: none;
+}
+.pg-resize-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  pointer-events: all;
+}
+.pg-resize-nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+.pg-resize-ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+.pg-resize-sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+.pg-resize-se {
+  bottom: -7px;
+  right: -7px;
+  cursor: nwse-resize;
+}

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { CyInstance } from "../../graph/cytoscape-types";
+import type { CyInstance } from "../graph/cytoscape-types";
 
 type Pt = { x: number; y: number };
 
@@ -16,14 +16,14 @@ type Pt = { x: number; y: number };
 // True orphans (no edges) are excluded from fCoSE and placed in a grid instead.
 export function nodesWithEdges(cy: CyInstance): Set<string> {
   const ids = new Set<string>();
-  cy.edges(".erd-rel").forEach((e) => {
+  cy.edges(".pg-edge").forEach((e) => {
     ids.add(e.data("source") as string);
     ids.add(e.data("target") as string);
   });
   return ids;
 }
 
-// Push overlapping compound (.erd-domain) nodes apart so they don't visually
+// Push overlapping compound (.pg-group) nodes apart so they don't visually
 // overlap. Translates children of the "right/bottom" compound in each pair.
 // Must be called after all children have been positioned (including orphan grid).
 export function resolveCompoundOverlaps(cy: CyInstance): void {
@@ -32,7 +32,7 @@ export function resolveCompoundOverlaps(cy: CyInstance): void {
   const MAX_ITER = 20;
 
   const domainArr: ReturnType<typeof cy.nodes>[number][] = [];
-  cy.nodes(".erd-domain").forEach((d) => {
+  cy.nodes(".pg-group").forEach((d) => {
     if (!(d.children() as unknown as { empty(): boolean }).empty()) domainArr.push(d);
   });
   if (domainArr.length < 2) return;
@@ -143,7 +143,7 @@ export function packDomains(cy: CyInstance, aspectRatio: number): void {
   type BB = { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
   const PAD = 60;
   const domains: Array<{ node: ReturnType<typeof cy.nodes>[number]; bb: BB }> = [];
-  cy.nodes(".erd-domain").forEach((d) => {
+  cy.nodes(".pg-group").forEach((d) => {
     if ((d.children() as unknown as { empty(): boolean }).empty()) return;
     const bb = (d as unknown as { boundingBox(o: object): BB }).boundingBox({
       includeLabels: true,
@@ -184,7 +184,7 @@ export function placeIsolatedGrid(
   domainBboxes: Map<string, { x1: number; x2: number; y2: number }>,
 ): void {
   const PAD = 20;
-  cy.nodes(".erd-domain").forEach((domain) => {
+  cy.nodes(".pg-group").forEach((domain) => {
     const domainId = (domain as { id(): string }).id();
     const isolated: Array<{ id: string }> = [];
     domain.children().forEach((n) => {
@@ -252,7 +252,7 @@ export function enforceEdgeGaps(cy: CyInstance, gridSnap: number): void {
   type BB = { x1: number; x2: number; y1: number; y2: number };
   const MIN_LABEL_GAP = 60;
   const g = gridSnap > 0 ? gridSnap : 1;
-  cy.edges(".erd-rel").forEach((edge) => {
+  cy.edges(".pg-edge").forEach((edge) => {
     const s = cy.getElementById(edge.data("source") as string) as unknown as {
       position(): Pt;
       position(p: Pt): void;
@@ -316,9 +316,9 @@ export function separateTables(cy: CyInstance, skip: Set<string>, gridSnap: numb
   const TABLE_GAP = 20;
   const g = gridSnap > 0 ? gridSnap : 1;
   const byDomain = new Map<string, Table[]>();
-  cy.nodes(".erd-table").forEach((n) => {
+  cy.nodes(".pg-node").forEach((n) => {
     if (skip.has((n as { id(): string }).id())) return;
-    const domainId = n.data("domainId") as string;
+    const domainId = n.data("parent") as string;
     const node = n as unknown as Table["node"] & { boundingBox(o: object): BB };
     const tables = byDomain.get(domainId) ?? [];
     tables.push({ node, bb: node.boundingBox({}) });
@@ -358,7 +358,7 @@ export function separateTables(cy: CyInstance, skip: Set<string>, gridSnap: numb
  * leaves them where they are). Returns the orphans and each domain's connected extent, which the
  * orphan toggle places against later.
  */
-export function arrangeErd(
+export function arrangeLayered(
   cy: CyInstance,
   {
     gridSnap,
@@ -371,7 +371,7 @@ export function arrangeErd(
 } {
   if (gridSnap > 0) {
     const g = gridSnap;
-    cy.nodes(".erd-table").forEach((n) => {
+    cy.nodes(".pg-node").forEach((n) => {
       const p = (n as { position(): { x: number; y: number } }).position();
       (n as { position(p: { x: number; y: number }): void }).position({
         x: Math.round(p.x / g) * g,
@@ -381,7 +381,7 @@ export function arrangeErd(
     // Align connected pairs that are within 1 grid step in x or y — eliminates
     // unnecessary bends in right-angle edge routing after fCoSE snap jitter.
     const ALIGN_THRESHOLD = g;
-    cy.edges(".erd-rel").forEach((edge) => {
+    cy.edges(".pg-edge").forEach((edge) => {
       const s = cy.getElementById(edge.data("source") as string) as unknown as {
         position(): Pt;
         position(p: Pt): void;
@@ -408,9 +408,9 @@ export function arrangeErd(
 
   // Collapsed domain leaf nodes placed inside an expanded compound by fCoSE render
   // behind its background and become invisible. Move them outside.
-  cy.nodes(".erd-domain").forEach((leafDomain) => {
+  cy.nodes(".pg-group").forEach((leafDomain) => {
     if (!(leafDomain.children() as unknown as { empty(): boolean }).empty()) return;
-    cy.nodes(".erd-domain").forEach((compound) => {
+    cy.nodes(".pg-group").forEach((compound) => {
       if (compound.id() === leafDomain.id()) return;
       if ((compound.children() as unknown as { empty(): boolean }).empty()) return;
       const cbb = (
@@ -432,7 +432,7 @@ export function arrangeErd(
   // so the compound bbox reflects only edge-connected nodes.
   const edgeConnectedNow = nodesWithEdges(cy);
   const domainBboxes = new Map<string, { x1: number; x2: number; y2: number }>();
-  cy.nodes(".erd-domain").forEach((domain) => {
+  cy.nodes(".pg-group").forEach((domain) => {
     let hasConnected = false;
     domain.children().forEach((n) => {
       if (edgeConnectedNow.has((n as { id(): string }).id())) hasConnected = true;
@@ -448,7 +448,7 @@ export function arrangeErd(
   const edgeConnected = nodesWithEdges(cy);
   const isolatedIds = new Set(
     cy
-      .nodes(".erd-table")
+      .nodes(".pg-node")
       .filter((n) => !edgeConnected.has((n as { id(): string }).id()))
       .map((n) => (n as { id(): string }).id()),
   );
@@ -457,7 +457,7 @@ export function arrangeErd(
   // Re-snap all nodes to grid after post-processing moves.
   if (gridSnap > 0) {
     const g = gridSnap;
-    cy.nodes(".erd-table").forEach((n) => {
+    cy.nodes(".pg-node").forEach((n) => {
       const p = (n as { position(): Pt }).position();
       (n as { position(p: Pt): void }).position({
         x: Math.round(p.x / g) * g,
@@ -475,7 +475,7 @@ export function arrangeErd(
   // then re-place orphan grid so it lands below the final connected positions.
   type BBxy = { x1: number; x2: number; y2: number };
   const freshBboxes = new Map<string, BBxy>();
-  cy.nodes(".erd-domain").forEach((domain) => {
+  cy.nodes(".pg-group").forEach((domain) => {
     let x1 = Infinity,
       x2 = -Infinity,
       y2 = -Infinity,
@@ -498,7 +498,7 @@ export function arrangeErd(
 
   // Apply final orphan visibility without triggering re-layout.
   if (showOrphans) {
-    cy.nodes(".erd-table").style("display", "element");
+    cy.nodes(".pg-node").style("display", "element");
   } else {
     isolatedIds.forEach((id) => {
       (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style(

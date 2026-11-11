@@ -18,11 +18,11 @@ import {
   erdSearch,
   focusIsOn,
   focusOnTable,
-  highlightErdTables,
   readErdFocus,
   resolveErdFocus,
   writeErdFocus,
 } from "../components/erd/erd-focus";
+import { markFocused } from "../components/provisa-graph/marks";
 import { erdHref } from "../components/graph3d/nodeHref";
 import type { GraphNode } from "../components/graph3d/graphModel";
 import { erdViewHref } from "../lib/entityHref";
@@ -190,24 +190,24 @@ describe("the panel's actions", () => {
   });
 });
 
-describe("highlightErdTables", () => {
+describe("a focus marked on the graph (markFocused)", () => {
   it("marks the tables drawn, fits them into view, and says which", () => {
     const f = fakeCy(["t:1", "t:2"]);
-    expect(highlightErdTables(f.cy, [1, 2])).toEqual([1, 2]);
+    expect(markFocused(f.cy, ["t:1", "t:2"])).toEqual(["t:1", "t:2"]);
     expect([...f.classed]).toEqual(["t:1", "t:2"]);
     expect(f.fit).toHaveBeenCalledOnce();
   });
 
   it("reports a table the diagram does not hold and takes no other", () => {
     const f = fakeCy(["t:7"]);
-    expect(highlightErdTables(f.cy, [99])).toEqual([]);
+    expect(markFocused(f.cy, ["t:99"])).toEqual([]);
     expect(f.classed.size).toBe(0);
     expect(f.fit).not.toHaveBeenCalled();
   });
 
   it("does not blow one table up to the whole canvas", () => {
     const f = fakeCy(["t:7"], 4);
-    highlightErdTables(f.cy, [7]);
+    markFocused(f.cy, ["t:7"]);
     expect(f.zoom).toHaveBeenCalledWith(1.5);
     expect(f.center).toHaveBeenCalledOnce();
   });

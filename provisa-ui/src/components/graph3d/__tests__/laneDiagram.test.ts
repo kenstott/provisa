@@ -25,10 +25,12 @@ import {
   moreId,
   placedLaneOrder,
   stackTerms,
-  tipPlacement,
+  TERM_HEIGHT,
   type At,
   type Lane,
 } from "../laneDiagram";
+import { tipPlacement } from "../../provisa-graph/tipPlacement";
+import { SIZE } from "../../provisa-graph/tokens";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
@@ -455,6 +457,24 @@ describe("the term lane's own order (a line crossing others that need not)", () 
     const customer = moved.get("term:customer") as At;
     expect(customer.y - party.y).toBeCloseTo(62, 9);
     expect(customer.x - party.x).toBeCloseTo(0, 9);
+  });
+
+  it("stacks blocks of terms a gap apart at the height ProvisaGraph draws a term", () => {
+    // REQ-2239: a term is drawn SIZE.nodeHeight tall; blocks stacked at an older, shorter
+    // height overlapped by the difference (Customer over Order in the product's lane diagram).
+    const tree = laneDiagram(FOCUS_DATA, FOCUS_DATA, new Set());
+    const order = ["term:party", "term:customer", "term:order"];
+    const at = (id: string): At =>
+      ({
+        "term:party": { x: 800, y: 0 },
+        "term:customer": { x: 800, y: 62 },
+        "term:order": { x: 800, y: 0 },
+      })[id] ?? { x: 400, y: 0 };
+    const moved = stackTerms(tree, order, at);
+    const ys = order.map((id) => (moved.get(id) as At).y).sort((a, b) => a - b);
+    expect(TERM_HEIGHT).toBe(SIZE.nodeHeight);
+    for (let i = 1; i < ys.length; i++)
+      expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(SIZE.nodeHeight);
   });
 
   it("wraps terms with no line out of the lane below the stack, not down the diagram", () => {
