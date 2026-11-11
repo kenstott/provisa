@@ -94823,7 +94823,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     part of its grid row: the SQLSTATE and the message a client receives are held in the grid, read or write
     side, and the translator raises the refusal from that row, so the documented error and the error a client
     gets are the same text. The generated page shows them in the limitations column, and conformance checks
-    a refused feature''s SQLSTATE and message against its row.'
+    a refused feature''s SQLSTATE and message against its row. (Amended 2026-11-11, THE DOCS SAY POLYFILL:)
+    Maintainer 2026-11-11. The documentation is rewritten to the term: every page that describes how Provisa
+    gives PostgreSQL''s behaviour on an engine that is not PostgreSQL (the conformance pages, the pgwire
+    and engine pages, the function and type references) says polyfill, read polyfill and write polyfill,
+    and points to the generated grid for the details instead of restating them.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
