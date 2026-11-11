@@ -148,7 +148,7 @@ def _steps() -> list[dict]:
     return _load("release-cut.yml")["jobs"]["cut"]["steps"]
 
 
-def test_a_cut_is_run_by_hand_on_main_with_a_version_and_never_cancelled():
+def test_a_cut_is_run_by_hand_on_its_release_branch_with_a_version_and_never_cancelled():
     workflow = _load("release-cut.yml")
     dispatch = _on(workflow)["workflow_dispatch"]
     assert dispatch["inputs"]["version"]["required"] is True
@@ -156,7 +156,7 @@ def test_a_cut_is_run_by_hand_on_main_with_a_version_and_never_cancelled():
     assert workflow["concurrency"] == {"group": "release-cut", "cancel-in-progress": False}
     assert workflow["permissions"] == {"contents": "write", "actions": "write"}
     job = workflow["jobs"]["cut"]
-    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert job["if"] == "startsWith(github.ref, 'refs/heads/release/')"
     checkout = _steps()[0]
     assert checkout["uses"].startswith("actions/checkout@")
     assert checkout["with"] == {"fetch-depth": 0}  # the run's own commit, all of its history
@@ -172,6 +172,7 @@ def test_the_notes_are_generated_and_checked_before_anything_is_committed_or_tag
             "--written",
             "git commit",
             'git tag -a "$VERSION"',
+            'git push origin "HEAD:$GITHUB_REF_NAME"',
             'git push origin "refs/tags/$VERSION"',
             "gh workflow run build-dmg.yml",
         )

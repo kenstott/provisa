@@ -1,9 +1,10 @@
 # Release: cut (REQ-1989)
 #
-# How a release is made. Run by hand on main (Actions -> Release: cut -> Run workflow) with the
-# version to cut (v0.1.0-alpha.480). In order, and stopping at the first failure:
+# How a release is made. Run by hand on its release branch, release/<version> (Actions -> Release:
+# cut -> Run workflow), with the version to cut (v0.1.0-alpha.508): the notes and the tag go on the
+# branch (REQ-1989, maintainer 2026-11-08). In order, and stopping at the first failure:
 #
-#   0. Every UI e2e lane (core, Trino, swap) passed on the commit being cut: its push run on main
+#   0. Every UI e2e lane (core, Trino, swap) passed on the commit being cut: its run on the branch
 #      completed green. A lane that did not is named and the cut stops.
 #   1. scripts/release_cut_check.py: the version is a release tag, its tag does not exist, no
 #      hand-written docs/releases/<version>.md would be overwritten, and the previous release's
@@ -13,7 +14,7 @@
 #      page, and the cut stops too: a release's body is its page. A hand-written page under
 #      docs/releases that the generator changed or removed stops it as well (--written).
 #   3. The notes -- the UI's releaseNotes.json, docs/releases/<version>.md, mkdocs.yml and
-#      CHANGELOG.md -- are committed to main, the annotated tag is made on that commit, and both
+#      CHANGELOG.md -- are committed to the release branch, the annotated tag is made on that commit, and both
 #      are pushed. Nothing else may have changed.
 #   4. A tag pushed with this workflow's token starts no workflow, so each workflow a v* tag
 #      starts is started here on the tag: build-dmg.yml (the release orchestrator) with
@@ -21,7 +22,7 @@
 #      no inputs. ensure-release takes the draft release's body from the tag's
 #      docs/releases/<version>.md.
 #
-# A cut that failed after pushing main and before pushing the tag is run again: the page it wrote
+# A cut that failed after pushing the branch and before pushing the tag is run again: the page it wrote
 # is its own (its commit's subject), the generator writes the same notes, and nothing new is
 # committed before the tag is made.
 name: "Release: cut"
@@ -50,19 +51,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # the notes commit on main and the tag
+  contents: write # the notes commit on the release branch and the tag
   actions: write # starting the release's workflows on the tag
 
 jobs:
   cut:
     name: Generate the notes, commit them and tag the release
     runs-on: ubuntu-latest
-    # A release is cut from main only.
-    if: github.ref == 'refs/heads/main'
+    # A release is cut from its release branch only (REQ-1989).
+    if: startsWith(github.ref, 'refs/heads/release/')
     env:
       VERSION: ${{ inputs.version }}
     steps:
-      # The run's own commit: main as it was when the cut was started. Should main move before
+      # The run's own commit: the branch as it was when the cut was started. Should it move before
       # the notes are pushed, the push is refused rather than the tag made on another commit.
       - uses: actions/checkout@v4
         with:
@@ -73,7 +74,7 @@ jobs:
         uses: ./.github/actions/setup-python
 
       # During alpha the maintainer runs the full suites only on request (2026-10-15), so the gate is
-      # skipped unless asked for. Enforced, a release is cut only from a commit of main that every UI
+      # skipped unless asked for. Enforced, a release is cut only from a commit that every UI
       # e2e lane passed. A lane not green on it -- failed, cancelled, still running or never run --
       # refuses the cut, by name.
       - name: Refuse unless every UI e2e lane is green on this commit
@@ -147,7 +148,7 @@ jobs:
             git commit -m "chore(release): $VERSION notes"
           fi
           git tag -a "$VERSION" -m "$VERSION"
-          git push origin HEAD:main
+          git push origin "HEAD:$GITHUB_REF_NAME"
           git push origin "refs/tags/$VERSION"
 
       - name: Start the release on its tag
