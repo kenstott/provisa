@@ -120,6 +120,46 @@ def test_a_catalogs_own_relation_is_postgresqls_oid():
     assert "1259" in _addressed("SELECT 'pg_class'::regclass::oid")
 
 
+@pytest.mark.parametrize("reg", ["regclass", "regtype", "regnamespace", "regrole"])
+def test_a_null_reg_value_reads_no_catalog(reg):
+    """A reg type's input function is strict: NULL::regclass is NULL, no lookup of a name."""
+    assert _tables(_addressed(f"SELECT NULL::{reg}::oid AS v")) == set()
+    assert _tables(_addressed(f"SELECT NULL::text::{reg}::oid AS v")) == set()
+
+
+def test_a_call_of_a_null_regclass_is_addressed_as_a_call_of_a_null_oid():
+    """Function check run 42527458223: pg_partition_root(NULL::regclass) had no answer in 30s.
+    The NULL was looked up as a name, a lookup that writes its operand five times, and the call's
+    form and its result's name each wrote that again: 113 reads of pg_class, 70 KB, which the
+    pipeline parses again at each of its steps."""
+
+    def reads(sql: str) -> int:
+        return len(list(sqlglot.parse_one(_addressed(sql), read="postgres").find_all(exp.Table)))
+
+    by_oid = reads('SELECT pg_catalog."pg_partition_root"(NULL::oid) AS v')
+    assert reads('SELECT pg_catalog."pg_partition_root"(NULL::regclass) AS v') == by_oid
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."pg_partition_root"(1259::regclass) AS v',
+        'SELECT pg_catalog."pg_partition_root"(NULL::regclass) AS v',
+        "SELECT pg_get_replica_identity_index(1259) AS v",
+        "SELECT pg_filenode_relation(0, 1259) AS v",
+        "SELECT to_regclass('pg_class') AS v",
+        "SELECT to_regnamespace('pg_catalog') AS v",
+    ],
+)
+def test_a_call_answering_an_oid_is_named_by_that_oid(sql):
+    """A result column of a call answering a regclass or regnamespace is named by the oid its form
+    answers, not looked up again as a name: that lookup wrote the call five times over, and its
+    name each time again."""
+    tree = sqlglot.parse_one(_addressed(sql), read="postgres")
+    # The lookup of a name reads a string of digits as the oid it spells first: ``text ~ '^[0-9]+$'``.
+    assert list(tree.find_all(exp.RegexpLike)) == []
+
+
 def test_a_regclass_read_as_text_is_the_listed_name():
     written = _addressed("SELECT c.oid::regclass::text FROM pg_class c")
     assert "regclass" not in written.lower()

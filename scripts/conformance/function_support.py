@@ -322,6 +322,7 @@ _DATE = r"\d{4,}-\d{2}-\d{2}"
 _TIME = r"\d{2}:\d{2}:\d{2}(\.\d{1,6})?"
 _ZONE_OFFSET = r"[+-]\d{2}(:\d{2}){0,2}"
 _INTEGER = r"-?\d+"
+_NUMERIC_OID = 1700
 _FLOAT = r"-?\d+(\.\d+)?(e[+-]?\d+)?|NaN|-?Infinity"
 _SNAPSHOT = r"\d+:\d+:(\d+(,\d+)*)?"
 _XID = r"\d+"
@@ -2234,6 +2235,17 @@ def _shape(sample: str) -> str:
     return "".join(r"\w+" if i % 2 else re.escape(part) for i, part in enumerate(parts))
 
 
+def _numeric_form(sample: str) -> str:
+    """A numeric's form: its scale, the digits PostgreSQL writes after the point, of either sign.
+    random(min, max)'s answer is of the larger scale of its bounds; its sign is the draw's, which
+    the shape of PostgreSQL's own draw held it to (run 42527458223: '1.023' was not the form of
+    '-0.803'). NaN and the infinities are words of their own."""
+    if sample in ("NaN", "Infinity", "-Infinity"):
+        return re.escape(sample)
+    scale = len(sample.partition(".")[2])
+    return _INTEGER + (rf"\.\d{{{scale}}}" if scale else "")
+
+
 def value_form(name: str, oid: int, sample: str) -> str:
     """The regular expression an answer of function ``name``, of type ``oid``, must match, from
     ``sample``, PostgreSQL's answer."""
@@ -2243,6 +2255,8 @@ def value_form(name: str, oid: int, sample: str) -> str:
         return FUNCTION_FORMS[name]
     if oid in TYPE_FORMS:
         return TYPE_FORMS[oid]
+    if oid == _NUMERIC_OID:
+        return _numeric_form(sample)
     if oid == _RECORD_OID:
         fields = len(re.findall(rf"{_FIELD}(?:,|\)$)", sample[1:]))
         return rf"\({_FIELD}(?:,{_FIELD}){{{fields - 1}}}\)"

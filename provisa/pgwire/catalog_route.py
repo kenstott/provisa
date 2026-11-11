@@ -523,9 +523,16 @@ def _oid_sql(reg: str, operand: exp.Expr, rewrite=None) -> str:
     while (
         isinstance(operand, exp.Cast)
         and _reg_of(operand.to) in _TEXT_TYPES
-        and isinstance(operand.this, (exp.Literal, exp.Cast))
+        and isinstance(operand.this, (exp.Literal, exp.Cast, exp.Null))
     ):
         operand = operand.this
+    if isinstance(operand, exp.Null):
+        # The input function is strict: NULL names nothing to look up. Looked up as a name, the
+        # lookup wrote its operand five times, and each caller wrote that again (run 42527458223:
+        # pg_partition_root(NULL::regclass), 70 KB, had no answer in 30s).
+        return exp.cast(exp.null(), exp.DataType.build("OID", dialect="postgres")).sql(
+            dialect="postgres"
+        )
     if isinstance(operand, exp.Literal) and operand.is_string:
         return _input_oid(reg, operand.this)
     numbered = _is_number(operand)
@@ -597,6 +604,11 @@ def _is_number(operand: exp.Expr) -> bool:
     if isinstance(operand, exp.Subquery) and isinstance(operand.this, exp.Select):
         selects = operand.this.selects
         return len(selects) == 1 and _is_number(selects[0].unalias())
+    called = _call(operand)
+    if called is not None:
+        # A call answering a relation or a schema: its form answers the oid (metadata_server_forms).
+        name = called[0].name.lower()
+        return name in _CALLS_OF_REG_TYPE and name != "regclass"
     return False
 
 
