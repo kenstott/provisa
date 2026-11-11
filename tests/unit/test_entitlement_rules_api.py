@@ -505,8 +505,8 @@ async def test_a_rule_on_a_list_scoped_capability_outside_its_list_removes_nothi
     assert preview == {"removes": {}, "removes_nothing": True}
 
 
-async def _write_as(api_, user, role_id):
-    api_.caller["identity"] = _identity(user, "granter")
+async def _write_as(api_, user, role_id, claims=None):
+    api_.caller["identity"] = _identity(user, "granter", claims)
     return await api_.client.put(
         "/admin/entitlements/lists", json=_set(principal="bob", role=role_id)
     )
@@ -538,9 +538,11 @@ async def test_a_grant_wide_rule_ends_the_whole_role_for_that_person(api):
 
 
 async def test_the_identity_providers_roles_list_is_not_ended_by_a_rule(api):
-    await _idp(api, "alice", {"granter": {"roles": ("viewer",)}})
+    # Enforcement reads the token's lists: the flat form of a roles list for granter.
+    claims = {"groups": ["provisa:granter:roles:viewer"]}
     await _passed_rule(api, {_ASSIGN: ["viewer"]}, role="granter")
-    assert (await _write_as(api, "alice", "viewer")).status_code == 200
+    assert (await _write_as(api, "alice", "viewer", claims)).status_code == 200
+    assert (await _write_as(api, "alice", "viewer")).status_code == 403
 
 
 async def test_effective_access_shows_what_a_passed_rule_ended(api):
