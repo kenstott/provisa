@@ -35489,7 +35489,11 @@
     (Amended 2026-11-11, FIRST-RUN SETUP NAMES THE LOCAL PRINCIPAL:) Maintainer 2026-11-11. On an install
     whose local MCP connector is always on (the desktop tier), the first-run setup that creates the bootstrap
     admin also sets the local MCP principal (mcp.principal) to that admin, so the connector acts for that
-    person from the start. The operator can change it in Settings like any other setting.'
+    person from the start. The operator can change it in Settings like any other setting. (Amended 2026-11-11,
+    A NO-SIGN-IN INSTALL SEATS A LOCAL ADMIN:) Maintainer 2026-11-11. An install that runs with no sign-in
+    (auth provider none, the desktop demo) has no bootstrap admin from setup, so its setup creates a local
+    admin account that no one can sign in as and names it as the local MCP principal, so the always-on connector
+    works from the start with that account''s entitlements.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
