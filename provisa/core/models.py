@@ -599,7 +599,8 @@ class DataProduct(BaseModel):  # REQ-1634
     retire_on: date | None = None
     successor: str | None = None
     created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
-    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
+    # REQ-2180: what all of the product's contracts share -- support, freshness -- is written
+    # once here; the contracts themselves are derived from its offers.
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
@@ -628,15 +629,8 @@ class DataProduct(BaseModel):  # REQ-1634
         return self
 
 
-#: REQ-2158: the states of an ODCS contract.
-CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
-#: REQ-2158: the version a member's contract is created at, as a draft.
-FIRST_CONTRACT_VERSION = "0.1.0"
-
-
 class VersionColumn(BaseModel):  # REQ-2158
-    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
-    what a version's field differences compare is what the member's columns were when it was saved."""
+    """A contract's field as two of its versions are compared (provisa.core.contract_versions)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -646,28 +640,8 @@ class VersionColumn(BaseModel):  # REQ-2158
     required: bool = False  # ODCS: the column is never null
 
 
-class ContractSlaProperty(BaseModel):  # REQ-2158
-    """One declared ODCS service-level property (availability, retention, ...). Freshness is
-    not declared here: it is the member's declared freshness, read when the contract is."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    property: str = Field(min_length=1)
-    value: str | int | float | None = None
-    unit: str | None = None
-    description: str | None = None
-
-
-class ContractTerms(BaseModel):  # REQ-2158
-    model_config = ConfigDict(extra="forbid")
-
-    usage: str | None = None
-    limitations: str | None = None
-    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
-
-
 class ContractCheck(BaseModel):  # REQ-2158
-    """One check the product promised on the member, as a contract version saved it: promises are
+    """One check the product promised on a dataset, as a contract's terms keep it: promises are
     read live, so what a version promised is kept with it."""
 
     model_config = ConfigDict(extra="forbid")
@@ -692,14 +666,9 @@ class ContractChange(BaseModel):  # REQ-2158
         "field_required",
         "field_optional",
         "field_described",
-        "sla_added",
-        "sla_removed",
-        "sla_changed",
         "check_added",
         "check_removed",
         "check_changed",
-        "description_changed",
-        "terms_changed",
         # REQ-2180: an offer's contract on a dataset changing with the offer.
         "field_masked",
         "field_unmasked",
@@ -714,45 +683,6 @@ class ContractChange(BaseModel):  # REQ-2158
     before: str | None = None
     after: str | None = None
     breaking: bool = False
-
-
-class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
-    is its member table's columns, never a selection of its own; its promises are the checks the
-    product owns on the member (REQ-2157), read when the contract is."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: str = Field(min_length=1)
-    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
-    description: str | None = None
-    terms: ContractTerms = Field(default_factory=ContractTerms)
-    sla: list[ContractSlaProperty] = Field(default_factory=list)
-    # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
-    # every later version (data_contracts.for_save).
-    created_at: datetime | None = None
-    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
-    # store's record, as created_at is: a save replaces whatever it declares here.
-    versions: list["ContractVersion"] = Field(default_factory=list)
-
-
-class ContractVersion(BaseModel):  # REQ-2158
-    """A saved version of a contract: what it was, what it promised, how it differs from the one
-    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
-    load, a boot), as model_change.actor() says."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    contract: DataContract
-    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
-    columns: list[VersionColumn] = Field(default_factory=list)
-    checks: list[ContractCheck] = Field(default_factory=list)
-    changes: list[ContractChange] = Field(default_factory=list)
-    saved_at: datetime
-    saved_by: str | None = None
-
-
-DataContract.model_rebuild()
 
 
 #: REQ-2180: an offer's level of data: the product's datasets, a sample (existing views over
@@ -1834,6 +1764,19 @@ class Table(
     def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
         return _refuse_member_product_id(data, "table")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _no_contract(cls, data: Any) -> Any:  # REQ-2180
+        # A table once declared its product contract by hand. Contracts are derived from the
+        # product's offers now, so the key means nothing: a config carrying it is told so.
+        if isinstance(data, dict) and "contract" in data:
+            name = data.get("table") or data.get("table_name")
+            raise ValueError(
+                f"table {name!r} declares a contract; a data product's contracts are derived "
+                "from its offers (declare offers on the data product). Remove the key."
+            )
+        return data
+
     source_id: str
     domain_id: str
     schema_name: str = Field(
@@ -2047,9 +1990,6 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
-    contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.

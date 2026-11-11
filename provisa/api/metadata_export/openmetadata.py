@@ -448,22 +448,32 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
 
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
-    (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
-    from provisa.api.metadata_export.odps import odcs_contract
+    (REQ-2118): the contract the product's default offer gives on it (REQ-2180), the same document
+    Provisa serves at /data-products/{id}/offers/default/contracts/. OpenMetadata holds one
+    contract per entity, so a member is published under the offer every product starts with; a
+    member that offer gives no contract on (a checker table, or a product whose owner removed it)
+    has none published."""
+    from provisa.api.metadata_export.odps import offer_contract
+    from provisa.core.models import DEFAULT_OFFER
 
     by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
     entities = []
     for product in snapshot.data_products:
+        default = next(
+            (o for o in snapshot.offers.get(product.id, ()) if o.name == DEFAULT_OFFER.name), None
+        )
+        if default is None:
+            continue
         for member in product.members:
             table = by_fqn[member.fqn()]
-            if table.contract is None:
-                continue  # REQ-2158: a checker the product owns is no output port of it
+            if member.fqn() not in default.contracts:
+                continue
             entities.append(
                 Entity(
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=_for_openmetadata(odcs_contract(snapshot, product, table)),
+                    body=_for_openmetadata(offer_contract(snapshot, product, table, default)),
                     for_table=_table_fqn(table),
                 )
             )

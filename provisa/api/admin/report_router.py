@@ -141,7 +141,11 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
     from provisa.api.app import state
     from provisa.api.metadata_export.builder import build_snapshot
     from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
-    from provisa.api.metadata_export.publishing import GOVERNED_DIALECT, _model_for_export
+    from provisa.api.metadata_export.publishing import (
+        GOVERNED_DIALECT,
+        _model_for_export,
+        offer_exports,
+    )
     from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.repositories import glossary as glossary_repo
 
@@ -154,6 +158,8 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             glossary = await glossary_repo.export_graph(conn)
             # REQ-2163: the Ontology sheet states each term's axioms.
             glossary["axioms"] = await glossary_repo.axioms(conn)
+            # REQ-2180: the Data Contracts sheet lists each offer's contracts.
+            offers = await offer_exports(conn)
         dq_outcomes = await read_latest_outcomes(model)
         snapshot = build_snapshot(
             model,
@@ -167,6 +173,7 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             # an unmarked table is one of the things a review exists to find, so the Data Product
             # flag rides along as a column on the Tables sheet instead of deciding what appears.
             data_products_only=False,
+            offers=offers,
         )
     finally:
         reset_current_org(token)

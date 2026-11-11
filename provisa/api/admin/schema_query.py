@@ -77,9 +77,6 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
-    ContractSlaPropertyType,
-    ContractTermsType,
-    DataContractType,
     DataProductFindingType,
     DataProductFindingsType,
     DataProductType,
@@ -611,26 +608,6 @@ async def _assignments_on_readable(
     return [r for r in rows if readable(r)]
 
 
-def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
-    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
-    from provisa.core.data_contracts import contract_id
-    from provisa.core.models import DataContract
-
-    c = DataContract.model_validate(member["contract"])
-    return DataContractType(
-        table_id=member["id"],
-        source_id=member["source_id"],
-        schema_name=member["schema_name"],
-        table_name=member["table_name"],
-        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
-        version=c.version,
-        status=c.status,
-        description=c.description,
-        terms=ContractTermsType(**c.terms.model_dump()),
-        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
-    )
-
-
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -919,7 +896,6 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
             rows = await data_product_repo.list_all(conn)
-            members = await data_product_repo.member_contracts(conn)
             # REQ-1634: each product's members, from the membership relation.
             member_tables: dict[str, list[int]] = {}
             for table_id, pids in (await data_product_repo.table_memberships(conn)).items():
@@ -933,9 +909,6 @@ class Query:  # REQ-021, REQ-042
                 conn, await product_findings.context(datetime.date.today())
             )
         names = {r["id"]: r["name"] for r in rows}
-        contracts: dict[str, list[DataContractType]] = {}
-        for m in members:  # REQ-2158
-            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -951,7 +924,7 @@ class Query:  # REQ-021, REQ-042
                 support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
                 created_at=r["created_at"].isoformat(),
-                contracts=contracts.get(r["id"], []),
+                freshness=r["freshness"],  # REQ-2180
                 status=r["status"],
                 status_reason=r["status_reason"],
                 retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,

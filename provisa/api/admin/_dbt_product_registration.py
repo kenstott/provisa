@@ -35,7 +35,6 @@ from provisa.dbt.products import (
     planned_products,
     preview,
     promise_columns,
-    write_contract,
 )
 from provisa.dbt.store import held_manifest, model_tables
 
@@ -154,7 +153,4 @@ async def register_products(info: Any, source_id: str, domain_id: str) -> list[s
         members = await mutation.set_data_product_members(info, product.id, table_ids, [])  # pyright: ignore[reportCallIssue]
         if not members.success:
             raise _refused(members)
-        async with pool.acquire() as conn:
-            for model in product.models:
-                await write_contract(conn, model, tables[model.unique_id])
     return [p.id for p in plan]

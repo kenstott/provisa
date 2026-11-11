@@ -67,55 +67,11 @@ async def _product(request: Request, product_id: str, *, export: bool):
 
 
 async def _documents(request: Request, product_id: str, *, export: bool = True):
-    """The product's ODPS document and its members' ODCS contracts."""
+    """The product's ODPS document and its ODCS contracts, one per offer and dataset."""
     from provisa.api.metadata_export.odps import product_documents
 
     snapshot, product = await _product(request, product_id, export=export)
-    return product_documents(snapshot, product, await offer_exports(product_id))
-
-
-async def offer_exports(product_id: str) -> list:
-    """The product's offers as the export writes them (REQ-2180), each with its stored contract
-    on each dataset, keyed by the dataset's address (source.schema.table)."""
-    from sqlalchemy import select
-
-    from provisa.api.app import state
-    from provisa.api.metadata_export.odps import OfferExport
-    from provisa.core.repositories import data_product as data_product_repo
-    from provisa.core.repositories import data_product_offer as offers
-    from provisa.core.schema_org import registered_tables as rt
-
-    assert state.model_db is not None  # the org's model store is bound with its runtime
-    async with state.model_db.acquire() as conn:
-        stored = await data_product_repo.get(conn, product_id)
-        freshness = None if stored is None else stored.get("freshness")
-        exports = []
-        for row in await offers.list_offers(conn, product_id):
-            contracts = await offers.contracts(conn, row["id"])
-            addresses = {
-                int(r.id): f"{r.source_id}.{r.schema_name}.{r.table_name}"
-                for r in (
-                    await conn.execute_core(
-                        select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name).where(
-                            rt.c.id.in_(list(contracts))
-                        )
-                    )
-                ).fetchall()
-            }
-            exports.append(
-                OfferExport(
-                    name=row["name"],
-                    role_id=row["role_id"],
-                    data_level=row["data_level"],
-                    dq_results=row["dq_results"],
-                    profiles=row["profiles"],
-                    open=row["open"],
-                    duration_days=row["duration_days"],
-                    contracts={addresses[tid]: c for tid, c in contracts.items()},
-                    freshness=freshness,
-                )
-            )
-    return exports
+    return product_documents(snapshot, product)
 
 
 def _yaml(document: dict) -> Response:
@@ -183,7 +139,8 @@ async def data_product_contract_versions(
     reading the product asks."""
     require_capability_request(request, "data_product_read")
     require_active_org_id(request)
-    exports = {o.name: o for o in await offer_exports(product_id)}
+    snapshot, product = await _product(request, product_id, export=False)
+    exports = {o.name: o for o in snapshot.offers.get(product.id, ())}
     contract = None if offer not in exports else exports[offer].contracts.get(member)
     if contract is None:
         raise ApiError(

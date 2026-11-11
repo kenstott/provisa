@@ -16,7 +16,7 @@
   one its owner may grant (:func:`may_grant`): the role picker lists only those, and saving any
   other is refused by name.
 * Each offer's contracts are derived when it is saved: one per dataset, the offer's terms applied
-  to it, as the offer's role reads it (provisa.core.offer_contracts).
+  to it, as the offer's role reads it (provisa.api.offer_derivation).
 * A signed-in requester bids for an offer, stating why, and the bid fires the outbound request
   hook (provisa.core.offer_hooks); so does their cancel of it. Whatever receives the request
   decides, and the decision returns through the one inbound decision hook (``POST
@@ -45,8 +45,9 @@ from provisa.api.admin.capabilities import (
     require_right_in_domains_request,
 )
 from provisa.api.errors import ApiError
-from provisa.core import offer_contracts, offer_grant, offer_hooks, offer_public
-from provisa.core.models import DataProductOffer, OfferContract
+from provisa.api.offer_derivation import derive, seen_columns
+from provisa.core import offer_grant, offer_hooks, offer_public
+from provisa.core.models import DataProductOffer
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
@@ -174,83 +175,6 @@ async def _product(conn: Any, product_id: str) -> dict:
 # -- contracts -------------------------------------------------------------------------------------
 
 
-def _seen_columns(state: Any, role_id: str, table: dict) -> list[offer_contracts.SeenColumn]:
-    """``table``'s columns as ``role_id`` reads them, from what the runtime serves."""
-    from provisa.security.effective_rights import data_view_from_state
-    from provisa.security.inheritance import parent_map
-
-    parents = parent_map({"id": rid, **r} for rid, r in state.roles.items())
-    view = data_view_from_state(
-        state,
-        role_id,
-        parents=parents,
-        stored={},
-        readable=lambda *_: True,
-        governance=True,
-        tables=[table],
-    )
-    read = {c["name"]: c for t in view for c in t["columns"] if c["read"]}
-    return [
-        offer_contracts.SeenColumn(
-            name=c["column_name"],
-            type=c.get("data_type") or "unknown",
-            description=c.get("description"),
-            read=c["column_name"] in read,
-            mask=(read[c["column_name"]].get("mask") or {}).get("type")
-            if c["column_name"] in read
-            else None,
-        )
-        for c in table["columns"]
-        if not c.get("native_filter_type")
-    ]
-
-
-async def derive(
-    conn: Any, state: Any, product_id: str, offer_row: dict
-) -> dict[int, OfferContract]:
-    """The offer's contract on each of the product's datasets, as its role reads them now, each
-    the next version of the one stored where its terms changed. Stored, and returned."""
-    from provisa.security.meta_role import reader_chain
-
-    offer = offers.as_offer(offer_row)
-    if offer.role_id not in state.roles:
-        raise ApiError(
-            422,
-            "data_product.offer.role_not_found",
-            f"role {offer.role_id!r} is not defined",
-            role=offer.role_id,
-        )
-    datasets = await offers.dataset_ids(conn, product_id)
-    built = {t["id"]: t for t in state.tables}
-    stored = await offers.contracts(conn, offer_row["id"])
-    read_by = await offers.views_read(conn, offer.sample_views)
-    names = await offers.table_names(conn, offer.sample_views)
-    chain = reader_chain(state, offer.role_id)
-    now = datetime.now(UTC)
-    derived: dict[int, OfferContract] = {}
-    for dataset in datasets:
-        table = built.get(dataset)
-        if table is None:
-            raise ApiError(
-                409,
-                "data_product.offer.not_built",
-                f"dataset {dataset} is not in the last model build; build the model first",
-                table=dataset,
-            )
-        profiles = await offers.profile_tables(conn, dataset) if offer.profiles else []
-        terms = offer_contracts.terms(
-            offer,
-            _seen_columns(state, offer.role_id, table),
-            row_rules=await offers.row_rule_words(conn, chain, dataset, table["domain_id"]),
-            sample_views=[names[v] for v in offer.sample_views if dataset in read_by.get(v, ())],
-            checks=await data_product_repo.promised_checks(conn, dataset),
-            profiles=list((await offers.table_names(conn, profiles)).values()),
-        )
-        derived[dataset] = offer_contracts.recorded(stored.get(dataset), terms, at=now)
-    await offers.store_contracts(conn, offer_row["id"], derived)
-    return derived
-
-
 async def _not_public(conn: Any, state: Any, product_id: str, role_id: str) -> list[str]:
     """What keeps the product's data, read through ``role_id``, from being public; empty when
     it is public (provisa.core.offer_public)."""
@@ -260,7 +184,7 @@ async def _not_public(conn: Any, state: Any, product_id: str, role_id: str) -> l
     unread = [
         names[d]
         for d in datasets
-        if d not in built or not any(c.read for c in _seen_columns(state, role_id, built[d]))
+        if d not in built or not any(c.read for c in seen_columns(state, role_id, built[d]))
     ]
     role = state.roles.get(role_id)
     return offer_public.not_public(
