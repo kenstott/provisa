@@ -74,6 +74,8 @@ declare module "*.graphql" {
   export const RestoreDataProduct: DocumentNode;
   export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
+  export const RegisterTables: DocumentNode;
+  export const TableAccess: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
@@ -214,6 +216,8 @@ declare module "*.gql" {
   export const RestoreDataProduct: DocumentNode;
   export const DataProductFindingsQuery: DocumentNode;
   export const RegisterTable: DocumentNode;
+  export const RegisterTables: DocumentNode;
+  export const TableAccess: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;

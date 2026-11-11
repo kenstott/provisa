@@ -67,6 +67,7 @@ describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
         onContinue={onContinue}
         onCancel={() => {}}
         onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

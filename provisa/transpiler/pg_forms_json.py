@@ -676,13 +676,24 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
         return _duckdb(
             "to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(member(args[0]))
         )
-    if name in _OBJECT_AGGS or (filtered and name in ("json_object_agg", "jsonb_object_agg")):
+    # An ordered one too: DuckDB's json_group_object is a macro, which takes no ORDER BY.
+    ordered_value = len(args) > 1 and isinstance(args[1], exp.Order)
+    plain = name in ("json_object_agg", "jsonb_object_agg")
+    if name in _OBJECT_AGGS or ((filtered or ordered_value) and plain):
         strict, unique = _OBJECT_AGGS.get(name, (False, False))
+        # value ORDER BY ...: the order is the pairs' list's, around the pair.
+        value, order = args[1], None
+        if isinstance(value, exp.Order):
+            value, order = value.this, value
         pairs = _duckdb(
             "struct_pack(k := CAST(_k AS VARCHAR), v := CAST(_x AS VARCHAR))",
             _k=args[0].transform(inner),
-            _x=json_encoded(args[1].transform(inner)),
+            _x=json_encoded(value.transform(inner)),
         )
+        if order is not None:
+            pairs = exp.Order(
+                this=pairs, expressions=[o.transform(inner) for o in order.expressions]
+            )
         flags = [exp.Boolean(this=strict), exp.Boolean(this=unique), exp.Literal.string(name)]
         call = exp.Anonymous(this="provisa_json_object_agg", expressions=[rows(pairs), *flags])
         return exp.cast(call, "JSON")

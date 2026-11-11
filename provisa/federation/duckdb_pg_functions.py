@@ -27,12 +27,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from provisa.core.pg_error import END, MARK
 from provisa.transpiler.function_macros import FunctionRefused
 
 
 def _refuse_digest(algorithm: str, value: bytes) -> bytes:
-    """crypto_hash where the extension is not staged: the function the statement called, refused."""
-    raise FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
+    """crypto_hash where the extension is not staged: the function the statement called, refused
+    by name. Raised in a UDF, the engine wraps the message in its own; marked, pgwire reads it
+    back as the refusal it is (pg_error.from_engine)."""
+    refused = FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
+    raise ValueError(f"{MARK} 0A000: {refused}{END}")
 
 
 #: pg_size_pretty's units, as src/backend/utils/adt/dbsize.c lists them: (name, the size below

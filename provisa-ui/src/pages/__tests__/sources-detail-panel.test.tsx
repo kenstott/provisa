@@ -11,7 +11,8 @@
 // The Sources page shows a source's detail in a panel at the right of the list, one at a time,
 // as the Tables page does: a row selects, another row swaps, the row or the panel's close
 // closes. A source's actions are in the panel's head. "+ Source" asks only what a source needs
-// in order to exist; once saved, the new source is selected and its detail opens in edit.
+// in order to exist; once saved, the new source is selected and its panel opens on registering
+// its tables (REQ-2234), then on its detail in edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
@@ -54,6 +55,7 @@ const source = (over: Partial<Source>): Source =>
     changeSignal: "ttl",
     mappingJson: null,
     passwordRef: "pw",
+    allowedDomains: [],
     ...over,
   }) as unknown as Source;
 
@@ -75,6 +77,34 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateSourceAllowedDomains: () => ({
     updateSourceAllowedDomains: vi.fn().mockResolvedValue(ok),
   }),
+  // REQ-2234: what the new source's Register tables step lists.
+  useAvailableSchemas: () => ({ schemas: ["public"], loading: false }),
+  useAvailableTables: () => ({
+    tables: [
+      { name: "accounts", comment: null },
+      { name: "audit_blobs", comment: null },
+    ],
+    loading: false,
+  }),
+}));
+
+// One reader for every render, as the real hook's is (useCallback): the step reads again when it
+// changes.
+const readColumns = async (_source: string, _schema: string, table: string) =>
+  table === "accounts"
+    ? [
+        {
+          name: "id",
+          dataType: "integer",
+          comment: null,
+          nativeFilterType: null,
+          isPrimaryKey: true,
+        },
+      ]
+    : [{ name: "body", dataType: "", comment: null, nativeFilterType: null, isPrimaryKey: false }];
+vi.mock("../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
 }));
 
 vi.mock("../../components/SchemaDiscovery", () => ({
@@ -240,12 +270,45 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     await userEvent.click(screen.getByTestId("sources-submit"));
     await waitFor(() => expect(createSource).toHaveBeenCalled());
     expect(createSource.mock.calls[0][0]).toMatchObject({ id: "crm", type: "postgresql" });
+    // REQ-2234: the panel opens first on registering its tables; skipping that step closes it.
+    await userEvent.click(await screen.findByTestId("register-tables-skip"));
     // Its detail, in edit: the whole form, with what the short step did not ask.
     await screen.findByTestId("sources-edit-submit");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("crm");
     expect(within(panel()!).getByLabelText("Description")).toHaveValue("");
     await userEvent.click(screen.getByTestId("source-section-load"));
     expect(within(panel()!).getByTestId("source-load-management-panel")).toBeInTheDocument();
+  });
+});
+
+describe("once a source is saved, its panel opens on registering its tables", () => {
+  async function create() {
+    render(<SourcesPage />);
+    await openCreate();
+    await userEvent.type(screen.getByTestId("sources-id-input"), "crm");
+    await userEvent.type(within(panel()!).getByLabelText(/^Host/), "db2");
+    await userEvent.type(within(panel()!).getByLabelText(/^Database/), "crm");
+    const made = source({ id: "crm", host: "db2", database: "crm" });
+    refetch.mockImplementation(async () => {
+      SOURCES = [...SOURCES, made];
+      return { data: { sources: SOURCES } };
+    });
+    await userEvent.click(screen.getByTestId("sources-submit"));
+  }
+
+  it("is Register Table with the source chosen, its tables listed, those needing no input ticked", async () => {
+    await create();
+    const step = within(panel()!);
+    expect(await step.findByTestId("register-table-source-select")).toHaveValue("crm");
+    expect(step.getByRole("radio", { name: "Several tables" })).toBeChecked();
+    await waitFor(() => expect(step.getByTestId("register-many-table-accounts")).toBeChecked());
+    expect(step.getByTestId("register-many-table-audit_blobs")).not.toBeChecked();
+    expect(
+      step.getByText("Needs input: no type was found for body. Register it on its own."),
+    ).toBeInTheDocument();
+    // A step in the source's own panel, not a dialog over the page.
+    expect(panel()).toContainElement(screen.getByTestId("register-many-tables"));
+    expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
   });
 });
 

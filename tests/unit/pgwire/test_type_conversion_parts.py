@@ -63,6 +63,9 @@ def test_a_string_that_is_no_array_literal_is_refused(text):
 def test_array_literals_reach_the_engine_as_arrays():
     assert _duck("""SELECT '{"a b",NULL}'::text[] AS v""") == (["a b", None],)
     assert _duck("SELECT '{{1,2},{3,4}}'::int[][] AS v") == ([[1, 2], [3, 4]],)
+    # PostgreSQL ignores the dimensions a type declares: the literal's own nesting decides them.
+    assert _duck("SELECT '{{1,2},{3,4}}'::int[] AS v") == ([[1, 2], [3, 4]],)
+    assert _duck("SELECT '{1,2}'::int[][] AS v") == ([1, 2],)
     assert _duck("SELECT '{}'::int4[] AS v") == ([],)
 
 

@@ -17,6 +17,8 @@ import {
   RegisterEntity,
   RegisterFact,
   RegisterTable,
+  RegisterTables,
+  TableAccess,
   UpdateTable,
   TableListQuery as TABLE_LIST_QUERY,
   TableRowsQuery as TABLE_ROWS_QUERY,
@@ -115,6 +117,48 @@ export function useRegisterTable() {
     },
     loading,
   };
+}
+
+/** REQ-2234: one table of several registered in one action, and what its registration answered. */
+export interface TableRegistrationOutcome {
+  tableName: string;
+  result: MutationResult;
+}
+
+/** REQ-2234: several tables registered in one action, each by registerTable on the server. */
+export function useRegisterTables() {
+  const refetchTables = useShownTableQueries();
+  const [registerTables, { loading }] = useMutation<{
+    registerTables: TableRegistrationOutcome[];
+  }>(RegisterTables, { refetchQueries: refetchTables, awaitRefetchQueries: true });
+  return {
+    registerTables: async (inputs: Record<string, unknown>[]) => {
+      const { data } = await registerTables({ variables: { inputs } });
+      if (!data) throw new Error("registerTables answered nothing");
+      return data.registerTables;
+    },
+    loading,
+  };
+}
+
+/** REQ-2234: the ways to reach a registered table as `role`, each ready to copy. */
+export interface TableAccess {
+  graphql: string;
+  sql: string;
+  /** Null where the pgwire listener is not serving. */
+  pgwire: string | null;
+  /** Null where the REST surface is not mounted. */
+  rest: string | null;
+  mcp: string;
+}
+
+export function useTableAccess(tableId: number | null, role: string | null) {
+  const { data, loading, error } = useQuery<{ tableAccess: TableAccess }>(TableAccess, {
+    variables: { tableId, role },
+    skip: tableId === null || !role,
+    fetchPolicy: "network-only",
+  });
+  return { access: data?.tableAccess ?? null, loading, error: error?.message ?? null };
 }
 
 export function useRegisterEntity() {

@@ -760,6 +760,19 @@ DECLARED: list[Setting] = [
         min=1,
         unit="days",
     ),
+    # REQ-2219: the expiring-soon event's own setting: how long before an entitlement expiry rule's
+    # date the scheduled expiry run emits it, and what the entitlement UI highlights by.
+    Setting(
+        key="entitlements.expiring_soon_days",
+        card="security",
+        type="int",
+        effect="live",  # read at each expiry run and each read of the kinds
+        req="REQ-2219",
+        env="PROVISA_ENTITLEMENT_EXPIRING_SOON_DAYS",
+        default=7,
+        min=1,
+        unit="days",
+    ),
     # --- Network: hostname, listeners, TLS -------------------------------------------------------
     # Ports and TLS files are guarded: a wrong one can leave the operator unable to reach the
     # deployment. 0 turns an optional listener off.

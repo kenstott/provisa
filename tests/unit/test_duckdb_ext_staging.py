@@ -399,8 +399,10 @@ def test_the_server_tier_gates_attach_on_what_installed(server_tier):
     install_extension_set()
     engine = build_duckdb_engine()
     assert "postgresql" in engine.connectors
-    assert "google_sheets" not in engine.connectors
-    assert "gsheets" in (engine.unreachable_reason("google_sheets") or "")
+    assert "google_sheets" not in engine.connectors  # not attached ...
+    # ... a replica, landed through the Sheets API (REQ-1998)
+    assert engine.unreachable_reason("google_sheets") is None
+    assert not engine.complete_reach().connectors["google_sheets"].reads_in_place
 
 
 def test_a_staged_directory_installs_nothing_at_server_start(server_tier, monkeypatch, tmp_path):

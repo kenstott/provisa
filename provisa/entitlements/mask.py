@@ -33,6 +33,7 @@ from provisa.entitlements.index import (
     LIST_OF,
     METRIC,
     RELATIONSHIP,
+    SEMANTIC_LISTS,
     TABLE,
     Finding,
     IndexedObject,
@@ -130,6 +131,8 @@ def _ends(rule: ExpiryRule, obj: IndexedObject) -> bool:
     if not rule.ends:
         return True
     for capability, identifiers in rule.ends.items():
+        if capability == "*" and rule.list_kind not in (None, *SEMANTIC_LISTS):
+            continue  # set with a list outside the mask: its identifiers name none of its objects
         if obj.kind in _CAPABILITY_KINDS.get(capability, frozenset()) and any(
             matches(i, obj.paths) for i in identifiers
         ):

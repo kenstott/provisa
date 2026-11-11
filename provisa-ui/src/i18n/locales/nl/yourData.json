@@ -1,0 +1,15 @@
+{
+  "yourData": {
+    "title": "Je gegevens",
+    "loading": "De zojuist geregistreerde tabellen worden gelezen…",
+    "openQuery": "Openen in de query-explorer",
+    "otherWays": "Andere manieren om bij deze tabel te komen",
+    "graphql": "GraphQL-query",
+    "pgwire": "Verbindingsreeks voor een SQL-client (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP-toolaanroep",
+    "copy": "{{what}} kopiëren",
+    "close": "Sluiten"
+  }
+}

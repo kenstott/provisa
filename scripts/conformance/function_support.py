@@ -2124,6 +2124,18 @@ def _pair_rows(
 ZONE_LISTS = frozenset({"pg_timezone_names"})
 #: The names a distribution's tzdata adds to the release's: Debian's.
 DISTRIBUTION_ZONES = frozenset({"localtime", "posixrules"})
+#: The zones tzdata 2024b made backward links, each to the zone it names: a distribution dropping
+#: the backward links drops them (Debian's, run 42935119044), and the pinned release compiles each
+#: apart from its zone (their rules before 1970), so its bytes do not show it a link.
+BACKWARD_LINKS = {
+    "CST6CDT": "America/Chicago",
+    "EST5EDT": "America/New_York",
+    "MST7MDT": "America/Denver",
+    "PST8PDT": "America/Los_Angeles",
+    "EST": "America/Panama",
+    "MST": "America/Phoenix",
+    "HST": "Pacific/Honolulu",
+}
 
 
 def _zone_name(row: tuple) -> str | None:
@@ -2156,6 +2168,7 @@ def shared_zones(
         for row in got
         if (name := _zone_name(row)) not in shared
         and (name is None or _pinned_zone(name) not in zones)
+        and BACKWARD_LINKS.get(name or "") not in shared
     )
     if only_provisa:
         return f"zones Provisa lists and PostgreSQL does not: {only_provisa}"

@@ -792,17 +792,15 @@ def build_duckdb_engine(
     from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
     from provisa.federation.duckdb_backend import DuckDBBackend
     from provisa.federation.runtime import EngineCapability
-    from provisa.federation.duckdb_extensions import motherduck_reader_missing
+    from provisa.core.engine_memory import motherduck_extension_limit
 
     connectors, unreachable = _attachable(duckdb_engine_connectors())
-    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH): attached where
-    # MotherDuck's extension loads on this DuckDB; where it does not, no reader in this deployment
-    # lands it either, so it is unreachable, naming what is missing.
-    missing_reader = motherduck_reader_missing()
-    if missing_reader is None:
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): attached where MotherDuck's extension loads on this
+    # DuckDB; where it does not, its replicas land through MotherDuck's Postgres endpoint
+    # (complete_reach gives it its land reach).
+    if motherduck_extension_limit() is None:
         connectors.append(DuckDBMotherDuckConnector())
-    else:
-        unreachable["motherduck"] = missing_reader
     return FederationEngine(
         name,
         connectors,
