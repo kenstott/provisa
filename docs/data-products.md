@@ -12,46 +12,63 @@ A product that needs data from another domain must bring that data in as a domai
 
 The tables and commands that are members of a data product are its **output ports**, the queryable surface consumers see. Membership is many-to-many: a table, view or command may belong to any number of products in its domain, and a product to any number of members. Members are added and removed on the product only: the `setDataProductMembers` mutation (or the product's `tables` and `commands` lists in configuration). A table's own page lists the products it belongs to, read-only.
 
-## Contracts
+## Offers
 
-Each member table is an output port with its own data contract, in the ODCS format. A table gets a draft contract at version `0.1.0` when it joins its first product; a table in several products has one contract, which each of its products lists. A table that leaves its last product loses its contract. A contract's schema is its member table's columns: it has no column selection of its own. To offer a subset of a table, make a view of that subset the product's member. The contract has its own version, separate from the product's. A checker table that a product owns is not an output port and has no contract.
+Access to a data product is by offers. A product starts with one offer, `default`: the `viewer` role, the full data, with data quality results, without profiles, not open. Any other offer is the owner's to add.
 
-A contract holds:
+Each offer has:
 
 | Field | Notes |
 | --- | --- |
-| `version` | Required |
-| `status` | `proposed`, `draft`, `active`, `deprecated` or `retired` |
-| `description` | What the port is for |
-| `terms` | `usage`, `limitations` and `notice_period` (for example `P3M`) |
-| `sla` | Service levels such as availability or retention. Freshness is not declared here; it comes from the table's cache TTL |
+| `name` | Unique within the product |
+| `role_id` | The role accepting the offer grants. It must be a role the owner may grant: a role their `roles` entitlement list reaches, through a role they act as that holds `assign_entitlements` or `user_management`. Saving any other role is refused by name |
+| `data_level` | `full` (the product's datasets), `sample` (one or more existing views over the datasets, named in `sample_views`, which together read every dataset and nothing else) or `synthetic` (every dataset must have a profiler) |
+| `dq_results` | Whether the product's data quality results are included |
+| `profiles` | Whether the datasets' profiles are included. A synthetic offer has none |
+| `open` | An open offer is accepted at once |
+| `duration_days` | How long what accepting grants lasts; none means no end |
 
-A contract's promises are the product's data quality checks on the member. A column no check covers carries no promise of stability.
+A product's datasets are its member tables and views. A checker table the product owns holds its data quality results and is not a dataset.
 
-A product's contracts advertise it. Every role that can see the product sees each contract, its schema included, whether or not it can read the member's data. A contract grants nothing: reading the member still needs a grant.
+### Bids
 
-Edit contracts on the product's form, in its Contracts panel, or declare them in configuration on the table, which the product lists by name:
+A signed-in requester bids for an offer and states a reason. The product's owner role accepts or declines the bid as it was bid. If the offer changes after the bid, accepting is refused and the requester bids again. Declining states a reason, and a requester may withdraw a pending bid.
 
-```yaml
-data_products:
-  - id: revenue
-    domain_id: finance
-    name: Revenue
-    tables: [daily_revenue]
-tables:
-  - source_id: warehouse
-    domain_id: finance
-    schema_name: public
-    table_name: daily_revenue
-    contract:
-      version: 1.0.0
-      status: active
-      terms: {usage: Join on day}
-      sla:
-        - {property: availability, value: 99.9, unit: "%"}
-```
+Accepting checks again that the one accepting may grant the offer's role. It then assigns the role, or re-grants a role the requester already holds, and adds entries to the requester's `tables` entitlement list for that role: the datasets (or, for a sample, the views alone, never the tables beneath them), plus the data quality results and the profiles where the offer includes them. A requester who did not hold the role is granted it narrowed to those entries.
 
-The ODPS export writes each output port with its contract's version and the contract itself, at `/data-products/{id}/contracts/{source.schema.table}.yaml`.
+With a duration, the entries end after it, and so does a role grant the acceptance made. A role granted again ends at the latest of the expiries that granted it, and no end is later than any date. An offer's summary states any extension accepting it would make, for example "extends your viewer role from 21 Nov 2026 to no end date".
+
+An open offer is checked against the right of the owner who published it. While that right is gone, the bid stays pending and the offer is listed for review (`review`). Accepting a synthetic offer is refused for now, because no read yet serves a role the product's synthetic data.
+
+## Contracts
+
+The contracts are derived from the offers. For every offer, each dataset has one ODCS contract, the offer's terms applied to that dataset:
+
+- its schema is the dataset's columns as the offer's role reads them: a column the role does not read is left out, and a masked column is stated as masked;
+- its row rules are stated in words (each rule's description);
+- its data level: the full dataset, the offer's sample views over it, or synthetic;
+- the product's data quality promises are always stated, and the offer says whether their results can be read;
+- the dataset's profile tables are listed where the offer includes profiles.
+
+What all of a product's contracts share is written once on the product: its owner, description (`purpose`, `usage`, `limitations`), `freshness` (seconds a read may trail its source; without it, each dataset's own cache freshness applies) and support.
+
+An offer's contracts are derived again whenever the offer is saved. A contract whose terms changed takes its next version: a breaking change (a column removed or masked, a row rule added, less data, data quality results or profiles withdrawn, a shorter duration) takes the next major version, and any other change the next minor one. Each version is kept with its differences from the one before.
+
+The offer contracts supersede the per-table contracts written by hand.
+
+The ODPS export writes one output port per offer and dataset, versioned by and naming that offer's contract, and lists the offers under `customProperties` (`offers`). Each contract is served at `/data-products/{id}/offers/{offer}/contracts/{source.schema.table}.yaml`, and its versions at `.../versions.json`.
+
+## Offers API
+
+| Method and path | Who | What |
+| --- | --- | --- |
+| `GET /admin/data-products/{id}/offers` | `data_product_read` | The offers, each with its contracts and the caller's extension summary |
+| `GET /admin/data-products/{id}/grantable-roles` | `data_product_rw` in the domain | The roles the caller may put in an offer |
+| `POST /admin/data-products/{id}/offers`, `PUT .../offers/{offer_id}`, `DELETE .../offers/{offer_id}` | `data_product_rw` in the domain, and the product's row rules | Add, change or remove an offer. Removing one declines its pending bids |
+| `POST /admin/data-products/{id}/offers/{offer_id}/bids` | a signed-in requester | Bid, stating `reason`. An open offer is accepted at once |
+| `GET /admin/data-products/{id}/bids` | the owner role sees every bid, anyone else their own | The bids, newest first |
+| `POST /admin/data-products/{id}/bids/{bid_id}/accept`, `.../decline` (with `reason`) | the product's owner role | Decide a bid |
+| `POST /admin/data-products/{id}/bids/{bid_id}/withdraw` | the requester | Withdraw a pending bid |
 
 ## Detail panel sections
 
@@ -60,7 +77,7 @@ Opening a data product in the admin UI shows these panels:
 | Panel | What it shows |
 | --- | --- |
 | Output Ports | Member tables and their columns; member commands; sample queries (GraphQL, SQL, Cypher, gRPC, JSON:API, REST) |
-| Contracts | Each output port's contract: its version and status, terms, service levels and its schema (the member's columns) |
+| Contracts | The product's offers, each opening to the contract it gives on each dataset |
 | Related Terms | Glossary terms linked to the product's member tables |
 | Related Tables | Tables reachable from member tables through approved relationships but not yet part of the product |
 | Relationships | Approved relationships between this product's member tables |
@@ -105,3 +122,4 @@ Only catalogs with a native data-product concept publish it as an entity of its 
 | `support_contact` | No | Email or URL; required by Snowflake Horizon Catalog organization listing manifests |
 | `publish` | No | `true` to publish Horizon Catalog listings immediately; new listings default to DRAFT |
 | `custom_properties` | No | Arbitrary key-value metadata not covered by the standard fields |
+| `freshness` | No | Seconds a read may trail its source, promised by every contract of the product |
