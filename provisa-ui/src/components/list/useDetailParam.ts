@@ -16,8 +16,8 @@
 // DETAIL_VIEWS is the one place each page's parameter is named; detailHref builds a link into a
 // panel from it, so every link to a detail view is the URL the page itself writes.
 
-import { useCallback, useLayoutEffect, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 interface DetailView {
   /** The page's route. */
@@ -94,16 +94,26 @@ export interface DetailParam {
 export function useDetailParam(page: DetailPage): DetailParam {
   const view: DetailView = DETAIL_VIEWS[page];
   const location = useLocation();
-  const navigate = useNavigate();
-  const params = new URLSearchParams(location.search);
+  const [, setParams] = useSearchParams();
+
+  // The router applies a new location as a transition, after the page's own state changes made in
+  // the same handler (a form closing as its object opens). What was just written is shown at once,
+  // with them, until the location arrives; a location of any other making (Back) replaces it.
+  const [written, setWritten] = useState<{ from: string; search: string } | null>(null);
+  // Once the location has moved on, what was written is the location's to say, also on coming
+  // Back to the entry it was written from.
+  if (written !== null && written.from !== location.key) setWritten(null);
+  const shown =
+    written !== null && written.from === location.key ? written.search : location.search;
+  const params = new URLSearchParams(shown);
   const id = params.get(view.param);
   const tab = view.tab === undefined ? null : (params.get(view.tab.param) ?? view.tab.first);
 
   // Two writes in one handler (open, then a tab) compose: the second builds on the first's search
   // and replaces its entry, so one action is one entry. A render of a new location ends the batch.
-  const latest = useRef({ search: location.search, wrote: false });
+  const latest = useRef({ from: location.key, search: location.search, wrote: false });
   useLayoutEffect(() => {
-    latest.current = { search: location.search, wrote: false };
+    latest.current = { from: location.key, search: location.search, wrote: false };
   }, [location.key, location.search]);
 
   const write = useCallback(
@@ -115,9 +125,10 @@ export function useDetailParam(page: DetailPage): DetailParam {
       if (search === new URLSearchParams(held.search).toString()) return;
       const replace = replacing || held.wrote;
       latest.current = { ...held, search: search ? `?${search}` : "", wrote: true };
-      navigate({ pathname: location.pathname, search, hash: location.hash }, { replace });
+      setWritten({ from: held.from, search });
+      setParams(next, { replace });
     },
-    [navigate, location.pathname, location.hash],
+    [setParams],
   );
 
   // The first tab is the panel without a tab named: one URL for it, and choosing it again is no change.
@@ -132,8 +143,9 @@ export function useDetailParam(page: DetailPage): DetailParam {
   const open = useCallback(
     (next: string, how?: { tab?: string; replace?: boolean }) =>
       write((p) => {
+        // Another object keeps the tab in view, as a row clicked beside an open panel always has;
+        // what belonged to the one before (a marked column, a linked contract) goes with it.
         if (p.get(view.param) !== next) {
-          if (view.tab !== undefined) p.delete(view.tab.param);
           for (const linked of view.alsoClears ?? []) p.delete(linked);
           p.set(view.param, next);
         }

@@ -64,27 +64,9 @@ export function useGlossaryPanel(canEdit: boolean) {
   const [ontology, setOntologyState] = useState(
     () => detail.id === null && readStoredString("glossary.view") === "ontology",
   );
-  const parsed = detail.id === null ? NaN : Number(detail.id);
-  const selectedId = Number.isFinite(parsed) ? parsed : null;
   const { open: openTerm, close: closeTerm } = detail;
-  const setSelectedId = useCallback(
-    (id: number | null) => {
-      writeStored("glossary.term", id === null ? "" : String(id));
-      if (id === null) closeTerm();
-      else openTerm(String(id));
-    },
-    [openTerm, closeTerm],
-  );
-  // Under the graph a term is not in the URL: reloading opens what was left, the graph. Back to
-  // the list, the term that was open is open again.
-  const setOntology = (open: boolean) => {
-    setOntologyState(open);
-    writeStored("glossary.view", open ? "ontology" : "list");
-    const held = readStoredString("glossary.term");
-    if (open) closeTerm({ replace: true });
-    else if (held) openTerm(held, { replace: true });
-  };
-  // A visit with nothing in its URL reopens the term the reader left open.
+  // A visit with nothing in its URL reopens the term the reader left open: it is the page's term
+  // from the first paint, while the URL is given it.
   const [reopened] = useState(() =>
     searchParams.toString() === "" && !ontology ? readStoredString("glossary.term") : null,
   );
@@ -92,6 +74,30 @@ export function useGlossaryPanel(canEdit: boolean) {
     if (reopened) openTerm(reopened, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
   }, []);
+  // The term last open: under the graph a term is not in the URL (reloading opens what was left,
+  // the graph), and back to the list it is open again.
+  const [held, setHeld] = useState<string | null>(
+    () => detail.id ?? (searchParams.toString() === "" ? readStoredString("glossary.term") : null),
+  );
+  if (detail.id !== null && detail.id !== held) setHeld(detail.id);
+  const named = ontology ? held : (detail.id ?? (held === reopened ? reopened : null));
+  const parsed = named === null ? NaN : Number(named);
+  const selectedId = Number.isFinite(parsed) ? parsed : null;
+  const setSelectedId = useCallback(
+    (id: number | null) => {
+      writeStored("glossary.term", id === null ? "" : String(id));
+      setHeld(id === null ? null : String(id));
+      if (id === null) closeTerm();
+      else openTerm(String(id));
+    },
+    [openTerm, closeTerm],
+  );
+  const setOntology = (open: boolean) => {
+    setOntologyState(open);
+    writeStored("glossary.view", open ? "ontology" : "list");
+    if (open) closeTerm({ replace: true });
+    else if (held !== null) openTerm(held, { replace: true });
+  };
   // The term open as one form (TermEditForm), or read. A URL's ?term= naming the remembered term
   // is that term reloaded, so its form reopens too.
   const [editing, setEditingState] = useState(() => {

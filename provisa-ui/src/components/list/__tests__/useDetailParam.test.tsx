@@ -126,8 +126,8 @@ describe("useDetailParam (REQ-2241)", () => {
     await userEvent.click(screen.getByText("vets"));
     await userEvent.click(screen.getByRole("tab", { name: "Quality" }));
     await userEvent.click(screen.getByText("owners"));
-    expect(where()).toBe("/tables?table=owners");
-    expect(activeTab()).toBe("Identity");
+    expect(where()).toBe("/tables?table=owners&section=quality");
+    expect(activeTab()).toBe("Quality");
 
     await userEvent.click(screen.getByText("history-back"));
     expect(where()).toBe("/tables?table=vets&section=quality");
@@ -163,15 +163,16 @@ describe("useDetailParam (REQ-2241)", () => {
     expect(activeTab()).toBe("Columns");
   });
 
-  it("opening another object drops the previous one's tab and linked parameters", async () => {
+  it("opening another object keeps the tab and drops what belonged to the one before", async () => {
     show("/tables?table=pets&section=columns&column=name");
     await userEvent.click(screen.getByText("vets"));
-    expect(where()).toBe("/tables?table=vets");
+    expect(where()).toBe("/tables?table=vets&section=columns");
+    expect(activeTab()).toBe("Columns");
   });
 
   it("choosing the tab already shown, or the row already open, writes nothing new", async () => {
     show("/tables?table=pets");
-    await userEvent.click(screen.getByText("pets"));
+    await userEvent.click(within(screen.getByRole("table")).getByText("pets"));
     await userEvent.click(screen.getByRole("tab", { name: "Identity" }));
     expect(where()).toBe("/tables?table=pets");
     await userEvent.click(screen.getByText("history-back"));
