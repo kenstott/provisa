@@ -1228,10 +1228,21 @@ def test_the_odbc_install_refreshes_only_microsofts_package_list():
     """A full `apt-get update` reaches every Ubuntu mirror: an outage there failed the ODBC step
     (run 43036808445) though msodbcsql18 is Microsoft's. The retry and timeout options stay."""
     body = yaml.safe_load((REPO / ".github" / "actions" / "mssql-odbc" / "action.yml").read_text())
-    (step,) = [s for s in body["runs"]["steps"] if "msodbcsql18" in s.get("run", "")]
+
+    # The one step that refreshes a package list (J1189b split the install into resolve, cache and
+    # install steps; only the resolve step runs `apt-get update`).
+    def _code(step: dict) -> list[str]:
+        script = re.sub(r"\\\n\s*", " ", step.get("run", ""))
+        return [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+
+    refreshing = [
+        s
+        for s in body["runs"]["steps"]
+        if any("apt-get" in line and " update" in line for line in _code(s))
+    ]
+    (step,) = refreshing
     script = re.sub(r"\\\n\s*", " ", step["run"])
-    code = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
-    updates = [line for line in code if "apt-get" in line and " update" in line]
+    updates = [line for line in _code(step) if "apt-get" in line and " update" in line]
     assert len(updates) == 1
     for option in (
         "-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/mssql-release.list",
