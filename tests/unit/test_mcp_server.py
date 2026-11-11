@@ -29,6 +29,7 @@ from provisa.compiler.sql_types import JoinMeta, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
 from tests.role_state import RoleState
+from tests.unit.mcp_local_principal import act_for
 
 pytestmark = pytest.mark.asyncio
 
@@ -545,6 +546,7 @@ async def test_stdio_capability_tool_succeeds_when_the_pinned_role_holds_the_cap
     # require_capability_request reads the provisa.api.app module-level `state` singleton, not
     # whatever object build_mcp_server was given — same as production, where they're one object.
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
 
     with patch("provisa.core.repositories.data_product.list_all", AsyncMock(return_value=[])):
@@ -566,6 +568,7 @@ async def test_stdio_capability_tool_refuses_when_the_pinned_role_lacks_the_capa
     fake_state.tenant_db = _FakePool()
     fake_state.model_db = fake_state.tenant_db
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
 
     with pytest.raises(Exception, match="data_product_read"):
@@ -592,6 +595,7 @@ async def test_a_decision_through_mcp_applies_with_no_idempotency_key(monkeypatc
         return await idempotency.once(_FakePool(), request, run)  # type: ignore[arg-type]
 
     monkeypatch.setattr(mt, "decide_profile_constraint", decide)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     await mcp.call_tool(
         "decide_profile_constraint",
@@ -877,6 +881,7 @@ async def test_a_local_call_naming_a_role_beyond_its_pin_is_recorded_and_ends_it
     fake_state = _make_state()
     fake_state.org_id = "root"  # the deployment's org, which a local call is served in
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     token = mcp_server._request_session.set("session-1")
     try:
@@ -966,6 +971,7 @@ async def test_a_model_tool_acts_as_the_role_the_call_resolved_to(monkeypatch):
         return {"columns": []}
 
     monkeypatch.setattr(model_tools, "get_table_fakes", _fakes)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     await mcp.call_tool("get_table_fakes", {"table_id": 1})
     assert [r.state.role for r in seen] == ["curator"]

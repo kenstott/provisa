@@ -250,6 +250,12 @@
         "help": "Combien de jours avant qu'une attribution de rôle expire, ou soit supprimée faute d'usage, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Préavis d'expiration des habilitations",
+        "help": "Combien de jours avant la date d'une règle d'expiration d'habilitation l'événement « expire bientôt » est émis et la personne ainsi que les administrateurs de l'organisation sont prévenus par e-mail. Les écrans d'habilitations mettent en évidence les règles aussi proches de leur date."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Nom d'hôte",
@@ -594,6 +600,10 @@
       "role": {
         "label": "Rôle local MCP",
         "help": "Le rôle sous lequel s'exécutent les appels MCP locaux (stdio) ; tant qu'il n'est pas défini, ces appels sont refusés. Confirmation demandée car cela accorde les accès de ce rôle à quiconque peut démarrer le client local."
+      },
+      "principal": {
+        "label": "Principal local MCP",
+        "help": "Le principal (identifiant utilisateur) pour lequel agissent les appels MCP locaux (stdio), à côté du rôle local ; les droits de cette personne restreignent le rôle. Tant qu'il n'est pas défini, ces appels sont refusés. Protégé, car quiconque peut lancer le client local agit avec l'accès de cette personne."
       },
       "external_url": {
         "label": "Adresse externe MCP",

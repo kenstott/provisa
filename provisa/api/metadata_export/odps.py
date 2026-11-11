@@ -20,7 +20,11 @@ target is published from, so they say what the catalogs are told:
 * an output port per member, each its declared ODCS contract (REQ-2158): its schema, the member's
   columns with their types and descriptions, the governance tags on them (masked, hidden from some roles,
   row-filtered; never a rule body), its terms, its declared service levels beside its freshness
-  (the cache_ttl it is kept at) and the quality checks registered against it.
+  (the cache_ttl it is kept at) and the quality checks registered against it;
+* each field's grounded term (REQ-2238), as an authoritative definition of type ``semantics``
+  naming the term's URI, name and definition, and each output port the same links for its
+  member's columns. Only a term an agent may see is named: approved, or a defined draft on a path
+  holding an approved term, marked draft.
 
 REQ-2180: access to a product is by offers, and its contracts are derived from them. Each offer's
 contract on each dataset is an output port, and its ODCS document is the dataset's as the offer's
@@ -32,7 +36,7 @@ product's version is its own; a product with no version says so -- ``unversioned
 requires the field and inventing a number would claim a release that never happened.
 """
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-2238
 
 from __future__ import annotations
 
@@ -53,6 +57,7 @@ if TYPE_CHECKING:
         ColumnAsset,
         DataProductAsset,
         DataQualityAssertion,
+        GroundedTerm,
         MetadataSnapshot,
         TableAsset,
     )
@@ -186,6 +191,33 @@ def _authoritative_definitions(product: "DataProductAsset") -> list[dict[str, st
     ]
 
 
+#: REQ-2238: the authoritative definition type naming a field's grounded term.
+SEMANTICS = "semantics"
+
+
+def term_definition(term: "GroundedTerm") -> dict[str, str]:
+    """A field's grounded term as an authoritative definition of type semantics (REQ-2238): its
+    URI, and its name and definition, a draft marked so."""
+    label = term.name if term.status == "approved" else f"{term.name} (draft)"
+    return {
+        "type": SEMANTICS,
+        "url": term.semantic_uri,
+        "description": f"{label}: {term.definition}" if term.definition else str(label),
+    }
+
+
+def _port_terms(snapshot: "MetadataSnapshot", table: "TableAsset") -> list[dict[str, str]]:
+    """The grounded terms of a member's columns, each once, as its output port's authoritative
+    definitions (REQ-2238): the links its contract's fields carry."""
+    by_column = snapshot.column_terms()
+    terms = {
+        term.term_id: term
+        for column in table.columns
+        if (term := by_column.get(column.ref.fqn())) is not None
+    }
+    return [term_definition(term) for term in sorted(terms.values(), key=lambda t: str(t.name))]
+
+
 def _management_ports(product: "DataProductAsset") -> list[dict[str, str]]:
     """The endpoints that observe and control the product: its page, its lineage and the admin
     GraphQL API that edits it."""
@@ -305,6 +337,7 @@ def _output_port(
         "contractId": contract_id(table),
         **({"description": table.description} if table.description else {}),
         **({"inputContracts": reads} if reads else {}),
+        **({"authoritativeDefinitions": terms} if (terms := _port_terms(snapshot, table)) else {}),
     }
 
 
@@ -773,8 +806,10 @@ def _property(
     signals: list[str],
     sensitive: set[tuple[str, ...]],
     quality: list["DataQualityAssertion"],
+    term: "GroundedTerm | None",
 ) -> dict[str, Any]:
-    """One of the member's columns as its contract's schema property (REQ-2158)."""
+    """One of the member's columns as its contract's schema property (REQ-2158), naming its
+    grounded term (REQ-2238)."""
     prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
     if logical := logical_type(column.data_type):
         prop["logicalType"] = logical
@@ -797,6 +832,8 @@ def _property(
             prop["transformLogic"] = "; ".join(operations)
     if quality:
         prop["quality"] = [_quality_rule(assertion) for assertion in quality]
+    if term is not None:
+        prop["authoritativeDefinitions"] = [term_definition(term)]
     return prop
 
 
@@ -820,6 +857,7 @@ def odcs_contract(
             on_column.setdefault(assertion.asset.parts[3], []).append(assertion)
         else:
             on_table.append(assertion)
+    terms = snapshot.column_terms()
     # REQ-2158: a contract's schema is its member's columns; it selects none of its own.
     properties = [
         _property(
@@ -829,6 +867,7 @@ def odcs_contract(
             tags.get(column.ref.fqn(), []),
             sensitive,
             on_column.get(column.name, []),
+            terms.get(column.ref.fqn()),
         )
         for column in table.columns
     ]

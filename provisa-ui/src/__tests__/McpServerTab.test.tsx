@@ -34,10 +34,12 @@ function status(overrides: Partial<McpServerStatus>): McpServerStatus {
     port: null,
     transport: null,
     stdio_role: null,
+    principal: null,
     max_rows: 1000,
     tools: TOOLS,
     enable_env_var: "PROVISA_MCP_PORT",
     role_env_var: "PROVISA_MCP_ROLE",
+    principal_env_var: "PROVISA_MCP_PRINCIPAL",
     ...overrides,
   };
 }
@@ -55,6 +57,36 @@ describe("McpServerTab", () => {
     expect(screen.getByTestId("mcp-endpoint")).toHaveTextContent("9100");
     expect(screen.getByTestId("mcp-role")).toHaveTextContent("analyst");
     expect(screen.queryByTestId("mcp-enable-hint")).not.toBeInTheDocument();
+  });
+
+  it("shows the principal local calls act for beside the bound role (REQ-1105)", async () => {
+    mockFetch.mockResolvedValue(
+      status({ enabled: true, port: 9100, stdio_role: "analyst", principal: "alice" }),
+    );
+    render(<McpServerTab />);
+
+    await waitFor(() => expect(screen.getByTestId("mcp-principal")).toHaveTextContent("alice"));
+    expect(screen.getByTestId("mcp-role")).toHaveTextContent("analyst");
+    expect(screen.queryByTestId("mcp-principal-none")).not.toBeInTheDocument();
+  });
+
+  it("names the variable an unnamed principal needs (REQ-1105)", async () => {
+    mockFetch.mockResolvedValue(status({ enabled: true, port: 9100, principal: null }));
+    render(<McpServerTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mcp-principal-none")).toHaveTextContent("PROVISA_MCP_PRINCIPAL"),
+    );
+    expect(screen.queryByTestId("mcp-principal")).not.toBeInTheDocument();
+  });
+
+  it("names the principal variable in the enable hint (REQ-1105)", async () => {
+    mockFetch.mockResolvedValue(status({ enabled: false }));
+    render(<McpServerTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mcp-enable-hint")).toHaveTextContent("PROVISA_MCP_PRINCIPAL"),
+    );
   });
 
   it("renders disabled state with the enable hint and env var", async () => {

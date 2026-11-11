@@ -77,8 +77,9 @@ same facts on the landed table itself, which is the compiler's physical name the
 Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks;
 `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
 BigQuery, where a column tag has no counterpart and is reported withheld. `snowflake_horizon` therefore
-publishes no constraints and no model tags of its own; it still appends governance facts to the
-descriptions of the Data Product tables it publishes.
+publishes no constraints and no model tags of its own. It still appends to the descriptions of the
+Data Product tables it publishes each column's [grounded term](#grounded-terms) and its
+definition, as `[provisa:term <name>] <definition>`, and the governance facts.
 
 `dataplex` publishes each data product as a Google Dataplex data product in the target's
 `gcp_project` and `gcp_location`. The product's name, purpose, limitations, usage, service level,
@@ -126,7 +127,9 @@ schema, `<catalog>.<product id>`, in the catalog the engine works in, holding a 
 member. Nothing is copied: a view reads its member where the engine keeps it, the member's Delta
 replica, or the external table of a lake table read in place. Each view is named for the member's
 business name and carries its descriptions; each governance fact is a
-`provisa_governance:<signal>` tag naming the rule that governs it, never the rule. The schema's
+`provisa_governance:<signal>` tag naming the rule that governs it, never the rule. Unity Catalog
+has no glossary, so each view column's [grounded term](#grounded-terms) is a `provisa_term` tag
+naming it, and the term's definition follows the column's description in the column's comment. The schema's
 comment holds the product's purpose, limitations, usage, service level and support; its owner,
 team, version and status are `provisa_product:<field>` tags. A view that is no longer a member is
 dropped. With `delta_share` set, the product's views are also published as the Delta Share
@@ -303,7 +306,7 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Ontology.** Approved terms with their definitions and grounding and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be approved to export, and a draft never does; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for status, grounding and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
+- **Ontology.** Approved terms with their definitions and grounding and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds and their key columns, a property term to its columns. A term must be approved to export, and a draft never does; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for status, grounding and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage` publishes no terms; `snowflake_horizon` and `unity_catalog` name each column's term in its comment instead (see [Grounded terms](#grounded-terms)).
 
 | Target | Terms | Relationships | Role | Assignment to data |
 | --- | --- | --- | --- | --- |
@@ -333,6 +336,7 @@ contract for each of its member tables.
 ```http
 GET /data-products/{product id}/odps.yaml
 GET /data-products/{product id}/contracts/{source}.{schema}.{table}.yaml
+GET /data-products/{product id}/ontology.ossie.yaml
 ```
 
 An OpenMetadata target (2.0.3 or later) is also sent each member's contract through its ODCS
@@ -353,7 +357,30 @@ Each contract carries the member's columns with their types, descriptions and pr
   the rule behind them;
 - the member's freshness: its `cache_ttl`, else its source's, as a latency promise; a member that
   declares neither makes no freshness promise;
-- the quality checks registered against the member, as the checker that runs them wrote them.
+- the quality checks registered against the member, as the checker that runs them wrote them;
+- each column's grounded term, as an `authoritativeDefinitions` entry of type `semantics` whose
+  `url` is the term's Provisa URI and whose description is its name and definition.
+
+Each output port of the ODPS document carries the same term links for its member's columns.
+
+### Grounded terms
+
+The exports name only a term an agent may see (see [What an agent sees](ontology.md#what-an-agent-sees)):
+an approved term, or a defined draft on a path that holds an approved term, which is marked
+`(draft)`. A column whose term an agent would not see, or that is excluded from export, names none.
+A key column's term is its table's class term.
+
+`ontology.ossie.yaml` is the terms the product reaches, as an
+[Apache Ossie](https://github.com/apache/ossie) ontology document, version `0.2.0.dev0`: every
+term on an agent's path down to one of its members' columns or tables. A class term and a concept
+are each an entity type, and a property term is a value type extending the Ossie built-in its
+columns' type maps to. A property term whose columns have no built-in type, such as a time, is left
+out and listed under `ai_context.withheld_terms`. Each concept carries its definition and its
+Provisa URI as its `iri`. Drafts are listed under `ai_context.draft_terms`, since Ossie has no
+status. A term a path runs through but an agent cannot see by name appears as `(hop N)`, with no
+description. `KIND_OF` between two concepts of the same type is `extends`. Every other relationship
+is an Ossie relationship with a verbalization, such as `{order} has {order amount}`. A product that
+reaches no term answers 404.
 
 A member has no version of its own, so its contract takes the product's. A product with no version
 publishes `unversioned`, since both standards require a version and no release was cut. A product

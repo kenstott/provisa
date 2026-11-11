@@ -56,7 +56,7 @@ An offer's contracts are derived again whenever the offer is saved. A contract w
 
 The offer contracts supersede the per-table contracts written by hand.
 
-The ODPS export writes one output port per offer and dataset, versioned by and naming that offer's contract, and lists the offers under `customProperties` (`offers`). Each contract is served at `/data-products/{id}/offers/{offer}/contracts/{source.schema.table}.yaml`, and its versions at `.../versions.json`.
+The ODPS export writes one output port per offer and dataset, versioned by and naming that offer's contract, and lists the offers under `customProperties` (`offers`). Each contract is served at `/data-products/{id}/offers/{offer}/contracts/{source.schema.table}.yaml`, and its versions at `.../versions.json`. Each field of a contract names its grounded term, and the terms the product reaches are served as an Apache Ossie ontology at `/data-products/{id}/ontology.ossie.yaml` (see [Grounded terms](metadata-export.md#grounded-terms)).
 
 ## Offers API
 

@@ -91790,55 +91790,77 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its offers when publishing it; each offer is a role together with two choices, whether it includes the
     product''s data quality results and whether it includes its profiles, and whether it is open. The default
     offer is the viewer role with data quality results and without profiles. A requester bids for an offer;
-    the approver accepts or declines that offer as bid, never altering it; an open offer is accepted at
-    once and recorded like any acceptance, with no one to wait for (meant for common reference data such
-    as the organisation structure). Accepting assigns the offer''s role to the requester with entitlements
-    built from the product -- its datasets, with its data quality results and profiles where the offer includes
-    them -- so no one writes an entitlement list by hand. Masks, row rules and anything else applied on
-    read come from the offer''s role, defined up front. A product with no offers cannot be requested. (Amended
-    2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11. A product owner can
-    put in an offer only a role they have the right to grant: the role picker lists only those, and saving
-    an offer with any other role is refused by name. Rights can change after an offer is published, so accepting
-    a bid checks again that the one accepting may grant the offer''s role; an open offer is checked against
-    the right of the owner who published it, and while that right is gone the offer is not accepted, its
-    owner is told, and the offer is listed for review. (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A
-    SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11. Each offer gives one level of data: full (the product''s
-    datasets); a sample, which is one or more views that already exist in the model over the product''s
-    datasets, named on the offer -- accepting it builds entitlements on those views alone, never on the
-    tables beneath them, so no query can widen the sample past what the views express; or synthetic, the
-    product''s shape served by the existing fake-data generator (REQ-1494), with no real records. An offer''s
-    data quality results and profiles stay its own choices; a synthetic offer has no profiles. (Amended
-    2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A product starts with one offer and only one:
-    the viewer role, the full data, with data quality results, without profiles, not open. Any other offer
-    is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer
-    2026-11-11. Synthetic data is generated from each dataset''s profile (the Data Profiler, REQ-1934),
-    so an offer of synthetic data can be saved only when every dataset of the product has a profiler; one
-    without is named in the refusal. If a dataset''s profiler is later removed, the offer is not accepted,
-    its owner is told, and the offer is listed for review. (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM
-    THE OFFERS:) Maintainer 2026-11-11. An offer always covers all of the product''s datasets, and accepting
-    it gives its terms on each of them. The data contracts are derived from the offers: for every offer,
-    each dataset of the product has a contract that is that offer''s terms applied to that dataset -- its
-    schema as the offer''s role sees it (masked columns stated as masked, row rules stated in words), its
-    data level (the full dataset, the offer''s sample view over it, or synthetic), the data quality promises
-    (always stated; the offer decides whether its results can be read), and its profiles where the offer
-    includes them -- so the contracts are every contract the product can give, and a requester reads the
-    ones an offer would give before bidding. What is written by hand is only what all of a product''s contracts
-    share (owner, description, freshness and support terms), entered once on the product. Changing an offer
-    changes its contracts'' versions, and a change that removes or masks a column is a breaking one. (Amended
-    2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:) Maintainer 2026-11-11. Where a product''s contracts are
-    shown -- to its owner and to a requester -- they are shown per offer, not as one fixed list: the product
-    lists its offers, and each offer opens to the contracts it gives, one per dataset. (Amended 2026-11-11,
-    AN OFFER''S DURATION DATES THE ENTRIES IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration.
-    Accepting it when the requester already holds the offer''s role adds the product''s entitlements to
-    that grant as entries expiring after the duration; when the requester does not hold the role, the role
-    grant is made with them, and both end after the duration. Without a duration nothing accepted expires.
-    (Amended 2026-11-11, EXPIRY IS THE LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role
-    once, and an entitlement entry once; when either is granted again (by an offer, an admin, any grant),
-    its expiry becomes the latest of the expiries that granted it, and no expiry is later than any date.
-    An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
-    Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
-    an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
-    Dec to no end date").'
+    the approver accepts or declines that offer as bid, never altering it; [SUPERSEDED by REQ-2180 (amended
+    2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no grant at all (REQ-2180,
+    REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against it.] an open offer is accepted
+    at once and recorded like any acceptance, with no one to wait for (meant for common reference data such
+    as the organisation structure) [END SUPERSEDED BLOCK]. Accepting assigns the offer''s role to the requester
+    with entitlements built from the product -- its datasets, with its data quality results and profiles
+    where the offer includes them -- so no one writes an entitlement list by hand. Masks, row rules and
+    anything else applied on read come from the offer''s role, defined up front. A product with no offers
+    cannot be requested. (Amended 2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11.
+    A product owner can put in an offer only a role they have the right to grant: the role picker lists
+    only those, and saving an offer with any other role is refused by name. Rights can change after an offer
+    is published, so accepting a bid checks again that the one accepting may grant the offer''s role; [SUPERSEDED
+    by REQ-2180 (amended 2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no
+    grant at all (REQ-2180, REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against
+    it.] an open offer is checked against the right of the owner who published it, and while that right
+    is gone the offer is not accepted, its owner is told, and the offer is listed for review. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11.
+    Each offer gives one level of data: full (the product''s datasets); a sample, which is one or more views
+    that already exist in the model over the product''s datasets, named on the offer -- accepting it builds
+    entitlements on those views alone, never on the tables beneath them, so no query can widen the sample
+    past what the views express; or synthetic, the product''s shape served by the existing fake-data generator
+    (REQ-1494), with no real records. An offer''s data quality results and profiles stay its own choices;
+    a synthetic offer has no profiles. (Amended 2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A
+    product starts with one offer and only one: the viewer role, the full data, with data quality results,
+    without profiles, not open. Any other offer is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC
+    OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer 2026-11-11. Synthetic data is generated from each
+    dataset''s profile (the Data Profiler, REQ-1934), so an offer of synthetic data can be saved only when
+    every dataset of the product has a profiler; one without is named in the refusal. If a dataset''s profiler
+    is later removed, the offer is not accepted, its owner is told, and the offer is listed for review.
+    (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM THE OFFERS:) Maintainer 2026-11-11. An offer always
+    covers all of the product''s datasets, and accepting it gives its terms on each of them. The data contracts
+    are derived from the offers: for every offer, each dataset of the product has a contract that is that
+    offer''s terms applied to that dataset -- its schema as the offer''s role sees it (masked columns stated
+    as masked, row rules stated in words), its data level (the full dataset, the offer''s sample view over
+    it, or synthetic), the data quality promises (always stated; the offer decides whether its results can
+    be read), and its profiles where the offer includes them -- so the contracts are every contract the
+    product can give, and a requester reads the ones an offer would give before bidding. What is written
+    by hand is only what all of a product''s contracts share (owner, description, freshness and support
+    terms), entered once on the product. Changing an offer changes its contracts'' versions, and a change
+    that removes or masks a column is a breaking one. (Amended 2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:)
+    Maintainer 2026-11-11. Where a product''s contracts are shown -- to its owner and to a requester --
+    they are shown per offer, not as one fixed list: the product lists its offers, and each offer opens
+    to the contracts it gives, one per dataset. (Amended 2026-11-11, AN OFFER''S DURATION DATES THE ENTRIES
+    IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration. Accepting it when the requester already
+    holds the offer''s role adds the product''s entitlements to that grant as entries expiring after the
+    duration; when the requester does not hold the role, the role grant is made with them, and both end
+    after the duration. Without a duration nothing accepted expires. (Amended 2026-11-11, EXPIRY IS THE
+    LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once;
+    when either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the
+    expiries that granted it, and no expiry is later than any date. An operator who needs a hard end on
+    some access makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone
+    added; it does not bring an extended date back. Before a bid, an offer''s summary states any extension
+    accepting it would make ("extends your viewer role from 31 Dec to no end date"). (Amended 2026-11-11,
+    REQUESTS GO THROUGH HOOKS:) Maintainer 2026-11-11: no one would have Provisa grant roles and entitlements
+    on its own. Provisa defines access (offers, contracts, roles, masks, entitlements) and enforces it on
+    every query, whatever granted it; it does not decide grants. Bidding on an offer, requesting a role
+    or entitlements by any path (the UI, MCP, the API), and cancelling a contract each only fire an outbound
+    request hook, carrying who asks, the offer and its terms (role, data level, entries, duration), the
+    contract versions, the reason and an id that makes a repeat harmless. Whatever receives it decides,
+    and the decision returns through one inbound decision hook (the request id, accepted or declined, who
+    decided, when), which refuses a decision that does not match its request or comes from one who may not
+    grant the role. Where access is held by Provisa (no external identity provider), an accepted decision
+    is applied as an ordinary admin grant of exactly what was requested, attributed to the one who decided,
+    and a cancel as the matching ordinary removal; any elaborate cancel bookkeeping is the receiving system''s.
+    Where access is held by an identity provider, the decision only updates the request''s status, and the
+    grant arrives as claims once that system makes it. With no external identity provider, the default outbound
+    hook writes the request into Provisa''s own request queue, and the approver decides there, through the
+    same decision hook. An offer can be open only when its data is already public -- readable by every member
+    through a role every member holds, which is checked when it is marked open and refused naming what is
+    not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
+    the data stops being public the offer is flagged for review.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them

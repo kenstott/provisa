@@ -250,6 +250,12 @@
         "help": "Quantos dias antes de uma atribuição de função expirar, ou ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Aviso de expiração próxima de direitos de acesso",
+        "help": "Quantos dias antes da data de uma regra de expiração de direitos de acesso o evento de expiração próxima é emitido e a pessoa e os administradores da organização recebem um e-mail. As telas de direitos de acesso destacam as regras tão próximas da data."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Nome do host",
@@ -594,6 +600,10 @@
       "role": {
         "label": "Função local do MCP",
         "help": "A função com a qual as chamadas MCP locais (stdio) são executadas; enquanto não for definida, essas chamadas são recusadas. Pede confirmação antes de salvar porque concede o acesso dessa função a qualquer pessoa que possa iniciar o cliente local."
+      },
+      "principal": {
+        "label": "Principal local do MCP",
+        "help": "O principal (id de usuário) em nome de quem as chamadas MCP locais (stdio) agem, ao lado da função local; os direitos dessa pessoa restringem a função. Enquanto não estiver definido, essas chamadas são recusadas. Protegido porque qualquer pessoa que possa iniciar o cliente local age com o acesso dessa pessoa."
       },
       "external_url": {
         "label": "Endereço externo do MCP",

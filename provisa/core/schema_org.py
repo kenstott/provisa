@@ -785,6 +785,8 @@ glossary_terms = Table(
     Column("retire_on", Date),
     Column("status_by", Text),
     Column("status_at", DateTime(timezone=True)),
+    # REQ-2237: the IRI of the imported concept the term is (schema.sql).
+    Column("iri", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )
@@ -2603,6 +2605,123 @@ glossary_term_drafts = Table(
     CheckConstraint(
         "status IN ('draft', 'accepted', 'merged', 'rejected')",
         name="glossary_term_drafts_status_check",
+    ),
+)
+
+# REQ-2237: an ontology imported as an alignment (provisa/ontology_import, schema.sql). ``domains``
+# is the steward's working domains as a JSON list, given to the terms the import creates;
+# ``summary`` a JSON object of what the file held and what was left out, by why.
+glossary_ontology_imports = Table(
+    "glossary_ontology_imports",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("title", Text, nullable=False),
+    Column("file_name", Text, nullable=False),
+    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld
+    Column("domains", Text, nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("imported_by", Text, nullable=True),
+    Column("imported_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("applied_by", Text, nullable=True),
+    Column("applied_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')",
+        name="glossary_ontology_imports_format_check",
+    ),
+)
+
+# REQ-2237: each class, property, value type or concept an import holds. ``payload`` is a JSON
+# object: the item's source keys (its IRIs or Ossie names, several when one name folds them) and
+# its alternative labels. ``term_id`` is the term an applied item became or was aligned with.
+glossary_ontology_items = Table(
+    "glossary_ontology_items",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "import_id",
+        Integer,
+        ForeignKey("glossary_ontology_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # class | property | value | concept
+    Column("definition", Text, nullable=True),
+    Column("iri", Text, nullable=True),
+    Column("payload", Text, nullable=False),
+    Column("status", Text, nullable=False),  # pending | excluded | applied
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("import_id", "ordinal"),
+    CheckConstraint(
+        "kind IN ('class', 'property', 'value', 'concept')",
+        name="glossary_ontology_items_kind_check",
+    ),
+    CheckConstraint(
+        "status IN ('pending', 'excluded', 'applied')",
+        name="glossary_ontology_items_status_check",
+    ),
+)
+
+# REQ-2237: an alignment between an imported item and a glossary term (``term_id``) or another
+# item of the import (``other_item_id``): SAME_AS (the item is that term) or a relationship type,
+# read from the item when ``item_is_source``. ``basis`` says why it was proposed (or that a steward
+# added it); ``status`` is proposed until a steward approves or rejects it, and written once
+# applied.
+glossary_ontology_alignments = Table(
+    "glossary_ontology_alignments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "import_id",
+        Integer,
+        ForeignKey("glossary_ontology_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "item_id",
+        Integer,
+        ForeignKey("glossary_ontology_items.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "other_item_id",
+        Integer,
+        ForeignKey("glossary_ontology_items.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column("rel_type", Text, nullable=False),
+    Column("item_is_source", Boolean, nullable=False),
+    Column("basis", Text, nullable=False),
+    Column("status", Text, nullable=False),  # proposed | approved | rejected | written
+    Column("use_definition", Boolean, nullable=False, server_default=false()),
+    Column("decided_by", Text, nullable=True),
+    Column("decided_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "rel_type IN ('SAME_AS', 'SYNONYM_OF', 'KIND_OF', 'PART_OF', 'VALID_VALUE_OF', "
+        "'RELATED_TO')",
+        name="glossary_ontology_alignments_rel_type_check",
+    ),
+    CheckConstraint(
+        "status IN ('proposed', 'approved', 'rejected', 'written')",
+        name="glossary_ontology_alignments_status_check",
+    ),
+    CheckConstraint(
+        "(term_id IS NULL) <> (other_item_id IS NULL)",
+        name="glossary_ontology_alignments_end_check",
     ),
 )
 

@@ -200,6 +200,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # queue of the terms they propose, drafts until a steward decides on them.
         "glossary_term_scans",
         "glossary_term_drafts",
+        # REQ-2237: the ontologies imported into this environment's glossary and the alignments
+        # proposed for them, until a steward decides on each and applies the import.
+        "glossary_ontology_imports",
+        "glossary_ontology_items",
+        "glossary_ontology_alignments",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's

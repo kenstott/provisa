@@ -951,6 +951,10 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     retire_on       DATE,
     status_by       TEXT,
     status_at       TIMESTAMPTZ,
+    -- REQ-2237: the global identifier of the imported concept the term is (an ontology import,
+    -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
+    -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
+    iri             TEXT,
     tenant_id       UUID,
     UNIQUE (name)
 );
@@ -2612,6 +2616,66 @@ CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     decided_at      TIMESTAMPTZ,
     tenant_id       UUID,
     UNIQUE (scan_id, ordinal)
+);
+
+-- REQ-2237: an ontology imported as an alignment (provisa/ontology_import). An import keeps the
+-- file's ontology as items, each an imported class, property, value type or concept with its
+-- definition and IRI, and the alignments proposed between each item and the glossary's terms or
+-- another item, until a steward approves or rejects each. Applying an import makes each item a
+-- draft term (or, aligned as the same entity, the existing term it is) and writes the approved
+-- alignments as edges. Mirrors schema_org.glossary_ontology_imports, glossary_ontology_items and
+-- glossary_ontology_alignments.
+CREATE TABLE IF NOT EXISTS glossary_ontology_imports (
+    id          SERIAL PRIMARY KEY,
+    title       TEXT NOT NULL,
+    file_name   TEXT NOT NULL,
+    format      TEXT NOT NULL CONSTRAINT glossary_ontology_imports_format_check
+                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')),
+    domains     TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    imported_by TEXT,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    applied_by  TEXT,
+    applied_at  TIMESTAMPTZ,
+    tenant_id   UUID
+);
+
+CREATE TABLE IF NOT EXISTS glossary_ontology_items (
+    id          SERIAL PRIMARY KEY,
+    import_id   INTEGER NOT NULL REFERENCES glossary_ontology_imports(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CONSTRAINT glossary_ontology_items_kind_check
+                    CHECK (kind IN ('class', 'property', 'value', 'concept')),
+    definition  TEXT,
+    iri         TEXT,
+    payload     TEXT NOT NULL,
+    status      TEXT NOT NULL CONSTRAINT glossary_ontology_items_status_check
+                    CHECK (status IN ('pending', 'excluded', 'applied')),
+    term_id     INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    tenant_id   UUID,
+    UNIQUE (import_id, ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS glossary_ontology_alignments (
+    id             SERIAL PRIMARY KEY,
+    import_id      INTEGER NOT NULL REFERENCES glossary_ontology_imports(id) ON DELETE CASCADE,
+    item_id        INTEGER NOT NULL REFERENCES glossary_ontology_items(id) ON DELETE CASCADE,
+    term_id        INTEGER REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    other_item_id  INTEGER REFERENCES glossary_ontology_items(id) ON DELETE CASCADE,
+    rel_type       TEXT NOT NULL CONSTRAINT glossary_ontology_alignments_rel_type_check
+                       CHECK (rel_type IN ('SAME_AS', 'SYNONYM_OF', 'KIND_OF', 'PART_OF',
+                                           'VALID_VALUE_OF', 'RELATED_TO')),
+    item_is_source BOOLEAN NOT NULL,
+    basis          TEXT NOT NULL,
+    status         TEXT NOT NULL CONSTRAINT glossary_ontology_alignments_status_check
+                       CHECK (status IN ('proposed', 'approved', 'rejected', 'written')),
+    use_definition BOOLEAN NOT NULL DEFAULT FALSE,
+    decided_by     TEXT,
+    decided_at     TIMESTAMPTZ,
+    tenant_id      UUID,
+    CONSTRAINT glossary_ontology_alignments_end_check
+        CHECK ((term_id IS NULL) <> (other_item_id IS NULL))
 );
 
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member

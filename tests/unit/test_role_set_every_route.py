@@ -35,6 +35,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.bolt.session import BoltSession
 from provisa.grpc.server import ProvisaServicer
 from tests.role_state import RoleState
+from tests.unit.mcp_local_principal import bound_principal
 from tests.unit.test_governed_plan_stages import _SQL
 from tests.unit.test_governed_plan_stages import pipeline  # noqa: F401  (the pipeline fixture)
 
@@ -156,6 +157,7 @@ class TestMcp:
         from provisa.core.request_context import current_acting_role, current_session_vars
 
         monkeypatch.setenv("PROVISA_MCP_ROLE", SET)
+        bound_principal(monkeypatch)  # REQ-1105: the principal the operator named
 
         def _call():
             return named_role(SET, _state()), current_session_vars.get(), current_acting_role.get()
@@ -164,7 +166,13 @@ class TestMcp:
         assert role == META
         assert acting == META  # REQ-2188: what a write of the model is held to, on stdio too
         assert built == [(["org_admin"], ("attr1__v", "attr1", "attr2__v", "attr2"))]
-        assert session_vars == {**_ACTING, "attr1": "v", "attr2": "v", "role": META}
+        assert session_vars == {
+            **_ACTING,
+            "attr1": "v",
+            "attr2": "v",
+            "role": META,
+            "user_id": "alice",
+        }
 
     def test_a_local_call_naming_a_role_beyond_its_pin_is_refused_by_name(self, monkeypatch):
         from provisa.api.mcp.server import named_role

@@ -9,8 +9,10 @@
     "transportLabel": "傳輸方式",
     "stdioRoleLabel": "已繫結的 stdio 角色",
     "stdioRoleNone": "尚未設定 — stdio 呼叫需要 <code>{{envVar}}</code>",
+    "principalLabel": "本機主體",
+    "principalNone": "尚未設定 — 在 <code>{{envVar}}</code> 指定主體之前，本機呼叫會被拒絕",
     "maxRowsLabel": "列數上限 (run_sql)",
-    "enableHint": "MCP 伺服器須明確啟用。將 <code>{{enableEnvVar}}</code> 環境變數設為連接埠並重新啟動服務即可啟用。如使用本機 stdio 傳輸，亦須將 <code>{{roleEnvVar}}</code> 設為一個 provisa 角色。",
+    "enableHint": "MCP 伺服器須明確啟用。將 <code>{{enableEnvVar}}</code> 環境變數設為連接埠並重新啟動服務即可啟用。如使用本機 stdio 傳輸，亦須將 <code>{{roleEnvVar}}</code> 設為一個 provisa 角色，並將 <code>{{principalEnvVar}}</code> 設為這些呼叫所代表的主體（用戶 ID）。",
     "toolsHeading": "公開的工具",
     "colTool": "工具",
     "colDescription": "描述"
