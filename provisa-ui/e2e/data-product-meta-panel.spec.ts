@@ -108,7 +108,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     expect(await replay.json()).toEqual(answered);
   });
 
-  test("the panel's graph loads in view, and expands to the whole ontology on the product", async ({
+  test("the panel's graph loads in view, and expands to the product's own graph", async ({
     page,
   }) => {
     const refused = recordRefusals(page);
@@ -136,10 +136,15 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
 
     await page.getByTestId("graph-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    // The whole ontology, the product selected, on its Ontology preset.
+    // REQ-2174 (amended 2026-11-09, A PRODUCT OPENS ON ITSELF): the product alone -- its tables,
+    // their columns and the terms grounded on them, 3 hops from it -- selected, with the rest of
+    // the model on asking.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
-    const expanded = page.getByTestId("graph3d");
-    await expect(expanded.getByRole("radio", { name: "Ontology" })).toBeChecked();
+    await expect(page.getByTestId("graph3d-depth-label")).toHaveText("Hops from Pet Health");
+    await expect(
+      page.getByTestId("graph3d-depth").getByRole("radio", { name: "3" }),
+    ).toBeChecked();
+    await expect(page.getByTestId("graph3d-rest")).not.toBeChecked();
   });
 
   test("the Product map draws every product", async ({ page }) => {
