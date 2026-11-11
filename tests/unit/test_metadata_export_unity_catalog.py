@@ -75,11 +75,20 @@ class _Warehouse:
         self.views: list[str] = []
         self.shared: list[str] = []
         self.schema_tags: list[str] = []
+        # What the warehouse still holds on a view: (table, tag, value) and (table, column, tag, value).
+        self.table_tags: list[tuple[str, str, str]] = []
+        self.column_tags: list[tuple[str, str, str, str]] = []
         self.formats: dict[str, str] = {}
 
     def answer(self, sql: str) -> list[tuple]:
         if "information_schema.schema_tags" in sql:
             return [(t,) for t in self.schema_tags]
+        if "information_schema.column_tags" in sql:
+            table = sql.split("table_name = '")[1].split("'")[0]
+            return [(c, k, v) for t, c, k, v in self.column_tags if t == table]
+        if "information_schema.table_tags" in sql:
+            table = sql.split("table_name = '")[1].split("'")[0]
+            return [(k, v) for t, k, v in self.table_tags if t == table]
         if "information_schema.views" in sql:
             return [(v,) for v in self.views]
         if "SHOW ALL IN SHARE" in sql:
@@ -336,3 +345,22 @@ async def test_a_view_column_carries_its_grounded_term_as_a_tag_and_in_its_comme
         "ALTER TABLE `main`.`customer_360`.`orders` ALTER COLUMN `id` "
         "SET TAGS ('provisa_term' = 'order key')"
     ]
+
+
+async def test_a_tag_a_column_no_longer_carries_is_unset_from_its_view(warehouse):
+    # CREATE OR REPLACE VIEW keeps the tags of the view it replaces, so the export unsets what the
+    # column no longer carries: a term that left it, a governance tag whose rule no longer fires.
+    warehouse.column_tags = [
+        ("orders", "ssn", "provisa_term", "old term"),
+        ("orders", "ssn", "provisa_governance:mask", "r1"),
+        ("orders", "id", "someone_elses_tag", "x"),
+    ]
+    warehouse.table_tags = [("orders", "provisa_governance:rls", "r2")]
+    result = await _export().publish(_snapshot())
+    assert result.ok, result.errors
+    sql = warehouse.statements
+    view = "`main`.`customer_360`.`orders`"
+    assert f"ALTER TABLE {view} ALTER COLUMN `ssn` UNSET TAGS ('provisa_term')" in sql
+    assert f"ALTER TABLE {view} ALTER COLUMN `ssn` UNSET TAGS ('provisa_governance:mask')" in sql
+    assert f"ALTER VIEW {view} UNSET TAGS ('provisa_governance:rls')" in sql
+    assert not any("someone_elses_tag" in s and "UNSET" in s for s in sql)

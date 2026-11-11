@@ -36,8 +36,8 @@ DataProducts publishes nothing here, which is correct, not a fallback masking a 
 
 ``MetadataSnapshot.model_tags`` publish independently of DataProducts, as native Snowflake TAG
 objects (``CREATE TAG`` + ``ALTER TABLE/COLUMN ... SET TAG``) applied to the tagged table/column's
-physical address — see :func:`tag_statements`. A ``ModelTag`` is a steward-assigned classification,
-which is what Snowflake's TAG primitive is for.
+physical address by the landing reconcile (REQ-1655), never through this publish. A
+``ModelTag`` is a steward-assigned classification, which is what Snowflake's TAG primitive is for.
 
 ``MetadataSnapshot.governance_tags`` (REQ-1071) are a different kind of fact: which enforcement
 rule fired on an asset, and the roles it restricts/exempts. That is metadata about the asset, not
@@ -188,9 +188,8 @@ def comment_statements(
     table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
     caller already reports missing landing terminals from that lookup.
 
-    Governance facts publish here rather than as a Snowflake TAG (see :func:`tag_statements`'s
-    docstring): a rule id and its restricted/exempt roles are metadata about the asset, not a
-    classification value, and COMMENT is the channel this adapter already uses for that kind of
+    Governance facts publish here rather than as a Snowflake TAG: a rule id and its
+    restricted/exempt roles are metadata about the asset, not a classification value, and COMMENT is the channel this adapter already uses for that kind of
     fact."""
     governance_by_fqn: dict[str, list["GovernanceTag"]] = {}
     for tag in governance_tags:
