@@ -123,12 +123,13 @@ describe("a data product's panel", () => {
     expect(details.closest(".provisa-collapsible")).not.toBeNull();
     const toggle = () => screen.getByTestId("data-product-card-details-pet_health-toggle");
     expect(toggle()).toHaveTextContent("Details");
-    expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(toggle());
+    // Open at first: the read view shows every value.
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
     first.unmount();
     panel();
-    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps a tab's content inside it: what cannot wrap scrolls within the tab", () => {

@@ -112,6 +112,7 @@ export function DataProductsPage() {
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
   );
+  const viewer = useMemo(() => ({ held, acting: actingRoles }), [held, actingRoles]);
   // REQ-2188: a holder of data_product_rw sees the owner's view of every product, its read rights
   // capping what is in it (REQ-2152). REQ-2160: and so does a reader holding the owner or team role.
   const ownsProduct = (p: DataProduct) =>
@@ -500,6 +501,7 @@ export function DataProductsPage() {
         core={core.data}
         coreError={core.error}
         reader={reader}
+        viewer={viewer}
         canEdit={mayEdit(selectedProduct)}
         canDelete={mayEdit(selectedProduct)}
         owner={ownsProduct(selectedProduct)}
@@ -508,6 +510,7 @@ export function DataProductsPage() {
         lineageError={lineageError}
         lineageGraph={lineageGraph}
         relationLabel={relationLabel}
+        contractsVersion={membersVersion}
         tables={tables}
         sharing={sharingOf(selectedProduct.id)}
         relationships={relationships}

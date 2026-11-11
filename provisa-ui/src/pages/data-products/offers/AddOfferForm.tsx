@@ -262,7 +262,7 @@ export function AddOfferForm({
         </FormField>
         <FormField
           size="short"
-          hint={synthetic ? t("dataProductOffers.syntheticNoProfiles") : undefined}
+          help={synthetic ? t("dataProductOffers.syntheticNoProfiles") : undefined}
         >
           <Checkbox
             label={t("dataProductOffers.includeProfiles")}
@@ -274,7 +274,7 @@ export function AddOfferForm({
         </FormField>
         <FormField
           size="short"
-          hint={publicData ? t("dataProductOffers.openHint") : t("dataProductOffers.openNotPublic")}
+          help={publicData ? t("dataProductOffers.openHint") : t("dataProductOffers.openNotPublic")}
         >
           <Checkbox
             label={t("dataProductOffers.open")}
@@ -293,7 +293,7 @@ export function AddOfferForm({
       <FormFooter
         onSave={save}
         onCancel={onCancel}
-        saveProps={{ disabled: !ready }}
+        saveProps={{ disabled: !ready, "data-testid": "add-offer-save" }}
         problem={error}
         data-testid="add-offer-footer"
       />

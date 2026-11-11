@@ -58,22 +58,52 @@ export function productLineageSpec(
     read.add(source);
     feeds.set(target, read);
   }
-  // Each relation upstream of the inputs, by its fewest hops beyond them.
-  const hopsBeyond = new Map<string, number>();
-  let frontier = [...inputs];
-  for (let hop = 1; frontier.length > 0; hop++) {
-    const next: string[] = [];
-    for (const rel of frontier)
-      for (const up of feeds.get(rel) ?? [])
-        if (!members.has(up) && !inputs.has(up) && !hopsBeyond.has(up)) {
-          hopsBeyond.set(up, hop);
-          next.push(up);
-        }
-    frontier = next;
-  }
-  // REQ-1667: a relation between an input and a table is no lane: it is folded onto an indirect
-  // edge from what it reads to what reads it.
-  const between = (rel: string) => !members.has(rel) && !inputs.has(rel) && !hopsBeyond.has(rel);
+  const readers = new Map<string, Set<string>>(); // relation -> the relations reading it
+  for (const [target, sources] of feeds)
+    for (const source of sources) {
+      const read = readers.get(source) ?? new Set<string>();
+      read.add(target);
+      readers.set(source, read);
+    }
+  /** Every relation reached from ``start`` along ``next``, by its fewest hops. */
+  const reach = (
+    start: Iterable<string>,
+    next: Map<string, Set<string>>,
+    stop: (r: string) => boolean,
+  ) => {
+    const hops = new Map<string, number>();
+    let frontier = [...start];
+    for (let hop = 1; frontier.length > 0; hop++) {
+      const found: string[] = [];
+      for (const rel of frontier)
+        for (const n of next.get(rel) ?? [])
+          if (!stop(n) && !hops.has(n)) {
+            hops.set(n, hop);
+            found.push(n);
+          }
+      frontier = found;
+    }
+    return hops;
+  };
+  const named = (r: string) => members.has(r) || inputs.has(r);
+  // REQ-1667: a relation between an input and a table (read from an input, read by a table) is no
+  // lane: it is folded onto an indirect edge from what it reads to what reads it.
+  const fromInputs = reach(inputs, readers, named);
+  const toMembers = reach(members, feeds, named);
+  const between = (rel: string) => fromInputs.has(rel) && toMembers.has(rel);
+  // The rest upstream: by their hops beyond the inputs, else by their hops from the tables (one
+  // hop: the product's nearest input, as far as its reader can see).
+  const beyondInputs = reach(inputs, feeds, (r) => named(r) || between(r));
+  const laneHops = (relation: string): number =>
+    members.has(relation)
+      ? 0
+      : inputs.has(relation)
+        ? -1
+        : beyondInputs.has(relation)
+          ? -(beyondInputs.get(relation) as number) - 1
+          : -(toMembers.get(relation) ?? 1);
+  const laneId = (hops: number) =>
+    hops === 0 ? LANE_TABLES : hops === -1 ? LANE_INPUTS : upstreamLane(-hops - 1);
   const drawnSources = (rel: string, via: string[], seenRels: Set<string>): [string, string[]][] =>
     [...(feeds.get(rel) ?? [])].flatMap((up): [string, string[]][] => {
       if (seenRels.has(up)) return [];
@@ -97,15 +127,6 @@ export function productLineageSpec(
       });
     }
   }
-  const laneOf = (relation: string): { id: string; hops: number } =>
-    members.has(relation)
-      ? { id: LANE_TABLES, hops: 0 }
-      : inputs.has(relation)
-        ? { id: LANE_INPUTS, hops: -1 }
-        : {
-            id: upstreamLane(hopsBeyond.get(relation) as number),
-            hops: -(hopsBeyond.get(relation) as number) - 1,
-          };
   const nodes: GraphNodeSpec[] = [...columns.entries()]
     .filter(([relation]) => !between(relation))
     .sort(([a], [b]) => a.localeCompare(b))
@@ -113,12 +134,12 @@ export function productLineageSpec(
       id: relation,
       type: members.has(relation) ? "table" : inputs.has(relation) ? "source" : "view",
       name: label(relation),
-      lane: laneOf(relation).id,
+      lane: laneId(laneHops(relation)),
       lines: [...cols].sort().map((text) => ({ text })),
       data: { relation },
     }));
   const lanes = new Map<string, number>();
-  for (const n of nodes) lanes.set(n.lane as string, laneOf(n.id).hops);
+  for (const n of nodes) lanes.set(n.lane as string, laneHops(n.id));
   return {
     spec: { nodes, edges },
     lanes: [...lanes.entries()].map(([id, hops]) => ({ id, hops })).sort((a, b) => a.hops - b.hops),

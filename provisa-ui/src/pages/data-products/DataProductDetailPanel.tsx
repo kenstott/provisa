@@ -34,6 +34,8 @@ import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { modelName, type ProductCore } from "./productCore";
 import { ProductHeader } from "./ProductHeader";
+import { ProductContracts } from "./ProductContracts";
+import type { ContractViewer } from "./ContractView";
 import { OffersTab } from "./offers/OffersTab";
 import type { OfferDataset } from "./offers/AddOfferForm";
 import { QualityTab } from "./tabs/QualityTab";
@@ -51,6 +53,8 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
+  /** Who reads the panel: what a contract's How to use offers them (REQ-2158). */
+  viewer: ContractViewer;
   // REQ-1634, REQ-2188: gates Edit and Delete: data_product_rw, on the products its rules leave it.
   canEdit: boolean;
   canDelete: boolean;
@@ -68,6 +72,9 @@ interface DataProductDetailPanelProps {
   lineageGraph: ProductLineage | null;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
+  // REQ-2158: bumped when the product's members can have changed (a save, a retirement): each open
+  // contract row reads its contract again.
+  contractsVersion?: number;
   /** Every registered table the reader lists: a dataset's (or sample view's) rows are previewed
    *  through it. */
   tables?: ListedTable[];
@@ -105,6 +112,7 @@ export function DataProductDetailPanel({
   core,
   coreError,
   reader,
+  viewer,
   canEdit,
   canDelete,
   owner,
@@ -113,6 +121,7 @@ export function DataProductDetailPanel({
   lineageError,
   lineageGraph,
   relationLabel,
+  contractsVersion = 0,
   tables = [],
   sharing = [],
   relationships = [],
@@ -275,7 +284,13 @@ export function DataProductDetailPanel({
       <Tabs value={current} onChange={(v) => v && setTab(v as ProductTab)} keepMounted={false}>
         <Tabs.List aria-label={t("dataProductOffers.tabsLabel")}>
           {shownTabs.map((tb) => (
-            <Tabs.Tab key={tb} value={tb} data-testid={`data-product-tab-${tb}-${p.id}`}>
+            <Tabs.Tab
+              key={tb}
+              value={tb}
+              data-testid={`data-product-tab-${tb}-${p.id}`}
+              // The guided tour's anchor for a product's data quality: its tab, always there.
+              data-tour={tb === "quality" ? "data-product-dq" : undefined}
+            >
               {t(`dataProductOffers.tab_${tb}`)}
             </Tabs.Tab>
           ))}
@@ -291,6 +306,15 @@ export function DataProductDetailPanel({
             onPreview={previewTable}
             onQueryNow={queryNow}
             onBid={() => setBids((n) => n + 1)}
+          />
+          {/* REQ-2158: each table's own contract, one collapsed row each, beneath the offers. */}
+          <ProductContracts
+            productId={p.id}
+            core={core}
+            lineage={lineageGraph}
+            version={contractsVersion}
+            reader={reader}
+            viewer={viewer}
           />
         </Tabs.Panel>
         <Tabs.Panel value="quality" pt="sm" style={TAB_BODY}>

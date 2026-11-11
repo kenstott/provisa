@@ -238,7 +238,6 @@ export function ProductHeader({
       <Collapsibles id="data-product.header" testId={`data-product-card-details-${product.id}`}>
         <CollapsibleItem
           value="details"
-          defaultOpen={false}
           controlTestId={`data-product-card-details-${product.id}-toggle`}
           title={
             <Text size="sm" fw={500}>

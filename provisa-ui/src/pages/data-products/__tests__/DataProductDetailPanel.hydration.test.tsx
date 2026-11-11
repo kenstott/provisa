@@ -41,6 +41,7 @@ const NOT_DATA = [
   "owner",
   // REQ-2174 (amended 2026-11-07), REQ-2219: whether the reader owns the product (its Consumers).
   "seesConsumers",
+  "viewer",
   "onEdit",
   "onDelete",
   "onStatusChanged",
@@ -58,6 +59,9 @@ const LINEAGE = ["lineageLoading", "lineageError", "lineageGraph", "relationLabe
  *  previewed through, the products sharing its datasets, the model's relationships (each dataset's
  *  associations), the role it reads as, and the edit form that takes the header's place. */
 const PAGE = ["tables", "sharing", "relationships", "actingRole", "editForm"];
+/** Decided (REQ-2158, amended 2026-10-29): each contract row reads its own ODCS contract, declared
+ * and derived by the export (REQ-2118), when it opens; the page says only when to read it again. */
+const CONTRACTS = ["contractsVersion"];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
@@ -70,6 +74,8 @@ const INSIDE: Record<string, string> = {
   "./tabs/RelatedTab":
     "the ontology in a read of its own (useOntology), focused on the product; the tag chip; each dataset's glossary terms and class term",
   "./tabs/RequestsTab": "REQ-2180: the product's bids, and who reads each dataset (REQ-2162)",
+  "./ProductContracts":
+    "the product's contracts endpoint, one output port's contract as its row opens (REQ-2158)",
 };
 
 const PRODUCT = {
@@ -209,7 +215,7 @@ describe("a data product's panel hydrates from the meta query", () => {
       source.indexOf("\n}\n", source.indexOf("interface DataProductDetailPanelProps")),
     );
     const names = [...props.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]).sort();
-    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...PAGE].sort());
+    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...PAGE, ...CONTRACTS].sort());
   });
 
   it("reads inside its own parts only where named", () => {

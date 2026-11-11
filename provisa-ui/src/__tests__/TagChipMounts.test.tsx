@@ -107,6 +107,8 @@ describe("a data product's tags", () => {
         onTagsChanged={onTagsChanged}
       />,
     );
+    // A product's tags are among what it is related to: its Related tab.
+    fireEvent.click(screen.getByTestId("data-product-tab-related-sales_kpis"));
     return screen.getByTestId("data-product-card-tags-sales_kpis");
   }
 

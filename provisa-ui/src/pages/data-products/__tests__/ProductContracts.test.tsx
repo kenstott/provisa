@@ -11,7 +11,9 @@
 // REQ-2158 (amended 2026-10-29, A PRODUCT'S CONTRACTS ARE A LIST BENEATH IT): an open product's
 // contracts are a list beneath its lineage, one collapsed row per output port's contract; a row
 // opening reads that contract and shows it in the product's card panels, and a link can name the
-// row to open. The Contracts card has left the top panels; Output Ports is unchanged.
+// row to open. The Contracts card has left the top panels; Output Ports is unchanged. REQ-2180
+// OFFERS: the list is in the Offers tab, beneath the product's offers; its Output Ports are in the
+// panel's header.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
@@ -240,17 +242,16 @@ describe("a product's contracts list (REQ-2158)", () => {
   it("is no card in the top panels, and Output Ports still is", () => {
     panel(3);
     expect(screen.queryByTestId("data-product-card-contracts-pet_health")).toBeNull();
-    expect(screen.getByTestId("data-product-card-outputPorts-pet_health")).toBeInTheDocument();
-    expect(screen.getByTestId("data-product-detail-tables-pet_health")).toHaveTextContent(
+    expect(screen.getByTestId("data-product-detail-graphql-queries-pet_health")).toHaveTextContent(
       "pet-store.visits",
     );
   });
 
-  it("follows the Lineage panel, one collapsed row per contract, nothing read", () => {
+  it("follows the offers, one collapsed row per contract, nothing read", () => {
     panel(3);
-    const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
-    // Beneath the lineage in the document's order.
-    expect(lineage.compareDocumentPosition(list()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const offers = screen.getByTestId("data-product-offers-pet_health");
+    // Beneath the offers in the document's order.
+    expect(offers.compareDocumentPosition(list()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(rows()).toHaveLength(3);
     for (const id of [1, 2, 3]) {
       expect(
