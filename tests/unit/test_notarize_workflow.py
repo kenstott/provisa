@@ -69,7 +69,13 @@ def test_a_dmg_build_job_does_not_notarize_and_hands_its_dmg_on_unnotarized(job_
         assert secret not in text, f"{job_id} still gets {secret}"
     assert "notarize" not in text.lower().replace("-unnotarized", "")
     uploads = [s for s in job["steps"] if _is_upload(s)]
-    assert [u["with"]["name"] for u in uploads] == [f"{_BUILD_JOBS[job_id]}-unnotarized"]
+    # Core also hands on the DuckDB extensions asset: no code Apple notarizes (it never rides in a
+    # DMG), so the release attaches it as built.
+    extensions = ["macos-duckdb-extensions-dist"] if job_id == "build-macos-core" else []
+    assert [u["with"]["name"] for u in uploads] == [
+        f"{_BUILD_JOBS[job_id]}-unnotarized",
+        *extensions,
+    ]
     # Not the artifact the release attaches: that one is the notarized DMG's.
     assert not uploads[0]["with"]["name"].endswith("-dist")
 
@@ -166,7 +172,9 @@ def test_the_core_and_container_build_jobs_hand_on_the_signed_app_not_a_dmg(job_
     runs = [s["run"] for s in job["steps"] if "run" in s]
     assert any("packaging/macos/build-dmg.sh stage" in r for r in runs)
     assert not any(".dmg" in r for r in runs)
-    (upload,) = [s for s in job["steps"] if _is_upload(s)]
+    (upload,) = [
+        s for s in job["steps"] if _is_upload(s) and s["with"]["name"].endswith("-unnotarized")
+    ]
     assert upload["with"]["path"] == f"packaging/macos/dist/stage-{edition}.tar"
     assert job["timeout-minutes"] == _BUILD_LIMIT
 

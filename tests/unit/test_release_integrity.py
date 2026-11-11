@@ -256,7 +256,7 @@ def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checks
         and s["with"]["name"] == "macos-duckdb-extensions-dist"
     )
     assert core.index(build) < core.index(upload)
-    assert upload["with"]["path"].split() == [
+    assert upload["with"]["path"].splitlines() == [
         f"packaging/macos/dist/{name}",
         f"packaging/macos/dist/{name}.sha256",
     ]
@@ -266,7 +266,9 @@ def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checks
     assert "duckdb_extensions_name" in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
     download = next(s for s in publish["steps"] if s.get("name") == "Download all artifacts")
     assert download["with"]["pattern"] == "*-dist"
-    files = next(s for s in publish["steps"] if s.get("id") == "assets")["env"]["FILES"].split()
+    files = next(s for s in publish["steps"] if s.get("id") == "assets")["env"][
+        "FILES"
+    ].splitlines()
     assert f"release-assets/{name}" in files
     assert f"release-assets/{name}.sha256" in files
 

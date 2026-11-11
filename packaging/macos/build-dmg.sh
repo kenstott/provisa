@@ -297,7 +297,8 @@ split_duckdb_extensions() {
     exit 1
   fi
   mkdir -p "$OUT_DIR" "${APP_BUNDLE}/Contents/Resources"
-  tar -czf "$asset" -C "$runtime" "${files[@]}"
+  # COPYFILE_DISABLE: macOS tar would add an AppleDouble ._<file> for each file's xattrs.
+  COPYFILE_DISABLE=1 tar -czf "$asset" -C "$runtime" "${files[@]}"
   ( cd "$runtime" && rm -f "${files[@]}" )
   ( cd "$OUT_DIR" && shasum -a 256 "$DUCKDB_EXTENSIONS_ASSET" > "${DUCKDB_EXTENSIONS_ASSET}.sha256" )
   cp "${asset}.sha256" "${APP_BUNDLE}/Contents/Resources/${DUCKDB_EXTENSIONS_PIN}"
