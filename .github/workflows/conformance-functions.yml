@@ -223,6 +223,22 @@ jobs:
           .venv/bin/python scripts/conformance/fill_docs.py scripts/conformance/function_support.json
           exit "$status"
 
+      # REQ-2236: the polyfill grid held to this run's outcomes. A feature the grid marks native or
+      # polyfilled that answers otherwise than PostgreSQL fails, and so does a refusal or a
+      # difference the grid does not state. Reported, not a gate yet: the job goes on. Its files
+      # sit beside the data file, so the artifact keeps its layout.
+      - name: Check the polyfill grid
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          status=0
+          .venv/bin/python scripts/conformance/polyfill_check.py \
+            --in scripts/conformance/function_support.json \
+            --out-json scripts/conformance/polyfill-check.json \
+            --out-md scripts/conformance/polyfill-check.md || status=$?
+          cat scripts/conformance/polyfill-check.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       - name: Upload the data file and the pages
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -232,4 +248,6 @@ jobs:
             scripts/conformance/function_support.json
             docs/conformance/pgwire.md
             docs/conformance/overview.md
+            scripts/conformance/polyfill-check.json
+            scripts/conformance/polyfill-check.md
           if-no-files-found: error
