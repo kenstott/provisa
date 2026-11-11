@@ -623,18 +623,21 @@ async def _decide_locally(
 async def accept(product_id: str, bid_id: int, request: Request) -> dict:
     """Accept the bid as bid, through the decision hook: the product's owner role, who must
     still be able to grant the offer's role."""
+    require_capability_request(request, "data_product_read")
     return await _decide_locally(product_id, bid_id, "accepted", None, request)
 
 
 @router.post("/{product_id}/bids/{bid_id}/decline")
 async def decline(product_id: str, bid_id: int, body: DeclineBody, request: Request) -> dict:
     """Decline the bid, stating why, through the decision hook: the product's owner role."""
+    require_capability_request(request, "data_product_read")
     return await _decide_locally(product_id, bid_id, "declined", body.reason, request)
 
 
 @router.post("/{product_id}/bids/{bid_id}/withdraw")
 async def withdraw(product_id: str, bid_id: int, body: CancelBody, request: Request) -> dict:
     """The requester withdraws their pending bid: a cancel of it."""
+    require_capability_request(request, "data_product_read")
     return await _cancel(product_id, bid_id, body.reason, request, "pending")
 
 
@@ -642,6 +645,7 @@ async def withdraw(product_id: str, bid_id: int, body: CancelBody, request: Requ
 async def cancel(product_id: str, bid_id: int, body: CancelBody, request: Request) -> dict:
     """The requester cancels their accepted bid: the cancel fires the outbound request hook, and
     the local default applies it as the matching removal."""
+    require_capability_request(request, "data_product_read")
     return await _cancel(product_id, bid_id, body.reason, request, "accepted")
 
 
@@ -653,10 +657,15 @@ class HookBody(BaseModel):
     secret: str
 
 
+def _hook_view(target: offer_hooks.HookTarget) -> dict:
+    """The hook as a response may carry it: its URL, and whether its secret is set (REQ-1575)."""
+    return {"url": target.url, "secret_set": bool(target.secret)}
+
+
 @router.get("/request-hook")
 async def get_request_hook(request: Request) -> dict:
-    """Where the org's access requests go: its hook (URL and secret reference), or the local
-    request queue (``hook`` None) -- refused where an identity provider holds access, which has
+    """Where the org's access requests go: its hook (its URL, and whether its secret is set; the
+    secret never comes back out, REQ-1575), or the local request queue (``hook`` None) -- refused where an identity provider holds access, which has
     no local default."""
     from provisa.api.admin._platform_guard import require_org_settings
 
@@ -664,21 +673,22 @@ async def get_request_hook(request: Request) -> dict:
     require_active_org_id(request)
     target = await _hook_target(_state())
     return {
-        "hook": None if target is None else {"url": target.url, "secret": target.secret},
+        "hook": None if target is None else _hook_view(target),
         "local_default": not offer_hooks.held_by_idp(_state().auth_config or {}),
     }
 
 
 @router.put("/request-hook")
 async def set_request_hook(body: HookBody | None, request: Request) -> dict:
-    """Keep the org's request hook: an http(s) URL, and its secret as a reference (``null``
-    clears it, sending requests to the local queue)."""
+    """Keep the org's request hook: an http(s) URL, and its secret as entered, resolved at use
+    like any credential (``null`` clears it, sending requests to the local queue)."""
     from provisa.api.admin._platform_guard import require_org_settings
     from provisa.core.org_settings import write_org_overrides
 
     require_org_settings(request)
     require_active_org_id(request)
     value = None
+    target = None
     if body is not None:
         try:
             target = offer_hooks.checked(offer_hooks.HookTarget(url=body.url, secret=body.secret))
@@ -690,7 +700,7 @@ async def set_request_hook(body: HookBody | None, request: Request) -> dict:
         {offer_hooks.SETTINGS_KEY: value},
         updated_by=_caller(request) or _ANONYMOUS,
     )
-    return {"hook": value}
+    return {"hook": None if target is None else _hook_view(target)}
 
 
 # -- the inbound decision hook ---------------------------------------------------------------------
@@ -705,64 +715,25 @@ class DecisionBody(BaseModel):
 
 
 @router.post("/decisions")
-async def decision_hook(request: Request) -> dict:
-    """The inbound decision hook: a request's id, accepted or declined, who decided and when.
-    An external caller signs the body with the org's hook secret (``X-Provisa-Signature``) and
-    names the decider, whose right to grant the offer's role is read from the roles they hold. A
-    signed-in caller decides as themselves, now, as the product's owner role -- as the local
-    queue does."""
-    raw = await request.body()
-    try:
-        body = DecisionBody.model_validate_json(raw)
-    except ValueError as exc:
-        raise ApiError(422, "data_product.decision.invalid", str(exc)) from exc
+async def decision_hook(body: DecisionBody, request: Request) -> dict:
+    """The inbound decision hook for a signed-in caller: a request's id, accepted or declined. The
+    caller decides as themselves, now, as the product's owner role -- as the local queue does. A
+    signed external caller is not served here."""
+    require_capability_request(request, "data_product_read")
     state = _state()
-    signature = request.headers.get(offer_hooks.SIGNATURE_HEADER)
-    if signature is None:
-        async with state.model_db.acquire() as conn:
-            try:
-                held = await offers.require_request(conn, body.request_id)
-            except OfferRefused as refused:
-                raise _refused(refused) from refused
-        caller = _caller(request)
-        if body.decider is not None and caller is not None and body.decider != caller:
-            raise ApiError(
-                403,
-                "data_product.decision.not_the_decider",
-                f"a signed-in caller decides as themselves, not as {body.decider!r}",
-            )
-        return await _decide_locally(
-            held["product_id"], held["id"], body.outcome, body.reason, request
-        )
-    target = await _hook_target(state)
-    if target is None or not offer_hooks.verified(
-        raw, signature, await offer_hooks.resolved_secret(target)
-    ):
-        raise ApiError(
-            401,
-            "data_product.decision.bad_signature",
-            "the decision is not signed with the org's request hook secret",
-        )
-    if body.decider is None or body.decided_at is None:
-        raise ApiError(
-            422,
-            "data_product.decision.incomplete",
-            "an external decision names who decided (decider) and when (decided_at)",
-        )
-    decider = body.decider
     async with state.model_db.acquire() as conn:
-
-        async def may(role_id: str) -> str | None:
-            return await principal_refusal(conn, state, decider, role_id)
-
-        decision = offer_hooks.Decision(
-            request_id=body.request_id,
-            outcome=body.outcome,
-            decider=decider,
-            decided_at=body.decided_at,
-            reason=body.reason,
+        try:
+            held = await offers.require_request(conn, body.request_id)
+        except OfferRefused as refused:
+            raise _refused(refused) from refused
+    caller = _caller(request)
+    if body.decider is not None and caller is not None and body.decider != caller:
+        raise ApiError(
+            403,
+            "data_product.decision.not_the_decider",
+            f"a signed-in caller decides as themselves, not as {body.decider!r}",
         )
-        return await _decide(conn, state, decision, may)
+    return await _decide_locally(held["product_id"], held["id"], body.outcome, body.reason, request)
 
 
 # -- profiles --------------------------------------------------------------------------------------

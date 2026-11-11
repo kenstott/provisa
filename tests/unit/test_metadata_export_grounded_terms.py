@@ -46,6 +46,7 @@ from provisa.core.models import (
 from provisa.ossie.convert import OSSIE_VERSION, OssieExportRefused
 from provisa.ossie.ontology import ossie_ontology, ossie_ontology_yaml
 from tests.unit.product_members import with_members
+from tests.unit.test_metadata_export_odps_odcs import _offers
 
 pytestmark = pytest.mark.unit
 
@@ -217,8 +218,9 @@ def test_a_hop_carries_no_name_definition_or_uri():
 
 def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition():
     snapshot = _snapshot()
-    _, contracts = product_documents(snapshot, _product(snapshot))
-    orders = contracts["wh.public.orders"]
+    product = _product(snapshot)
+    _, contracts = product_documents(snapshot, product, _offers(snapshot, product))
+    orders = contracts["default/wh.public.orders"]
     assert not list(ODCS.iter_errors(orders))
     (schema_object,) = orders["schema"]
     fields = {p["name"]: p.get("authoritativeDefinitions") for p in schema_object["properties"]}
@@ -238,18 +240,19 @@ def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition()
     ]
     assert fields["id"][0]["url"] == "provisa://acme/terms/order"
     assert fields["line_no"] is None and fields["legacy"] is None and fields["note"] is None
-    customers = contracts["wh.public.customers"]
+    customers = contracts["default/wh.public.customers"]
     assert customers["schema"][0]["properties"][0].get("authoritativeDefinitions") is None
 
 
 def test_the_odps_output_port_carries_its_fields_term_links():
     snapshot = _snapshot()
-    document, contracts = product_documents(snapshot, _product(snapshot))
+    product = _product(snapshot)
+    document, contracts = product_documents(snapshot, product, _offers(snapshot, product))
     assert not list(ODPS.iter_errors(document))
     ports = {port["name"]: port for port in document["outputPorts"]}
     field_links = {
         json.dumps(d, sort_keys=True)
-        for p in contracts["wh.public.orders"]["schema"][0]["properties"]
+        for p in contracts["default/wh.public.orders"]["schema"][0]["properties"]
         for d in p.get("authoritativeDefinitions", [])
     }
     port_links = {

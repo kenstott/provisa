@@ -18,9 +18,9 @@ one INBOUND DECISION HOOK (:func:`decide`): the request id, accepted or declined
 when. It refuses a decision that does not match its request, or one from a decider who may not
 grant the offer's role.
 
-WHERE A REQUEST GOES. The org's ``offer_hook`` setting names a URL and the secret, as a
-``${secret:NAME}`` reference, the request is signed with (:data:`SIGNATURE_HEADER`) and an external
-decision is verified against. With no hook configured and no external identity provider, the
+WHERE A REQUEST GOES. The org's ``offer_hook`` setting names a URL and the secret, as the operator
+entered it and resolved at use like any credential, the request is signed with
+(:data:`SIGNATURE_HEADER`) and an external decision is verified against. With no hook configured and no external identity provider, the
 default hook writes the request into Provisa's own request queue (:data:`LOCAL`): the bid stays
 pending there for the product's owner, and a cancel is applied at once as the matching removal.
 Where an identity provider holds access (``auth.assignments_source: claims``) there is no local
@@ -39,7 +39,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import re
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -60,8 +59,6 @@ SETTINGS_KEY = "offer_hook"
 LOCAL = "local"
 #: The header carrying ``sha256=<hex HMAC of the body>`` under the hook's secret, both ways.
 SIGNATURE_HEADER = "X-Provisa-Signature"
-#: A secret as configured: a reference, never the value (``${secret:NAME}`` or ``${env:NAME}``).
-SECRET_REFERENCE = re.compile(r"^\$\{(?:secret|env):[A-Za-z_][A-Za-z0-9_]*\}$")
 #: The auth providers that sign no one in (provisa.core.assignments_source).
 _NO_PROVIDER = (None, "", "none")
 
@@ -70,8 +67,8 @@ Outcome = Literal["accepted", "declined"]
 
 @dataclass(frozen=True)
 class HookTarget:
-    """The org's outbound request hook: where requests are posted, and the secret reference
-    they are signed with."""
+    """The org's outbound request hook: where requests are posted, and the secret they are
+    signed with, as the operator entered it."""
 
     url: str
     secret: str
@@ -89,14 +86,12 @@ def target_of(settings: Mapping[str, Any]) -> HookTarget | None:
 
 
 def checked(target: HookTarget) -> HookTarget:
-    """``target``, refused by name (ValueError) when its URL is not http(s) or its secret is not
-    a reference to one."""
+    """``target``, refused by name (ValueError) when its URL is not http(s) or it has no
+    secret."""
     if not target.url.startswith(("https://", "http://")):
         raise ValueError(f"{SETTINGS_KEY}.url must be an http(s) URL, not {target.url!r}")
-    if not SECRET_REFERENCE.match(target.secret):
-        raise ValueError(
-            f"{SETTINGS_KEY}.secret must reference a secret, as ${{secret:NAME}} or ${{env:NAME}}"
-        )
+    if not target.secret:
+        raise ValueError(f"{SETTINGS_KEY}.secret is required: the secret requests are signed with")
     return target
 
 
@@ -187,7 +182,8 @@ def verified(body: bytes, signature: str | None, secret: str) -> bool:
 
 
 async def resolved_secret(target: HookTarget) -> str:
-    """The hook's secret, resolved from its reference in the requesting org's vault."""
+    """The hook's secret as entered, resolved at use the way any credential is: itself, or what
+    its reference names in the requesting org's vault."""
     from provisa.core.secrets_store import resolved_credential
 
     return await resolved_credential(target.secret)

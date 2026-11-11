@@ -304,8 +304,8 @@ async def require_offer(conn: "Connection", product_id: str, offer_id: int) -> d
 
 
 async def add_default(conn: "Connection", product_id: str, *, by: str | None) -> int:
-    """Give a new product its one default offer; returns its id."""
-    model_change.name("upsert", "data product offer", f"{product_id}/{DEFAULT_OFFER.name}")
+    """Give a new product its one default offer; returns its id. Part of creating the product,
+    whose writer names the change (REQ-1524): one write, one commit named by its writer."""
     return await conn.insert_returning(
         data_product_offers,
         {

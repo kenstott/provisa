@@ -36,7 +36,7 @@ A signed-in requester bids for an offer and states a reason. Provisa does not de
 
 ### Request hooks
 
-The org's request hook is a URL and a secret reference (`${secret:NAME}` or `${env:NAME}`), set at `PUT /admin/data-products/request-hook`. Each request is posted to it as JSON, signed in `X-Provisa-Signature` (`sha256=` and the hex HMAC-SHA256 of the body under the secret), with its id as the `Idempotency-Key`:
+The org's request hook is a URL and a secret, set at `PUT /admin/data-products/request-hook`. The secret is stored as you enter it, either a value or a reference such as `${secret:NAME}`, and is resolved when it is used, like any other credential. A response says only whether the secret is set; it never returns the secret. Each request is posted to it as JSON, signed in `X-Provisa-Signature` (`sha256=` and the hex HMAC-SHA256 of the body under the secret), with its id as the `Idempotency-Key`:
 
 ```json
 {"id": "…", "kind": "bid", "requester": "u1", "product": "c360",
@@ -49,7 +49,7 @@ A cancel carries the bid's terms, `"kind": "cancel"` and the id of the request i
 
 With no hook configured and no identity provider holding access, a request lands in the product's own queue: the owner role accepts or declines it there, and a cancel is applied at once. Where the identity provider holds access (`auth.assignments_source: claims`), a request with no hook configured is refused.
 
-The decision returns through `POST /admin/data-products/decisions`: `request_id`, `outcome` (`accepted` or `declined`), `decider`, `decided_at` and, for a decline, `reason`. An external caller signs the body with the hook's secret. A signed-in caller decides as themselves, as the product's owner role. A decision is refused when it matches no pending request or when the decider may not grant the offer's role. The same decision sent again is answered with the request as it stands.
+The decision returns through `POST /admin/data-products/decisions`: `request_id`, `outcome` (`accepted` or `declined`), `decider`, `decided_at` and, for a decline, `reason`. The caller is signed in and decides as themselves, as the product's owner role. A decision is refused when it matches no pending request or when the decider may not grant the offer's role. The same decision sent again is answered with the request as it stands.
 
 Where Provisa holds access, an accepted bid is an ordinary admin grant of exactly what was bid, attributed to the decider. It assigns the role, or re-grants a role the requester already holds, and adds entries to the requester's `tables` entitlement list for that role: the datasets (or, for a sample, the views alone, never the tables beneath them), plus the data quality results and the profiles where the offer includes them. A requester who did not hold the role is granted it narrowed to those entries.
 
@@ -86,9 +86,9 @@ The ODPS export writes one output port per offer and dataset, versioned by and n
 | `POST /admin/data-products/{id}/offers`, `PUT .../offers/{offer_id}`, `DELETE .../offers/{offer_id}` | `data_product_rw` in the domain, and the product's row rules | Add, change or remove an offer. Removing one declines its pending bids |
 | `POST /admin/data-products/{id}/offers/{offer_id}/bids` | a signed-in requester | Bid, stating `reason`; fires the request hook. Refused for an open offer (`query_now`) |
 | `GET /admin/data-products/{id}/bids` | the owner role sees every bid, anyone else their own | The bids, newest first |
-| `POST /admin/data-products/{id}/bids/{bid_id}/accept`, `.../decline` (with `reason`) | the product's owner role | Decide a bid in the local queue, through the decision hook |
-| `POST /admin/data-products/{id}/bids/{bid_id}/withdraw`, `.../cancel` (with `reason`) | the requester | Cancel a pending or an accepted bid |
-| `POST /admin/data-products/decisions` | a signed external caller, or the product's owner role | The decision hook |
+| `POST /admin/data-products/{id}/bids/{bid_id}/accept`, `.../decline` (with `reason`) | `data_product_read` and the product's owner role | Decide a bid in the local queue, through the decision hook |
+| `POST /admin/data-products/{id}/bids/{bid_id}/withdraw`, `.../cancel` (with `reason`) | `data_product_read`, as the requester | Cancel a pending or an accepted bid |
+| `POST /admin/data-products/decisions` | `data_product_read` and the product's owner role | The decision hook |
 | `GET`, `PUT /admin/data-products/request-hook` | org settings | The org's request hook |
 | `GET /admin/data-products/{id}/profiles` | `data_product_read` | Each dataset's latest profile, sanitized for the caller's role: a masked or PII-tagged column shows its type, null rate and distinct count, and no value |
 

@@ -52,16 +52,35 @@ def test_where_an_identity_provider_holds_access_a_request_needs_a_hook():
     assert offer_hooks.held_by_idp({"provider": "oidc"}) is True
 
 
-def test_the_hook_is_a_url_and_a_secret_reference():
+def test_the_hook_is_a_url_and_its_secret_as_the_operator_entered_it():
     settings = {"offer_hook": {"url": _HOOK.url, "secret": "${secret:GRANTS_HOOK}"}}
     assert offer_hooks.target_of(settings) == offer_hooks.HookTarget(
         _HOOK.url, "${secret:GRANTS_HOOK}"
     )
+    # Kept as entered, never rewritten into a reference: resolved at use like any credential.
+    assert offer_hooks.target_of(
+        {"offer_hook": {"url": _HOOK.url, "secret": "hunter2"}}
+    ) == offer_hooks.HookTarget(_HOOK.url, "hunter2")
     assert offer_hooks.target_of({}) is None
-    with pytest.raises(ValueError, match="must reference a secret"):
-        offer_hooks.target_of({"offer_hook": {"url": _HOOK.url, "secret": "hunter2"}})
+    with pytest.raises(ValueError, match="secret is required"):
+        offer_hooks.target_of({"offer_hook": {"url": _HOOK.url, "secret": ""}})
     with pytest.raises(ValueError, match="http"):
         offer_hooks.target_of({"offer_hook": {"url": "ftp://x", "secret": "${env:K}"}})
+
+
+def test_a_hooks_secret_is_resolved_at_use_as_entered(monkeypatch):
+    from provisa.core import secrets_store
+
+    seen = []
+
+    async def resolved(value):
+        seen.append(value)
+        return "s3cret"
+
+    monkeypatch.setattr(secrets_store, "resolved_credential", resolved)
+    target = offer_hooks.HookTarget(_HOOK.url, "${env:HOOK_SECRET}")
+    assert asyncio.run(offer_hooks.resolved_secret(target)) == "s3cret"
+    assert seen == ["${env:HOOK_SECRET}"]
 
 
 def test_a_signature_verifies_only_under_its_secret_and_its_body():
