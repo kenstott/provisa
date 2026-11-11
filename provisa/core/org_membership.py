@@ -595,6 +595,7 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         user_attributes,
         user_directory,
         user_idp_attributes,
+        user_idp_roles,
     )
     from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
@@ -670,7 +671,12 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
             # The org's own copies of who they are (REQ-1439, REQ-1382, REQ-1383) go with the
             # profile: a name and email left in user_directory would still label every audit row
             # the tombstone was meant to stop identifying them on.
-            for identity in (user_directory, user_attributes, user_idp_attributes):
+            for identity in (
+                user_directory,
+                user_attributes,
+                user_idp_attributes,
+                user_idp_roles,
+            ):
                 await conn.execute_core(delete(identity).where(identity.c.user_id == user_id))
             await conn.execute_core(
                 update(admin_audit_log)

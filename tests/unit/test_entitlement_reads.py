@@ -21,16 +21,18 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from provisa.api.admin import entitlements_router
 from provisa.api.admin.entitlements_router import router
 from provisa.api.errors import ApiError
+from provisa.auth import middleware
+from provisa.auth.models import AuthIdentity, RoleAssignment
 from provisa.compiler.names_table import NameRow, build_names_table
 from provisa.core.schema_org import roles as roles_table
-from provisa.core.schema_org import user_role_assignments
-from provisa.entitlements import runtime, store
+from provisa.core.schema_org import user_idp_roles, user_role_assignments
+from provisa.entitlements import roles, runtime, store
 from provisa.entitlements.index import (
     KIND_ORDER,
     KINDS,
@@ -46,6 +48,7 @@ from tests.unit.test_entitlements_api import ASSIGN, _identity, _set, _state
 pytestmark = pytest.mark.asyncio
 
 _FROM_PROVISA = {"provider": "oidc", "assignments_source": "provisa"}
+_FROM_CLAIMS = {"provider": "oidc", "assignments_source": "claims"}
 
 
 @pytest.fixture
@@ -54,6 +57,7 @@ async def api(control_plane, monkeypatch):
     state.auth_config = dict(_FROM_PROVISA)
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     monkeypatch.setattr(runtime, "_role_context", lambda _state, _role: _ctx())
+    monkeypatch.setattr(middleware, "_recorded_idp_roles", {})
     caller: dict = {"identity": _identity()}
 
     app = FastAPI()
@@ -97,6 +101,24 @@ async def _idp(api_, principal: str, lists: dict) -> None:
     async with api_.db.acquire() as conn:
         await store.mirror_idp(conn, principal, lists)
         api_.state.idp_entitlements = await store.load_idp(conn)
+
+
+async def _sign_in(api_, principal: str, role_claims: list[str]) -> None:
+    """The sign-in hook, as the auth middleware runs it for a token carrying ``role_claims``."""
+    identity = AuthIdentity(
+        user_id=principal, email=None, display_name=None, roles=role_claims, raw_claims={}
+    )
+    await middleware._record_idp_roles(api_.db, identity)  # pyright: ignore[reportPrivateUsage]
+
+
+async def _mirrored(api_, principal: str) -> list[tuple[str, str]]:
+    async with api_.db.acquire() as conn:
+        rows = await conn.execute_core(
+            select(user_idp_roles.c.role_id, user_idp_roles.c.domain_id)
+            .where(user_idp_roles.c.user_id == principal)
+            .order_by(user_idp_roles.c.role_id, user_idp_roles.c.domain_id)
+        )
+        return [(r.role_id, r.domain_id) for r in rows.fetchall()]
 
 
 async def _roles(api_, principal: str) -> list[dict]:
@@ -352,3 +374,77 @@ async def test_matching_ignores_the_case_the_tree_shows():
     ):
         assert matches(identifier, amount.paths), identifier
     assert not matches("Finance.Revenue.id", amount.paths)
+
+
+# -- IDENTITY PROVIDER ROLES ARE MIRRORED ------------------------------------------------------
+
+
+async def test_a_sign_in_records_the_tokens_role_claims(api):
+    await _sign_in(api, "alice", ["viewer", "analyst:finance"])
+    assert await _mirrored(api, "alice") == [("analyst", "finance"), ("viewer", "*")]
+
+
+async def test_a_later_sign_in_replaces_the_role_claims_of_the_one_before(api):
+    await _sign_in(api, "alice", ["viewer", "analyst:finance"])
+    await _sign_in(api, "alice", ["analyst:sales"])
+    assert await _mirrored(api, "alice") == [("analyst", "sales")]
+
+
+async def test_a_sign_in_with_no_role_claims_mirrors_none(api):
+    await _sign_in(api, "alice", ["viewer"])
+    await _sign_in(api, "alice", [])
+    assert await _mirrored(api, "alice") == []
+
+
+async def test_a_role_claim_sent_twice_is_mirrored_once(api):
+    await _sign_in(api, "alice", ["viewer", "viewer", "viewer:*"])
+    assert await _mirrored(api, "alice") == [("viewer", "*")]
+
+
+async def test_the_mirror_is_rewritten_only_when_the_claims_changed(api):
+    viewer = [RoleAssignment(role_id="viewer", domain_id="*")]
+    async with api.db.acquire() as conn:
+        assert await roles.mirror_idp_roles(conn, "alice", viewer)
+        assert not await roles.mirror_idp_roles(conn, "alice", viewer)
+        assert await roles.mirror_idp_roles(conn, "alice", [])
+
+
+async def test_mirrored_role_claims_are_listed_with_the_identity_provider_as_origin(api):
+    api.state.auth_config = dict(_FROM_CLAIMS)
+    await _sign_in(api, "alice", ["viewer:sales", "viewer:finance", "analyst"])
+    assert await _roles(api, "alice") == [
+        {"role_id": "analyst", "origins": ["idp"], "domains": ["*"]},
+        {"role_id": "viewer", "origins": ["idp"], "domains": ["finance", "sales"]},
+    ]
+
+
+async def test_a_role_claim_and_an_idp_list_for_one_role_list_it_once(api):
+    api.state.auth_config = dict(_FROM_CLAIMS)
+    await _sign_in(api, "alice", ["viewer:sales"])
+    await _idp(api, "alice", {"viewer": {"tables": ()}})
+    assert await _roles(api, "alice") == [
+        {"role_id": "viewer", "origins": ["idp"], "domains": ["sales"]},
+    ]
+
+
+async def test_a_claimed_role_the_org_does_not_define_is_left_out(api):
+    api.state.auth_config = dict(_FROM_CLAIMS)
+    await _sign_in(api, "alice", ["ghost", "viewer"])
+    assert "ghost" not in api.state.roles
+    assert await _roles(api, "alice") == [
+        {"role_id": "viewer", "origins": ["idp"], "domains": ["*"]},
+    ]
+
+
+async def test_another_persons_role_claims_are_not_listed(api):
+    api.state.auth_config = dict(_FROM_CLAIMS)
+    await _sign_in(api, "bob", ["viewer"])
+    assert await _roles(api, "alice") == []
+
+
+async def test_role_claims_are_not_listed_where_roles_come_from_provisa(api):
+    await _sign_in(api, "alice", ["analyst"])
+    await _assign(api, "alice", "viewer")
+    assert await _roles(api, "alice") == [
+        {"role_id": "viewer", "origins": ["provisa"], "domains": ["*"]},
+    ]

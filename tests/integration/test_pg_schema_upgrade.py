@@ -581,6 +581,7 @@ _CREATE_ONLY = {
     "user_attributes": "id user_id name value updated_at",
     "user_directory": "user_id display_name email updated_at",
     "user_idp_attributes": "user_id name value seen_at",
+    "user_idp_roles": "user_id role_id domain_id seen_at",
     "user_role_assignments": "id user_id role_id domain_id created_at",
 }
 _NOT_A_COLUMN = {"PRIMARY", "UNIQUE", "CONSTRAINT", "FOREIGN", "CHECK", "EXCLUDE", "LIKE"}
