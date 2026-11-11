@@ -424,6 +424,17 @@ def _names_an_object(node: exp.Expr) -> bool:
     return isinstance(written, exp.Literal) and written.is_string and not written.this.isdigit()
 
 
+def _mixed_signs(step: exp.Expr) -> bool:
+    """Whether ``step`` is an interval the statement writes whose months, days and time are not
+    all of one sign (``'-1 year 2 days'``)."""
+    from provisa.transpiler.pg_type_literals import interval_fields
+
+    if not (_cast_to(step, exp.DataType.Type.INTERVAL) and isinstance(step.this, exp.Literal)):
+        return False
+    fields = interval_fields(step.this.this)
+    return fields is not None and min(fields) < 0 < max(fields)
+
+
 def _is_kind(node: exp.Expr, *names: str) -> bool:
     return isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() in names
 
@@ -865,6 +876,9 @@ def _call(node: exp.Expr) -> exp.Expr:
         return node
     name, args = named
     if name in _NAMED_OBJECT_SENDS and len(args) == 1 and _names_an_object(args[0]):
+        raise function_macros.FunctionRefused(name, "duckdb")
+    if name == "generate_series" and len(args) in (3, 4) and _mixed_signs(args[2]):  # noqa: PLR2004
+        # DuckDB's range takes no step of months, days and time of different signs.
         raise function_macros.FunctionRefused(name, "duckdb")
     if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
         collated = _collation_named(args[0])

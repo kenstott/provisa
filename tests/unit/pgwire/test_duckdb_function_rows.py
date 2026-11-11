@@ -68,6 +68,25 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
     ("SELECT pg_catalog.\"bit\"('101'::bit(3), 0::integer, false::boolean) AS v", BIT, ["101"]),
     # numeric(numeric, typmod): a typmod below the header leaves the value as it is.
     ('SELECT pg_catalog."numeric"(2.5::numeric, 3::integer) AS v', NUMERIC, ["2.5"]),
+    # in_range of a time reads its interval offset's time alone: '-1 year 2 days' is none.
+    (
+        "SELECT pg_catalog.\"in_range\"('23:59:59.5'::time without time zone, '23:59:59.5'::time "
+        "without time zone, '-1 year 2 days'::interval, true::boolean, true::boolean) AS v",
+        BOOL,
+        ["t"],
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('23:59:59.5-05'::time with time zone, '23:59:59.5-05'::time "
+        "with time zone, '-1 year 2 days'::interval, true::boolean, true::boolean) AS v",
+        BOOL,
+        ["t"],
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('10:00'::time, '11:00'::time, '1 day 00:30'::interval, "
+        "true, true) AS v",
+        BOOL,
+        ["t"],
+    ),
     # A zone's text PostgreSQL reads as POSIX: '12' is twelve hours WEST of UTC.
     (
         "SELECT pg_catalog.\"date_add\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
@@ -129,6 +148,13 @@ ERRORS: list[tuple[str, str, str]] = [
         "22026",
         "bit string length 1 does not match type bit(3)",
     ),
+    # Its time negative, whatever its days.
+    (
+        "SELECT pg_catalog.\"in_range\"('10:00'::time, '11:00'::time, '1 day -00:30'::interval, "
+        "true, true) AS v",
+        "22013",
+        "invalid preceding or following size in window function",
+    ),
 ]
 
 
@@ -148,6 +174,19 @@ REFUSED: list[tuple[str, str]] = [
     # A scale DuckDB's DECIMAL (38 digits at most) has no room for.
     ('SELECT pg_catalog."round"(1000::numeric, 42::integer) AS v', "round"),
     ('SELECT pg_catalog."trunc"(1000::numeric, 42::integer) AS v', "trunc"),
+    # A step of months, days and time of different signs, which DuckDB's range takes none of.
+    *(
+        (
+            f"SELECT pg_catalog.\"generate_series\"('2000-02-29 00:00:00'::{kind}, "
+            f"'2000-02-29 00:00:00'::{kind}, '-1 year 2 days'::interval{zone}) AS v",
+            "generate_series",
+        )
+        for kind, zone in (
+            ("timestamp without time zone", ""),
+            ("timestamp with time zone", ""),
+            ("timestamp with time zone", ", '12'::text"),
+        )
+    ),
     # The send of an object identifier type the engine has no catalog of names to look up.
     ("SELECT pg_catalog.\"regprocsend\"('now'::regproc) AS v", "regprocsend"),
     ("SELECT pg_catalog.\"regproceduresend\"('now()'::regprocedure) AS v", "regproceduresend"),
@@ -258,3 +297,67 @@ def test_a_numeric_zone_is_the_icu_zone_east_of_utc(written: str, icu: str | Non
     from provisa.transpiler.pg_zones import icu_numeric_zone
 
     assert icu_numeric_zone(written) == icu
+
+
+_PAIRS = "FROM (VALUES (3::integer, 3::integer), ((-7)::integer, (-7)::integer), (42::integer, 42::integer)) AS t(c1, c2)"
+
+#: (statement, PostgreSQL 17's result type, its JSON): compared parsed, its members in order, as
+#: the check compares json and jsonb.
+JSON_ANSWERS: list[tuple[str, int, str]] = [
+    # value ORDER BY ...: DuckDB's json_group_object is a macro, which takes no ORDER BY.
+    *(
+        (
+            f'SELECT pg_catalog."{name}"(c1, c2 ORDER BY c1) AS v {_PAIRS}',
+            114,
+            '{ "-7" : -7, "3" : 3, "42" : 42 }',
+        )
+        for name in (
+            "json_object_agg",
+            "json_object_agg_strict",
+            "json_object_agg_unique",
+            "json_object_agg_unique_strict",
+        )
+    ),
+    (
+        f"SELECT json_object_agg(c1, c2 ORDER BY c1 DESC) AS v {_PAIRS}",
+        114,
+        '{ "42" : 42, "3" : 3, "-7" : -7 }',
+    ),
+    *(
+        (
+            f'SELECT pg_catalog."{name}"(c1, c2 ORDER BY c1) AS v {_PAIRS}',
+            3802,
+            '{"3": 3, "-7": -7, "42": 42}',
+        )
+        for name in (
+            "jsonb_object_agg",
+            "jsonb_object_agg_strict",
+            "jsonb_object_agg_unique",
+            "jsonb_object_agg_unique_strict",
+        )
+    ),
+    # A json value keeps a repeated key, in order.
+    (
+        "SELECT json_object_agg_strict(k, v) FROM (VALUES (1, 2), (1, 3), (2, NULL::integer)) "
+        "AS t(k, v)",
+        114,
+        '{ "1" : 2, "1" : 3 }',
+    ),
+    # A key of any type is its text.
+    ('SELECT pg_catalog."json_build_object"(1::integer, 2::integer) AS v', 114, '{"1" : 2}'),
+    ('SELECT pg_catalog."jsonb_build_object"(1::integer, 2::integer) AS v', 3802, '{"1": 2}'),
+]
+
+
+def _members(text: str) -> object:  # object-ok: parsed JSON of any shape
+    import json
+
+    return json.loads(text, object_pairs_hook=list)
+
+
+@pytest.mark.parametrize(("sql", "oid", "answer"), JSON_ANSWERS, ids=[a[0] for a in JSON_ANSWERS])
+def test_duckdb_json_answers_as_postgresql_17(conn: Any, sql: str, oid: int, answer: str):
+    res = _answer(conn, sql)
+    assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
+    assert res.ftype(0) == oid
+    assert _members(res.get_value(0, 0).decode()) == _members(answer)

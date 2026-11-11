@@ -262,6 +262,29 @@ def _typed(written: exp.Expr, sql_type: str) -> exp.Expr:
     return exp.Cast(this=written, to=exp.DataType.build(sql_type, dialect="postgres"))
 
 
+def _time_part(value: exp.Expr, offset: exp.Expr) -> exp.Expr:
+    """in_range's offset for a time or timetz value: its interval's time alone, as
+    in_range_time_interval reads it (its months and days are no part of a time of day). Read where
+    the statement writes the interval; any other offset is as written."""
+    from provisa.transpiler.pg_type_literals import interval_fields
+
+    kind = _unwrapped(value)
+    cast = _unwrapped(offset)
+    if not (
+        isinstance(kind, exp.Cast)
+        and kind.to.this in (_T.TIME, _T.TIMETZ)
+        and isinstance(cast, exp.Cast)
+        and cast.to.this == _T.INTERVAL
+        and isinstance(cast.this, exp.Literal)
+        and cast.this.is_string
+    ):
+        return offset
+    fields = interval_fields(cast.this.this)
+    if fields is None:
+        return offset
+    return exp.Cast(this=_string(f"{fields[2]} microseconds"), to=cast.to.copy())
+
+
 def _int(value: int) -> exp.Expr:
     return exp.Literal.number(value)
 
@@ -1735,6 +1758,7 @@ class _Rewrite:
     def _in_range(self, args: list[exp.Expr]) -> exp.Expr:
         """in_range(value, base, offset, subtract, less): a window frame's bound, a comparison."""
         value, base, offset, subtract, less = args
+        offset = _time_part(value, offset)
         sum_ = _case([(subtract.copy(), _minus(base, offset))], _plus(base, offset))
         below = exp.LTE(this=value.copy(), expression=sum_.copy())
         above = exp.GTE(this=value.copy(), expression=sum_.copy())

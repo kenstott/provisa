@@ -643,6 +643,7 @@ def object_agg(pairs: list[dict[str, Any]], strict: bool, unique: bool, called: 
     """The _strict and _unique object aggregates: ``pairs`` the group's keys and to_json values."""
     binary = _is_binary(called)
     members: dict[str, Any] = {}
+    written: list[str] = []  # json's: each pair as json_object_agg writes it, in the group's order
     for pair in pairs:
         key, value = pair["k"], pair["v"]
         if key is None:
@@ -655,6 +656,12 @@ def object_agg(pairs: list[dict[str, Any]], strict: bool, unique: bool, called: 
             shown = "" if binary else f": {json.dumps(key, ensure_ascii=False)}"
             raise _error("22030", f"duplicate JSON object key value{shown}")
         members[key] = None if value is None else _jsonb(value)
+        written.append(
+            f"{json.dumps(key, ensure_ascii=False)} : {'null' if value is None else value}"
+        )
+    if not binary:
+        # json keeps its text: every pair, a repeated key's too, in order (json_object_agg_finalfn).
+        return "{ " + ", ".join(written) + " }"
     return jsonb_written({key: members[key] for key in stored_keys(members)})
 
 

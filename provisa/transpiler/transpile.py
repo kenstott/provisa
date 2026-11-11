@@ -1092,6 +1092,14 @@ def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore
     return None
 
 
+def _json_key(key: exp.Expr) -> exp.Expr:
+    """A key of json_build_object, as PostgreSQL makes one of any type: its text. DuckDB's
+    json_object takes a VARCHAR key alone."""
+    if isinstance(key, exp.Literal) and key.is_string:
+        return key
+    return exp.cast(key, "VARCHAR")
+
+
 def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
     JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
@@ -1143,7 +1151,9 @@ def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
             pairs = [e.transform(_transform) for e in node.expressions]
             return exp.Anonymous(
                 this="json_object",
-                expressions=[json_member(e) if i % 2 else e for i, e in enumerate(pairs)],
+                expressions=[
+                    json_member(e) if i % 2 else _json_key(e) for i, e in enumerate(pairs)
+                ],
             )
         # Each value a statement puts in JSON, as PostgreSQL writes it at any depth. A value is
         # set in place, so transform goes on into it for the JSON it holds.
@@ -1154,7 +1164,12 @@ def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
         elif isinstance(node, exp.JSONArray):
             node.set("expressions", [json_member(e) for e in node.expressions])
         elif isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_GROUP_OBJECT":
-            node.set("expressions", [node.expressions[0], json_member(node.expressions[1])])
+            value = node.expressions[1]
+            if isinstance(value, exp.Order):  # value ORDER BY ...: the member is the value
+                value.set("this", json_member(value.this))
+            else:
+                value = json_member(value)
+            node.set("expressions", [node.expressions[0], value])
         return node
 
     return tree.transform(_transform, copy=False)
