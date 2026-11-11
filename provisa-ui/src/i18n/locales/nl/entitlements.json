@@ -62,7 +62,7 @@
       "kindLabel": "Soort",
       "kindPlaceholder": "Selecteer een soort",
       "entriesLabel": "Items",
-      "entriesHelp": "Wat deze persoon mag bereiken van wat de rol toestaat. Een gekozen domein of tabel zonder iets gekozen eronder omvat alles daarin. Een lege lijst bereikt niets van deze soort.",
+      "entriesHelp": "Waar deze persoon bij mag van wat de rol toestaat. Een gekozen domein of tabel zonder keuze eronder omvat alles daarin. Een lege lijst reikt tot niets van dit soort.",
       "endsOnLabel": "Eindigt op",
       "endsOnHint": "Laat leeg om de lijst te houden tot die wordt beëindigd.",
       "reasonLabel": "Reden",
@@ -120,6 +120,24 @@
       "provisa": "Toegewezen in Provisa",
       "default_assignment": "Standaardtoewijzing",
       "idp": "Identiteitsprovider"
+    },
+    "expiry": {
+      "heading": "Einddatums",
+      "none": "Geen einddatums: deze toewijzing duurt tot ze wordt beëindigd.",
+      "colEndsOn": "Eindigt op",
+      "colEnds": "Wat eindigt",
+      "colReason": "Reden",
+      "wholeGrant": "De hele toewijzing",
+      "everyCapability": "Elke mogelijkheid",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} overal",
+      "on": "{{what}} op {{entries}}",
+      "passed": "Verlopen",
+      "noReason": "—",
+      "extend": "Verlengen",
+      "extendPrompt": "Verplaats het einde van de lijst {{kind}}, nu {{date}}.",
+      "newDateLabel": "Nieuwe einddatum",
+      "newDateHint": "De items van de lijst blijven zoals ze zijn."
     }
   }
 }

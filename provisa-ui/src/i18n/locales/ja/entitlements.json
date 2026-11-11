@@ -62,7 +62,7 @@
       "kindLabel": "種類",
       "kindPlaceholder": "種類を選択",
       "entriesLabel": "エントリ",
-      "entriesHelp": "ロールが許可する範囲のうち、この人がアクセスできるもの。配下で何も選択せずに選んだドメインまたはテーブルは、そのすべてを含みます。空のリストはこの種類の何にもアクセスしません。",
+      "entriesHelp": "このロールが許可する範囲のうち、この人が利用できるもの。下位に何も選択されていないドメインまたはテーブルは、その配下のすべてを含みます。空のリストは、この種類のものを何も利用できません。",
       "endsOnLabel": "終了日",
       "endsOnHint": "空のままにすると、終了されるまでリストを維持します。",
       "reasonLabel": "理由",
@@ -120,6 +120,24 @@
       "provisa": "Provisa で割り当て",
       "default_assignment": "既定の割り当て",
       "idp": "ID プロバイダー"
+    },
+    "expiry": {
+      "heading": "終了日",
+      "none": "終了日なし: この割り当ては終了されるまで有効です。",
+      "colEndsOn": "終了日",
+      "colEnds": "終了するもの",
+      "colReason": "理由",
+      "wholeGrant": "割り当て全体",
+      "everyCapability": "すべての機能",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}}（すべての範囲）",
+      "on": "{{what}}（{{entries}}）",
+      "passed": "期限切れ",
+      "noReason": "—",
+      "extend": "延長",
+      "extendPrompt": "{{kind}}リストの終了日を変更します。現在は{{date}}です。",
+      "newDateLabel": "新しい終了日",
+      "newDateHint": "リストのエントリは変更されません。"
     }
   }
 }

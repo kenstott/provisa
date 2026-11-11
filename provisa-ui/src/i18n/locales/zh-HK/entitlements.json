@@ -62,7 +62,7 @@
       "kindLabel": "類型",
       "kindPlaceholder": "選擇類型",
       "entriesLabel": "項目",
-      "entriesHelp": "此人可在角色允許的範圍內存取的內容。選取某個網域或資料表而其下未選取任何內容時，即包含其全部內容。空白清單不能存取此類的任何內容。",
+      "entriesHelp": "此人可以存取角色所允許範圍內的哪些內容。選取某個域或表而其下未選取任何內容時，將包含其全部內容。空白清單不會存取此類的任何內容。",
       "endsOnLabel": "結束日期",
       "endsOnHint": "留空則保留該清單，直至將其結束。",
       "reasonLabel": "原因",
@@ -120,6 +120,24 @@
       "provisa": "在 Provisa 中指派",
       "default_assignment": "預設指派",
       "idp": "身分識別提供者"
+    },
+    "expiry": {
+      "heading": "結束日期",
+      "none": "無結束日期：此指派將持續至被結束為止。",
+      "colEndsOn": "結束日期",
+      "colEnds": "結束的內容",
+      "colReason": "原因",
+      "wholeGrant": "整個指派",
+      "everyCapability": "所有能力",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}}（全部範圍）",
+      "on": "{{what}}（{{entries}}）",
+      "passed": "已過期",
+      "noReason": "—",
+      "extend": "延期",
+      "extendPrompt": "調整{{kind}}清單的結束日期，目前為{{date}}。",
+      "newDateLabel": "新的結束日期",
+      "newDateHint": "清單中的項目保持不變。"
     }
   }
 }
