@@ -26941,3 +26941,15 @@ Maintainer 2026-11-11. With Provisa as the hub, a data product's ontology is par
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2239 · Admin UI {#REQ-2239}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+
+Maintainer 2026-11-11: consistency across the 2D diagrams has been hard to keep, so every 2D graph view (the ERD, the graph explorer's lane diagram, the ontology graph and any later one) is drawn by one component of Provisa's own, built on the existing graph library (cytoscape), and by nothing else. The component owns the library's setup, one prescriptive visual language (a node shape with a type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid canvas, one place for the controls and the legend, one hover and selection state), its layout presets, focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node's type and the layout preset; it sets no colour, shape or control of its own. The visual language takes its tokens from the detail cards. A test fails any code outside the component that imports the graph library or its layout extensions. No other 2D graph library is added; the 3D view and text diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
+
+**Code:** —
+
+**Tests:** —

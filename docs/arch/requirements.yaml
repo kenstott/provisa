@@ -94951,3 +94951,23 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     glossary to write into, carry each column''s grounded term through their own primitives -- a tag naming
     the term and the term''s definition in the column comment.'
   use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.
+- id: REQ-2239
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: semantic-model-erd-layouts
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-11: consistency across the 2D diagrams has been hard to keep, so every
+    2D graph view (the ERD, the graph explorer''s lane diagram, the ontology graph and any later one)
+    is drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and
+    by nothing else. The component owns the library''s setup, one prescriptive visual language (a node
+    shape with a type-coloured band, an icon and a two-line label, one edge style with arrows only where
+    direction carries meaning and dashes for pending or indirect, dashed tinted group boxes labelled on
+    their border, a dot-grid canvas, one place for the controls and the legend, one hover and selection
+    state), its layout presets, focus actions, saved layouts and export. A view supplies only its nodes,
+    edges, groups, each node''s type and the layout preset; it sets no colour, shape or control of its
+    own. The visual language takes its tokens from the detail cards. A test fails any code outside the
+    component that imports the graph library or its layout extensions. No other 2D graph library is added;
+    the 3D view and text diagrams (mermaid in Analyze) are not 2D graph views and keep their own.'
