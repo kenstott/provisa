@@ -106,7 +106,7 @@ function renderForm(over: { severalFirst?: boolean; registered?: string[] } = {}
   const suggestTableAlias = vi.fn(async (name: string) => `${name}_v`);
   const view = render(
     <RegisterTableForm
-      sources={[{ id: "pg", type: "postgresql", allowedDomains: [] } as never]}
+      sources={[{ id: "pg", type: "mysql", allowedDomains: [] } as never]}
       domainHints={["sales"]}
       domainAccess={["*"]}
       checkedDomains={new Set<string>()}

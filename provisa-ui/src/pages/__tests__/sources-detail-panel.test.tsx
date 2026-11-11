@@ -55,6 +55,7 @@ const source = (over: Partial<Source>): Source =>
     changeSignal: "ttl",
     mappingJson: null,
     passwordRef: "pw",
+    allowedDomains: [],
     ...over,
   }) as unknown as Source;
 
