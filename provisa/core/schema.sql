@@ -95,6 +95,7 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS producer_command JSONB;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_catalog TEXT;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_schema TEXT NOT NULL DEFAULT 'api_cache';
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS approval_hook BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;  -- a source Provisa runs for itself; not a target of Register table
 
 -- REQ-1695: the source's password as a SECRET REFERENCE. A literal typed into the Sources form is
 -- put into the org vault and what lands here is the ${secret:NAME} naming it; a reference the

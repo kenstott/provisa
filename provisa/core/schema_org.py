@@ -184,6 +184,7 @@ sources = Table(
     Column("cache_catalog", Text),
     Column("cache_schema", Text, nullable=False, server_default="api_cache"),
     Column("approval_hook", Boolean, nullable=False, server_default=false()),
+    Column("is_system", Boolean, nullable=False, server_default=false()),
 )
 
 domains = Table(

@@ -45,6 +45,7 @@ sources:
 - description: Great Expectations quality scans — each results table is one suite's per-check outcomes,
     kept across scans
   id: dq-checker
+  is_system: true
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
