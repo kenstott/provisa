@@ -94961,7 +94961,20 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (a join across sources, a replica build), the engine reads a code host by the first of these it can:
     Arrow Flight, then pgwire, and failing both the host''s tables are read as a replica. A statement reading
     one code source''s tables alone keeps going DIRECT to the host (REQ-2100), the governed statement in
-    and Arrow out.'
+    and Arrow out. (Amended 2026-11-11, ONE CONTRACT, A TREE OF CONNECTORS:) Maintainer 2026-11-11, so that
+    a long list of sources is credible: every connector derives from one source contract (the catalog of
+    tables, columns, types and descriptions; rows; what the source can be pushed; the values it requires;
+    how it signs in; in process or on a host -- the code resolver''s tags, REQ-2221). Code resolvers implement
+    that contract, one runtime per supported language (Node, Python, Go, Rust). The API resolvers -- OpenAPI
+    and REST, GraphQL, gRPC, OData -- are instances of code resolvers, each reading its API''s own description.
+    Every other connector descends from a code resolver or an API resolver: a branded connector is its connector.yaml
+    and small overrides on one of them, and a hand-built one is the exception. The one other root is the
+    SQL family, read by the serving engines natively; it is stated as such, not hidden. Each base has a
+    conformance suite every connector built on it inherits, so a branded connector''s own tests cover only
+    its configuration and overrides. Each named source has a page generated from its definition -- its base,
+    what it can be pushed, what it needs to connect, and when it was last verified live (or verified against
+    its base) -- never written by hand. The audit of every existing connector, naming the base it sits or
+    would sit on and what it needs from it, is the first step.'
 - id: REQ-2236
   status: proposed
   target: 2027-Q1
