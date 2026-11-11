@@ -58,6 +58,8 @@ class LandedTable:
     # the value is the assignment's reason, else the tag id itself.
     tags: tuple[tuple[str, str], ...] = ()
     column_tags: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
+    # Each column's grounded term (REQ-2238), by name: the term an agent may see by name.
+    column_terms: dict[str, str] = field(default_factory=dict)
 
     @property
     def identity(self) -> Identity:
@@ -95,6 +97,8 @@ class KeyTarget:
     # Steward classifications (REQ-1655), ``(tag id, value)`` on the object and per column.
     tags: tuple[tuple[str, str], ...] = ()
     column_tags: dict[str, tuple[tuple[str, str], ...]] | None = None
+    # Each column's grounded term name (REQ-2238), for a store that tags it.
+    column_terms: dict[str, str] | None = None
 
 
 @dataclass
@@ -256,6 +260,9 @@ def with_descriptions(
                     for c in row.get("columns") or []
                     if (c.get("description") or "").strip()
                 },
+                tags=table.tags,
+                column_tags=table.column_tags,
+                column_terms=table.column_terms,
             )
         )
     return out
@@ -297,6 +304,58 @@ def with_tags(
             column_descriptions=t.column_descriptions,
             tags=tuple(table_tags.get(t.identity, ())),
             column_tags={col: tuple(tags) for col, tags in column_tags.get(t.identity, {}).items()},
+            column_terms=t.column_terms,
+        )
+        for t in landed
+    ]
+
+
+def with_terms(landed: list[LandedTable], glossary: dict[str, Any]) -> list[LandedTable]:
+    """``landed`` with each column's grounded term (REQ-2238): the term holding the column, when an
+    agent may see it by name (``core.glossary.agent_view``) over what has landed. A term out of an
+    agent's sight, a hop, or one ``export_excluded`` names no column."""
+    from provisa.core.glossary import agent_view
+
+    here = {t.identity for t in landed}
+    refs = [
+        r
+        for r in glossary.get("refs", [])
+        if identity(r["source_id"], r["schema_name"], r["table_name"]) in here
+    ]
+    table_refs = [
+        r
+        for r in glossary.get("table_refs", [])
+        if identity(r["source_id"], r["schema_name"], r["table_name"]) in here
+    ]
+    roots = {r["term_id"] for r in refs} | {r["term_id"] for r in table_refs}
+    terms = glossary.get("terms", [])
+    view = agent_view(
+        terms,
+        [(e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in glossary.get("edges", [])],
+        roots,
+    )
+    names = {
+        term["id"]: term["name"]
+        for term in terms
+        if term["id"] in view.named and not term["export_excluded"]
+    }
+    by_table: dict[Identity, dict[str, str]] = {}
+    for r in sorted(refs, key=lambda r: r["term_id"]):
+        if r["term_id"] in names:
+            by_table.setdefault(identity(r["source_id"], r["schema_name"], r["table_name"]), {})[
+                r["column_name"]
+            ] = names[r["term_id"]]
+    return [
+        LandedTable(
+            t.source_id,
+            t.schema_name,
+            t.table_name,
+            t.primary_key,
+            description=t.description,
+            column_descriptions=t.column_descriptions,
+            tags=t.tags,
+            column_tags=t.column_tags,
+            column_terms=by_table.get(t.identity, {}),
         )
         for t in landed
     ]
@@ -320,6 +379,7 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
     """The plan for this deployment's landed tables -- keys AND descriptions -- read off the tenant
     registration tables and relationships."""
     from provisa.api.admin.db_queries import fetch_tables
+    from provisa.core.repositories import glossary as glossary_repo
     from provisa.core.repositories import relationship as relationship_repo
 
     tdb = getattr(state, "model_db", None)
@@ -327,6 +387,7 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
         return KeyPlan(tables={t.identity: t for t in landed})
     async with tdb.acquire() as conn:
         registered = await fetch_tables(conn)
+        glossary = await glossary_repo.export_graph(conn)
         relationships = await relationship_repo.list_all(conn)
     tables_by_id = {
         int(r["id"]): identity(r["source_id"], r["schema_name"], r["table_name"])
@@ -335,7 +396,9 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
     config = getattr(state, "config", None)
     assignments = list(getattr(config, "tag_assignments", None) or [])
     known = frozenset(t.id for t in (getattr(config, "tags", None) or []))
-    enriched = with_tags(with_descriptions(landed, registered), assignments, tables_by_id)
+    enriched = with_terms(
+        with_tags(with_descriptions(landed, registered), assignments, tables_by_id), glossary
+    )
     plan = key_plan(enriched, relationships, tables_by_id)
     plan.known_tags = known
     return plan
@@ -357,5 +420,6 @@ def plan_targets(plan: KeyPlan) -> dict[Identity, KeyTarget]:
             column_descriptions=dict(t.column_descriptions),
             tags=tuple(t.tags),
             column_tags=dict(t.column_tags),
+            column_terms=dict(t.column_terms),
         )
     return targets

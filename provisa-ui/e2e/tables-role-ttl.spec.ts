@@ -36,12 +36,22 @@ async function openPetsEditor(page: Page) {
   await page.getByTestId("role-ttl-field").waitFor({ state: "visible", timeout: 15000 });
 }
 
+// The save's own completion signal is the editor closing: the save button carries data-saving
+// while the mutation runs (commit, then the schema rebuild) and the form unmounts once it ends.
+// The wait is on that signal; this is only its ceiling. Measured chain (J509a, run 43039578650):
+// commit 3.4 s + rebuild 11.0 s = 14.4 s for the failing save, rebuild median 6.2 s, p90 12.4 s.
+// 45 s is about 3x that worst save, so a slow rebuild passes and a hung save still fails.
+const SAVE_CEILING_MS = 45_000;
+
 async function save(page: Page) {
-  await page.getByTestId("table-edit-save").click();
-  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+  const saveBtn = page.getByTestId("table-edit-save");
+  await saveBtn.click();
+  await expect(saveBtn).toBeHidden({ timeout: SAVE_CEILING_MS });
 }
 
 test("a table's role TTL list persists after reload", async ({ page }) => {
+  // Up to three saves at SAVE_CEILING_MS each, plus four editor loads.
+  test.setTimeout(240_000);
   await openPetsEditor(page);
   const field = page.getByTestId("role-ttl-field");
   // An attempt cut short (a timeout before its cleanup) leaves its row on the shared demo table:
