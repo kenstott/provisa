@@ -94907,3 +94907,36 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
+- id: REQ-2237
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11, from a comparison with Entropy Data. An ontology made outside Provisa
+    -- an Apache Ossie model, or an RDF/OWL file (Turtle, RDF/XML, N-Triples, JSON-LD), such as an industry
+    standard like FIBO -- can be imported. Importing is an alignment, not an attachment: its classes and
+    properties come in as curated terms with their definitions, and each is aligned with the terms Provisa
+    already derived from the model (synonym, kind of, part of, same entity), so the imported meaning grounds
+    through the model''s own columns and tables. Nothing is linked field by field; a term that aligns
+    with nothing stays a Concept until it does.'
+  use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
+    Provisa already knows.
+- id: REQ-2238
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-data-products
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11. With Provisa as the hub, a data product''s ontology is part of
+    the product from the start, so it leaves with the product: every export of a data product (its ODCS
+    contracts, its ODPS description, the metadata export to external catalogs, and an Apache Ossie export
+    of the terms it reaches) names each field''s grounded term, through the standard''s own reference
+    (ODCS authoritativeDefinitions of type semantics), so a consumer outside Provisa receives the provider''s
+    meaning and not only the schema. Only terms an agent may see are named: approved, or defined drafts
+    on an approved path.'
+  use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.

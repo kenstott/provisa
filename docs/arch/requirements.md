@@ -26913,3 +26913,31 @@ Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL's 
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2237 · Business Glossary & Ontology {#REQ-2237}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-11, from a comparison with Entropy Data. An ontology made outside Provisa -- an Apache Ossie model, or an RDF/OWL file (Turtle, RDF/XML, N-Triples, JSON-LD), such as an industry standard like FIBO -- can be imported. Importing is an alignment, not an attachment: its classes and properties come in as curated terms with their definitions, and each is aligned with the terms Provisa already derived from the model (synonym, kind of, part of, same entity), so the imported meaning grounds through the model's own columns and tables. Nothing is linked field by field; a term that aligns with nothing stays a Concept until it does.
+
+**Use case:** A bank loads FIBO and its customer, account and transaction concepts ground through the columns Provisa already knows.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2238 · Data Catalog Integration {#REQ-2238}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-11. With Provisa as the hub, a data product's ontology is part of the product from the start, so it leaves with the product: every export of a data product (its ODCS contracts, its ODPS description, the metadata export to external catalogs, and an Apache Ossie export of the terms it reaches) names each field's grounded term, through the standard's own reference (ODCS authoritativeDefinitions of type semantics), so a consumer outside Provisa receives the provider's meaning and not only the schema. Only terms an agent may see are named: approved, or defined drafts on an approved path.
+
+**Use case:** A consumer's catalog imports a Provisa product and shows each column's business term and definition.
+
+**Code:** —
+
+**Tests:** —
