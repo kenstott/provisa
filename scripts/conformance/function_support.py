@@ -3141,6 +3141,15 @@ def _primary(answer: dict[str, Any]) -> str:
     return answer["error"].split("\n", 1)[0]
 
 
+def _said(call_: Call, got: dict[str, Any]) -> dict[str, str]:
+    """A call Provisa failed: its statement, its error and, where it has one, its SQLSTATE, which
+    the polyfill check holds a refusal's grid row to (scripts/conformance/polyfill_check.py)."""
+    said = {"statement": call_.sql, "error": got["error"]}
+    if got.get("sqlstate"):
+        said["sqlstate"] = got["sqlstate"]
+    return said
+
+
 def _refusal_answer(
     call_: Call, want: dict[str, Any], got: dict[str, Any]
 ) -> tuple[str, dict[str, str]] | None:
@@ -3153,7 +3162,7 @@ def _refusal_answer(
         return "wrong", {"statement": call_.sql, "difference": difference}
     if got.get("sqlstate", "") == want.get("sqlstate", "") and _primary(got) == _primary(want):
         return None
-    said = {"statement": call_.sql, "error": got["error"]}
+    said = _said(call_, got)
     if function_probe.refused_by_name(got["error"]):
         return "named", said
     if got.get("sqlstate"):
@@ -3230,7 +3239,7 @@ def _measure_calls(
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
         got = _answer(provisa, call_)
         if not got["ok"]:
-            said = {"statement": call_.sql, "error": got["error"]}
+            said = _said(call_, got)
             group = decided_error(fn.name, got["error"])
             if group is not None:
                 decided.append(group)

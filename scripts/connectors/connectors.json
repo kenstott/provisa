@@ -1,0 +1,3222 @@
+{
+ "generated_from": "origin/main 3a2385fee9; REQ-2235 (726750e867)",
+ "lane_note": "Lanes are inferred from pytest markers in test files matched by name (scripts/ci/run_lane.py), not read from CI runs.",
+ "connectors": [
+  {
+   "name": "postgresql",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, clickhouse, pg); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_control_plane_postgresql_only.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/steps/steps_postgresql_deployment.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "mysql",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, clickhouse); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_mysql_discovery_binds_through_its_driver.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "mariadb",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_mariadb_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "singlestore",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/federation/test_singlestore_kafka.py",
+     "tests/unit/federation/test_singlestore_load_faces.py",
+     "tests/unit/federation/test_singlestore_pipeline.py",
+     "tests/unit/federation/test_singlestore_pipeline_build.py",
+     "tests/unit/test_singlestore_bulk_encoding.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_singlestore_bulk_load_e2e.py",
+     "tests/integration/test_singlestore_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "sqlserver",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_sqlserver_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "oracle",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/grpc_encoder/oracle.py",
+     "tests/unit/json_encoder/oracle.py",
+     "tests/unit/pgwire_encoder/oracle.py",
+     "tests/unit/test_oracle_driver_lobs.py"
+    ],
+    "bespoke_unit_total": 4,
+    "bespoke_integration": [
+     "tests/integration/test_oracle_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "firebird",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb)",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_firebird_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "duckdb",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb); direct driver",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "a .duckdb file path; attached in place by the DuckDB engine only",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_duckdb_source_introspection.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "not resolved",
+   "live_lane_basis": "name match mixes engine tests with the source type; not resolved by name",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "motherduck",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb)",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "database, MotherDuck token (secret); lands through its Postgres endpoint where the engine cannot attach",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_motherduck_duckdb_engine.py",
+     "tests/unit/test_motherduck_engine.py",
+     "tests/unit/test_motherduck_reader.py",
+     "tests/unit/test_pg_duckdb_motherduck_connector.py",
+     "tests/unit/test_pg_motherduck_attach.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_embedded_pg_duckdb_motherduck_e2e.py",
+     "tests/integration/test_motherduck_duckdb_e2e.py",
+     "tests/integration/test_motherduck_engine_store_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "saphana",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: no engine reach; direct driver",
+   "engine_reach": [],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, username, password (secret); a self-only landing engine (hana+hdbcli)",
+   "needs_from_base": "nothing to move; reach is driver-only or landing-only, so the page must say it is not engine-attached.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "jdbc",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: no engine reach; direct driver",
+   "engine_reach": [],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "JDBC URL, driver, username, password (secret); a read sends only what the driver takes",
+   "needs_from_base": "nothing to move; reach is driver-only or landing-only, so the page must say it is not engine-attached.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/jdbc_source/test_jdbc_source.py",
+     "tests/unit/jdbc_source/test_jdbc_source_attach.py",
+     "tests/unit/jdbc_source/test_jdbc_source_detect.py",
+     "tests/unit/jdbc_source/test_jdbc_source_floor.py",
+     "tests/unit/test_jdbc_driver_admin_queries.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_jdbc_driver_e2e.py",
+     "tests/integration/test_jdbc_introspection_pgwire.py",
+     "tests/integration/test_jdbc_source_attach_e2e.py",
+     "tests/integration/test_jdbc_source_e2e.py",
+     "tests/integration/test_jdbc_source_jar_e2e.py",
+     "tests/steps/steps_jdbc_odbc_integration.py"
+    ],
+    "bespoke_integration_total": 6
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "cockroachdb",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_cockroachdb_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "yugabytedb",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_yugabytedb_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "greenplum",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_greenplum_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "tidb",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_tidb_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "snowflake",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, pg); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "pg"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "account, warehouse, database, username, credential (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_duckdb_snowflake_driver_path.py",
+     "tests/unit/test_pg_duckdb_snowflake_iceberg_connector.py",
+     "tests/unit/test_snowflake_connectors.py",
+     "tests/unit/test_snowflake_dynamic_tables.py",
+     "tests/unit/test_snowflake_horizon_export.py",
+     "tests/unit/test_snowflake_runtime_ddl_results.py",
+     "tests/unit/test_snowflake_store.py",
+     "tests/unit/test_snowflake_values_are_data.py"
+    ],
+    "bespoke_unit_total": 8,
+    "bespoke_integration": [
+     "tests/integration/snowflake_warehouse.py",
+     "tests/integration/test_metadata_export_snowflake_horizon_e2e.py",
+     "tests/integration/test_replica_target_snowflake.py",
+     "tests/integration/test_snowflake_dynamic_tables_e2e.py",
+     "tests/integration/test_snowflake_federation_engine_e2e.py",
+     "tests/integration/test_snowflake_source_e2e.py",
+     "tests/steps/steps_snowflake_first_class_engine.py"
+    ],
+    "bespoke_integration_total": 7
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "bigquery",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, pg); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "pg"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "project, dataset, service-account credential (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_bigquery_connectors.py",
+     "tests/unit/test_bigquery_store.py",
+     "tests/unit/test_bigquery_write_stream_open.py",
+     "tests/unit/test_pg_duckdb_bigquery_iceberg_connector.py"
+    ],
+    "bespoke_unit_total": 4,
+    "bespoke_integration": [
+     "tests/integration/test_bigquery_federation_engine_e2e.py",
+     "tests/integration/test_replica_target_bigquery.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "databricks",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, pg); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "pg"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, HTTP path, token (secret) or service principal",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/federation/test_databricks_in_place_reach.py",
+     "tests/unit/test_databricks_connectors.py",
+     "tests/unit/test_databricks_iceberg_resolver.py",
+     "tests/unit/test_databricks_location_cleanup.py",
+     "tests/unit/test_databricks_store.py",
+     "tests/unit/test_databricks_uc_covering.py",
+     "tests/unit/test_pg_duckdb_databricks_iceberg_connector.py"
+    ],
+    "bespoke_unit_total": 7,
+    "bespoke_integration": [
+     "tests/integration/databricks_uc.py",
+     "tests/integration/databricks_warehouse.py",
+     "tests/integration/test_databricks_external_link_e2e.py",
+     "tests/integration/test_databricks_federation_engine_e2e.py",
+     "tests/integration/test_databricks_source_e2e.py",
+     "tests/integration/test_replica_target_databricks.py",
+     "tests/steps/steps_databricks_arrow_writes.py"
+    ],
+    "bespoke_integration_total": 7
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "fabric",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb); direct driver",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, database, Microsoft Entra service principal (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_fabric_capacity.py",
+     "tests/unit/test_fabric_capacity_paused.py",
+     "tests/unit/test_fabric_connection_name.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [
+     "tests/integration/fabric_capacity.py",
+     "tests/integration/fabric_external_link.py",
+     "tests/integration/test_fabric_federation_engine_e2e.py",
+     "tests/steps/steps_fabric_iceberg_live_attach.py"
+    ],
+    "bespoke_integration_total": 4
+   },
+   "live_lane": "none in CI (maintainer-tenant live test, excluded by run_lane.py)",
+   "live_lane_basis": "markers requires_fabric",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "synapse",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb); direct driver",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, database, Microsoft Entra service principal (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/synapse_provision.py",
+     "tests/integration/test_synapse_federation_engine_e2e.py",
+     "tests/integration/test_synapse_pipeline_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "redshift",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_redshift_test_rules.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/redshift_cluster.py",
+     "tests/integration/test_redshift_pipeline_e2e.py",
+     "tests/integration/test_redshift_source_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "athena",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: no engine reach; direct driver",
+   "engine_reach": [],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "region, S3 output bucket, AWS credential (secret)",
+   "needs_from_base": "nothing to move; reach is driver-only or landing-only, so the page must say it is not engine-attached.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_athena_source.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_athena_pipeline_e2e.py",
+     "tests/integration/test_athena_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "athena (on demand, live account)",
+   "live_lane_basis": "marker requires_athena",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "trino",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: no engine reach; direct driver",
+   "engine_reach": [],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, catalog, username; direct SQLAlchemy driver",
+   "needs_from_base": "nothing to move; reach is driver-only or landing-only, so the page must say it is not engine-attached.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "not resolved",
+   "live_lane_basis": "name match mixes the Trino engine suite with the trino source type; not resolved by name",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "clickhouse",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/federation/test_duckdb_clickhouse_http_scan.py",
+     "tests/unit/federation/test_replica_target_clickhouse.py",
+     "tests/unit/test_clickhouse_bound_values.py",
+     "tests/unit/test_clickhouse_connectors.py",
+     "tests/unit/test_clickhouse_driver_params.py",
+     "tests/unit/test_clickhouse_empty_result_columns.py",
+     "tests/unit/test_clickhouse_pgwire_connectors.py",
+     "tests/unit/test_pg_clickhouse_fdw_connector.py",
+     "tests/unit/test_trino_clickhouse_catalog.py"
+    ],
+    "bespoke_unit_total": 9,
+    "bespoke_integration": [
+     "tests/integration/test_clickhouse_engine_attach_names_per_org.py",
+     "tests/integration/test_clickhouse_runtime_e2e.py",
+     "tests/integration/test_clickhouse_source_e2e.py",
+     "tests/integration/test_duckdb_clickhouse_http_e2e.py",
+     "tests/integration/test_embedded_pg_clickhouse_fdw_e2e.py",
+     "tests/integration/test_pg_engine_nested_read_clickhouse_e2e.py",
+     "tests/integration/test_replica_target_clickhouse_server.py",
+     "tests/integration/test_trino_clickhouse_catalog_e2e.py",
+     "tests/steps/steps_clickhouse_arrow_transport.py",
+     "tests/steps/steps_clickhouse_federation_engine.py"
+    ],
+    "bespoke_integration_total": 10
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "exasol",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (trino); direct driver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, database, username, password (secret)",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_hive_exasol_drivers.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_exasol_direct_driver_e2e.py",
+     "tests/integration/test_exasol_pipeline_e2e.py",
+     "tests/integration/test_exasol_source_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "hiveserver2",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: no engine reach; direct driver",
+   "engine_reach": [],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "host, port, username; a direct driver (impyla), no engine catalog",
+   "needs_from_base": "nothing to move; reach is driver-only or landing-only, so the page must say it is not engine-attached.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_hive_direct_driver_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "not resolved",
+   "live_lane_basis": "its integration file was found by alias; lane marker not read",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "sqlite",
+   "kind": "sql-database",
+   "base": "sql-family",
+   "base_detail": "database or warehouse",
+   "today": "SQL family: engine attach/scan (duckdb, trino, clickhouse); direct driver",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse"
+   ],
+   "pushdown": "SQL (dialect-transpiled); filters, joins, aggregates, limit go to the source, per the dialect capability list",
+   "required_values": "a file path; attached in place (DuckDB) or landed through SQLAlchemy",
+   "needs_from_base": "nothing to move: it is the root. To list: a stated per-type pushdown summary and a base conformance mark.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_duckdb_sqlite_source_e2e.py",
+     "tests/integration/test_embedded_pg_sqlite_fdw_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "csv",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read file (duckdb, trino, clickhouse, pg)",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "path or object-store URL",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_file_source_adapter.py",
+     "tests/unit/test_file_source_locations.py",
+     "tests/unit/test_file_source_replica_build.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none named for it (file-source unit tests only; csv/parquet are exercised inside other e2e files, not resolved)",
+   "live_lane_basis": "no integration file named for it",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "parquet",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read file (duckdb, trino, clickhouse, pg)",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "path or object-store URL",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_file_source_adapter.py",
+     "tests/unit/test_file_source_locations.py",
+     "tests/unit/test_file_source_replica_build.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none named for it (file-source unit tests only; csv/parquet are exercised inside other e2e files, not resolved)",
+   "live_lane_basis": "no integration file named for it",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "files",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read file set (duckdb, trino, clickhouse, pg)",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "storage type, path or glob, credential (secret) for object storage",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/federation/test_memory_store_no_files.py",
+     "tests/unit/test_declared_org_files.py",
+     "tests/unit/test_duckdb_files_connector.py",
+     "tests/unit/test_env_files.py",
+     "tests/unit/test_env_source_files.py",
+     "tests/unit/test_files_glob.py",
+     "tests/unit/test_files_tables_listed_by_server.py",
+     "tests/unit/test_org_files.py",
+     "tests/unit/test_trino_catalog_files.py"
+    ],
+    "bespoke_unit_total": 9,
+    "bespoke_integration": [
+     "tests/integration/test_files_demo.py",
+     "tests/integration/test_files_pgwire_replica.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "delta_lake",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read lake (duckdb, trino, clickhouse, pg)",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "table location, storage credential (secret)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_delta_config.py",
+     "tests/unit/test_duckdb_delta_connector.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_duckdb_delta_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "not resolved",
+   "live_lane_basis": "its integration file was found by alias; lane marker not read",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "iceberg",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read lake (duckdb, trino, clickhouse, pg)",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "catalog or table location, storage credential (secret)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_bitemporal_iceberg.py",
+     "tests/unit/test_databricks_iceberg_resolver.py",
+     "tests/unit/test_duckdb_iceberg_connector.py",
+     "tests/unit/test_pg_duckdb_bigquery_iceberg_connector.py",
+     "tests/unit/test_pg_duckdb_databricks_iceberg_connector.py",
+     "tests/unit/test_pg_duckdb_iceberg_connector.py",
+     "tests/unit/test_pg_duckdb_snowflake_iceberg_connector.py"
+    ],
+    "bespoke_unit_total": 7,
+    "bespoke_integration": [
+     "tests/integration/test_embedded_pg_duckdb_iceberg_e2e.py",
+     "tests/integration/test_profiler_iceberg_block_sample_e2e.py",
+     "tests/steps/steps_fabric_iceberg_live_attach.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "hive",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read lake (trino)",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "metastore URI, storage backend (mapping.storage)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_hive_pipeline_e2e.py",
+     "tests/integration/test_hive_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "not resolved",
+   "live_lane_basis": "hive lake tests carry the hive container marker; lane not read",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "hive_s3",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read lake (trino)",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "metastore URI, S3 location, credential (secret)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_hive_s3_pipeline_e2e.py",
+     "tests/integration/test_hive_s3_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "hive_s3 (container)",
+   "live_lane_basis": "marker requires_hive_s3",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "airport",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read Arrow Flight server (duckdb)",
+   "engine_reach": [
+    "duckdb"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "Flight endpoint, credential (secret)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_airport_credential.py",
+     "tests/unit/test_airport_streaming_terminal.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_airport_credential_e2e.py",
+     "tests/integration/test_airport_service_e2e.py",
+     "tests/integration/test_airport_source_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "google_sheets",
+   "kind": "file-or-lake",
+   "base": "sql-family",
+   "base_detail": "files and lakes",
+   "today": "SQL family: engine-read spreadsheet (duckdb, trino); landed by events/sheets_reader.py where the engine has no gsheets extension",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "engine scans the file or table; filters and projection pushed by the engine's scan, no source-side SQL",
+   "required_values": "spreadsheet id, Google credential (secret)",
+   "needs_from_base": "nothing to move; the engines read it natively.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_google_sheets_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "mongodb",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (duckdb, trino, clickhouse) with a per-type adapter in provisa/mongodb/source.py; Trino/DuckDB read it natively, path columns resolved by the connector",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "connection URI or host/port, database, credential (secret)",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_mongodb_connection_string.py",
+     "tests/unit/test_mongodb_discovery.py",
+     "tests/unit/test_mongodb_pipeline_commands.py",
+     "tests/unit/test_mongodb_pipeline_tables.py"
+    ],
+    "bespoke_unit_total": 4,
+    "bespoke_integration": [
+     "tests/integration/test_mongodb_change_feed_deployment.py",
+     "tests/integration/test_mongodb_change_stream_replica_e2e.py",
+     "tests/integration/test_mongodb_pipeline_e2e.py",
+     "tests/integration/test_mongodb_pipeline_tables_e2e.py",
+     "tests/integration/test_row_level_filter_mongodb_e2e.py"
+    ],
+    "bespoke_integration_total": 5
+   },
+   "live_lane": "datastores (container)",
+   "live_lane_basis": "datastore marker",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "cassandra",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/cassandra/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "hosts, keyspace, credential (secret)",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_cassandra_fetch.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_cassandra_native_fetch.py",
+     "tests/integration/test_cassandra_pipeline_e2e.py",
+     "tests/integration/test_cassandra_source_e2e.py",
+     "tests/steps/steps_cassandra_connector.py"
+    ],
+    "bespoke_integration_total": 4
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "redis",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/redis/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "host, port, key-to-table mapping (DSL)",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_cache_regions_share_one_redis.py",
+     "tests/unit/test_redis_factory.py",
+     "tests/unit/test_redis_fetch.py",
+     "tests/unit/test_redis_on_engine_shard.py",
+     "tests/unit/test_redis_source.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_redis_native_fetch.py",
+     "tests/integration/test_redis_pipeline_e2e.py",
+     "tests/steps/steps_hot_tables_redis_cached_lookups.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "elasticsearch",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/elasticsearch/source.py; Trino/DuckDB read it natively, path columns resolved by the connector",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "host, port, index-to-table mapping (DSL), credential (secret)",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_elasticsearch_fetch.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_demo_stores_elasticsearch.py",
+     "tests/integration/test_elasticsearch_introspect.py",
+     "tests/integration/test_elasticsearch_native_fetch.py",
+     "tests/integration/test_elasticsearch_native_search_e2e.py",
+     "tests/integration/test_elasticsearch_pipeline_e2e.py"
+    ],
+    "bespoke_integration_total": 5
+   },
+   "live_lane": "datastores (container)",
+   "live_lane_basis": "datastore marker",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "pinot",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/pinot/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "broker and controller URLs",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_pinot_pipeline_e2e.py",
+     "tests/integration/test_pinot_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "druid",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/druid/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "broker URL, credential",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_druid_pipeline_e2e.py",
+     "tests/integration/test_druid_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "prometheus",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/prometheus/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "server URL, metric-to-table mapping (DSL)",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_prometheus_fetch.py",
+     "tests/unit/test_prometheus_source.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_prometheus_native_fetch.py",
+     "tests/integration/test_prometheus_pipeline_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "datastores (container)",
+   "live_lane_basis": "datastore marker",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "kafka",
+   "kind": "engine-native-nosql",
+   "base": "sql-family",
+   "base_detail": "engine-native non-SQL store",
+   "today": "Engine catalog connector (trino) with a per-type adapter in provisa/kafka/source.py; Trino/DuckDB read it natively, path columns as the adapter maps them",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "what the engine connector pushes (equality/range on keys, limit); the rest is applied by the engine",
+   "required_values": "brokers, topic-to-table mapping, schema registry",
+   "needs_from_base": "BOUNDARY CASE: native to an engine, but not SQL. Stays here unless the maintainer wants non-SQL stores under the code resolver (open question 1).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/federation/test_singlestore_kafka.py",
+     "tests/unit/test_kafka_change_events.py",
+     "tests/unit/test_kafka_client_secret_file.py",
+     "tests/unit/test_kafka_fetch.py",
+     "tests/unit/test_kafka_landing_per_org.py",
+     "tests/unit/test_kafka_landing_time.py",
+     "tests/unit/test_kafka_listener_resume.py",
+     "tests/unit/test_kafka_on_engine_shard.py",
+     "tests/unit/test_kafka_producer.py",
+     "tests/unit/test_kafka_provider.py",
+     "tests/unit/test_kafka_publish_rows.py",
+     "tests/unit/test_kafka_sample_to_end_offset.py"
+    ],
+    "bespoke_unit_total": 15,
+    "bespoke_integration": [
+     "tests/e2e/test_kafka_flow.py",
+     "tests/integration/test_change_events_kafka_e2e.py",
+     "tests/integration/test_kafka_pipeline_e2e.py",
+     "tests/integration/test_kafka_publish.py",
+     "tests/integration/test_kafka_sasl_ssl.py",
+     "tests/integration/test_kafka_source.py",
+     "tests/steps/steps_kafka_sources.py"
+    ],
+    "bespoke_integration_total": 7
+   },
+   "live_lane": "kafka (container)",
+   "live_lane_basis": "marker requires_kafka",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "node",
+   "kind": "code-resolver",
+   "base": "code-resolver",
+   "base_detail": "Node (Bun, Deno)",
+   "today": "Code resolver, Node (Bun, Deno): @table/@command/@stream tags, dev mode in a sandboxed worker or built mode on a host over pgwire (REQ-2098, REQ-2100, REQ-2221)",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "the code's own: a plan declares complete-dataset reads (federation/connector_contract.py; codesource.proxy implements it for a code source)",
+   "required_values": "@requires NAME or NAME:secret, declared by the code; sign-in via the code's own tags",
+   "needs_from_base": "This is the base. It needs the source contract written once, with the conformance suite and the page generator reading its tags.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_code_remote_host_node.py",
+     "tests/unit/test_cypher_api_node_columns.py",
+     "tests/unit/test_cypher_node_properties.py",
+     "tests/unit/test_cypher_rebound_node_patterns.py",
+     "tests/unit/test_cypher_union_node_columns.py",
+     "tests/unit/test_cypher_union_node_values.py",
+     "tests/unit/test_cypher_unlabelled_node_value.py",
+     "tests/unit/test_live_table_signal_node.py",
+     "tests/unit/test_node_host_argument_sets.py",
+     "tests/unit/test_node_install.py"
+    ],
+    "bespoke_unit_total": 10,
+    "bespoke_integration": [
+     "tests/integration/test_node_reader.py",
+     "tests/integration/test_node_worker.py",
+     "tests/integration/test_render_graph_node_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "python",
+   "kind": "code-resolver",
+   "base": "code-resolver",
+   "base_detail": "Python",
+   "today": "Code resolver, Python: @table/@command/@stream tags, dev mode in a sandboxed worker or built mode on a host over pgwire (REQ-2098, REQ-2100, REQ-2221)",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "the code's own: a plan declares complete-dataset reads (federation/connector_contract.py; codesource.proxy implements it for a code source)",
+   "required_values": "@requires NAME or NAME:secret, declared by the code; sign-in via the code's own tags",
+   "needs_from_base": "This is the base. It needs the source contract written once, with the conformance suite and the page generator reading its tags.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/grpc_encoder/python_ref.py",
+     "tests/unit/json_encoder/python_ref.py",
+     "tests/unit/pgwire_encoder/python_ref.py",
+     "tests/unit/test_code_services_module_python.py",
+     "tests/unit/test_python_install.py",
+     "tests/unit/test_python_source.py"
+    ],
+    "bespoke_unit_total": 6,
+    "bespoke_integration": [
+     "tests/integration/test_python_worker.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "go",
+   "kind": "code-resolver",
+   "base": "code-resolver",
+   "base_detail": "Go",
+   "today": "Code resolver, Go: @table/@command/@stream tags, dev mode in a sandboxed worker or built mode on a host over pgwire (REQ-2098, REQ-2100, REQ-2221)",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "the code's own: a plan declares complete-dataset reads (federation/connector_contract.py; codesource.proxy implements it for a code source)",
+   "required_values": "@requires NAME or NAME:secret, declared by the code; sign-in via the code's own tags",
+   "needs_from_base": "This is the base. It needs the source contract written once, with the conformance suite and the page generator reading its tags.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_go_host.py",
+     "tests/unit/test_go_install.py",
+     "tests/unit/test_go_source.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [
+     "tests/integration/test_code_services_contract_go.py",
+     "tests/integration/test_go_install_live.py",
+     "tests/integration/test_go_worker.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "rust",
+   "kind": "code-resolver",
+   "base": "code-resolver",
+   "base_detail": "Rust",
+   "today": "Code resolver, Rust: @table/@command/@stream tags, dev mode in a sandboxed worker or built mode on a host over pgwire (REQ-2098, REQ-2100, REQ-2221)",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "the code's own: a plan declares complete-dataset reads (federation/connector_contract.py; codesource.proxy implements it for a code source)",
+   "required_values": "@requires NAME or NAME:secret, declared by the code; sign-in via the code's own tags",
+   "needs_from_base": "This is the base. It needs the source contract written once, with the conformance suite and the page generator reading its tags.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [
+     "tests/unit/test_rust_image_linker.py",
+     "tests/unit/test_rust_install.py",
+     "tests/unit/test_rust_source.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [
+     "tests/integration/test_rust_worker.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "spark",
+   "kind": "branded-connector",
+   "base": "code-resolver",
+   "base_detail": "branded on Python",
+   "today": "connectors/spark/connector.yaml plus provisa_spark (pyspark-client); built by `provisa connector build` (REQ-2221, REQ-2225)",
+   "engine_reach": [],
+   "pushdown": "the script's own @table/@stream; the script runs on the cluster",
+   "required_values": "script (multiline); settings.replicate default 0",
+   "needs_from_base": "nothing; it is the model branded connector.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_spark_connector_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "Spark Connect server in a container",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "openapi",
+   "kind": "api-resolver",
+   "base": "api-resolver-openapi",
+   "base_detail": "OpenAPI/REST base",
+   "today": "Hand-written generic source (provisa/openapi, provisa/api_source): spec to tables and commands, paging, replica-only. NOT yet an instance of the code resolver",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "parameters a list operation declares; everything else is applied after the read; always a replica",
+   "required_values": "spec URL or pinned brand, auth (bearer, header, OAuth grants), paging per list operation",
+   "needs_from_base": "Becomes an instance of the Python or Node code resolver, emitting the source contract (catalog, rows, pushdown, @requires, @login) from the spec. Today it implements its own loader, mapper and executor.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_openapi_brand_source.py",
+     "tests/unit/test_openapi_declared_columns.py",
+     "tests/unit/test_openapi_endpoint_registration.py",
+     "tests/unit/test_openapi_exclusions.py",
+     "tests/unit/test_openapi_loader.py",
+     "tests/unit/test_openapi_map_response_columns.py",
+     "tests/unit/test_openapi_mapper.py",
+     "tests/unit/test_openapi_spec.py",
+     "tests/unit/test_openapi_untyped_body.py"
+    ],
+    "bespoke_unit_total": 9,
+    "bespoke_integration": [
+     "tests/integration/test_openapi_pet_by_status.py",
+     "tests/integration/test_openapi_source.py",
+     "tests/integration/test_openapi_spec.py",
+     "tests/steps/steps_openapi_auto_registration_connector.py"
+    ],
+    "bespoke_integration_total": 4
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "graphql_remote",
+   "kind": "api-resolver",
+   "base": "api-resolver-graphql",
+   "base_detail": "GraphQL base",
+   "today": "Hand-written generic source (provisa/graphql_remote): introspection, mapper, executor, by-keys fetch; replica-only. NOT yet a code-resolver instance",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "arguments the schema declares and fetch by keys; the rest applied after the read",
+   "required_values": "endpoint URL, auth header or token",
+   "needs_from_base": "Same as OpenAPI: re-express introspection and the mapper as a code-resolver instance behind the source contract.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_graphql_remote_by_keys.py",
+     "tests/unit/test_graphql_remote_github_registration.py",
+     "tests/unit/test_graphql_remote_introspect.py",
+     "tests/unit/test_graphql_remote_mapper.py",
+     "tests/unit/test_graphql_remote_overrides_requirements.py",
+     "tests/unit/test_graphql_remote_relationship_columns.py",
+     "tests/unit/test_graphql_remote_relationship_table_names.py",
+     "tests/unit/test_graphql_remote_relay.py",
+     "tests/unit/test_graphql_remote_table_shaping.py",
+     "tests/unit/test_graphql_remote_update_table_columns.py",
+     "tests/unit/test_graphql_remote_url_reference.py"
+    ],
+    "bespoke_unit_total": 11,
+    "bespoke_integration": [
+     "tests/integration/test_graphql_remote_integration.py",
+     "tests/integration/test_graphql_remote_row_materialize.py",
+     "tests/integration/test_graphql_remote_source.py",
+     "tests/steps/steps_graphql_remote_schema_connector_req_307_313.py"
+    ],
+    "bespoke_integration_total": 4
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "grpc_remote",
+   "kind": "api-resolver",
+   "base": "api-resolver-grpc",
+   "base_detail": "gRPC base",
+   "today": "Hand-written generic source (provisa/grpc_remote, provisa/source_adapters/grpc_remote_adapter.py, grpc_remote_contract.py); the only source with an adapter-contract module",
+   "engine_reach": [],
+   "pushdown": "the RPC's request fields; the rest applied after the read",
+   "required_values": "server address, TLS, proto descriptor or reflection",
+   "needs_from_base": "Same: instance of a code resolver reading the proto; the adapter contract file is a ready seed for the source contract.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_grpc_remote_cache.py",
+     "tests/unit/test_grpc_remote_loader.py",
+     "tests/unit/test_grpc_remote_mapper.py",
+     "tests/unit/test_grpc_remote_stubs.py"
+    ],
+    "bespoke_unit_total": 4,
+    "bespoke_integration": [
+     "tests/steps/steps_grpc_remote_schema_connector_req_322_329.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "odata",
+   "kind": "api-resolver",
+   "base": "api-resolver-odata",
+   "base_detail": "OData base (absent)",
+   "today": "DOES NOT EXIST as a source. provisa/api/odata is the OData FRONT door Provisa serves, not a source it reads",
+   "engine_reach": [],
+   "pushdown": "n/a",
+   "required_values": "n/a",
+   "needs_from_base": "Build it: an OData resolver reading $metadata (CSDL) and pushing $filter/$select/$top. Microsoft Graph (sharepoint, microsoft_365) is the first customer.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "n/a",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "brand:stripe",
+   "kind": "branded-connector",
+   "base": "api-resolver-openapi",
+   "base_detail": "branded on OpenAPI",
+   "today": "Stripe brand in Python (provisa/openapi/brands.py): pinned OpenAPI spec (provisa/openapi/_known_specs/stripe.json.gz) + auth + version header (REQ-1923). Not a connector.yaml yet",
+   "engine_reach": [],
+   "pushdown": "inherited from the base",
+   "required_values": "credential (token); nothing else",
+   "needs_from_base": "Move the brand to a connector.yaml (REQ-1923 -> REQ-2235); brands.py becomes data. The SourceType enum entry for stripe is a stub beside the brand.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "brand:github",
+   "kind": "branded-connector",
+   "base": "api-resolver-graphql",
+   "base_detail": "branded on GraphQL",
+   "today": "GitHub brand in Python (provisa/graphql_remote/brands.py): baked schema (graphql_remote/_known_schemas/github.json.gz) (REQ-1923). Not a connector.yaml yet",
+   "engine_reach": [],
+   "pushdown": "inherited from the base",
+   "required_values": "credential (token); nothing else",
+   "needs_from_base": "Move the brand to a connector.yaml (REQ-1923 -> REQ-2235); brands.py becomes data. The SourceType enum entry for github does not exist (brand id only).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_graphql_remote_github_registration.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "brand:gitlab",
+   "kind": "branded-connector",
+   "base": "api-resolver-graphql",
+   "base_detail": "branded on GraphQL",
+   "today": "GitLab brand in Python (provisa/graphql_remote/brands.py): baked schema (gitlab.json.gz) (REQ-1923). Not a connector.yaml yet",
+   "engine_reach": [],
+   "pushdown": "inherited from the base",
+   "required_values": "credential (token); nothing else",
+   "needs_from_base": "Move the brand to a connector.yaml (REQ-1923 -> REQ-2235); brands.py becomes data. The SourceType enum entry for gitlab does not exist (brand id only).",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "brand:shopify",
+   "kind": "branded-connector",
+   "base": "api-resolver-graphql",
+   "base_detail": "branded on GraphQL",
+   "today": "Shopify brand in Python (provisa/graphql_remote/brands.py): baked schema (shopify.json.gz); per-store endpoint and API version (REQ-1923). Not a connector.yaml yet",
+   "engine_reach": [],
+   "pushdown": "inherited from the base",
+   "required_values": "credential (token); store URL",
+   "needs_from_base": "Move the brand to a connector.yaml (REQ-1923 -> REQ-2235); brands.py becomes data. The SourceType enum entry for shopify is a stub beside the brand.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_graphql_brand_shopify.py",
+     "tests/unit/test_shopify_setup_saved_and_reloaded.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_shopify_source_live_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "none in CI (maintainer-tenant live test, excluded by run_lane.py)",
+   "live_lane_basis": "markers requires_shopify",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "sharepoint",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Microsoft Graph via a Calcite adapter behind pgwire (federation/pgwire_replica, TrinoSharepointConnector). Needs Java adapter and OData-shaped Graph.",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OData resolver (Graph). Reason hand-built: adapter-in-Java; no OData resolver exists.",
+   "hand_built_reason": "adapter-in-Java; no OData resolver exists",
+   "candidate_base": "OData resolver (Graph)",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_sharepoint_connector.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_sharepoint_duckdb_attach.py",
+     "tests/integration/test_sharepoint_source_e2e.py",
+     "tests/steps/steps_sharepoint_connector.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "salesforce",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Salesforce via a Calcite adapter behind pgwire; SOQL pushdown verified live; writes through pgwire (REQ-1946).",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI resolver (Salesforce publishes REST specs) or Python code resolver. Reason hand-built: logic is SOQL translation in a Java adapter.",
+   "hand_built_reason": "logic is SOQL translation in a Java adapter",
+   "candidate_base": "OpenAPI resolver (Salesforce publishes REST specs) or Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_salesforce_connector.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_salesforce_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "salesforce (on demand, live Salesforce org)",
+   "live_lane_basis": "marker requires_salesforce",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "servicenow",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "ServiceNow Table API via a Calcite adapter behind pgwire (REQ-1954); provisa/openapi/servicenow.py already reads the instance's own OpenAPI documents.",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI resolver (instance publishes OAS3). Reason hand-built: Table API adapter is Java; the OpenAPI reader exists beside it, so the two overlap.",
+   "hand_built_reason": "Table API adapter is Java; the OpenAPI reader exists beside it, so the two overlap",
+   "candidate_base": "OpenAPI resolver (instance publishes OAS3)",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_servicenow_apis.py",
+     "tests/unit/test_servicenow_companion.py",
+     "tests/unit/test_servicenow_connector.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [
+     "tests/integration/test_servicenow_pipeline_e2e.py",
+     "tests/integration/test_servicenow_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "servicenow (on demand, live instance)",
+   "live_lane_basis": "marker requires_servicenow",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "jira",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Jira Cloud via a Calcite adapter (module jira), forms as tables, JQL pushed down (REQ-2069).",
+   "engine_reach": [
+    "duckdb",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI resolver (Atlassian publishes a spec); forms are a source-specific catalog. Reason hand-built: a table is a form (project + issue type); catalog logic is Jira-specific.",
+   "hand_built_reason": "a table is a form (project + issue type); catalog logic is Jira-specific",
+   "candidate_base": "OpenAPI resolver (Atlassian publishes a spec); forms are a source-specific catalog",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_jira_connector.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "splunk",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Splunk via a Calcite adapter behind pgwire (REQ-1730).",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI/REST resolver or Python code resolver. Reason hand-built: SPL pushdown in a Java adapter.",
+   "hand_built_reason": "SPL pushdown in a Java adapter",
+   "candidate_base": "OpenAPI/REST resolver or Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_splunk_connector.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_splunk_duckdb_attach.py",
+     "tests/integration/test_splunk_pipeline_e2e.py",
+     "tests/integration/test_splunk_source_e2e.py",
+     "tests/steps/steps_splunk_connector.py"
+    ],
+    "bespoke_integration_total": 4
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "cloudops",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Azure, AWS, GCP resource inventory through the clouds' SDKs behind pgwire (REQ-1947), read only.",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Python code resolver (three SDKs). Reason hand-built: three SDKs, one catalog; no API description to read.",
+   "hand_built_reason": "three SDKs, one catalog; no API description to read",
+   "candidate_base": "Python code resolver (three SDKs)",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_cloudops_connector.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_cloudops_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "govdata",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "AskAmerica (REQ-540), Calcite adapter behind pgwire, Trino read behind TRINO_READS_PGWIRE_ADAPTER_LIVE.",
+   "engine_reach": [
+    "duckdb",
+    "trino",
+    "clickhouse",
+    "pg"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Python code resolver or OpenAPI. Reason hand-built: single vendor API; adapter in Java.",
+   "hand_built_reason": "single vendor API; adapter in Java",
+   "candidate_base": "Python code resolver or OpenAPI",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_govdata_subject_schemas.py",
+     "tests/unit/test_govdata_subjects.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_govdata_source.py",
+     "tests/integration/test_govdata_trino_source_e2e.py",
+     "tests/steps/steps_govdata_sources.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "google_workspace",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Mail, calendar, tasks through Google APIs; landing (mail_landing.py, mail_units.py), writes through its pgwire server (REQ-1946, REQ-1994).",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI/Discovery resolver, or Python code resolver. Reason hand-built: mail landing and sync state are bespoke (mail_sync_state, mail_write).",
+   "hand_built_reason": "mail landing and sync state are bespoke (mail_sync_state, mail_write)",
+   "candidate_base": "OpenAPI/Discovery resolver, or Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_google_workspace_gmail.py",
+     "tests/unit/test_google_workspace_loader.py",
+     "tests/unit/test_google_workspace_mail_rows.py",
+     "tests/unit/test_google_workspace_organisation.py",
+     "tests/unit/test_google_workspace_settings.py",
+     "tests/unit/test_google_workspace_units.py"
+    ],
+    "bespoke_unit_total": 6,
+    "bespoke_integration": [
+     "tests/integration/test_google_workspace_calendar_live_e2e.py",
+     "tests/integration/test_google_workspace_live_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "none in CI (maintainer-tenant live test, excluded by run_lane.py)",
+   "live_lane_basis": "markers requires_google_workspace",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "microsoft_365",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Mail, calendar, directory through Graph (provisa/microsoft365: graph.py, mail.py, directory.py); writes through pgwire (REQ-1994).",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OData resolver (Graph). Reason hand-built: mail landing and sync state are bespoke.",
+   "hand_built_reason": "mail landing and sync state are bespoke",
+   "candidate_base": "OData resolver (Graph)",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_microsoft365_loader.py",
+     "tests/unit/test_microsoft365_mail.py",
+     "tests/unit/test_microsoft365_organisation.py",
+     "tests/unit/test_microsoft365_source.py"
+    ],
+    "bespoke_unit_total": 4,
+    "bespoke_integration": [
+     "tests/integration/test_microsoft365_calendar_live_e2e.py",
+     "tests/integration/test_microsoft365_live_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "none in CI (maintainer-tenant live test, excluded by run_lane.py)",
+   "live_lane_basis": "markers requires_microsoft_365",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "quickbooks",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "QuickBooks Online Accounting API query endpoint, STARTPOSITION/MAXRESULTS paging, simple conditions pushed (REQ-2197).",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: OpenAPI resolver (OAuth, a query language in the entity endpoint). Reason hand-built: its query language is a custom push dialect.",
+   "hand_built_reason": "its query language is a custom push dialect",
+   "candidate_base": "OpenAPI resolver (OAuth, a query language in the entity endpoint)",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_quickbooks_sign_in.py",
+     "tests/unit/test_quickbooks_source.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_quickbooks_source_live_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "none in CI (maintainer-tenant live test, excluded by run_lane.py)",
+   "live_lane_basis": "markers requires_quickbooks",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "cosmosdb",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Read by its SDK and landed; no driver (REQ-1982); VIRTUAL_SOURCES.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Node or Python code resolver. Reason hand-built: SDK-only, no engine catalog.",
+   "hand_built_reason": "SDK-only, no engine catalog",
+   "candidate_base": "Node or Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_cosmosdb_source.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_cosmosdb_emulator_search_spike.py",
+     "tests/integration/test_cosmosdb_source_e2e.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "qdrant",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Own driver and SQLGlot dialect (provisa/qdrant), live-only (REQ-2000), reports a complete dataset for similarity top-k.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: stays hand-built, or a code resolver with a live-only tag. Reason hand-built: live-only: its vector query cannot be reproduced over a replica.",
+   "hand_built_reason": "live-only: its vector query cannot be reproduced over a replica",
+   "candidate_base": "stays hand-built, or a code resolver with a live-only tag",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_qdrant_direct.py",
+     "tests/unit/test_qdrant_source.py",
+     "tests/unit/test_relationship_fed_qdrant_search.py"
+    ],
+    "bespoke_unit_total": 3,
+    "bespoke_integration": [
+     "tests/integration/test_qdrant_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "neo4j",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Own Bolt driver (executor/drivers/neo4j.py), keyed loader; VIRTUAL_SOURCES, not translated SQL (issue #119).",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Python code resolver. Reason hand-built: graph model; SQL is never handed to it.",
+   "hand_built_reason": "graph model; SQL is never handed to it",
+   "candidate_base": "Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_neo4j_cypher_endpoint.py",
+     "tests/unit/test_neo4j_export.py",
+     "tests/unit/test_neo4j_normalizers.py",
+     "tests/unit/test_neo4j_persist.py",
+     "tests/unit/test_neo4j_preview.py",
+     "tests/unit/test_neo4j_registration.py"
+    ],
+    "bespoke_unit_total": 6,
+    "bespoke_integration": [
+     "tests/integration/test_neo4j_config_persist.py",
+     "tests/integration/test_neo4j_exec.py",
+     "tests/integration/test_neo4j_register_table.py",
+     "tests/integration/test_row_level_filter_neo4j_e2e.py",
+     "tests/integration/test_write_capability_neo4j_e2e.py",
+     "tests/steps/steps_neo4j_export.py",
+     "tests/steps/steps_query_api_sources_neo4j_sparql.py"
+    ],
+    "bespoke_integration_total": 7
+   },
+   "live_lane": "neo4j (container)",
+   "live_lane_basis": "marker requires_neo4j",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "sparql",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "Own client (provisa/sparql, sparql_query), complete-dataset reads under the contract.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Python code resolver. Reason hand-built: SPARQL is its own query language; contract implemented in its own code.",
+   "hand_built_reason": "SPARQL is its own query language; contract implemented in its own code",
+   "candidate_base": "Python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/perf_bench/test_sparql_transport.py",
+     "tests/unit/test_dev_queries_sparql_export.py",
+     "tests/unit/test_sparql_axioms.py",
+     "tests/unit/test_sparql_compiler.py",
+     "tests/unit/test_sparql_drop_shapes.py",
+     "tests/unit/test_sparql_export.py",
+     "tests/unit/test_sparql_open_pattern_rights.py",
+     "tests/unit/test_sparql_persist.py",
+     "tests/unit/test_sparql_protocol.py",
+     "tests/unit/test_sparql_pushdown.py",
+     "tests/unit/test_sparql_reasoning.py",
+     "tests/unit/test_sparql_term_properties.py"
+    ],
+    "bespoke_unit_total": 15,
+    "bespoke_integration": [
+     "tests/integration/test_sparql_config_persist.py",
+     "tests/integration/test_sparql_endpoint.py",
+     "tests/integration/test_sparql_exec.py",
+     "tests/integration/test_sparql_reasoner.py",
+     "tests/steps/steps_query_api_sources_neo4j_sparql.py"
+    ],
+    "bespoke_integration_total": 5
+   },
+   "live_lane": "datastores (container)",
+   "live_lane_basis": "datastore marker",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "websocket",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "External WebSocket feed: connect, subscribe, receive events; landed.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Node or Python code resolver with @stream. Reason hand-built: a stream, not a table read.",
+   "hand_built_reason": "a stream, not a table read",
+   "candidate_base": "Node or Python code resolver with @stream",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_bolt_websocket_origin.py",
+     "tests/unit/test_websocket_provider.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [
+     "tests/integration/test_websocket_rss_integration.py",
+     "tests/steps/steps_phase_at_websocket_rss_sources_req_338_344.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "rss",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "external system",
+   "today": "RSS/Atom poll, watermark by pubDate/updated; landed.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "connection fields in the source model",
+   "needs_from_base": "Would sit on: Python code resolver with @stream. Reason hand-built: a feed, not a table read.",
+   "hand_built_reason": "a feed, not a table read",
+   "candidate_base": "Python code resolver with @stream",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_rss_provider.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [
+     "tests/integration/test_websocket_rss_integration.py",
+     "tests/steps/steps_phase_at_websocket_rss_sources_req_338_344.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "logs",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "Log files parsed into one table, landed (provisa/logs); read by file offset.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Would sit on: stays hand-built. Reason hand-built: Provisa-owned row shape (_file_id, _line_offset, _raw).",
+   "hand_built_reason": "Provisa-owned row shape (_file_id, _line_offset, _raw)",
+   "candidate_base": "stays hand-built",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_flight_rpc_logs_unexpected.py",
+     "tests/unit/test_logs_source.py"
+    ],
+    "bespoke_unit_total": 2,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "ingest",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "Governed HTTP push receiver (provisa/ingest); the receiver is the source.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Would sit on: stays hand-built. Reason hand-built: Provisa-owned inbound endpoint, not a read of a system.",
+   "hand_built_reason": "Provisa-owned inbound endpoint, not a read of a system",
+   "candidate_base": "stays hand-built",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_flightsql_ingest.py",
+     "tests/unit/test_flightsql_temp_ingest.py",
+     "tests/unit/test_ingest_ddl.py",
+     "tests/unit/test_ingest_engine_prepared.py",
+     "tests/unit/test_ingest_router.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_ingest_push_integration.py",
+     "tests/steps/steps_ingest_sources_governed_http_push_receiver_req_331_337.py"
+    ],
+    "bespoke_integration_total": 2
+   },
+   "live_lane": "isolated or core/app (container; file carries the isolated marker)",
+   "live_lane_basis": "marker isolated",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "dbt",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "dbt formats written from the governed model (REQ-1967): an output, not a read.",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Reason hand-built: not a data connector.",
+   "hand_built_reason": "not a data connector",
+   "candidate_base": "n/a",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_dbt_connector_target.py",
+     "tests/unit/test_dbt_products.py",
+     "tests/unit/test_dbt_products_gated.py",
+     "tests/unit/test_dbt_run_results.py",
+     "tests/unit/test_dbt_source.py",
+     "tests/unit/test_dbt_source_scenario.py",
+     "tests/unit/test_dbt_sources.py"
+    ],
+    "bespoke_unit_total": 7,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "soda",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "Data-quality checker run against a table through Provisa pgwire, results landed (Elastic 2.0, self-host).",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Reason hand-built: Provisa-owned check runner.",
+   "hand_built_reason": "Provisa-owned check runner",
+   "candidate_base": "n/a",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_soda_hosted_gate.py"
+    ],
+    "bespoke_unit_total": 1,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "great_expectations",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "Data-quality checker, results landed as a governed table (Apache 2.0).",
+   "engine_reach": [
+    "trino"
+   ],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Reason hand-built: Provisa-owned check runner.",
+   "hand_built_reason": "Provisa-owned check runner",
+   "candidate_base": "n/a",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none (unit only)",
+   "live_lane_basis": "no integration test file matches",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "data_profiler",
+   "kind": "hand-built",
+   "base": "hand-built",
+   "base_detail": "Provisa-owned",
+   "today": "Built-in profiler schedule, results in the control plane (REQ-1934).",
+   "engine_reach": [],
+   "pushdown": "per source: see today",
+   "required_values": "none beyond the table",
+   "needs_from_base": "Reason hand-built: Provisa-owned.",
+   "hand_built_reason": "Provisa-owned",
+   "candidate_base": "n/a",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_data_profiler_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "no lane marker, default suite",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "airtable",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). Airtable publishes a REST API with a typed spec (to verify). Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "auth0",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). Management API OpenAPI. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "aws_cognito",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). AWS SDK; no API description in the REQ-1923 sense. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "calcom",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "calendly",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "clerk",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "cloudflare_d1",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). D1 is SQLite over Cloudflare API; may belong in the SQL family via its HTTP API. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "dynamodb",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). AWS SDK, key-value API. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "firebase",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). Firestore SDK. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "gravatar",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "hubspot",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). HubSpot publishes OpenAPI specs. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "infura",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). JSON-RPC, not REST. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "logflare",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "notion",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "orb",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "paddle",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). . Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "s3_vectors",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: python code resolver per REQ-1923 (the preferred route for the Supabase wrappers catalog). AWS SDK. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "python code resolver",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "slack",
+   "kind": "metadata-only",
+   "base": "metadata-only",
+   "base_detail": "stub",
+   "today": "SourceType enum entry only (REQ-1871/1874 stub): registrable, but no connector, dialect or driver reaches it",
+   "engine_reach": [],
+   "pushdown": "none",
+   "required_values": "none yet",
+   "needs_from_base": "Would sit on: openapi brand per REQ-1923 (the preferred route for the Supabase wrappers catalog). Slack Web API; spec exists, typing to verify. Verify the vendor spec is well typed before committing to it.",
+   "hand_built_reason": null,
+   "candidate_base": "openapi brand",
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "stub; nothing to test",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "events/sheets_reader",
+   "kind": "reader",
+   "base": "reader",
+   "base_detail": "landing reader",
+   "today": "provisa/events/sheets_reader.py: lands a Google Sheets source's replicas through the Sheets API where the engine has no gsheets extension (REQ-1998)",
+   "engine_reach": [],
+   "pushdown": "none: reads the whole grid (spreadsheets.get, values.batchGet) and lands it",
+   "required_values": "spreadsheet id, Google credential",
+   "needs_from_base": "It is a read path of google_sheets, not a connector. Would disappear if google_sheets sat on an OpenAPI or code resolver.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_google_sheets_source_e2e.py"
+    ],
+    "bespoke_integration_total": 1
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "events/motherduck_reader",
+   "kind": "reader",
+   "base": "reader",
+   "base_detail": "landing reader",
+   "today": "provisa/events/motherduck_reader.py: lands MotherDuck replicas through its Postgres-wire endpoint where the engine cannot attach (REQ-1998)",
+   "engine_reach": [],
+   "pushdown": "DuckDB SQL over libpq, rows streamed in bounded batches",
+   "required_values": "host (pg.<region>-aws.motherduck.com), database, token",
+   "needs_from_base": "A read path of motherduck inside the SQL family; stays.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [],
+    "bespoke_unit": [
+     "tests/unit/test_motherduck_duckdb_engine.py",
+     "tests/unit/test_motherduck_engine.py",
+     "tests/unit/test_motherduck_reader.py",
+     "tests/unit/test_pg_duckdb_motherduck_connector.py",
+     "tests/unit/test_pg_motherduck_attach.py"
+    ],
+    "bespoke_unit_total": 5,
+    "bespoke_integration": [
+     "tests/integration/test_embedded_pg_duckdb_motherduck_e2e.py",
+     "tests/integration/test_motherduck_duckdb_e2e.py",
+     "tests/integration/test_motherduck_engine_store_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "warehouse (nightly and on demand, live service with repo secrets)",
+   "live_lane_basis": "marker requires_warehouse",
+   "verified_against_live_service": true
+  },
+  {
+   "name": "custom_connectors",
+   "kind": "generic-engine-connector",
+   "base": "sql-family",
+   "base_detail": "operator-declared",
+   "today": "federation/custom_connectors.py: config-driven pg_fdw, duckdb_attach, duckdb_scan and clickhouse_* kinds (REQ-1177/1178); config/custom_connectors.yaml ships empty",
+   "engine_reach": [
+    "pg",
+    "duckdb",
+    "clickhouse"
+   ],
+   "pushdown": "per descriptor",
+   "required_values": "extension, templates, per descriptor",
+   "needs_from_base": "nothing; the SQL family's own extension point. Tests: test_custom_connectors_e2e.py, _mongo_e2e.py, _pg_e2e.py.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/integration/test_cross_vendor_parity_e2e.py",
+     "tests/integration/test_governance_parity_e2e.py",
+     "tests/unit/test_conformance.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [
+     "tests/integration/test_custom_connectors_e2e.py",
+     "tests/integration/test_custom_connectors_mongo_e2e.py",
+     "tests/integration/test_custom_connectors_pg_e2e.py"
+    ],
+    "bespoke_integration_total": 3
+   },
+   "live_lane": "core/app (container suite)",
+   "live_lane_basis": "test files",
+   "verified_against_live_service": false
+  },
+  {
+   "name": "codehost_engine_attach",
+   "kind": "engine-attach-of-code-host",
+   "base": "code-resolver",
+   "base_detail": "engine attach",
+   "today": "federation/codehost_connectors.py (DuckDBCodeHostConnector, PgCodeHostConnector) and TrinoCodeHostConnector, still registered for node/python/go/rust in engine.py and trino_connectors.py",
+   "engine_reach": [
+    "duckdb",
+    "trino"
+   ],
+   "pushdown": "the engine reads the host through pgwire as Postgres",
+   "required_values": "host address",
+   "needs_from_base": "REQ-2100 (Amended 2026-10-23) says no engine attaches a code host and reads are landed. Either the code is dead and can go, or the amendment and the registrations disagree. See open question 3.",
+   "hand_built_reason": null,
+   "candidate_base": null,
+   "tests": {
+    "base_conformance": [
+     "tests/unit/test_connector_contract_calls.py",
+     "tests/unit/test_code_languages.py"
+    ],
+    "bespoke_unit": [],
+    "bespoke_unit_total": 0,
+    "bespoke_integration": [],
+    "bespoke_integration_total": 0
+   },
+   "live_lane": "none",
+   "live_lane_basis": "test_code_source_attach_trino.py exists (integration), lane not read",
+   "verified_against_live_service": false
+  }
+ ]
+}

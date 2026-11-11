@@ -16,6 +16,7 @@ Their answers are replayed against postgres:17.11 by tests/unit/pgwire/test_pg_e
 
 from __future__ import annotations
 
+import chdb
 import duckdb
 import pytest
 import sqlglot
@@ -24,20 +25,16 @@ import sqlglot.expressions as exp
 from provisa.transpiler import function_macros
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID, arrays, graft, holes
-from provisa.transpiler.polyfill.grid import ENGINES, SOURCES
+from provisa.transpiler.polyfill.grid import DIALECTS, written_in
 from provisa.transpiler.polyfill.notation import Refusal, pattern, replacement
 from provisa.transpiler.transpile import transpile
 
-#: A dialect of each engine; for the sources, one a statement goes to directly.
-_A_DIALECT = {engine: "snowflake" if engine == SOURCES else engine for engine in ENGINES}
-_DIALECTS = sorted(
-    {*(d for e, dialects in ENGINES.items() if e != SOURCES for d in dialects), "snowflake"}
-)
+_DIALECTS = sorted(DIALECTS)
 _RULES = [
-    (feature, rule, engine)
+    (feature, rule, dialect)
     for feature in arrays.FEATURES
     for rule in feature.read.rules
-    for engine in ENGINES
+    for dialect in DIALECTS
 ]
 
 
@@ -55,12 +52,11 @@ def test_the_family_is_in_the_grid_and_not_in_the_old_table():
     assert not {name for name, _ in MACROS} & names
 
 
-@pytest.mark.parametrize(("feature", "rule", "engine"), _RULES)
-def test_each_rule_is_the_form_the_translator_writes(feature, rule, engine):
-    """The statement's call written with the grid's replacement and nothing else; an engine the
+@pytest.mark.parametrize(("feature", "rule", "dialect"), _RULES)
+def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
+    """The statement's call written with the grid's replacement and nothing else; a dialect the
     rule gives no form for keeps the call (its own function); a refusal is raised from the row."""
-    form = rule.forms.get(engine)
-    dialect = _A_DIALECT[engine]
+    form = rule.forms.get(dialect)
     sql = f"SELECT {_call(rule.pattern)} AS v FROM t"
     if isinstance(form, Refusal):
         with pytest.raises(RowRefused) as refused:
@@ -76,15 +72,15 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, engine):
         return
     assert isinstance(form, str)
     bindings = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
-    expected = graft(replacement(form, engine, rule.pattern), bindings)
-    if engine == "clickhouse":
+    expected = graft(replacement(form, written_in(dialect), rule.pattern), bindings)
+    if dialect == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
     assert written.sql(dialect) == expected.sql(dialect)
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
 def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
-    """Each hole bound, on every dialect of each engine: a lambda's own variable is the form's."""
+    """Each hole bound, on every dialect: a lambda's own variable is the form's."""
     for feature in arrays.FEATURES:
         for rule in feature.read.rules:
             call = _call(rule.pattern)
@@ -93,7 +89,8 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
             except RowRefused:
                 continue
             tree = sqlglot.parse_one(out, read=dialect)
-            columns = {c.name for c in tree.find_all(exp.Column)}
+            # A dialect that folds names to capitals (Exasol) writes them so.
+            columns = {c.name.lower() for c in tree.find_all(exp.Column)}
             assert not [n for n in tree.walk() if isinstance(n, (exp.Parameter, exp.Placeholder))]
             assert {c for c in columns if not c.startswith("_")} <= set(
                 holes(pattern(rule.pattern))
@@ -102,19 +99,58 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
             }, out
 
 
-def test_a_refusal_is_raised_from_the_row_on_every_dialect_of_the_engine():
-    for dialect in ENGINES["trino"]:
-        with pytest.raises(RowRefused, match="generate_subscripts\\(\\) has no form on trino"):
-            transpile("SELECT generate_subscripts(ARRAY[1], 1, true) AS v", dialect)
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena", "clickhouse"])
+def test_a_refusal_names_the_dialect_routed_to(dialect: str):
+    """Athena and Presto take Trino's forms, and each refusal names the dialect itself."""
+    with pytest.raises(RowRefused) as refused:
+        transpile("SELECT generate_subscripts(ARRAY[1], 1, true) AS v", dialect)
+    assert str(refused.value) == f"generate_subscripts() has no form on {dialect}"
+    assert refused.value.sqlstate == "0A000"
 
 
-def test_a_source_a_statement_goes_to_directly_is_refused_from_its_row():
-    with pytest.raises(RowRefused, match="array_ndims\\(\\) has no form on a direct source"):
-        transpile("SELECT array_ndims(a) AS v FROM t", "snowflake")
+@pytest.mark.parametrize("dialect", ["snowflake", "tsql", "mysql", "bigquery", "oracle"])
+def test_a_source_a_statement_goes_to_directly_is_refused_by_its_own_row(dialect: str):
+    with pytest.raises(RowRefused) as refused:
+        transpile("SELECT array_ndims(a) AS v FROM t", dialect)
+    assert str(refused.value) == f"array_ndims() has no form on {dialect}"
+    assert refused.value.sqlstate == "0A000"
+
+
+def test_a_dialect_provisa_sends_no_sql_to_is_refused_by_name():
+    with pytest.raises(FunctionRefused, match="array_ndims\\(\\) has no form on spark") as refused:
+        transpile("SELECT array_ndims(a) AS v FROM t", "spark")
+    assert not isinstance(refused.value, RowRefused)
 
 
 def test_array_length_is_a_sources_own():
     assert "ARRAY_SIZE" in transpile("SELECT array_length(a, 1) AS v FROM t", "snowflake")
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena", "clickhouse"])
+def test_array_length_reads_the_dimension_it_is_given(dialect: str):
+    """The engine's own array length takes no dimension and answers the first one's for any: the
+    grid's form reads the dimension, as PostgreSQL's does."""
+    out = transpile("SELECT array_length(a, d) AS v FROM t", dialect)
+    columns = {c.name for c in sqlglot.parse_one(out, read=dialect).find_all(exp.Column)}
+    assert "d" in columns, out
+
+
+def _on_clickhouse(sql: str) -> list[str | None]:
+    held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
+    return [None if line == "\\N" else line for line in held.splitlines()]
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 2)", "3"),
+        ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 1)", "2"),
+        ("SELECT array_length(ARRAY[1,2,3], 2)", None),
+        ("SELECT array_length(ARRAY[1,2,3], 0)", None),
+    ],
+)
+def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str, expected):
+    assert _on_clickhouse(sql) == [expected]
 
 
 def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
@@ -184,23 +220,25 @@ def test_the_translator_parses_only_statements_that_name_a_rule():
 @pytest.mark.parametrize("feature", arrays.FEATURES, ids=lambda f: f.name)
 def test_a_documented_refusal_is_the_text_the_form_raises(feature):
     """REQ-2236, THE REFUSAL LIVES IN THE GRID: a limitation's refusal is what its engine raises."""
-    for engine, limitations in feature.read.limitations.items():
+    for dialect, limitations in feature.read.limitations.items():
         for limitation in limitations:
             refusal = limitation.refusal
             if refusal is None:
                 continue
-            forms = [rule.forms.get(engine) for rule in feature.read.rules]
+            forms = [rule.forms.get(dialect) for rule in feature.read.rules]
             if refusal in forms:
                 continue  # the row's own refusal: raised from it
             raised = [
                 literal.this
                 for rule, form in zip(feature.read.rules, forms)
                 if isinstance(form, str)
-                for literal in replacement(form, engine, rule.pattern).find_all(exp.Literal)
+                for literal in replacement(form, written_in(dialect), rule.pattern).find_all(
+                    exp.Literal
+                )
                 if literal.is_string
             ]
-            assert any(refusal.message in text for text in raised), (feature.name, engine)
-            assert any(f"{refusal.sqlstate}:" in text for text in raised), (feature.name, engine)
+            assert any(refusal.message in text for text in raised), (feature.name, dialect)
+            assert any(f"{refusal.sqlstate}:" in text for text in raised), (feature.name, dialect)
 
 
 @pytest.mark.parametrize(
@@ -209,6 +247,8 @@ def test_a_documented_refusal_is_the_text_the_form_raises(feature):
         ("SELECT array_ndims(ARRAY[[1,2,3],[4,5,6]])", [(2,)]),
         ("SELECT array_dims(ARRAY[[1,2,3],[4,5,6]])", [("[1:2][1:3]",)]),
         ("SELECT array_upper(ARRAY[[1,2,3],[4,5,6]], 2)", [(3,)]),
+        ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 2)", [(3,)]),
+        ("SELECT array_length(ARRAY[1,2,3], 2)", [(None,)]),
         ("SELECT array_lower(ARRAY[1,2,3], 2)", [(None,)]),
         ("SELECT array_fill(7, ARRAY[3])", [([7, 7, 7],)]),
         ("SELECT array_positions(ARRAY[1,NULL,1], NULL::integer)", [([2],)]),

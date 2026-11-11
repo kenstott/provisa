@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The polyfill grid (REQ-2236): one table, keyed by feature and engine, of how a PostgreSQL client
-gets PostgreSQL's behaviour on an engine that is not PostgreSQL.
+"""The polyfill grid (REQ-2236): one table, keyed by feature and connector dialect, of how a
+PostgreSQL client gets PostgreSQL's behaviour on a connector Provisa sends SQL to that is not
+PostgreSQL: a serving engine, or a source a statement goes to directly.
 
-A feature has a read side (how its values and operations are computed on the engine) and a write
-side (how its values reach the engine). Each side holds its rules and, per engine, its limitations.
-A rule is a pattern and, per engine, a form: the engine's SQL, a refusal, or a rewrite function. An
-engine a rule gives no form for does the feature natively; an engine with no limitation has none.
+A feature has a read side (how its values and operations are computed on the connector) and a write
+side (how its values reach it). Each side holds its rules and, per dialect, its limitations. A rule
+is a pattern and, per dialect, a form: the dialect's SQL, a refusal, or a rewrite function. A
+dialect a rule gives no form for does the feature natively; a dialect with no limitation has none.
 
 The translator takes its forms from here (provisa.transpiler.function_macros reads :data:`GRID`),
 and the documentation is generated from here (scripts/gen_polyfill_docs.py)."""
@@ -28,46 +29,64 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import sqlglot.expressions as exp
-from sqlglot.dialects.dialect import Dialects
 
 from provisa.transpiler.polyfill import notation
 from provisa.transpiler.polyfill.matching import Bindings, match
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
 
-#: PostgreSQL's own dialect: every feature is native there, and no rule runs.
+#: PostgreSQL's own dialect: the reference. Every feature is native there, and no rule runs.
 NATIVE = frozenset({"postgres"})
-_FEDERATION = {
-    "duckdb": frozenset({"duckdb"}),
-    "trino": frozenset({"trino", "presto", "athena"}),
-    "clickhouse": frozenset({"clickhouse"}),
-}
-#: The column of every other dialect sqlglot writes: a source a statement goes to directly
-#: (REQ-863). No one dialect writes its forms, so a form there is a refusal or a rewrite function.
-SOURCES = "sources"
-#: Each engine of the grid, and the dialects that are it.
-ENGINES: Mapping[str, frozenset[str]] = {
-    **_FEDERATION,
-    SOURCES: frozenset(d.value for d in Dialects if d.value)
-    - NATIVE
-    - frozenset().union(*_FEDERATION.values()),
-}
-#: How the documentation names each engine.
-ENGINE_TITLES: Mapping[str, str] = {
-    "duckdb": "DuckDB",
-    "trino": "Trino",
-    "clickhouse": "ClickHouse",
-    SOURCES: "Other sources",
+
+
+@dataclass(frozen=True)
+class Connector:
+    """A dialect Provisa sends SQL to itself: a serving engine's, or a source's a statement goes
+    to directly (REQ-863). Its forms are written in ``written_in``."""
+
+    title: str
+    written_in: str
+
+
+#: Each column of the grid: a connector dialect Provisa sends SQL to (REQ-2236, EVERY CONNECTOR
+#: PROVISA SENDS SQL TO), each with its own rows and its own page. They are the dialects of
+#: provisa.transpiler.dialect_capabilities but Qdrant's, whose statements are lowered to its API and
+#: run no SQL (SQL CONNECTORS ONLY). Presto's and Athena's forms are written in Trino's SQL.
+DIALECTS: Mapping[str, Connector] = {
+    "postgres": Connector("PostgreSQL", "postgres"),
+    "duckdb": Connector("DuckDB", "duckdb"),
+    "trino": Connector("Trino", "trino"),
+    "presto": Connector("Presto", "trino"),
+    "athena": Connector("Athena", "trino"),
+    "clickhouse": Connector("ClickHouse", "clickhouse"),
+    "snowflake": Connector("Snowflake", "snowflake"),
+    "databricks": Connector("Databricks", "databricks"),
+    "bigquery": Connector("BigQuery", "bigquery"),
+    "tsql": Connector("T-SQL (SQL Server, Fabric, Synapse)", "tsql"),
+    "redshift": Connector("Redshift", "redshift"),
+    "mysql": Connector("MySQL", "mysql"),
+    "singlestore": Connector("SingleStore", "singlestore"),
+    "sqlite": Connector("SQLite", "sqlite"),
+    "oracle": Connector("Oracle", "oracle"),
+    "hive": Connector("Hive", "hive"),
+    "exasol": Connector("Exasol", "exasol"),
+    "druid": Connector("Druid", "druid"),
 }
 
 
-def engine_of(dialect: str) -> str | None:
-    """The engine of the grid ``dialect`` is, or None."""
-    return next((engine for engine, dialects in ENGINES.items() if dialect in dialects), None)
+def column_of(dialect: str) -> str | None:
+    """The column of the grid ``dialect`` is (its own), or None for a dialect Provisa sends no SQL
+    to: a rule matched there has no form, and the translator refuses the call by name."""
+    return dialect if dialect in DIALECTS else None
+
+
+def written_in(dialect: str) -> str:
+    """The dialect the forms of ``dialect``'s column are written in."""
+    return DIALECTS[dialect].written_in
 
 
 @dataclass(frozen=True)
 class Limitation:
-    """A difference from PostgreSQL on an engine, and the refusal a client receives for it."""
+    """A difference from PostgreSQL on a dialect, and the refusal a client receives for it."""
 
     text: str
     refusal: Refusal | None = None
@@ -75,7 +94,7 @@ class Limitation:
 
 @dataclass(frozen=True)
 class Rule:
-    """A pattern in PostgreSQL's SQL with holes, and each engine's form. ``pattern`` is None only for
+    """A pattern in PostgreSQL's SQL with holes, and each dialect's form. ``pattern`` is None only for
     a rule whose every form is a rewrite function: the function does its own matching."""
 
     pattern: str | None
@@ -93,7 +112,7 @@ class Rule:
 
 @dataclass(frozen=True)
 class Side:
-    """One side of a feature: its rules, and each engine's limitations."""
+    """One side of a feature: its rules, and each dialect's limitations."""
 
     rules: tuple[Rule, ...] = ()
     limitations: Mapping[str, tuple[Limitation, ...]] = field(default_factory=dict)
@@ -111,7 +130,7 @@ class Feature:
 
 
 class Status(enum.Enum):
-    """A feature on an engine, as the cross-engine summary shows it."""
+    """A feature on a dialect, as the summary across the dialects shows it."""
 
     NATIVE = "native"
     POLYFILLED = "polyfilled"
@@ -121,7 +140,7 @@ class Status(enum.Enum):
 
 @dataclass(frozen=True)
 class Applied:
-    """A rule that matched a node: the feature, the rule, the engine's form and the bindings."""
+    """A rule that matched a node: the feature, the rule, the dialect's form and the bindings."""
 
     feature: Feature
     rule: Rule
@@ -159,20 +178,18 @@ class Grid:
 
     @staticmethod
     def _check(feature: Feature, side: Side) -> None:
-        for engine in side.limitations:
-            if engine not in ENGINES:
-                raise RuleError(f"{feature.name}: no engine {engine!r}")
+        for dialect in side.limitations:
+            if dialect not in DIALECTS:
+                raise RuleError(f"{feature.name}: no dialect {dialect!r}")
         for rule in side.rules:
-            for engine, form in rule.forms.items():
-                if engine not in ENGINES:
-                    raise RuleError(f"{feature.name}: no engine {engine!r}")
+            for dialect, form in rule.forms.items():
+                if dialect not in DIALECTS:
+                    raise RuleError(f"{feature.name}: no dialect {dialect!r}")
                 if rule.pattern is None and not isinstance(form, Rewrite):
                     raise RuleError(f"{feature.name}: a rule with no pattern is a function name")
-                if isinstance(form, str) and engine == SOURCES:
-                    raise RuleError(f"{feature.name}: no one dialect writes a form for {SOURCES}")
                 if isinstance(form, str):
                     assert rule.pattern is not None
-                    notation.replacement(form, _dialect(engine), rule.pattern)
+                    notation.replacement(form, written_in(dialect), rule.pattern)
 
     @property
     def names(self) -> frozenset[str]:
@@ -187,21 +204,21 @@ class Grid:
 
     def read(self, node: exp.Expr, dialect: str) -> Applied | None:
         """The read rule ``node`` matches, with ``dialect``'s form (None: native there, or no
-        engine of the grid), or None where no rule matches. Rules of one function are tried in
+        column of the grid), or None where no rule matches. Rules of one function are tried in
         the order the grid lists them."""
-        engine = engine_of(dialect)
+        column = column_of(dialect)
         for subject in (node, self._typed(node)):
             if subject is None:
                 continue
             for feature, rule in self._by_root.get(_root_key(subject), []):
                 bindings = rule.matched(subject)
                 if bindings is not None:
-                    form = None if engine is None else rule.forms.get(engine)
+                    form = None if column is None else rule.forms.get(column)
                     return Applied(feature, rule, form, bindings)
-        if engine is None:
+        if column is None:
             return None
         for feature, rule in self._rewrites:
-            form = rule.forms.get(engine)
+            form = rule.forms.get(column)
             if not isinstance(form, Rewrite):
                 continue
             rewritten = form.function(node, dialect)
@@ -223,29 +240,24 @@ class Grid:
             return None
         return None if isinstance(typed, exp.Anonymous) else typed
 
-    def status(self, feature: Feature, engine: str) -> Status:
-        """What the summary shows of ``feature`` on ``engine``."""
+    def status(self, feature: Feature, dialect: str) -> Status:
+        """What the summary shows of ``feature`` on ``dialect``."""
         forms = [
-            rule.forms.get(engine)
+            rule.forms.get(dialect)
             for side in (feature.read, feature.write)
             for rule in side.rules
-            if engine in rule.forms
+            if dialect in rule.forms
         ]
-        limited = any(side.limitations.get(engine) for side in (feature.read, feature.write))
+        limited = any(side.limitations.get(dialect) for side in (feature.read, feature.write))
         if forms and all(isinstance(form, Refusal) for form in forms):
             return Status.REFUSED
         if limited or any(isinstance(form, Refusal) for form in forms):
             return Status.DIFFERS
         return Status.POLYFILLED if forms else Status.NATIVE
 
-    def on(self, engine: str) -> tuple[Feature, ...]:
-        """The features with a polyfill or a limitation on ``engine``: what its page lists."""
-        return tuple(f for f in self.features if self.status(f, engine) is not Status.NATIVE)
-
-
-def _dialect(engine: str) -> str:
-    """The dialect an engine's forms are written in: the engine's own name."""
-    return engine
+    def on(self, dialect: str) -> tuple[Feature, ...]:
+        """The features with a polyfill or a limitation on ``dialect``: what its page lists."""
+        return tuple(f for f in self.features if self.status(f, dialect) is not Status.NATIVE)
 
 
 def _called(node: exp.Expr) -> tuple[str, ...]:

@@ -350,6 +350,26 @@ code:not(pre code) {
 .shot-frame img { display: block; width: 100%; height: auto; border-top: 1px solid var(--border-soft); }
 .shot figcaption { margin-top: 14px; color: var(--text-muted); font-size: .92rem; text-align: center; }
 
+/* ── Connector tree (why/sources): an inline SVG drawn in the page's tokens ── */
+.src-classes { margin-top: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 600px) { .src-classes { grid-template-columns: minmax(0, 1fr); } }
+.tree { margin: 32px 0 8px; }
+.tree svg { display: block; width: 100%; max-width: 460px; height: auto; margin-inline: auto; }
+.tree text { fill: var(--text); font-family: var(--font); font-size: 13px; }
+.tree .t-b { font-weight: 600; }
+.tree .t-s { font-size: 12px; }
+.tree .t-m { fill: var(--text-muted); font-size: 11px; }
+.tree .t-k { fill: var(--text-muted); font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; }
+.tree .n { fill: var(--surface); stroke: var(--border); }
+.tree .n-group { fill: var(--bg-elev); stroke: var(--border); }
+.tree .n-root { fill: color-mix(in srgb, var(--primary) 16%, var(--surface)); stroke: var(--primary); }
+.tree .n-sql { fill: color-mix(in srgb, var(--accent) 14%, var(--surface)); stroke: var(--accent); }
+.tree .n-own { fill: none; stroke: var(--text-muted); stroke-dasharray: 5 4; }
+.tree .chip { fill: var(--surface-alt); stroke: var(--border); }
+.tree .e { fill: none; stroke: #3d4252; stroke-width: 1.5; }
+.tree .e-soft { fill: none; stroke: var(--border); stroke-dasharray: 4 5; }
+.tree figcaption { margin-top: 14px; color: var(--text-muted); font-size: .92rem; text-align: center; }
+
 /* ── Layers ────────────────────────────────────────── */
 .layers { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 @media (max-width: 780px) { .layers { grid-template-columns: 1fr; } }
@@ -604,6 +624,7 @@ code:not(pre code) {
 .doc-head { max-width: 780px; margin-bottom: 48px; }
 .doc-head h1 { margin: 0 0 16px; font-size: clamp(2rem, 4.4vw, 3rem); line-height: 1.1; font-weight: 800; letter-spacing: -0.025em; }
 .doc-head .lead { margin-bottom: 0; }
+.doc-head .lead + .lead { margin-top: 14px; }
 .crumb { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; color: var(--text-muted); font-size: .9rem; }
 .crumb a { color: var(--primary-hover); font-weight: 500; }
 .doc-body { max-width: 780px; }
