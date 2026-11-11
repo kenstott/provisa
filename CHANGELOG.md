@@ -3,6 +3,261 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.508
+
+Released 2026-11-10.
+
+### Changes
+
+#### admin
+
+- Each page's UI gate matches its API gate and owner
+
+#### audit
+
+- Let an account's erasure tombstone query_audit_log
+- Keep the requirement id out of the audit-rule DDL
+
+#### authz
+
+- The assignment is the grant
+- Add command_execution to fixture roles for admission-every-surface test (R508d)
+
+#### ci,sharepoint
+
+- Let the runner's pgwire server read the certificate
+
+#### codehost
+
+- A built image's worker has its thread pool sized at spawn
+
+#### codesource
+
+- A code table is given the arguments its governed relation passes up
+- A host on inherited sockets has its thread pool sized at spawn
+- A built image holds the provisa modules its PostgreSQL protocol imports
+
+#### conformance
+
+- Take psycopg tests that pass now off the expected-failure list
+- Charge a pool worker's late thread exception to the test that started it
+
+#### contracts
+
+- A version snapshots a column's declared type as the store holds it, null when none
+- A version column's type is required; registration guarantees it
+- A table save snapshots each column's resolved type
+
+#### cypher
+
+- Schema procedures take YIELD/RETURN; model nodes keep stable ids beside a graph session
+- An unlabelled relationship read skips relationships lacking the property its WHERE filters
+
+#### data-products
+
+- Refuse moving a product with members; exports tests to the m2m shape
+
+#### demo
+
+- Users id and name served to org_admin through data_steward, not by name
+- customer360 relationships get distinct GraphQL fields
+- customer360 views filter by one table's columns, as the join guard requires
+- Restore view_* names in account_health product; copy source_catalogs in cloned env (R508e)
+- test_fake cloned env reloads masking_rules with faking=True (R508e3)
+
+#### demo-sandbox
+
+- test_fake cloned env reloads masking rules with fake generators
+
+#### demos
+
+- Replace RELATED_TO term edges where a truer type fits
+- The data room reads SUM of a bigint as the numeric PostgreSQL answers
+
+#### docs,demo
+
+- No requirement ids in the governance note; starthere users serve org_admin the id and name
+
+#### e2e,sharepoint
+
+- The certificate path both Trino and the host's server can open
+
+#### engine
+
+- A statement runs in the pgwire session's zone
+- The session's zone written into what Trino and ClickHouse read of an instant
+- A text function's result is no instant to ask about
+- ClickHouse zone answers typed for Arrow, Trino to_json of a timestamptz as PostgreSQL's
+- ClickHouse start of a second keeps its fraction, a replacement of nothing is served, the forms matrix is the replay's
+- A range reads an instant that names UTC; Trino's start of a microsecond is the value
+
+#### exasol,saphana
+
+- An unquoted reference reads the governed relation's quoted output; the register form waits out a model rebuild
+
+#### federation
+
+- A governed relation is read as its table by predicate propagation and the ClickHouse scan
+- Connector server exit error names the Java root cause
+- Read the control plane's attach from DuckDB, refuse provisa_admin for a source
+- A pooled ADBC engine read holds no transaction between borrows
+
+#### governance
+
+- An action reads only its served columns; tests read answers; no shared registry
+- A read's governed relations serve the outputs it reads; a path column is its path
+- A path column is read by its name, and at its path on Trino's MongoDB catalog; every chain level reads only what is read
+- Path columns are served by the governed relation
+- Sources declare how they serve a path column; a SQL path column is a String
+- What a statement names beyond a table's columns reaches its governed relation
+
+#### graph3d
+
+- Term graph in demos: 2D at one hop, emphasis, tooltip, crossings
+
+#### grpc
+
+- One proto field per remote GraphQL parameter
+
+#### grpc_remote
+
+- Register gRPC tables under lower snake case names
+- A gRPC table is addressed in SQL by its convention alias
+
+#### guard
+
+- Whether a statement is connected is settled without listing its unions' branches
+
+#### join-guard
+
+- A filter on a window result over joined rows is not a match
+
+#### lineage
+
+- Fold a view between an input and a member into the column edge
+
+#### live-only
+
+- Cut a live-only table's part where its governed relation stands
+
+#### mcp
+
+- The tool request shim carries headers, so MCP decisions survive the idempotency key
+
+#### meta
+
+- Read product membership through the junction tables
+
+#### meta-views
+
+- Read registered_tables before table_columns, as schema.sql locks them
+- Drop a requirement id from the table_columns SQL comment
+
+#### model-build
+
+- Replace lineage edges and checker targets one build at a time
+
+#### model-names
+
+- Replace the stored names one build at a time
+
+#### names
+
+- Store the names table in one batched insert
+
+#### naming
+
+- Rules for every client-facing name kind
+- Names table built per model version
+- Names table published as meta table with a report
+
+#### orgs
+
+- Account deletion removes each org's copy of who the person was
+
+#### pgwire
+
+- A client's catalog statement runs unprepared and without JIT on the control plane
+- Read a TimeZone bound to set_config
+- Read a POSIX TimeZone with no abbreviation
+
+#### polly
+
+- A delivered file downloads, and no delivery is said as none
+
+#### rebuild
+
+- Write names-table after schema_version increments, skip for env builds
+
+#### release
+
+- A commit scope of requirement or work item ids is no scope in the notes
+
+#### site
+
+- Dremio is not an engine Provisa can register
+
+#### sql
+
+- An aliased table's published columns are lowered like any other's
+
+#### startup
+
+- Type the registered table name in the admin key pass
+
+#### transpiler
+
+- A timestamptz literal names UTC on Trino, Presto and Athena; json_agg and json_build_object of a stated instant refused by name on Trino
+- ClickHouse start of a sub-minute unit writes no dateTrunc in either branch
+- Cypher range() on the pg engine is generate_series, not sequence
+- Cypher list functions on the pg engine are PostgreSQL's own
+- J731 english_stem keeps an empty stem and a word over 1000 bytes, ts_rank of no lexemes is 0
+- A NULL beside a range, multirange_cmp of columns, a multirange of an array
+- J731 ClickHouse flattens one level, Trino counts past 10000 in blocks
+- -> and ->> of a step the rows hold read a key or an index, never a path
+- Trino's array index is an array's alone and counts back from the end
+- J731 a token's parts by a searched CASE, which ClickHouse reads
+- J731 a search reads a column's vector once, within ClickHouse's max_query_size
+- A zoned instant's form keeps what the statement says of its value
+- A to_json is told apart once, never around what json_encoded already told apart
+- A to_json of an ARRAY_AGG or JSON_OBJECT is not wrapped, it is never an instant
+- A to_json of a map or a list is encoded once on DuckDB
+- A to_json of a to_json is encoded once on DuckDB
+
+#### ui
+
+- Name clash policy control
+- Role form capabilities as one multi-select dropdown with a tick per option
+- A graph redrawn mid-layout keeps its canvas
+- A product's inputs are its Lineage panel's Inputs lane
+- Show a delivered file in the Explore MCP chat
+- List SQL explorer schemas and tables alphabetically
+- Product membership read and written through the many-to-many surface
+- Lineage inputs read product_ids, drawing a node per product; data products label and domain_has_members refusal in every locale; prettier
+- An enclosing Tip stays closed while the pointer or focus is on a nested Tip target
+- Admin and Docs move from the top navigation into the user menu
+- Remove the Settings entry from the user menu
+- A Kaggle search a newer one replaced answers nothing; a taken alias gets the source's catalog name
+
+#### General
+
+- A governed read keeps its instant on Trino, a row timetz has no date; tests follow the amended requirements
+- Restore launch server and test ordering to unblock CI re-run failures
+- Fail closed when table absent from visible_columns
+- Populate visible_columns in _model() so V003 passes under fail-closed
+- Route cloned-env surface copy through install_surface (J1157d)
+- Populate state.tables in pg_backed_flight to avoid V003 on Flight DoGet
+- Complete state.tables shape in pg_backed_flight fixture (R508c2)
+- Clone path: source_catalogs, SYNTHETIC unbound, as_generated, __derived__ guard
+- Synthetic env — camelCase param column rename and mat_store catalog not found
+- Wire pgwire_pg_backend model_db + remove stale '^' MATRIX entries
+- pgwire_pg_backend registers the meta catalog views as the product does
+- A SYNTHETIC-bound env is built in full, not cloned from PROD
+- pgwire_pg_backend grants the catalog client role its views
+- A generated parameter column is published by its own name, no alias
+- A client's catalog statement is answered whole, past the role's row cap
+- A schema-qualified WITHIN GROUP or FILTER call is a call, not a column
+
 ## v0.1.0-alpha.507
 
 Released 2026-11-07.
