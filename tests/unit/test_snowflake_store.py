@@ -417,3 +417,28 @@ def test_reconcile_metadata_keeps_going_past_a_refused_statement():
     # 2 PRIMARY KEYs + b's comment succeed; a's refused column comment does not stop b
     assert applied == 3 and len(ddl) == 4
     assert any("SET COMMENT = 'B table'" in s for s in ddl)
+
+
+def test_model_tag_statements_set_a_columns_grounded_term_and_unset_one_it_lost():
+    targets = {
+        "pet-store-sqlite.pet_store.pets": store.KeyTarget(
+            _PETS, _PETS_VIEW, ("id",), column_terms={"name": "pet name"}
+        )
+    }
+    existing = {
+        _PETS_VIEW: store.ObjectTags(
+            table={}, columns={"name": {"TERM": "old name"}, "owner": {"TERM": "owner"}}
+        )
+    }
+    stmts = store.model_tag_statements(_LANDING, targets, existing, frozenset())
+    assert 'CREATE TAG IF NOT EXISTS "_landing"."PROVISA_GOVERNANCE"."TERM"' in stmts
+    view = 'ALTER VIEW "pet_store_sqlite"."pet_store"."pets"'
+    term = '"_landing"."PROVISA_GOVERNANCE"."TERM"'
+    # the view's value is corrected; the replica had none, so it is set
+    assert f"{view} ALTER COLUMN \"name\" SET TAG {term} = 'pet name'" in stmts
+    assert (
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pets" MODIFY COLUMN "name" '
+        f"SET TAG {term} = 'pet name'"
+    ) in stmts
+    # a column that lost its term has the tag unset
+    assert f'{view} ALTER COLUMN "owner" UNSET TAG {term}' in stmts
