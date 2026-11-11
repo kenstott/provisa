@@ -717,9 +717,10 @@ async def test_an_entry_of_a_role_the_grant_holds_in_two_domains_ends_by_the_lat
 
 
 def _ends_of(view):
+    """Each rule's ends and date, by date."""
     return sorted(
-        (r["ends"], datetime.fromisoformat(r["ends_at"]) if r["ends_at"] else None)
-        for r in view["expiries"]
+        ((r["ends"], datetime.fromisoformat(r["ends_at"])) for r in view["expiries"]),
+        key=lambda rule: rule[1],
     )
 
 
