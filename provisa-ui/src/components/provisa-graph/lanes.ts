@@ -14,12 +14,13 @@
 // stacked lane is settled (the view's ``settle``), the lines laid over the placed nodes are added,
 // and each lane is boxed and titled as a group is.
 
-import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import type { CyInstance, CyLayoutOptions } from "../graph/cytoscape-types";
 import type { CyCanvas } from "./cyCanvas";
 import type { Core, ElementDefinition, NodeSingular } from "./core";
 import { edgeElement, type Element, type GraphEdgeSpec } from "./model";
 import { SIZE, groupHue } from "./tokens";
 import type { At } from "./tipPlacement";
+import { fitClear } from "./viewport";
 
 export interface LanesOptions {
   /** The lanes, left to right. */
@@ -152,7 +153,7 @@ export function runLanes(
       }
       cy.add(overlay.map((e) => edgeElement(e)) as unknown as ElementDefinition[]);
       boxLanes();
-      cy.fit(undefined, 24);
+      fitClear(cy as unknown as CyInstance, 24);
       done();
     });
   });

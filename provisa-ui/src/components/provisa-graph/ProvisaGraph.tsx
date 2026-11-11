@@ -56,7 +56,7 @@ import { graphStylesheet } from "./stylesheet";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
 import { tipPlacement, type DrawnGraph } from "./tipPlacement";
 import { graphTokens, type NodeType } from "./tokens";
-import { FIT_PADDING } from "./viewport";
+import { fitClear } from "./viewport";
 import "./provisa-graph.css";
 
 export type LayoutPreset = "layered" | "lanes" | "force";
@@ -436,7 +436,7 @@ export function ProvisaGraph({
           typeof cy.layout
         >[0]),
         () => {
-          cy.fit(undefined, FIT_PADDING);
+          fitClear(cy as unknown as CyInstance);
           finish();
         },
       );
@@ -472,7 +472,7 @@ export function ProvisaGraph({
         });
         isolatedRef.current = arranged.isolatedIds;
         if (latest.current.places) standPlaces(c, latest.current.places, movedRef.current);
-        cy.fit(undefined, FIT_PADDING);
+        fitClear(cy as unknown as CyInstance);
         const routing = opts?.routing ?? "bezier";
         cy.$(".pg-edge").style("curve-style", routing);
         if (routing === "taxi") applyTaxiLanes(c);
@@ -484,7 +484,7 @@ export function ProvisaGraph({
     const observer = new ResizeObserver(() => {
       if (box.clientWidth === 0) return;
       cy.resize();
-      cy.fit(undefined, preset === "lanes" ? 24 : FIT_PADDING);
+      fitClear(cy as unknown as CyInstance, preset === "lanes" ? 24 : undefined);
       if (preset !== "lanes") applyMarks(cy);
     });
     observer.observe(box);
@@ -554,7 +554,7 @@ export function ProvisaGraph({
       placeIsolatedGrid(c, isolated, bboxes);
       isolated.forEach((id) => cy.getElementById(id).style("display", "element"));
     } else isolated.forEach((id) => cy.getElementById(id).style("display", "none"));
-    cy.fit(undefined, FIT_PADDING);
+    fitClear(cy as unknown as CyInstance);
   }, [showOrphans, preset]);
 
   const gridSnap = options?.gridSnap ?? 0;
@@ -588,7 +588,7 @@ export function ProvisaGraph({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || command === null) return;
-    if (command.kind === "reset" || command.target == null) cy.fit(undefined, 24);
+    if (command.kind === "reset" || command.target == null) fitClear(cy as unknown as CyInstance, 24);
     else {
       const at = cy.getElementById(command.target);
       if (at.empty()) return;
