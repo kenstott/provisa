@@ -95236,4 +95236,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Maintainer 2026-11-11: when a delete is refused because other objects still refer to the row (the "Cannot
     delete X yet" dialog, and each refusal of a bulk delete), every object named is itself a link that opens
     that object''s own detail panel on its page, where it can be changed or deleted; there is no separate
-    per-kind "Open the page" link.'
+    per-kind "Open the page" link. (Amended 2026-11-11, A DEPENDENT IS NAMED AS ITS PAGE NAMES IT:) Maintainer
+    2026-11-11: each object named in a refused delete is shown by the label its own page shows (a relationship
+    as its two tables, e.g. users -> inquiries; a view or table by its table name), never by an internal
+    identifier such as users-to-inquiries, so it can be found where the link leads.'
