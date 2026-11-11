@@ -747,28 +747,16 @@ DECLARED: list[Setting] = [
         nullable=True,
         secret=True,
     ),
-    # REQ-2077: how long before a role grant expires, or is removed for lack of use, its holder
-    # and the org's admins are told.
+    # REQ-2077, REQ-2219: the one expiring-soon setting: how long before a role grant, or one
+    # entitlement entry of it, ends (or the grant is removed for lack of use) its holder and the
+    # org's admins are told, and the entry's expiring-soon event is emitted.
     Setting(
         key="auth.role_grant_notice_days",
         card="security",
         type="int",
-        effect="live",  # read at each sweep
+        effect="live",  # read at each expiry run and each read of the kinds
         req="REQ-2077",
         env="PROVISA_GRANT_NOTICE_DAYS",
-        default=7,
-        min=1,
-        unit="days",
-    ),
-    # REQ-2219: the expiring-soon event's own setting: how long before an entitlement expiry rule's
-    # date the scheduled expiry run emits it, and what the entitlement UI highlights by.
-    Setting(
-        key="entitlements.expiring_soon_days",
-        card="security",
-        type="int",
-        effect="live",  # read at each expiry run and each read of the kinds
-        req="REQ-2219",
-        env="PROVISA_ENTITLEMENT_EXPIRING_SOON_DAYS",
         default=7,
         min=1,
         unit="days",

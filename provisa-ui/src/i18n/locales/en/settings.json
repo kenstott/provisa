@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Notice before a role grant ends",
-        "help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Expiring-soon notice for entitlements",
-        "help": "How many days before an entitlement expiry rule's date the expiring-soon event is emitted and the person and the organization's administrators are emailed. The entitlement screens highlight rules this close to their date."
+        "label": "Notice before a role grant or its entries end",
+        "help": "How many days before a role grant, or one entitlement entry of it, ends, or the grant is removed for going unused, its holder and the organization's administrators are emailed."
       }
     },
     "server": {

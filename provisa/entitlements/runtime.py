@@ -234,23 +234,18 @@ def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
 class ListReach:
     """Where a list-scoped capability reaches through one role grant at a moment: its list, less
     what the expiry rules passed by then end of it (REQ-2219, EXPIRY RULES END EVERY CAPABILITY
-    THEY NAME). ``ended_all``: a grant-wide rule passed, and the capability reaches nothing."""
+    THEY NAME). A grant that ended is no longer held, so its reach is never asked."""
 
     identifiers: tuple[str, ...]
     ended: tuple[str, ...]
-    ended_all: bool
 
     def reaches(self, paths: tuple[tuple[str, ...], ...]) -> bool:
-        return (
-            not self.ended_all
-            and any(matches(i, paths) for i in self.identifiers)
-            and not any(matches(e, paths) for e in self.ended)
+        return any(matches(i, paths) for i in self.identifiers) and not any(
+            matches(e, paths) for e in self.ended
         )
 
     def kept(self) -> tuple[str, ...]:
-        """The listed identifiers no ended one covers whole; nothing when the grant ended."""
-        if self.ended_all:
-            return ()
+        """The listed identifiers no ended one covers whole."""
         return tuple(i for i in self.identifiers if not any(covers(e, i) for e in self.ended))
 
 
@@ -267,23 +262,16 @@ def list_reach(
     identity provider's own expiry counts for its lists: Provisa's rules never touch them."""
     listed = (WILDCARD,) if identifiers is None else identifiers
     if origin == IDP:
-        return ListReach(listed, (), False)
-    ended: list[str] = []
-    for rule in rules:
-        if rule.ends_at > at:
-            continue
-        named = rule_ends(rule, capability, kind)
-        if named is None:
-            return ListReach(listed, (), True)
-        ended.extend(named)
-    return ListReach(listed, tuple(dict.fromkeys(ended)), False)
+        return ListReach(listed, ())
+    ended = [i for rule in rules if rule.ends_at <= at for i in rule_ends(rule, capability, kind)]
+    return ListReach(listed, tuple(dict.fromkeys(ended)))
 
 
 def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
     """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
     that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
     with it as an ancestor; a role with no ``roles`` list reaches every role. An expiry rule passed
-    on the grant ends what it names of that reach, and a grant-wide one all of it. Raises when no
+    on the grant ends what it names of that reach. Raises when no
     person is bound: this answers an authorization question, and no person cannot be read as
     anyone."""
     request = _current.get()

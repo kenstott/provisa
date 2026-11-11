@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Preavviso prima della fine di un'assegnazione di ruolo",
-        "help": "Quanti giorni prima che un'assegnazione di ruolo scada, o venga rimossa perché inutilizzata, il titolare e gli amministratori dell'organizzazione ricevono un'email."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Preavviso di scadenza delle autorizzazioni",
-        "help": "Quanti giorni prima della data di una regola di scadenza delle autorizzazioni viene emesso l'evento \"in scadenza\" e vengono avvisati via e-mail la persona e gli amministratori dell'organizzazione. Le schermate delle autorizzazioni evidenziano le regole così vicine alla loro data."
+        "label": "Avviso prima della fine di un'assegnazione di ruolo o delle sue voci",
+        "help": "Quanti giorni prima che termini un'assegnazione di ruolo, o una delle sue voci di autorizzazione, o che l'assegnazione venga rimossa per inutilizzo, il titolare e gli amministratori dell'organizzazione ricevono un'email."
       }
     },
     "server": {

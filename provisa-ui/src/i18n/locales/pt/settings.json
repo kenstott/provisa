@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes do fim de uma atribuição de função",
-        "help": "Quantos dias antes de uma atribuição de função expirar, ou ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Aviso de expiração próxima de direitos de acesso",
-        "help": "Quantos dias antes da data de uma regra de expiração de direitos de acesso o evento de expiração próxima é emitido e a pessoa e os administradores da organização recebem um e-mail. As telas de direitos de acesso destacam as regras tão próximas da data."
+        "label": "Aviso antes do fim de uma atribuição de função ou de suas entradas",
+        "help": "Quantos dias antes de uma atribuição de função, ou uma de suas entradas de direitos, terminar, ou de a atribuição ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
     "server": {
