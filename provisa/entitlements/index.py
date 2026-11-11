@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler import naming
+from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
     from provisa.compiler.names_table import NamesTable
@@ -72,6 +73,31 @@ _READ_BY: dict[str, frozenset[str]] = {
     "roles": frozenset({"user_management", "assign_entitlements"}),
     "regions": frozenset({"platform_settings", "cross_org"}),
 }
+
+#: The capabilities of the data plane, each scoped to one kind (REQ-2219, THE ENTITLEMENT MODEL:
+#: read to columns, traverse to relationships, execute to commands, consume to data products), and
+#: the objects of the mask each reaches. A role with a schema holds them; an expiry names them.
+DATA_PLANE_CAPABILITIES: dict[str, tuple[str, frozenset[str]]] = {
+    "read": (LIST_OF[COLUMN], frozenset({TABLE, COLUMN, METRIC})),
+    "traverse": (LIST_OF[RELATIONSHIP], frozenset({RELATIONSHIP})),
+    "execute": (LIST_OF[COMMAND], frozenset({COMMAND})),
+    "consume": (LIST_OF[DATA_PRODUCT], frozenset({DATA_PRODUCT})),
+}
+
+#: Capabilities scoped by a semantic kind through a Provisa-held row of their own: a product's
+#: creator holds data_product_rw on it (``provisa.entitlements.store.record_product_creator``).
+_SCOPED_BY_ROW: dict[str, str] = {"data_product_rw": LIST_OF[DATA_PRODUCT]}
+
+
+def capability_scopes() -> dict[str, str | None]:
+    """Each capability and the kind of list that scopes it; None for an unscoped capability, which
+    holds wherever the role is held (REQ-2219, THE ENTITLEMENT MODEL)."""
+    scoped = {cap: kind for kind, caps in _READ_BY.items() for cap in caps}
+    scoped.update(_SCOPED_BY_ROW)
+    out: dict[str, str | None] = {c.value: scoped.get(c.value) for c in Capability}
+    out.update({cap: kind for cap, (kind, _) in DATA_PLANE_CAPABILITIES.items()})
+    return out
+
 
 #: Every kind of list a principal's role grant can carry, in the order a client lists them: the
 #: semantic hierarchy first, then the rest. The write API accepts these and no other.
