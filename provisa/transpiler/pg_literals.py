@@ -220,9 +220,13 @@ def _depth(elements: list) -> int:
 def _of_depth(to: exp.DataType, depth: int) -> exp.DataType:
     """``to``, an array type, of ``depth`` dimensions: PostgreSQL's text[] holds any number of
     them, an engine's list type one per nesting (a cast of a nested list to TEXT[] writes each
-    sublist as a text)."""
-    typed = to.copy()
-    for _ in range(depth - 1):
+    sublist as a text). The dimensions ``to`` declares are dropped, as PostgreSQL ignores them:
+    '{{1,2}}'::int[] and '{{1,2}}'::int[][] are both of two."""
+    element = to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    typed = element.copy()
+    for _ in range(depth):
         typed = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[typed], nested=True)
     return typed
 
