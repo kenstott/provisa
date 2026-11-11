@@ -10,7 +10,7 @@
 
 """First-run setup wizard endpoints."""
 
-# Requirements: REQ-120, REQ-121, REQ-124, REQ-125, REQ-471, REQ-472, REQ-539
+# Requirements: REQ-120, REQ-121, REQ-124, REQ-125, REQ-471, REQ-472, REQ-539, REQ-1105
 
 from __future__ import annotations
 
@@ -67,6 +67,21 @@ async def _seat_bootstrap_admin(user_id: str) -> None:  # REQ-1913, REQ-1297
     from provisa.api.auth_router import _seat_claimant_in_root
 
     await _seat_claimant_in_root(user_id)
+
+
+def _name_local_mcp_principal(admin_db, user_id: str) -> None:  # REQ-1105
+    """On an install whose local MCP connector is always on (the desktop tier), make the bootstrap
+    administrator setup creates the principal local MCP calls act for (``mcp.principal``), so the
+    connector acts for that person from the start. Stored as the operator's own setting would be:
+    the operator changes it in Settings like any other. Elsewhere nothing is written -- a local
+    MCP server there acts for the principal its operator names."""
+    from provisa.api.mcp import local_principal
+    from provisa.api.mcp.status import bridge_command
+    from provisa.core import settings_registry
+
+    if bridge_command() is None:
+        return
+    settings_registry.store(admin_db, {local_principal.SETTING: user_id}, updated_by=user_id)
 
 
 def _idp_override() -> str | None:
@@ -174,6 +189,7 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 await write_verifier(pool, admin_id, "admin", "admin")
                 if not multitenant:
                     await _seat_bootstrap_admin(admin_id)
+                _name_local_mcp_principal(pool, admin_id)
 
     cfg["auth"] = auth_section
     # multitenancy is a top-level config field (models.py), not part of the auth section.
@@ -417,6 +433,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         await write_verifier(admin_db, admin_id, body.admin_username, body.admin_password)
         if body.mode == "single":
             await _seat_bootstrap_admin(admin_id)
+        _name_local_mcp_principal(admin_db, admin_id)
         # REQ-124: the browser exchanges its password for a signed session token at
         # /auth/login, so the basic provider needs a signing key from the moment setup
         # writes the config — otherwise the first sign-in from the UI answers 503.

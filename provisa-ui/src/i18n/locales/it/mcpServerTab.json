@@ -9,8 +9,10 @@
     "transportLabel": "Trasporto",
     "stdioRoleLabel": "Ruolo stdio associato",
     "stdioRoleNone": "nessuno impostato — le chiamate stdio richiedono <code>{{envVar}}</code>",
+    "principalLabel": "Principal locale",
+    "principalNone": "nessuno impostato — le chiamate locali vengono rifiutate finché <code>{{envVar}}</code> non ne indica uno",
     "maxRowsLabel": "Limite di righe (run_sql)",
-    "enableHint": "Il server MCP è opzionale. Impostare la variabile d'ambiente <code>{{enableEnvVar}}</code> su una porta e riavviare il servizio per abilitarlo. Per il trasporto stdio locale, impostare anche <code>{{roleEnvVar}}</code> su un ruolo provisa.",
+    "enableHint": "Il server MCP è opzionale. Impostare la variabile d'ambiente <code>{{enableEnvVar}}</code> su una porta e riavviare il servizio per abilitarlo. Per il trasporto stdio locale, impostare anche <code>{{roleEnvVar}}</code> su un ruolo provisa e <code>{{principalEnvVar}}</code> sul principal (id utente) per conto del quale agiscono tali chiamate.",
     "toolsHeading": "Strumenti esposti",
     "colTool": "Strumento",
     "colDescription": "Descrizione"

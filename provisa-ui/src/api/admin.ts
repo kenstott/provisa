@@ -1319,10 +1319,13 @@ export interface McpServerStatus {
   bridge_command?: string | null;
   bridge_args?: string[];
   stdio_role: string | null;
+  // The principal local calls act for, beside the role; null -> they are refused — REQ-1105.
+  principal: string | null;
   max_rows: number;
   tools: McpTool[];
   enable_env_var: string;
   role_env_var: string;
+  principal_env_var: string;
 }
 
 export async function fetchMcpServer(): Promise<McpServerStatus> {
