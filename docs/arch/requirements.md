@@ -26985,3 +26985,15 @@ Maintainer 2026-11-11: Provisa never changes sqlglot's own classes at runtime. E
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2243 · Admin UI {#REQ-2243}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition: how the measure or derived value is computed, in business language (for example net revenue is gross order value less refunds and discounts, on the order date, in the order's currency). It is governed like the definition (approved, versioned, exported with the term, written back on ontology export), and an ontology import maps a term's calculation annotation onto it. Everyone who can read the term reads its method. A computed column grounded in the term shows the method with its definition; the column's own formula (its expression) is the implementation and is shown only to a reader who can read every input it uses ([REQ-2152](#REQ-2152)).
+
+**Code:** —
+
+**Tests:** —

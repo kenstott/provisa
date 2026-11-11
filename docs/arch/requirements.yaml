@@ -95279,3 +95279,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives
     byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the
     plain build stays, and the measurement is recorded.'
+
+- id: REQ-2243
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11: a glossary term may carry its calculation method beside its
+    definition: how the measure or derived value is computed, in business language (for example net revenue
+    is gross order value less refunds and discounts, on the order date, in the order''s currency). It is
+    governed like the definition (approved, versioned, exported with the term, written back on ontology
+    export), and an ontology import maps a term''s calculation annotation onto it. Everyone who can read the
+    term reads its method. A computed column grounded in the term shows the method with its definition; the
+    column''s own formula (its expression) is the implementation and is shown only to a reader who can read
+    every input it uses (REQ-2152).'
+  scenario: |
+    Given a glossary term "net revenue" with a calculation method
+    And a computed column grounded in that term whose formula reads a masked column
+    When a reader without rights to the masked column opens the column
+    Then the reader sees the term's definition and calculation method
+    And the reader does not see the column's formula
