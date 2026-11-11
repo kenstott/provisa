@@ -61,6 +61,8 @@ _CITE = re.compile(r"REQ-(\d+)(?:\s*(?:\.\.|–)\s*(?:REQ-)?(\d+))?")
 _REQ_PAREN = re.compile(r"\s*\((?:see\s+)?REQ-\d+[^()]*\)")
 _REQ_BARE = re.compile(r"\s*\bREQ-\d+(?:\s*(?:\.\.|–|-)\s*\d+)?(?:\s*[,:;])?")
 _ANY_REQ = re.compile(r"REQ-?\d", re.IGNORECASE)
+# A work item's id (R508g3, J1185) used as a commit scope names no part of the product.
+_WORK_ITEM_SCOPE = re.compile(r"[RJ]\d+[a-z0-9]*", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<!\be\.g)(?<!\bi\.e)(?<!\betc)(?<!\bvs)[.!?](?=\s+[A-Z(\"'`]|$)")
 
 
@@ -178,7 +180,10 @@ def _change(subject: str) -> tuple[str, str] | None:
     match = _SUBJECT.match(subject)
     if not match or _CANARY.search(subject):
         return None
-    kind, scope = match["type"], match["scope"] or ""
+    # A scope of requirement ids is no scope: no id reaches the notes (REQ-1989).
+    kind, scope = match["type"], strip_req_ids(match["scope"] or "")
+    if _WORK_ITEM_SCOPE.fullmatch(scope):
+        scope = ""
     if kind == "feat" or (kind == "fix" and scope not in _INTERNAL_FIX_SCOPES):
         text = strip_req_ids(match["text"])
         # A sentence starts with a capital; a name or identifier keeps its own spelling.
