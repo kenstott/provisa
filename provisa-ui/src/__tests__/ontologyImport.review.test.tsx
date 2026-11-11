@@ -199,8 +199,9 @@ describe("ImportReviewPanel", () => {
     fireEvent.click(types);
     await waitFor(() => expect(types).toHaveAttribute("aria-controls"));
     const list = document.getElementById(types.getAttribute("aria-controls") as string);
-    expect(within(list as HTMLElement).queryByRole("option", { name: "Same entity", hidden: true }))
-      .toBeNull();
+    expect(
+      within(list as HTMLElement).queryByRole("option", { name: "Same entity", hidden: true }),
+    ).toBeNull();
     await choose("ontology-add-alignment-target", "agreement");
     await choose("ontology-add-alignment-direction", "agreement is a synonym of account");
     fireEvent.click(screen.getByTestId("ontology-add-alignment-save"));

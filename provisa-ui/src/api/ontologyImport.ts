@@ -242,7 +242,10 @@ export async function applyOntologyImport(importId: number): Promise<ApplyResult
     const problems = Array.isArray(body.params?.problems)
       ? body.params.problems.filter((p): p is string => typeof p === "string")
       : [];
-    throw new ApplyRefused(serverMessage(body, requestFailed("applyOntologyImport", 409)), problems);
+    throw new ApplyRefused(
+      serverMessage(body, requestFailed("applyOntologyImport", 409)),
+      problems,
+    );
   }
   return ok(res, "applyOntologyImport");
 }

@@ -50,7 +50,9 @@ const DECIDED: ImportReview = {
   ],
 };
 
-beforeEach(() => api.applyOntologyImport.mockReset());
+beforeEach(() => {
+  api.applyOntologyImport.mockReset();
+});
 
 describe("applyPreview", () => {
   it("counts what applying makes, aligns, writes, leaves waiting and leaves undecided", () => {

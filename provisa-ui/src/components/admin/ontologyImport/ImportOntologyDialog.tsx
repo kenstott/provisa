@@ -85,7 +85,10 @@ export function ImportOntologyDialog({
           <Select
             label={t("ontologyImport.format")}
             placeholder={t("ontologyImport.formatFromName")}
-            data={ONTOLOGY_FORMATS.map((f) => ({ value: f, label: t(`ontologyImport.format_${f}`) }))}
+            data={ONTOLOGY_FORMATS.map((f) => ({
+              value: f,
+              label: t(`ontologyImport.format_${f}`),
+            }))}
             value={format}
             onChange={(v) => setFormat(v as OntologyFormat | null)}
             clearable

@@ -19,7 +19,7 @@ export const IMPORT: OntologyImport = {
   file_name: "Accounts.ttl",
   format: "turtle",
   domains: ["sales"],
-  summary: { items: 4, statements: 3, left_out: { "restrictions": 2, "imported modules": 1 } },
+  summary: { items: 4, statements: 3, left_out: { restrictions: 2, "imported modules": 1 } },
   imported_by: "ada",
   imported_at: "2026-11-11T09:00:00Z",
   applied_by: null,

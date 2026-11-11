@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Modal, SegmentedControl, Select, TextInput, Textarea } from "@mantine/core";
-import { Plus, Save } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   ALIGNMENT_TYPES,
   addAlignment,
@@ -43,10 +43,8 @@ export function EditItemDialog({
   const { t } = useTranslation();
   const [name, setName] = useState(item.name);
   const [definition, setDefinition] = useState(item.definition ?? "");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = async () => {
-    setBusy(true);
     setError("");
     try {
       onSaved(
@@ -57,8 +55,6 @@ export function EditItemDialog({
       );
     } catch (e) {
       setError(failure(e));
-    } finally {
-      setBusy(false);
     }
   };
   return (
@@ -99,18 +95,9 @@ export function EditItemDialog({
           </FormField>
         )}
         <FormFooter
+          onSave={save}
           onCancel={onClose}
-          action={
-            <Button
-              leftSection={<Save size={14} />}
-              onClick={() => void save()}
-              loading={busy}
-              disabled={!name.trim()}
-              data-testid="ontology-item-save"
-            >
-              {t("ontologyImport.save")}
-            </Button>
-          }
+          saveProps={{ "data-testid": "ontology-item-save", disabled: !name.trim() }}
         />
       </FormLayout>
     </Modal>

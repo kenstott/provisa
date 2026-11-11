@@ -39,7 +39,13 @@ const COUNT_COLOUR: Record<string, string> = {
 };
 
 /** Counts by status as small badges, the statuses with none left out. */
-function Counts({ counts, testId }: { counts: CountsByStatus[keyof CountsByStatus]; testId: string }) {
+function Counts({
+  counts,
+  testId,
+}: {
+  counts: CountsByStatus[keyof CountsByStatus];
+  testId: string;
+}) {
   const { t } = useTranslation();
   const entries = Object.entries(counts).filter(([, n]) => (n ?? 0) > 0);
   if (entries.length === 0) return <Text size="sm">0</Text>;

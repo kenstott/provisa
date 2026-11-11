@@ -31,6 +31,10 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",
   "components/admin/TermReviewQueue.tsx":
     "the select tick of each draft card, the select-all tick above the list, and the synonym ticks of a card, each saved on its click; the edit and merge forms are held to the shared layout",
+  "components/admin/ontologyImport/AlignmentRow.tsx":
+    "the select tick of each proposal and its use-the-definition tick, each acted on by its own Approve",
+  "components/admin/ontologyImport/ImportReviewPanel.tsx":
+    "the undecided-only filter tick above an import's items; its edit and align forms are held to the shared layout",
   "components/admin/RegionSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
