@@ -4,11 +4,13 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Presto (dialect `presto`), as a serving engine or as a source a statement is sent to directly. Each feature has a read polyfill, how its values and operations are computed there, and a write polyfill, how its values reach it; each states its limitations. Its forms are written in Trino's SQL, which it runs.
 
-This page lists every feature that has a polyfill or a limitation on Presto. A feature Presto does natively with no difference from PostgreSQL is left out: 0 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on Presto. A feature Presto does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 When Presto is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 13, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 14, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+
+0 of the grid's 12 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -23,7 +25,9 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN lengt
 <tr><td><strong>array_upper</strong><br>The upper bound of a dimension: its length.</td><td><pre><code>array_upper($a::anyarray, $d::integer)
 =&gt;
 CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER) THEN CASE $d WHEN 1 THEN json_array_length(CAST($a AS JSON)) WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;)) WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) END END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, $d::integer)
+<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, 1)
+=&gt;
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN cardinality($a) END AS INTEGER)</code></pre><pre><code>array_length($a::anyarray, $d::integer)
 =&gt;
 CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER) THEN CASE $d WHEN 1 THEN json_array_length(CAST($a AS JSON)) WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;)) WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract(json_extract(json_extract(CAST($a AS JSON), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;), &#x27;$[0]&#x27;)) END END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_fill</strong><br>An array of a value repeated to the dimensions given.</td><td><pre><code>array_fill($v::anyelement, $dims::integer[])
