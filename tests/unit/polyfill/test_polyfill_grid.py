@@ -23,15 +23,17 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import GRID, docs
+from provisa.transpiler.dialect_capabilities import CAPABILITIES
 from provisa.transpiler.polyfill.grid import (
-    ENGINES,
+    DIALECTS,
     Feature,
     Grid,
     Limitation,
     Rule,
     Side,
     Status,
-    engine_of,
+    column_of,
+    written_in,
 )
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError
 
@@ -86,21 +88,37 @@ def _node(sql: str) -> exp.Expr:
     return sqlglot.parse_one(sql, read="postgres")
 
 
+def test_the_columns_are_every_connector_dialect_provisa_sends_sql_to():
+    """REQ-2236, EVERY CONNECTOR PROVISA SENDS SQL TO; SQL CONNECTORS ONLY: every dialect the direct
+    route knows but Qdrant's, which is lowered to its API and runs no SQL."""
+    assert set(DIALECTS) == set(CAPABILITIES) - {"qdrant"}
+
+
 @pytest.mark.parametrize(
-    ("dialect", "engine"),
+    ("dialect", "column"),
     [
         ("duckdb", "duckdb"),
         ("trino", "trino"),
-        ("presto", "trino"),
-        ("athena", "trino"),
+        ("presto", "presto"),
+        ("athena", "athena"),
         ("clickhouse", "clickhouse"),
-        ("snowflake", "sources"),
-        ("tsql", "sources"),
-        ("postgres", None),
+        ("snowflake", "snowflake"),
+        ("tsql", "tsql"),
+        ("postgres", "postgres"),
+        ("qdrant", None),
+        ("spark", None),
     ],
 )
-def test_each_dialect_is_one_engine_of_the_grid_or_none(dialect: str, engine: str | None):
-    assert engine_of(dialect) == engine
+def test_each_dialect_is_its_own_column_or_none(dialect: str, column: str | None):
+    assert column_of(dialect) == column
+
+
+@pytest.mark.parametrize(
+    ("dialect", "written"),
+    [("presto", "trino"), ("athena", "trino"), ("trino", "trino"), ("duckdb", "duckdb")],
+)
+def test_presto_and_athena_forms_are_written_in_trinos_sql(dialect: str, written: str):
+    assert written_in(dialect) == written
 
 
 def test_a_rule_matched_gives_the_engines_form_and_bindings():
@@ -125,9 +143,15 @@ def test_a_refusal_is_the_rows_form():
     assert applied is not None and applied.form == _REFUSED
 
 
-def test_a_dialect_that_is_no_engine_matches_with_no_form():
+def test_a_dialect_that_is_no_column_matches_with_no_form():
+    applied = _TOY.read(_node("shout(x)"), "spark")
+    assert applied is not None and applied.form is None
+
+
+def test_postgresql_is_a_column_where_every_feature_is_native():
     applied = _TOY.read(_node("shout(x)"), "postgres")
     assert applied is not None and applied.form is None
+    assert all(_TOY.status(f, "postgres") is Status.NATIVE for f in _TOY.features)
 
 
 @pytest.mark.parametrize("sql", ["shout(1)", "shout(x, 'a'::text)", "whisper(x)", "shout()"])
@@ -168,12 +192,14 @@ def test_each_feature_has_a_status_on_each_engine(feature, engine, status):
     ("features", "message"),
     [
         ((_SHOUT, _SHOUT), "named twice"),
-        ((Feature("f", "t", "", Side((Rule("f($a)", {"oracle": "g($a)"}),))),), "no engine"),
+        ((Feature("f", "t", "", Side((Rule("f($a)", {"qdrant": "g($a)"}),))),), "no dialect"),
         ((Feature("f", "t", "", Side((Rule(None, {"duckdb": "g(1)"}),))),), "function name"),
         ((Feature("f", "t", "", Side((Rule("f($a)", {"duckdb": "g($b)"}),))),), "does not have"),
         ((Feature("f", "t", "", Side((Rule("f($a)", {"trino": "g(($a"}),))),), "does not parse"),
-        ((Feature("f", "t", "", Side(limitations={"x": ()})),), "no engine"),
-        ((Feature("f", "t", "", Side((Rule("f($a)", {"sources": "g($a)"}),))),), "no one dialect"),
+        ((Feature("f", "t", "", Side(limitations={"x": ()})),), "no dialect"),
+        ((Feature("f", "t", "", Side((Rule("f($a)", {"sources": "g($a)"}),))),), "no dialect"),
+        # Presto's forms are read as Trino's SQL: DuckDB's list literal is none.
+        ((Feature("f", "t", "", Side((Rule("f($a)", {"presto": "[$a]"}),))),), "does not parse"),
     ],
 )
 def test_a_grid_that_does_not_hold_is_refused_when_built(features, message: str):
@@ -181,8 +207,8 @@ def test_a_grid_that_does_not_hold_is_refused_when_built(features, message: str)
         Grid(features)
 
 
-def test_an_engines_page_lists_what_is_not_native_and_counts_the_rest():
-    page = docs.engine_page(_TOY, "trino")
+def test_a_dialects_page_lists_what_is_not_native_and_counts_the_rest():
+    page = docs.dialect_page(_TOY, "trino")
     assert page.startswith("# Polyfills on Trino")
     assert "1 of the grid&#x27;s" not in page  # nothing escaped outside a cell
     assert "2 of the grid's 4 features are left out as native" in page
@@ -195,7 +221,7 @@ def test_an_engines_page_lists_what_is_not_native_and_counts_the_rest():
 
 
 def test_a_refusal_is_shown_with_its_sqlstate_and_message():
-    page = docs.engine_page(_TOY, "clickhouse")
+    page = docs.dialect_page(_TOY, "clickhouse")
     assert "refused (its error is under the limitations)" in page
     assert (
         "<li>Refused: shout($a::text). <code>0A000</code> shout has no form on clickhouse</li>"
@@ -203,17 +229,28 @@ def test_a_refusal_is_shown_with_its_sqlstate_and_message():
     assert "<li>Refused. <code>0A000</code> shout has no form on clickhouse</li>" in page
 
 
-def test_the_summary_shows_each_feature_on_each_engine():
+def _summary_row(name: str, statuses: dict[str, str]) -> str:
+    cells = (statuses.get(dialect, "native") for dialect in DIALECTS)
+    return f"| `{name}` | toy | {' | '.join(cells)} |"
+
+
+def test_the_summary_shows_each_feature_on_each_dialect():
     page = docs.summary_page(_TOY)
-    assert "| `shout` | toy | polyfilled | native | refused | native |" in page
-    assert "| `a_money_value` | toy | native | differs | native | native |" in page
+    assert "| Feature | Family | PostgreSQL | DuckDB | Trino | Presto | Athena |" in page
+    assert _summary_row("shout", {"duckdb": "polyfilled", "clickhouse": "refused"}) in page
+    assert _summary_row("a_money_value", {"trino": "differs"}) in page
 
 
-def test_every_page_states_its_rule_and_the_pages_are_one_per_engine():
+def test_a_page_says_when_its_forms_are_another_dialects_sql():
+    assert "Its forms are written in Trino's SQL" in docs.dialect_page(_TOY, "athena")
+    assert "Its forms are written in" not in docs.dialect_page(_TOY, "trino")
+
+
+def test_every_page_states_its_rule_and_the_pages_are_one_per_dialect():
     written = docs.pages(GRID)
     assert set(written) == {
         f"{docs.DIRECTORY}/index.md",
-        *(f"{docs.DIRECTORY}/{engine}.md" for engine in ENGINES),
+        *(f"{docs.DIRECTORY}/{dialect}.md" for dialect in DIALECTS),
     }
     for path, text in written.items():
         assert "Generated by scripts/gen_polyfill_docs.py" in text, path

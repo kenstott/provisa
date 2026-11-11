@@ -21,10 +21,15 @@ takes only a constant message, so there such a refusal is by name, and is a limi
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill.grid import SOURCES, Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal
 
 FAMILY = "arrays"
+
+#: The dialects whose forms are Trino's SQL.
+_TRINO = ("trino", "presto", "athena")
+#: The dialects of a source a statement goes to directly that no array row writes a form for.
+_NO_FORMS = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse", *_TRINO})
 
 #: What the forms raise where PostgreSQL's answer would need a shape a list does not hold.
 _ARRAY_FILL_REFUSED = Refusal("0A000", "array_fill does not read this value")
@@ -50,9 +55,19 @@ def _no_form(function: str, engine: str) -> Refusal:
     return Refusal("0A000", f"{function}() has no form on {engine}")
 
 
+def _no_form_on(function: str, dialects: tuple[str, ...]) -> dict[str, Refusal]:
+    """Each of ``dialects`` refusing ``function``, by its own name."""
+    return {dialect: _no_form(function, dialect) for dialect in dialects}
+
+
 def _on_sources(function: str) -> dict[str, Refusal]:
     """A source a statement goes to directly has no form of an array function."""
-    return {SOURCES: _no_form(function, "a direct source")}
+    return _no_form_on(function, _NO_FORMS)
+
+
+def _on_trino(form: str) -> dict[str, str]:
+    """Trino's form, on each dialect whose forms are Trino's SQL."""
+    return dict.fromkeys(_TRINO, form)
 
 
 ARRAY_NDIMS = Feature(
@@ -67,8 +82,10 @@ ARRAY_NDIMS = Feature(
                     **_on_sources("array_ndims"),
                     "duckdb": r"CAST(CASE WHEN len($a) > 0 THEN "
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER)",
-                    "trino": r"CAST(CASE WHEN cardinality($a) > 0 THEN "
-                    r"length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER)",
+                    **_on_trino(
+                        r"CAST(CASE WHEN cardinality($a) > 0 THEN "
+                        r"length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER)"
+                    ),
                     "clickhouse": "CAST(CASE WHEN length($a) > 0 THEN "
                     "countSubstrings(toTypeName($a), 'Array(') END AS Nullable(Int32))",
                 },
@@ -91,21 +108,23 @@ ARRAY_DIMS = Feature(
                     r"THEN length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER)), "
                     r"_d -> '[1:' || json_array_length(to_json($a), '$' || "
                     r"repeat('[0]', CAST(_d AS INTEGER))) || ']'), '')",
-                    "trino": r"array_join(transform(sequence(1, CAST(CASE WHEN cardinality($a) > 0 "
-                    r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER)), "
-                    r"d -> '[1:' || CAST(CASE d "
-                    r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
-                    r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
-                    r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
-                    r"'$[0]'), '$[0]')) "
-                    r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
-                    r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
-                    r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
-                    r"'$[0]'), '$[0]')) "
-                    r"END AS VARCHAR) || ']'), '')",
+                    **_on_trino(
+                        r"array_join(transform(sequence(1, CAST(CASE WHEN cardinality($a) > 0 "
+                        r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER)), "
+                        r"d -> '[1:' || CAST(CASE d "
+                        r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
+                        r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
+                        r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
+                        r"'$[0]'), '$[0]')) "
+                        r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
+                        r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
+                        r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
+                        r"'$[0]'), '$[0]')) "
+                        r"END AS VARCHAR) || ']'), '')"
+                    ),
                     "clickhouse": "CASE WHEN length($a) > 0 THEN arrayStringConcat(arrayMap("
                     "d -> concat('[1:', toString(CASE d "
                     "WHEN 1 THEN JSONLength(toJSONString($a)) "
@@ -136,9 +155,11 @@ ARRAY_LOWER = Feature(
                     "duckdb": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) > 0 THEN "
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
                     r"THEN 1 END AS INTEGER)",
-                    "trino": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
-                    r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
-                    r"THEN 1 END AS INTEGER)",
+                    **_on_trino(
+                        r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
+                        r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
+                        r"THEN 1 END AS INTEGER)"
+                    ),
                     "clickhouse": "CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) > 0 "
                     "THEN countSubstrings(toTypeName($a), 'Array(') END AS Nullable(Int32)) "
                     "THEN 1 END AS Nullable(Int32))",
@@ -162,21 +183,23 @@ ARRAY_UPPER = Feature(
                     r"length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
                     r"THEN json_array_length(to_json($a), '$' || "
                     r"repeat('[0]', CAST($d - 1 AS INTEGER))) END AS INTEGER)",
-                    "trino": r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
-                    r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
-                    r"THEN CASE $d "
-                    r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
-                    r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
-                    r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
-                    r"'$[0]'), '$[0]')) "
-                    r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
-                    r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
-                    r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
-                    r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
-                    r"'$[0]'), '$[0]')) "
-                    r"END END AS INTEGER)",
+                    **_on_trino(
+                        r"CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) > 0 "
+                        r"THEN length(regexp_extract(typeof($a), '^(array\()+')) / 6 END AS INTEGER) "
+                        r"THEN CASE $d "
+                        r"WHEN 1 THEN json_array_length(CAST($a AS JSON)) "
+                        r"WHEN 2 THEN json_array_length(json_extract(CAST($a AS JSON), '$[0]')) "
+                        r"WHEN 3 THEN json_array_length(json_extract(json_extract(CAST($a AS JSON), "
+                        r"'$[0]'), '$[0]')) "
+                        r"WHEN 4 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]')) "
+                        r"WHEN 5 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), '$[0]')) "
+                        r"WHEN 6 THEN json_array_length(json_extract(json_extract(json_extract("
+                        r"json_extract(json_extract(CAST($a AS JSON), '$[0]'), '$[0]'), '$[0]'), "
+                        r"'$[0]'), '$[0]')) "
+                        r"END END AS INTEGER)"
+                    ),
                     "clickhouse": "CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) > 0 "
                     "THEN countSubstrings(toTypeName($a), 'Array(') END AS Nullable(Int32)) "
                     "THEN CASE $d "
@@ -230,12 +253,14 @@ ARRAY_FILL = Feature(
                     "WHEN len($dims) = 1 THEN list_transform(range($dims[1]), _i -> $v) "
                     "ELSE error('postgresql-error 0A000: ' || 'array_fill does not read this value') "
                     "END",
-                    "trino": "CASE WHEN $dims IS NULL THEN fail('postgresql-error 22004: ' || "
-                    "'dimension array or low bound array cannot be null' || "
-                    "' <end of postgresql-error>') "
-                    "WHEN cardinality($dims) = 1 THEN repeat($v, $dims[1]) "
-                    "ELSE fail('postgresql-error 0A000: ' || 'array_fill does not read this value' "
-                    "|| ' <end of postgresql-error>') END",
+                    **_on_trino(
+                        "CASE WHEN $dims IS NULL THEN fail('postgresql-error 22004: ' || "
+                        "'dimension array or low bound array cannot be null' || "
+                        "' <end of postgresql-error>') "
+                        "WHEN cardinality($dims) = 1 THEN repeat($v, $dims[1]) "
+                        "ELSE fail('postgresql-error 0A000: ' || 'array_fill does not read this value' "
+                        "|| ' <end of postgresql-error>') END"
+                    ),
                     "clickhouse": "arrayWithConstant(throwIf(length($dims) <> 1, "
                     "'postgresql-error 0A000: array_fill does not read this value "
                     "<end of postgresql-error>') + assumeNotNull($dims[1]), $v)",
@@ -252,14 +277,16 @@ ARRAY_FILL = Feature(
                     "THEN list_transform(range($dims[1]), _i -> $v) "
                     "ELSE error('postgresql-error 0A000: ' || 'array_fill does not read this value') "
                     "END",
-                    "trino": "CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN "
-                    "fail('postgresql-error 22004: ' || "
-                    "'dimension array or low bound array cannot be null' || "
-                    "' <end of postgresql-error>') "
-                    "WHEN cardinality($dims) = 1 AND all_match($lower_bounds, _b -> _b = 1) "
-                    "THEN repeat($v, $dims[1]) "
-                    "ELSE fail('postgresql-error 0A000: ' || 'array_fill does not read this value' "
-                    "|| ' <end of postgresql-error>') END",
+                    **_on_trino(
+                        "CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN "
+                        "fail('postgresql-error 22004: ' || "
+                        "'dimension array or low bound array cannot be null' || "
+                        "' <end of postgresql-error>') "
+                        "WHEN cardinality($dims) = 1 AND all_match($lower_bounds, _b -> _b = 1) "
+                        "THEN repeat($v, $dims[1]) "
+                        "ELSE fail('postgresql-error 0A000: ' || 'array_fill does not read this value' "
+                        "|| ' <end of postgresql-error>') END"
+                    ),
                     "clickhouse": "arrayWithConstant(throwIf(length($dims) <> 1 OR "
                     "NOT arrayAll(_b -> _b = 1, $lower_bounds), "
                     "'postgresql-error 0A000: array_fill does not read this value "
@@ -267,11 +294,7 @@ ARRAY_FILL = Feature(
                 },
             ),
         ),
-        limitations={
-            "duckdb": (_ARRAY_FILL_SHAPE,),
-            "trino": (_ARRAY_FILL_SHAPE,),
-            "clickhouse": (_ARRAY_FILL_SHAPE,),
-        },
+        limitations=dict.fromkeys(("duckdb", *_TRINO, "clickhouse"), (_ARRAY_FILL_SHAPE,)),
     ),
 )
 
@@ -287,9 +310,11 @@ ARRAY_POSITIONS = Feature(
                     **_on_sources("array_positions"),
                     "duckdb": "CAST(list_filter(range(1, len($a) + 1), "
                     "_i -> $a[_i] IS NOT DISTINCT FROM $v) AS INTEGER[])",
-                    "trino": "CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) "
-                    "ELSE CAST(filter(sequence(1, cardinality($a)), "
-                    "_i -> $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END",
+                    **_on_trino(
+                        "CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) "
+                        "ELSE CAST(filter(sequence(1, cardinality($a)), "
+                        "_i -> $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END"
+                    ),
                     "clickhouse": "arrayMap(_p -> toInt32(_p.2), arrayFilter(_p -> "
                     "((_p.1 IS NULL AND $v IS NULL) OR _p.1 = $v), arrayZip($a, arrayEnumerate($a))))",
                 },
@@ -310,8 +335,10 @@ ARRAY_REPLACE = Feature(
                     **_on_sources("array_replace"),
                     "duckdb": "list_transform($a, "
                     "_x -> CASE WHEN _x IS NOT DISTINCT FROM $v THEN $w ELSE _x END)",
-                    "trino": "transform($a, "
-                    "_x -> CASE WHEN _x IS NOT DISTINCT FROM $v THEN $w ELSE _x END)",
+                    **_on_trino(
+                        "transform($a, "
+                        "_x -> CASE WHEN _x IS NOT DISTINCT FROM $v THEN $w ELSE _x END)"
+                    ),
                     "clickhouse": "arrayMap(_x -> CASE WHEN ((_x IS NULL AND $v IS NULL) OR _x = $v) "
                     "THEN $w ELSE _x END, $a)",
                 },
@@ -335,10 +362,12 @@ ARRAY_SAMPLE = Feature(
                     "'sample size must be between 0 and ' || len($a)) "
                     "ELSE list_transform(list_sort(list_transform($a, "
                     "_x -> {'k': random(), 'v': _x})), _e -> _e.v)[1:$n] END",
-                    "trino": "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
-                    "WHEN $n < 0 OR $n > cardinality($a) THEN fail('postgresql-error 22023: ' || "
-                    "'sample size must be between 0 and ' || CAST(cardinality($a) AS VARCHAR) || "
-                    "' <end of postgresql-error>') ELSE slice(shuffle($a), 1, $n) END",
+                    **_on_trino(
+                        "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
+                        "WHEN $n < 0 OR $n > cardinality($a) THEN fail('postgresql-error 22023: ' || "
+                        "'sample size must be between 0 and ' || CAST(cardinality($a) AS VARCHAR) || "
+                        "' <end of postgresql-error>') ELSE slice(shuffle($a), 1, $n) END"
+                    ),
                     "clickhouse": "arraySlice(arrayShuffle($a), 1 + throwIf($n IS NULL OR $n < 0 OR "
                     "$n > length($a), 'postgresql-error 0A000: array_sample does not read this "
                     "value <end of postgresql-error>'), $n)",
@@ -361,7 +390,7 @@ ARRAY_SHUFFLE = Feature(
                     **_on_sources("array_shuffle"),
                     "duckdb": "list_transform(list_sort(list_transform($a, "
                     "_x -> {'k': random(), 'v': _x})), _e -> _e.v)",
-                    "trino": "shuffle($a)",
+                    **_on_trino("shuffle($a)"),
                     "clickhouse": "arrayShuffle($a)",
                 },
             ),
@@ -383,11 +412,13 @@ TRIM_ARRAY = Feature(
                     "WHEN $n < 0 OR $n > len($a) THEN error('postgresql-error 2202E: ' || "
                     "'number of elements to trim must be between 0 and ' || len($a)) "
                     "ELSE $a[1:len($a) - $n] END",
-                    "trino": "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
-                    "WHEN $n < 0 OR $n > cardinality($a) THEN fail('postgresql-error 2202E: ' || "
-                    "'number of elements to trim must be between 0 and ' || "
-                    "CAST(cardinality($a) AS VARCHAR) || ' <end of postgresql-error>') "
-                    "ELSE slice($a, 1, cardinality($a) - $n) END",
+                    **_on_trino(
+                        "CASE WHEN $a IS NULL OR $n IS NULL THEN NULL "
+                        "WHEN $n < 0 OR $n > cardinality($a) THEN fail('postgresql-error 2202E: ' || "
+                        "'number of elements to trim must be between 0 and ' || "
+                        "CAST(cardinality($a) AS VARCHAR) || ' <end of postgresql-error>') "
+                        "ELSE slice($a, 1, cardinality($a) - $n) END"
+                    ),
                     "clickhouse": "arraySlice($a, 1 + throwIf($n IS NULL OR $n < 0 OR "
                     "$n > length($a), 'postgresql-error 0A000: trim_array does not read this "
                     "value <end of postgresql-error>'), length($a) - $n)",
@@ -416,8 +447,7 @@ GENERATE_SUBSCRIPTS = Feature(
                     r"THEN length(regexp_extract(typeof($a), '(\[\])+$')) // 2 END AS INTEGER) "
                     r"THEN json_array_length(to_json($a), '$' || "
                     r"repeat('[0]', CAST($d - 1 AS INTEGER))) END AS INTEGER) + 1) END)",
-                    "trino": _no_form("generate_subscripts", "trino"),
-                    "clickhouse": _no_form("generate_subscripts", "clickhouse"),
+                    **_no_form_on("generate_subscripts", (*_TRINO, "clickhouse")),
                 },
             ),
         ),
