@@ -254,6 +254,14 @@ def _case(whens: Iterable[tuple[exp.Expr, exp.Expr]], default: exp.Expr | None) 
     return exp.Case(ifs=ifs, default=default.copy() if default is not None else None)
 
 
+def _typed(written: exp.Expr, sql_type: str) -> exp.Expr:
+    """``written``, a NULL known at compile time (a NULL range's part) cast to the function's
+    PostgreSQL result type: a bare NULL has no type, and a client is sent text."""
+    if not isinstance(written, exp.Null):
+        return written
+    return exp.Cast(this=written, to=exp.DataType.build(sql_type, dialect="postgres"))
+
+
 def _int(value: int) -> exp.Expr:
     return exp.Literal.number(value)
 
@@ -1299,15 +1307,16 @@ def _constant_element(node: exp.Expr, rtype: RangeType) -> object:  # object-ok:
     inner = _unwrapped(node)
     if _null_value(inner):
         return None
-    if isinstance(inner, exp.Neg):
-        return pg_range.read_element(rtype, "-" + _constant_text(inner.this))
     return pg_range.read_element(rtype, _constant_text(inner))
 
 
 def _constant_text(node: exp.Expr) -> str:
+    """A constant's text, its casts gone: ``(-7)::integer`` is ``-7``."""
     inner = _unwrapped(node)
     while isinstance(inner, exp.Cast):
         inner = _unwrapped(inner.this)
+    if isinstance(inner, exp.Neg):
+        return "-" + _constant_text(inner.this)
     return inner.this
 
 
@@ -1786,7 +1795,7 @@ class _Rewrite:
                     exp.If(this=_not(written), true=_int(0)),
                 ]
             )
-        return written
+        return _typed(written, "boolean")
 
     def visit(self, node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one per form
         if isinstance(node, exp.Dot) and _catalog(node):
@@ -1809,7 +1818,8 @@ class _Rewrite:
             if value is None:
                 return node
             name = "lower" if isinstance(node, exp.Lower) else "upper"
-            return self._part(name, value, self._as_written(node), self._read_as_text(node))
+            written = self._part(name, value, self._as_written(node), self._read_as_text(node))
+            return _typed(written, value.rtype.element)
         if isinstance(node, (exp.Explode, exp.Unnest)):
             return self._unnest(node)
         if isinstance(node, exp.Anonymous):
@@ -1880,9 +1890,9 @@ class _Rewrite:
         if operator == "cmp" and len(args) == 2:  # noqa: PLR2004
             a, b = self._pair(args[0], args[1])
             if isinstance(a, _R) and isinstance(b, _R):
-                return _case([(_or(a.null, b.null), _null())], _sign(a, b))
+                return _typed(_case([(_or(a.null, b.null), _null())], _sign(a, b)), "integer")
             if isinstance(a, _M) and isinstance(b, _M):
-                return self._multirange_cmp(a, b)
+                return _typed(self._multirange_cmp(a, b), "integer")
             return None
         if operator in _BOOLEAN_FUNCTIONS and len(args) == 2:  # noqa: PLR2004
             verb = _BOOLEAN_FUNCTIONS[operator]

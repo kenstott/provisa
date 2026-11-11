@@ -2923,6 +2923,8 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
 _MOST_SCALE = 18
+#: The most digits past the point DuckDB's DECIMAL holds: its width is 38 at most.
+_DUCKDB_MOST_SCALE = 38
 
 
 def refuse_named(tree: exp.Expr, dialect: str) -> None:
@@ -2966,7 +2968,8 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
     if isinstance(said, exp.Null):
         return None
     digits = _constant(said)
-    if digits is None or (dialect not in _DUCKDB and not 0 <= digits <= _MOST_SCALE):
+    most = _DUCKDB_MOST_SCALE if dialect in _DUCKDB else _MOST_SCALE
+    if digits is None or digits > most or (dialect not in _DUCKDB and digits < 0):
         raise FunctionRefused(called, dialect)
     return digits
 
