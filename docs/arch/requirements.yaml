@@ -91722,21 +91722,36 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     role request and ends if it is declined. (Amended 2026-10-29, APPROVING THE ROLE RELEASES THE COLUMN
     REQUEST:) Maintainer 2026-10-31: the column request is held pending and names no role until the role
     request is approved. That approval adds the new role to the column request and releases it to the data
-    steward. (Amended 2026-11-11, A PRODUCT LISTS THE ROLES IT IS GRANTED THROUGH:) Maintainer 2026-11-11.
-    A data product names, when it is published, the roles access to it may be granted through; by default
-    that list is the viewer role. Approving a request is picking one of them (the only one, when the list
-    holds one, already picked), and the approval assigns that role to the requester with entitlements built
-    from the product itself -- its member tables and columns -- so no one writes an entitlement list by
-    hand. Masks, row rules and anything else applied on read are defined up front, on the listed roles and
-    the product, so what a consumer gets is known before anyone asks. A product whose list is empty cannot
-    be requested. (Amended 2026-11-11, AN OPEN PRODUCT NEEDS NO APPROVAL:) Maintainer 2026-11-11. A product
-    can be marked open: a request for it is granted at once, through its listed role (viewer by default)
-    with the entitlements built from the product, and recorded like any approval, with no owner to wait
-    for. It is meant for common reference data many people need, such as the organisation structure. (Amended
-    2026-11-11, PRODUCT ACCESS COMES IN TWO SIZES:) Maintainer 2026-11-11, simplifying the entitlements
+    steward. (Amended 2026-11-11, A PRODUCT LISTS THE ROLES IT IS GRANTED THROUGH:) [SUPERSEDED by REQ-2180
+    (amended 2026-11-11, OFFERS), 2026-11-11 -- replaced by offers (REQ-2180, OFFERS). Kept here for history;
+    do not implement against it.] Maintainer 2026-11-11. A data product names, when it is published, the
+    roles access to it may be granted through; by default that list is the viewer role. Approving a request
+    is picking one of them (the only one, when the list holds one, already picked), and the approval assigns
+    that role to the requester with entitlements built from the product itself -- its member tables and
+    columns -- so no one writes an entitlement list by hand. [END SUPERSEDED BLOCK] Masks, row rules and
+    anything else applied on read are defined up front, on the listed roles and the product, so what a consumer
+    gets is known before anyone asks. A product whose list is empty cannot be requested. (Amended 2026-11-11,
+    AN OPEN PRODUCT NEEDS NO APPROVAL:) [SUPERSEDED by REQ-2180 (amended 2026-11-11, OFFERS), 2026-11-11
+    -- replaced by offers (REQ-2180, OFFERS). Kept here for history; do not implement against it.] Maintainer
+    2026-11-11. A product can be marked open: a request for it is granted at once, through its listed role
+    (viewer by default) with the entitlements built from the product, and recorded like any approval, with
+    no owner to wait for. [END SUPERSEDED BLOCK] It is meant for common reference data many people need,
+    such as the organisation structure. (Amended 2026-11-11, PRODUCT ACCESS COMES IN TWO SIZES:) [SUPERSEDED
+    by REQ-2180 (amended 2026-11-11, OFFERS), 2026-11-11 -- replaced by offers (REQ-2180, OFFERS). Kept
+    here for history; do not implement against it.] Maintainer 2026-11-11, simplifying the entitlements
     built from a product: there are two, and the approval (or the open grant) gives one of them -- the product''s
-    datasets, or its datasets with their data quality results and profiles. Masks, row rules and anything
-    else applied on read come from the listed role, defined up front.'
+    datasets, or its datasets with their data quality results and profiles. [END SUPERSEDED BLOCK] Masks,
+    row rules and anything else applied on read come from the listed role, defined up front. (Amended 2026-11-11,
+    OFFERS:) Maintainer 2026-11-11. Access to a data product is by offers. The product''s owner defines
+    its offers when publishing it; each offer is a role together with two choices, whether it includes the
+    product''s data quality results and whether it includes its profiles, and whether it is open. The default
+    offer is the viewer role with data quality results and without profiles. A requester bids for an offer;
+    the approver accepts or declines that offer as bid, never altering it; an open offer is accepted at
+    once and recorded like any acceptance, with no one to wait for (meant for common reference data such
+    as the organisation structure). Accepting assigns the offer''s role to the requester with entitlements
+    built from the product -- its datasets, with its data quality results and profiles where the offer includes
+    them -- so no one writes an entitlement list by hand. Masks, row rules and anything else applied on
+    read come from the offer''s role, defined up front. A product with no offers cannot be requested.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
