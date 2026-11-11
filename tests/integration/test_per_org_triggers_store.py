@@ -204,13 +204,15 @@ async def test_each_orgs_trigger_writes_only_its_own_orgs_table(two_orgs):
     # Each org's own trigger, and its per-org jobs, keyed by the org: the service-level evaluation
     # (REQ-506), the fakes' daily adequacy checks (REQ-2091), the hourly review of judgments
     # (REQ-2094), the sweep of expired and unused role grants (REQ-2077) and the retirement of
-    # deprecated glossary terms and data products on their planned date (REQ-2144, REQ-1634).
+    # deprecated glossary terms and data products on their planned date (REQ-2144, REQ-1634), and the
+    # entitlement expiry run that ends lapsed grants and their entries (REQ-2219).
     per_org = (
         "sla:evaluate",
         "fake_adequacy",
         "judgments:review",
         "roles:sweep_grants",
         "planned_retirement",
+        "entitlements:expiry_run",
     )
     assert {j.id for j in scheduler.get_jobs()} == {
         job
