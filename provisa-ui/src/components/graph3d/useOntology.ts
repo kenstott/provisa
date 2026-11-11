@@ -28,6 +28,7 @@ import {
   type CountRow,
   type OntologyRows,
 } from "./ontologyData";
+import { readOntology } from "./ontologyRead";
 import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
@@ -47,12 +48,14 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (query === null || count === null) return null;
   const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
-  // No term at the root, so none nested under it: a product with no terms (a new one) reads
-  // itself alone, not the empty neighbourhood's nested edges -- seconds of server time.
-  const read = counted.length === 0 ? ontologyQuery(m, scope, false) : query;
-  const rows: OntologyRows =
-    read === null ? { _terms: [] } : await dataGraphql<OntologyRows>(read, {}, role);
-  // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
+  // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
+  // alone. Else a search's or a focus's neighbourhood is read a hop at a time, each term once.
+  const { rows } = await readOntology(
+    m,
+    scope,
+    (q) => dataGraphql<OntologyRows>(q, {}, role),
+    counted.length > 0,
+  );
   const data = ontologyGraph(rows, scope);
   // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];

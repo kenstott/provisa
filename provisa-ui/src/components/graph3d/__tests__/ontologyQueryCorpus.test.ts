@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../../api/metaGraph";
-import { ontologyCountQuery, ontologyQuery } from "../ontologyData";
+import { ontologyCountQuery, ontologyHopQuery, ontologyQuery, termLevels } from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
@@ -171,8 +171,12 @@ function corpus(): Record<string, string> {
   for (const [key, s] of snippetScopes()) {
     add(`ontology snippet: ${key}`, ontologyQuery(m, s));
     add(`ontology snippet count: ${key}`, ontologyCountQuery(m, s));
+    // REQ-2174: each hop past the root, by the ids of the terms it reaches.
+    for (let hop = 1; hop <= termLevels(s); hop++)
+      add(`ontology snippet hop ${hop}: ${key}`, ontologyHopQuery(m, s, hop, [1, 2]));
   }
-  for (const [key, s] of productLayerScopes()) add(`ontology product layers: ${key}`, ontologyQuery(m, s));
+  for (const [key, s] of productLayerScopes())
+    add(`ontology product layers: ${key}`, ontologyQuery(m, s));
   return out;
 }
 
@@ -215,7 +219,7 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
   });
 
   it("reads a term's snippet from the term, and a product's from the terms its tables are", () => {
-    // REQ-2174: the root names the focus; its neighbourhood is read nested to the depth.
+    // REQ-2174: the root names the focus; its neighbourhood is read a hop at a time to the depth.
     const m = reader();
     const [, base] = snippetScopes()[0];
     const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
@@ -230,9 +234,12 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(product).toContain('productId: { eq: "1" }');
     // The product itself is read, that product alone.
     expect(product).toMatch(/m__dataProducts\(where: \{ id: \{ eq: "1" \} \}\)/);
-    // A deeper read nests one more level of term edges.
-    const deeper = ontologyQuery(m, { ...base, focus: "term:7", depth: 3 }) as string;
-    expect(deeper.split("edgesOut").length).toBeGreaterThan(term.split("edgesOut").length);
+    // A deeper read reads one more hop, its root the same: no level is nested under another.
+    const deeper = { ...base, focus: "term:7", depth: 3 };
+    expect(ontologyQuery(m, deeper)).toBe(term);
+    const hop = ontologyHopQuery(m, deeper, 3, [1, 2]) as string;
+    expect(hop).toMatch(/on_terms\(where: \{ id: \{ in: \[1,2\] \} \}\)/);
+    expect(hop.split("edgesOut")).toHaveLength(2);
   });
 
   it("read no product apart and no relationship between tables by the Ontology preset's rules", () => {
