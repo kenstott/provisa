@@ -89,7 +89,8 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect: str):
             except RowRefused:
                 continue
             tree = sqlglot.parse_one(out, read=dialect)
-            columns = {c.name for c in tree.find_all(exp.Column)}
+            # A dialect that folds names to capitals (Exasol) writes them so.
+            columns = {c.name.lower() for c in tree.find_all(exp.Column)}
             assert not [n for n in tree.walk() if isinstance(n, (exp.Parameter, exp.Placeholder))]
             assert {c for c in columns if not c.startswith("_")} <= set(
                 holes(pattern(rule.pattern))

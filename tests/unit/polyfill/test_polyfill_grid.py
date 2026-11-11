@@ -198,8 +198,8 @@ def test_each_feature_has_a_status_on_each_engine(feature, engine, status):
         ((Feature("f", "t", "", Side((Rule("f($a)", {"trino": "g(($a"}),))),), "does not parse"),
         ((Feature("f", "t", "", Side(limitations={"x": ()})),), "no dialect"),
         ((Feature("f", "t", "", Side((Rule("f($a)", {"sources": "g($a)"}),))),), "no dialect"),
-        # Presto's forms are read as Trino's SQL: DuckDB's list literal is none.
-        ((Feature("f", "t", "", Side((Rule("f($a)", {"presto": "[$a]"}),))),), "does not parse"),
+        # Presto's forms are read as Trino's SQL: DuckDB's integer division is none.
+        ((Feature("f", "t", "", Side((Rule("f($a)", {"presto": "$a // 2"}),))),), "does not parse"),
     ],
 )
 def test_a_grid_that_does_not_hold_is_refused_when_built(features, message: str):
