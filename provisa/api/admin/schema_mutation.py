@@ -79,6 +79,7 @@ from provisa.api.admin.types import (
     SourceInput,
     TableInput,
     TableRegistrationOutcome,
+    BulkDeleteResult,
     ColumnInput,
     TagAssignmentInput,
     TagInput,
@@ -4726,6 +4727,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.table_not_found",
             params={"table": id},
         )
+
+    @strawberry.mutation
+    async def delete_tables(
+        self, info: StrawberryInfo, ids: list[int]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several tables deleted in one call, each by deleteTable."""
+        from provisa.api.admin._bulk_delete import delete_each
+        from provisa.core.repositories import table as table_repo
+
+        # The right deleteTable needs, asked once before any table is attempted.
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+
+        async def _name(table_id: int) -> str:
+            async with pool.acquire() as conn:
+                found = await table_repo.get(cast("Connection", conn), table_id)
+            # A table that is not registered has no name but the id it was asked by; its own
+            # delete then refuses it as not found.
+            return str(table_id) if found is None else found["table_name"]
+
+        return await delete_each(ids, _name, lambda table_id: self.delete_table(info, table_id))  # pyright: ignore[reportCallIssue]
 
     @strawberry.mutation
     async def delete_role(self, info: StrawberryInfo, id: str) -> MutationResult:  # REQ-1531
