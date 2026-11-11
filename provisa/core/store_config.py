@@ -38,6 +38,7 @@ from provisa.core.models import (
     CalendarConfig,
     ConnectorConfig,
     DataProduct,
+    DeclaredOffer,
     Domain,
     Function,
     GlossaryTermConfig,
@@ -398,6 +399,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import connector as connector_repo
     from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import data_product_offer as offer_repo
     from provisa.core.repositories import function as function_repo
     from provisa.core.repositories import kafka_source as kafka_repo
     from provisa.core.repositories import metric as metric_repo
@@ -487,6 +489,14 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
                             "commands": await data_product_repo.member_command_names(
                                 conn, row["id"]
                             ),
+                            # REQ-2180: its offers, a sample's views named as its tables are.
+                            "offers": [
+                                {
+                                    **_fields(DeclaredOffer, offer),
+                                    "sample_views": [name_of[v] for v in offer["sample_views"]],
+                                }
+                                for offer in await offer_repo.list_offers(conn, row["id"])
+                            ],
                         },
                     )
                 )

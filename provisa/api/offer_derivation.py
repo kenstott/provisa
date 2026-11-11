@@ -66,7 +66,7 @@ def seen_columns(state: Any, role_id: str, table: dict) -> list[offer_contracts.
     return [
         offer_contracts.SeenColumn(
             name=c["column_name"],
-            type=c.get("data_type") or "unknown",
+            type=c["data_type"],
             description=c.get("description"),
             read=c["column_name"] in read,
             mask=(read[c["column_name"]].get("mask") or {}).get("type")

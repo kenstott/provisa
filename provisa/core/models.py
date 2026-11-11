@@ -617,6 +617,10 @@ class DataProduct(BaseModel):  # REQ-1634
     # are the one place it is declared.
     tables: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=list)
+    # REQ-2180: the product's offers, each added or replaced by its name when the configuration
+    # loads; an offer the file does not declare is kept (an apply removes nothing). A product
+    # declaring none keeps the default offer it starts with.
+    offers: list["DeclaredOffer"] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -690,25 +694,25 @@ class ContractChange(BaseModel):  # REQ-2158
 OFFER_DATA_LEVELS = ("full", "sample", "synthetic")
 
 
-class DataProductOffer(BaseModel):  # REQ-2180
-    """One offer of a data product: a role its owner may grant, the level of data it gives, whether
-    it includes the product's data quality results and its profiles, whether it is open (accepted
-    at once), and how long what accepting it grants lasts (None: no end). A sample names the views
-    it gives by table id; a synthetic offer has no profiles."""
+class _OfferBase(BaseModel):  # REQ-2180
+    """What an offer is, however its sample's views are named: a role its owner may grant, the
+    level of data it gives, whether it includes the product's data quality results and its
+    profiles, whether it is open (accepted at once), and how long what accepting it grants lasts
+    (None: no end). A synthetic offer has no profiles."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
     role_id: str = Field(min_length=1)
     data_level: Literal["full", "sample", "synthetic"] = "full"
-    sample_views: list[int] = Field(default_factory=list)
+    sample_views: list[Any] = Field(default_factory=list)
     dq_results: bool = True
     profiles: bool = False
     open: bool = False
     duration_days: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
-    def _data_fits(self) -> "DataProductOffer":
+    def _data_fits(self) -> "_OfferBase":
         if self.data_level == "sample" and not self.sample_views:
             raise ValueError("a sample offer names one or more views (sample_views)")
         if self.data_level != "sample" and self.sample_views:
@@ -716,6 +720,23 @@ class DataProductOffer(BaseModel):  # REQ-2180
         if self.data_level == "synthetic" and self.profiles:
             raise ValueError("a synthetic offer has no profiles")
         return self
+
+
+class DataProductOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as it is stored: a sample names the views it gives by table
+    id."""
+
+    sample_views: list[int] = Field(default_factory=list)
+
+
+class DeclaredOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as a configuration declares it: a sample names its views as a
+    product names its tables (the alias, else the table name, or ``source.schema.table``)."""
+
+    sample_views: list[str] = Field(default_factory=list)
+
+
+DataProduct.model_rebuild()
 
 
 #: REQ-2180: the offer every product starts with, and only it.
