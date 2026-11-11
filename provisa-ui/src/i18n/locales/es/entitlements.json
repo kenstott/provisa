@@ -120,6 +120,24 @@
       "provisa": "Asignado en Provisa",
       "default_assignment": "Asignación predeterminada",
       "idp": "Proveedor de identidad"
+    },
+    "expiry": {
+      "heading": "Fechas de fin",
+      "none": "Sin fechas de fin: esta concesión dura hasta que se termine.",
+      "colEndsOn": "Termina el",
+      "colEnds": "Qué termina",
+      "colReason": "Motivo",
+      "wholeGrant": "Toda la concesión",
+      "everyCapability": "Todas las capacidades",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} en todas partes",
+      "on": "{{what}} en {{entries}}",
+      "passed": "Vencida",
+      "noReason": "—",
+      "extend": "Ampliar",
+      "extendPrompt": "Mover el fin de la lista de {{kind}}, actualmente {{date}}.",
+      "newDateLabel": "Nueva fecha de fin",
+      "newDateHint": "Las entradas de la lista no cambian."
     }
   }
 }

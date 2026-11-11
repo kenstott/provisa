@@ -62,7 +62,7 @@
       "kindLabel": "Art",
       "kindPlaceholder": "Art auswählen",
       "entriesLabel": "Einträge",
-      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine gewählte Domäne oder Tabelle ohne darunter Gewähltes umfasst alles darin. Eine leere Liste erreicht nichts dieser Art.",
+      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine ausgewählte Domain oder Tabelle ohne weitere Auswahl darunter umfasst alles darin. Eine leere Liste erreicht nichts dieser Art.",
       "endsOnLabel": "Endet am",
       "endsOnHint": "Leer lassen, um die Liste bis zu ihrer Beendigung zu behalten.",
       "reasonLabel": "Grund",
@@ -120,6 +120,24 @@
       "provisa": "In Provisa zugewiesen",
       "default_assignment": "Standardzuweisung",
       "idp": "Identitätsanbieter"
+    },
+    "expiry": {
+      "heading": "Enddaten",
+      "none": "Keine Enddaten: Diese Zuweisung gilt, bis sie beendet wird.",
+      "colEndsOn": "Endet am",
+      "colEnds": "Was endet",
+      "colReason": "Grund",
+      "wholeGrant": "Die gesamte Zuweisung",
+      "everyCapability": "Jede Capability",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} überall",
+      "on": "{{what}} für {{entries}}",
+      "passed": "Abgelaufen",
+      "noReason": "—",
+      "extend": "Verlängern",
+      "extendPrompt": "Das Ende der Liste „{{kind}}“ verschieben, derzeit {{date}}.",
+      "newDateLabel": "Neues Enddatum",
+      "newDateHint": "Die Einträge der Liste bleiben unverändert."
     }
   }
 }

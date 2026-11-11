@@ -62,7 +62,7 @@
       "kindLabel": "类型",
       "kindPlaceholder": "选择类型",
       "entriesLabel": "条目",
-      "entriesHelp": "此人可在角色允许的范围内访问的内容。选中某个域或表且其下未选择任何内容时，包含其全部内容。空列表不能访问此类的任何内容。",
+      "entriesHelp": "此人可以访问角色所允许范围内的哪些内容。选中某个域或表而其下未选择任何内容时，将包含其全部内容。空列表不会访问此类的任何内容。",
       "endsOnLabel": "结束日期",
       "endsOnHint": "留空则保留该列表，直到将其结束。",
       "reasonLabel": "原因",
@@ -120,6 +120,24 @@
       "provisa": "在 Provisa 中分配",
       "default_assignment": "默认分配",
       "idp": "身份提供方"
+    },
+    "expiry": {
+      "heading": "结束日期",
+      "none": "无结束日期：此分配将持续到被结束为止。",
+      "colEndsOn": "结束日期",
+      "colEnds": "结束的内容",
+      "colReason": "原因",
+      "wholeGrant": "整个分配",
+      "everyCapability": "所有能力",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}}（全部范围）",
+      "on": "{{what}}（{{entries}}）",
+      "passed": "已过期",
+      "noReason": "—",
+      "extend": "延期",
+      "extendPrompt": "调整{{kind}}列表的结束日期，当前为{{date}}。",
+      "newDateLabel": "新的结束日期",
+      "newDateHint": "列表中的条目保持不变。"
     }
   }
 }

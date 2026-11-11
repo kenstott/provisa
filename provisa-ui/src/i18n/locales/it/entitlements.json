@@ -62,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Seleziona un tipo",
       "entriesLabel": "Voci",
-      "entriesHelp": "Ciò che questa persona può raggiungere di quanto il ruolo consente. Un dominio o una tabella scelti senza nulla di scelto al di sotto includono tutto il loro contenuto. Un elenco vuoto non raggiunge nulla di questo tipo.",
+      "entriesHelp": "Ciò che questa persona può raggiungere di ciò che il ruolo consente. Un dominio o una tabella scelti senza nulla di scelto al di sotto includono tutto il loro contenuto. Un elenco vuoto non raggiunge nulla di questo tipo.",
       "endsOnLabel": "Termina il",
       "endsOnHint": "Lascia vuoto per mantenere la lista finché non viene terminata.",
       "reasonLabel": "Motivo",
@@ -120,6 +120,24 @@
       "provisa": "Assegnato in Provisa",
       "default_assignment": "Assegnazione predefinita",
       "idp": "Provider di identità"
+    },
+    "expiry": {
+      "heading": "Date di fine",
+      "none": "Nessuna data di fine: questa assegnazione dura finché non viene terminata.",
+      "colEndsOn": "Termina il",
+      "colEnds": "Cosa termina",
+      "colReason": "Motivo",
+      "wholeGrant": "L'intera assegnazione",
+      "everyCapability": "Ogni capability",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} ovunque",
+      "on": "{{what}} su {{entries}}",
+      "passed": "Scaduta",
+      "noReason": "—",
+      "extend": "Estendi",
+      "extendPrompt": "Sposta la fine dell'elenco {{kind}}, ora {{date}}.",
+      "newDateLabel": "Nuova data di fine",
+      "newDateHint": "Le voci dell'elenco restano invariate."
     }
   }
 }

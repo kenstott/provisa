@@ -44,6 +44,7 @@ import {
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { EntitlementListForm } from "./EntitlementListForm";
+import { ExpiryRules } from "./ExpiryRules";
 import { kindInfo, useEntitlementKinds } from "./kinds";
 import { roleLabel } from "./personRoles";
 
@@ -262,6 +263,17 @@ export function PersonEntitlements({
         </Alert>
       )}
 
+      {view !== null && (
+        <ExpiryRules
+          key={view.role_id}
+          principal={principal}
+          view={view}
+          editable={editable}
+          onSaved={saved}
+          onError={report}
+        />
+      )}
+
       {editable && roleId !== null && mode !== null && mode.type !== "end" && (
         <Text fw={500} size="sm" data-testid="person-entitlements-form-title">
           {mode.type === "edit"
@@ -391,35 +403,37 @@ function ListRow({
               </Tip>
             )}
             {list.ended.map((i) => (
-              <Badge
-                key={`ended-${i}`}
-                variant="outline"
-                color="gray"
-                tt="none"
-                ff="monospace"
-                td="line-through"
-                title={t("entitlements.person.endedHint")}
-                data-testid={`person-list-${list.kind}-ended-${i}`}
-              >
-                {i}
-              </Badge>
+              <Tip key={`ended-${i}`} text={t("entitlements.person.endedHint")}>
+                <Badge
+                  variant="outline"
+                  color="gray"
+                  tt="none"
+                  ff="monospace"
+                  td="line-through"
+                  data-testid={`person-list-${list.kind}-ended-${i}`}
+                >
+                  {i}
+                </Badge>
+              </Tip>
             ))}
           </Group>
           {list.superseded !== null && (
-            <Text
-              size="xs"
-              c="dimmed"
-              td="line-through"
-              title={t("entitlements.person.supersededHint")}
-              data-testid={`person-list-${list.kind}-superseded`}
-            >
-              {t("entitlements.person.superseded", {
-                entries:
-                  list.superseded.length === 0
-                    ? t("entitlements.person.nothing")
-                    : list.superseded.join(", "),
-              })}
-            </Text>
+            <Tip text={t("entitlements.person.supersededHint")}>
+              <Text
+                size="xs"
+                c="dimmed"
+                td="line-through"
+                w="fit-content"
+                data-testid={`person-list-${list.kind}-superseded`}
+              >
+                {t("entitlements.person.superseded", {
+                  entries:
+                    list.superseded.length === 0
+                      ? t("entitlements.person.nothing")
+                      : list.superseded.join(", "),
+                })}
+              </Text>
+            </Tip>
           )}
           {list.reason && (
             <Text size="xs" c="dimmed">

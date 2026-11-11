@@ -62,7 +62,7 @@
       "kindLabel": "Type",
       "kindPlaceholder": "Sélectionnez un type",
       "entriesLabel": "Entrées",
-      "entriesHelp": "Ce que cette personne peut atteindre de ce que le rôle permet. Un domaine ou une table choisi sans rien de choisi en dessous inclut tout son contenu. Une liste vide n'atteint rien de ce type.",
+      "entriesHelp": "Ce que cette personne peut atteindre parmi ce que le rôle autorise. Un domaine ou une table choisi sans rien de choisi en dessous inclut tout son contenu. Une liste vide n'atteint rien de ce type.",
       "endsOnLabel": "Se termine le",
       "endsOnHint": "Laissez vide pour conserver la liste jusqu'à ce qu'elle soit clôturée.",
       "reasonLabel": "Motif",
@@ -120,6 +120,24 @@
       "provisa": "Attribué dans Provisa",
       "default_assignment": "Attribution par défaut",
       "idp": "Fournisseur d'identité"
+    },
+    "expiry": {
+      "heading": "Dates de fin",
+      "none": "Aucune date de fin : cette attribution dure jusqu'à ce qu'elle soit terminée.",
+      "colEndsOn": "Se termine le",
+      "colEnds": "Ce qui se termine",
+      "colReason": "Motif",
+      "wholeGrant": "Toute l'attribution",
+      "everyCapability": "Toutes les capacités",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} partout",
+      "on": "{{what}} sur {{entries}}",
+      "passed": "Expirée",
+      "noReason": "—",
+      "extend": "Prolonger",
+      "extendPrompt": "Déplacer la fin de la liste {{kind}}, actuellement le {{date}}.",
+      "newDateLabel": "Nouvelle date de fin",
+      "newDateHint": "Les entrées de la liste restent inchangées."
     }
   }
 }
