@@ -91770,7 +91770,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-11. Synthetic data is generated from each dataset''s profile (the Data Profiler, REQ-1934),
     so an offer of synthetic data can be saved only when every dataset of the product has a profiler; one
     without is named in the refusal. If a dataset''s profiler is later removed, the offer is not accepted,
-    its owner is told, and the offer is listed for review.'
+    its owner is told, and the offer is listed for review. (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM
+    THE OFFERS:) Maintainer 2026-11-11. An offer always covers all of the product''s datasets, and accepting
+    it gives its terms on each of them. The data contracts are derived from the offers: for every offer,
+    each dataset of the product has a contract that is that offer''s terms applied to that dataset -- its
+    schema as the offer''s role sees it (masked columns stated as masked, row rules stated in words), its
+    data level (the full dataset, the offer''s sample view over it, or synthetic), the data quality promises
+    (always stated; the offer decides whether its results can be read), and its profiles where the offer
+    includes them -- so the contracts are every contract the product can give, and a requester reads the
+    ones an offer would give before bidding. What is written by hand is only what all of a product''s contracts
+    share (owner, description, freshness and support terms), entered once on the product. Changing an offer
+    changes its contracts'' versions, and a change that removes or masks a column is a breaking one.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
