@@ -68,7 +68,9 @@ const COLUMNS: Record<string, ColumnMetadata[]> = {
     },
   ],
   events: [],
-  blobs: [{ name: "payload", dataType: "", comment: null, nativeFilterType: null, isPrimaryKey: false }],
+  blobs: [
+    { name: "payload", dataType: "", comment: null, nativeFilterType: null, isPrimaryKey: false },
+  ],
 };
 
 const readColumns = vi.fn();
@@ -129,8 +131,10 @@ function renderForm(over: { severalFirst?: boolean; registered?: string[] } = {}
 
 const row = (name: string) => screen.getByTestId(`register-many-table-${name}`);
 
+// Every listed table read: the last one's answer is in (an effect run twice by StrictMode drops
+// the first run's read, so the reads are not counted).
 async function listed() {
-  await waitFor(() => expect(readColumns).toHaveBeenCalledTimes(5));
+  await screen.findByText("Its columns could not be read: permission denied for table invoices");
   await waitFor(() => expect(row("customers")).toBeChecked());
 }
 
@@ -166,7 +170,9 @@ describe("Register Table — several tables at once", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(group).getByText("Needs input: no type was found for payload. Register it on its own."),
+      within(group).getByText(
+        "Needs input: no type was found for payload. Register it on its own.",
+      ),
     ).toBeInTheDocument();
     expect(
       within(group).getByText(
@@ -227,9 +233,9 @@ describe("Register Table — several tables at once", () => {
     expect(screen.getByTestId("register-many-tables-submit")).toHaveTextContent("Register 1 table");
     await userEvent.click(screen.getByTestId("register-many-tables-submit"));
     await waitFor(() => expect(registerTables).toHaveBeenCalled());
-    expect(registerTables.mock.calls[0][0].map((i: { tableName: string }) => i.tableName)).toEqual(
-      ["customers"],
-    );
+    expect(registerTables.mock.calls[0][0].map((i: { tableName: string }) => i.tableName)).toEqual([
+      "customers",
+    ]);
   });
 
   it("names each table when none of them was registered, and stays on the step", async () => {
