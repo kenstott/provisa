@@ -211,6 +211,7 @@ def _role_from_row(row, *, detail: bool, effective: dict[str, list[str]]) -> Rol
             for name, value in sorted(row["session_vars"].items())
         ],
         inactivity_days=row["inactivity_days"],  # REQ-2077
+        default_entitlements=row.get("default_entitlements"),  # REQ-2219
     )
 
 
