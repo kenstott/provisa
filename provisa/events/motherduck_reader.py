@@ -28,11 +28,9 @@ which the landing path writes as the replica.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from psycopg.sql import Composed
+from provisa.executor.drivers.postgresql import quoted_select, stream_rows
 
 #: The port of MotherDuck's Postgres endpoint, in every region.
 PG_PORT = 5432
@@ -73,35 +71,9 @@ def connection_settings(source: Any) -> dict[str, Any]:
     }
 
 
-def select_sql(table: Any, names: list[str]) -> Composed:
+def select_sql(table: Any, names: list[str]) -> Any:
     """The read of ``names`` from ``table`` in the source's database, every name quoted."""
-    from psycopg import sql
-
-    return sql.SQL("SELECT {} FROM {}.{}").format(
-        sql.SQL(", ").join(sql.Identifier(name) for name in names),
-        sql.Identifier(table.schema_name),
-        sql.Identifier(table.table_name),
-    )
-
-
-def row_batches(settings: dict[str, Any], sql: Composed, batch_rows: int) -> Iterator[list[dict]]:
-    """The rows ``sql`` reads over a connection of its own, ``batch_rows`` at a time; the
-    connection is closed however the iteration ends."""
-    import psycopg
-
-    with psycopg.connect(**settings) as conn:
-        cursor = conn.cursor()
-        names: list[str] = []
-        batch: list[dict] = []
-        for row in cursor.stream(sql, size=batch_rows):
-            if not names:
-                names = [d.name for d in cursor.description or []]
-            batch.append(dict(zip(names, row)))
-            if len(batch) >= batch_rows:
-                yield batch
-                batch = []
-        if batch:
-            yield batch
+    return quoted_select(table.schema_name, table.table_name, names)
 
 
 def _names(table: Any) -> list[str]:
@@ -120,7 +92,7 @@ def make_motherduck_loader() -> Any:
         sql = select_sql(table, names)
 
         def _all() -> list[dict]:
-            return [row for rows in row_batches(settings, sql, LOAD_BATCH_ROWS) for row in rows]
+            return [row for rows in stream_rows(settings, sql, LOAD_BATCH_ROWS) for row in rows]
 
         return await asyncio.to_thread(_all)
 
@@ -130,7 +102,7 @@ def make_motherduck_loader() -> Any:
         settings = connection_settings(source)
         sql = select_sql(table, [name for name, _ in columns])
         return BlockingCursorSource(
-            lambda batch_rows: row_batches(settings, sql, batch_rows), columns
+            lambda batch_rows: stream_rows(settings, sql, batch_rows), columns
         )
 
     _load.replica_source = _replica_source  # type: ignore[attr-defined]

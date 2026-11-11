@@ -26,9 +26,9 @@ from provisa.events import motherduck_reader
 from provisa.events.motherduck_reader import (
     connection_settings,
     make_motherduck_loader,
-    row_batches,
     select_sql,
 )
+from provisa.executor.drivers.postgresql import stream_rows
 
 TOKEN = "md-token-that-must-not-leak"
 HOST = "pg.us-east-1-aws.motherduck.com"
@@ -137,7 +137,7 @@ def test_rows_stream_off_the_connection_a_bounded_batch_at_a_time(monkeypatch):
     rows = [(i, date(2024, 1, i)) for i in range(1, 6)]
     opened, cursor, connection = _connect(monkeypatch, rows)
     settings = connection_settings(_source())
-    batches = list(row_batches(settings, select_sql(_table(), ["id", "placed"]), 2))
+    batches = list(stream_rows(settings, select_sql(_table(), ["id", "placed"]), 2))
     assert [len(b) for b in batches] == [2, 2, 1]
     assert batches[0][0] == {"id": 1, "placed": date(2024, 1, 1)}
     assert cursor.streamed[0][1] == 2
