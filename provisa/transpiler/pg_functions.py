@@ -33,6 +33,7 @@ from sqlglot.dialects.postgres import Postgres
 
 from provisa.core.pg_error import raising
 from provisa.transpiler import function_macros, pg_syntax, pg_xml
+from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -106,6 +107,7 @@ _CALLED = re.compile(
                 # overlaps as a statement written again through sqlglot names it: its routine.
                 pg_syntax.OVERLAPS,
                 *_NAMED_OBJECT_SENDS,
+                "generate_subscripts",
             }
         )
     )
@@ -561,6 +563,27 @@ def _int_said(node: exp.Expr) -> int | None:
     return None
 
 
+def _bit_substring(value: exp.Expr, rest: list[exp.Expr]) -> exp.Expr:
+    """substring of a bit string, of its text. DuckDB's BIT holds no empty string, which it reads
+    as '0': a substring of no bits, PostgreSQL's empty bit string, is refused by name."""
+    text = exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT"))
+    bits = exp.Substring(
+        this=text,
+        start=rest[0].copy(),
+        length=rest[1].copy() if len(rest) > 1 else None,
+    )
+    refused = sqlglot.parse_one(
+        raising("0A000", exp.Literal.string(f"substring {REFUSED}").sql(dialect="postgres")),
+        read="postgres",
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(this=exp.EQ(this=bits.copy(), expression=exp.Literal.string("")), true=refused)
+        ],
+        default=exp.Cast(this=bits, to=exp.DataType.build("BIT")),
+    )
+
+
 def _number(value: int) -> exp.Expr:
     return exp.Literal.number(value)
 
@@ -693,8 +716,7 @@ def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
     if not args or not _cast_to(args[0], exp.DataType.Type.BIT):
         return None
     if name in ("substr", "substring"):
-        rest = ", ".join(_sql(a) for a in args[1:])
-        return f"CAST(SUBSTRING({_as_text(args[0])}, {rest}) AS BIT)"
+        return _sql(_bit_substring(args[0], args[1:]))
     if name in ("position", "strpos") and len(args) == 2:  # noqa: PLR2004
         return f"STRPOS({_as_text(args[0])}, {_as_text(args[1])})"
     if name == "overlay":
@@ -877,6 +899,12 @@ def _call(node: exp.Expr) -> exp.Expr:
     name, args = named
     if name in _NAMED_OBJECT_SENDS and len(args) == 1 and _names_an_object(args[0]):
         raise function_macros.FunctionRefused(name, "duckdb")
+    if name == "generate_subscripts" and len(args) == 2:  # noqa: PLR2004
+        # DuckDB's own macro of two arguments reads its dimension with array_length, which
+        # refuses any but the first; the form of three answers every dimension.
+        return exp.Anonymous(
+            this="generate_subscripts", expressions=[*(a.copy() for a in args), exp.false()]
+        )
     if name == "generate_series" and len(args) in (3, 4) and _mixed_signs(args[2]):  # noqa: PLR2004
         # DuckDB's range takes no step of months, days and time of different signs.
         raise function_macros.FunctionRefused(name, "duckdb")

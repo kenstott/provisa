@@ -87,6 +87,37 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
         BOOL,
         ["t"],
     ),
+    # A dimension the array does not have: NULL, and no subscripts. An empty array has none.
+    ("SELECT pg_catalog.\"array_length\"('{1,2,3}'::integer[], 3::integer) AS v", INT4, [None]),
+    ("SELECT pg_catalog.\"array_length\"('{1,2,3}'::integer[], 1::integer) AS v", INT4, ["3"]),
+    ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 2) AS v", INT4, ["3"]),
+    ("SELECT array_length('{}'::integer[], 1) AS v", INT4, [None]),
+    ("SELECT pg_catalog.\"generate_subscripts\"('{1,2,3}'::integer[], 3::integer) AS v", INT4, []),
+    ("SELECT generate_subscripts(ARRAY[[1,2,3],[4,5,6]], 2) AS v", INT4, ["1", "2", "3"]),
+    # string_agg of a delimiter of each row: the row's delimiter before its value, the first's
+    # dropped, a NULL value's row skipped, a NULL delimiter none; text ordered as en_US orders it.
+    (
+        'SELECT pg_catalog."string_agg"(c1, c2 ORDER BY c1) AS v FROM (VALUES '
+        "('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea), ('abc'::bytea, 'abc'::bytea), "
+        "('\\x00ff'::bytea, '\\x00ff'::bytea)) AS t(c1, c2)",
+        17,
+        ["\\x00ff616263616263deadbeefdeadbeef"],
+    ),
+    (
+        "SELECT pg_catalog.\"string_agg\"(c1, c2 ORDER BY c1) AS v FROM (VALUES ('abc'::text, "
+        "'-'::text), ('Hello'::text, NULL::text), ('12'::text, '+'::text), (NULL::text, '*'::text)) "
+        "AS t(c1, c2)",
+        25,
+        ["12-abcHello"],
+    ),
+    # substring(string SIMILAR pattern ESCAPE escape) of a pattern that does not match: NULL.
+    ("SELECT pg_catalog.\"substring\"('abc'::text, 1::text, 2::text) AS v", 25, [None]),
+    (
+        "SELECT pg_catalog.\"substring\"('abcd'::text, 'a#\"bc#\"d'::text, '#'::text) AS v",
+        25,
+        ["bc"],
+    ),
+    ("SELECT pg_catalog.\"substring\"('101'::bit(3), 2::integer) AS v", BIT, ["01"]),
     # A zone's text PostgreSQL reads as POSIX: '12' is twelve hours WEST of UTC.
     (
         "SELECT pg_catalog.\"date_add\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
@@ -187,6 +218,24 @@ REFUSED: list[tuple[str, str]] = [
             ("timestamp with time zone", ", '12'::text"),
         )
     ),
+    # A text min or max of a value en_US orders by rules the engine does not have (a space).
+    *(
+        (
+            f"SELECT pg_catalog.\"{name}\"(c1) AS v FROM (VALUES ('abc'::text), "
+            "('Hello World'::text), ('12'::text)) AS t(c1)",
+            name,
+        )
+        for name in ("min", "max")
+    ),
+    (
+        "SELECT pg_catalog.\"string_agg\"(c1, c2 ORDER BY c1) AS v FROM (VALUES ('abc'::text, "
+        "'abc'::text), ('Hello World'::text, 'Hello World'::text), ('12'::text, '12'::text)) "
+        "AS t(c1, c2)",
+        "string_agg",
+    ),
+    # A bit string of no bits, which DuckDB's BIT cannot hold.
+    ("SELECT pg_catalog.\"substring\"('0'::bit, 2::integer) AS v", "substring"),
+    ("SELECT pg_catalog.\"substring\"('0'::bit, 2::integer, 3::integer) AS v", "substring"),
     # The send of an object identifier type the engine has no catalog of names to look up.
     ("SELECT pg_catalog.\"regprocsend\"('now'::regproc) AS v", "regprocsend"),
     ("SELECT pg_catalog.\"regproceduresend\"('now()'::regprocedure) AS v", "regproceduresend"),

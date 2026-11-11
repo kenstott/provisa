@@ -1204,6 +1204,10 @@ _ARRAYS: tuple[Macro, ...] = (
             ),
         },
     ),
+    # DuckDB's array_length takes no dimension but the first, and refuses the call for any
+    # other: a dimension the list does not have is NULL, as array_upper's (a list counts from 1).
+    # (generate_subscripts(a, d) is read as its reverse-false form: pg_functions.)
+    _macro("array_length", "a, d", _ARRAY_UPPER, own={_EVERY_BUT_DUCKDB: MAPPED}),
     _macro(
         "generate_subscripts",
         "a, d, reverse",
@@ -1489,8 +1493,8 @@ _ROWS: tuple[Macro, ...] = (
     ),
     Macro("inet_text", ("value",), {_EVERY: Pg(strict("value", "TEXT", _INET_TEXT))}),
     # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
-    _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value))"),
-    _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value))"),
+    _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value, 'max'))"),
+    _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value, 'min'))"),
     _macro("to_number", "value, format", "provisa_to_number(value, format)"),
     Macro("current_query", ()),  # the engine's is the statement as Provisa wrote it
     _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
@@ -2628,6 +2632,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
     if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
         return "array_cat", [node.this, node.expressions[0]]
+    if isinstance(node, exp.ArraySize) and node.expression is not None:  # array_length(a, d)
+        return "array_length", [node.this, node.expression]
     if isinstance(node, exp.Repeat):
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
@@ -2643,7 +2649,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         if node.args.get("modifiers") is None:
             return "regexp_replace_at", [node.args[k] for k in at if node.args.get(k) is not None]
     if isinstance(node, exp.Log) and node.this == exp.Literal.number(10):  # sqlglot's log10
-        return "log10", [node.expression]
+        return "log10", [node.args["expression"]]
     if isinstance(node, (exp.Log, exp.Pow)):
         called = "log" if isinstance(node, exp.Log) else "power"
         return called, [a for a in (node.this, node.expression) if a is not None]

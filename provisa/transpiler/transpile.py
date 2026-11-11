@@ -702,10 +702,62 @@ def _duckdb_form(pg_sql: str) -> str:
     # statement's text, and each step that read it again paid for all of them.
     tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
     tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
+    tree = _row_delimited_string_agg(tree)
     tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
     _posix_zones_for_duckdb(tree)
     # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
     return tree.sql(dialect="duckdb", copy=tree.parent is not None)
+
+
+#: string_agg of a delimiter that is no constant, as PostgreSQL appends one: each row's delimiter
+#: before its value, the first row's dropped, a NULL value's row skipped and a NULL delimiter none.
+#: Of any type both concatenate (text, bytea); DuckDB's own takes a constant delimiter alone.
+_ROW_DELIMITED = (
+    "list_reduce(list_transform(list(struct_pack(v := _v, d := _d)) FILTER (WHERE _v IS NOT NULL), "
+    "(x, i) -> CASE WHEN i = 1 OR x.d IS NULL THEN x.v ELSE x.d || x.v END), (a, b) -> a || b)"
+)
+#: A text order key as en_US.utf8 orders it (provisa_en_us_key, refused by name for a value it
+#: does not read); NULL for a value of any other type, which its own order then decides.
+_EN_US_KEY = (
+    "CASE WHEN typeof(_o) = 'VARCHAR' THEN provisa_en_us_key(CAST(_o AS VARCHAR), 'string_agg') END"
+)
+
+
+def _duckdb_form_of(sql: str, **nodes: exp.Expr) -> exp.Expr:
+    """``sql`` read as DuckDB's, each column named in ``nodes`` that node."""
+    return sqlglot.parse_one(sql, read="duckdb").transform(
+        lambda n: nodes[n.name].copy() if isinstance(n, exp.Column) and n.name in nodes else n
+    )
+
+
+def _row_delimited_string_agg(tree: exp.Expr) -> exp.Expr:  # REQ-2167
+    """Each string_agg whose delimiter is no constant (a column), as PostgreSQL answers it
+    (``_ROW_DELIMITED``), its ORDER BY kept, a text key ordered as en_US.utf8 orders it."""
+
+    def rewrite(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.GroupConcat) or isinstance(node.parent, exp.Filter):
+            return node
+        delimiter = node.args.get("separator")
+        if delimiter is None or delimiter.find(exp.Column) is None:
+            return node
+        value, order = node.this, None
+        if isinstance(value, exp.Order):
+            value, order = value.this, value
+        if isinstance(value, exp.Distinct):
+            return node
+        written = _duckdb_form_of(_ROW_DELIMITED, _v=value, _d=delimiter)
+        if order is not None:
+            listed = written.find(exp.ArrayAgg)  # list(...), as sqlglot reads it
+            assert listed is not None
+            keys: list[exp.Expr] = []
+            for ordered in order.expressions:
+                collated = ordered.copy()
+                collated.set("this", _duckdb_form_of(_EN_US_KEY, _o=ordered.this))
+                keys += [collated, ordered.copy()]
+            listed.set("this", exp.Order(this=listed.this, expressions=keys))
+        return written
+
+    return tree.transform(rewrite, copy=False)
 
 
 #: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number

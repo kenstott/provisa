@@ -686,7 +686,6 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_bit_count", bit_count, ["BLOB"], "BIGINT"),
     ("provisa_convert", convert, ["BLOB", "VARCHAR", "VARCHAR"], "BLOB"),
     ("provisa_encoded_length", encoded_length, ["BLOB", "VARCHAR"], "INTEGER"),
-    ("provisa_similar_substring", similar_substring, ["VARCHAR"] * 3, "VARCHAR"),
     ("provisa_regexp_split", regexp_split, ["VARCHAR"] * 3, "VARCHAR[]"),
     ("provisa_regexp_split_table", regexp_split_table, ["VARCHAR"] * 3, "VARCHAR[]"),
     ("provisa_like_escape", like_escape, ["VARCHAR", "VARCHAR"], "VARCHAR"),
@@ -703,7 +702,7 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_numeric_quotient", numeric_quotient, ["VARCHAR"] * 2, "VARCHAR"),
     ("provisa_numeric_of_float", numeric_of_float, ["DOUBLE", "INTEGER"], "VARCHAR"),
     ("provisa_to_number", to_number, ["VARCHAR"] * 2, "VARCHAR"),
-    ("provisa_en_us_key", en_us_key, ["VARCHAR"], "VARCHAR"),
+    ("provisa_en_us_key", en_us_key, ["VARCHAR"] * 2, "VARCHAR"),
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
@@ -714,6 +713,8 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
 #: Strict UDFs that answer NULL themselves.
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
+    # NULL where the pattern does not match the value.
+    ("provisa_similar_substring", similar_substring, ["VARCHAR"] * 3, "VARCHAR"),
     (
         "provisa_numeric_spread",
         numeric_spread,
