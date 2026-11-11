@@ -12,15 +12,7 @@
 // shows. Its schema is its member's columns, so the form selects none.
 
 import { useTranslation } from "react-i18next";
-import {
-  ActionIcon,
-  Button,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Button, Select, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { Plus, X } from "lucide-react";
 import type { DataContract } from "../../types/admin";
 import { CONTRACT_STATUSES } from "./contractDraft";

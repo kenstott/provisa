@@ -11,19 +11,31 @@
 // REQ-2239: a data product's upstream lineage as the one graph component draws it -- one node per
 // relation, its columns as its lines, one edge per relation hop. Lanes left to right: what feeds
 // the inputs, the inputs, then the product's own tables. The view says what each thing is; the
-// graph says how it is drawn.
+// graph says how it is drawn. REQ-2174 (amended 2026-11-07): nothing downstream is drawn.
 
 import type { ProductLineage } from "../../../api/lineage";
-import type { GraphEdgeSpec, GraphNodeSpec, GraphSpec } from "../../../components/provisa-graph/model";
+import type {
+  GraphEdgeSpec,
+  GraphNodeSpec,
+  GraphSpec,
+} from "../../../components/provisa-graph/model";
 
-export const LANE_UPSTREAM = "upstream";
 export const LANE_INPUTS = "inputs";
 export const LANE_TABLES = "tables";
+/** The lane ``hops`` beyond the inputs, upstream. */
+export const upstreamLane = (hops: number) => `upstream-${hops}`;
+
+/** The graph, and its lanes left to right: the furthest upstream first, the product's tables last.
+ *  ``hops`` is 0 for the tables, -1 for the inputs, -n-1 for n hops beyond the inputs. */
+export interface ProductLineageView {
+  spec: GraphSpec;
+  lanes: { id: string; hops: number }[];
+}
 
 export function productLineageSpec(
   g: ProductLineage,
   label: (relation: string) => string,
-): GraphSpec {
+): ProductLineageView {
   const members = new Set(g.members);
   const inputs = new Set(g.inputs.map((i) => i.relation));
   const columns = new Map<string, Set<string>>();
@@ -36,26 +48,79 @@ export function productLineageSpec(
     cols.add(n.column);
     columns.set(n.relation, cols);
   }
+  // Relation hops, each once.
+  const feeds = new Map<string, Set<string>>(); // relation -> the relations it reads
+  for (const e of g.edges) {
+    const source = relationOf.get(e.source);
+    const target = relationOf.get(e.target);
+    if (!source || !target || source === target) continue;
+    const read = feeds.get(target) ?? new Set<string>();
+    read.add(source);
+    feeds.set(target, read);
+  }
+  // Each relation upstream of the inputs, by its fewest hops beyond them.
+  const hopsBeyond = new Map<string, number>();
+  let frontier = [...inputs];
+  for (let hop = 1; frontier.length > 0; hop++) {
+    const next: string[] = [];
+    for (const rel of frontier)
+      for (const up of feeds.get(rel) ?? [])
+        if (!members.has(up) && !inputs.has(up) && !hopsBeyond.has(up)) {
+          hopsBeyond.set(up, hop);
+          next.push(up);
+        }
+    frontier = next;
+  }
+  // REQ-1667: a relation between an input and a table is no lane: it is folded onto an indirect
+  // edge from what it reads to what reads it.
+  const between = (rel: string) => !members.has(rel) && !inputs.has(rel) && !hopsBeyond.has(rel);
+  const drawnSources = (rel: string, via: string[], seenRels: Set<string>): [string, string[]][] =>
+    [...(feeds.get(rel) ?? [])].flatMap((up): [string, string[]][] => {
+      if (seenRels.has(up)) return [];
+      if (!between(up)) return [[up, via]];
+      return drawnSources(up, [up, ...via], new Set([...seenRels, up]));
+    });
+  const edges: GraphEdgeSpec[] = [];
+  const seen = new Set<string>();
+  for (const target of feeds.keys()) {
+    if (between(target)) continue;
+    for (const [source, via] of drawnSources(target, [], new Set([target]))) {
+      const id = `${source}->${target}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      edges.push({
+        id,
+        source,
+        target,
+        arrow: "target",
+        ...(via.length > 0 ? { dashed: true, label: via.map(label).join(" → ") } : {}),
+      });
+    }
+  }
+  const laneOf = (relation: string): { id: string; hops: number } =>
+    members.has(relation)
+      ? { id: LANE_TABLES, hops: 0 }
+      : inputs.has(relation)
+        ? { id: LANE_INPUTS, hops: -1 }
+        : {
+            id: upstreamLane(hopsBeyond.get(relation) as number),
+            hops: -(hopsBeyond.get(relation) as number) - 1,
+          };
   const nodes: GraphNodeSpec[] = [...columns.entries()]
+    .filter(([relation]) => !between(relation))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([relation, cols]) => ({
       id: relation,
       type: members.has(relation) ? "table" : inputs.has(relation) ? "source" : "view",
       name: label(relation),
-      lane: members.has(relation) ? LANE_TABLES : inputs.has(relation) ? LANE_INPUTS : LANE_UPSTREAM,
+      lane: laneOf(relation).id,
       lines: [...cols].sort().map((text) => ({ text })),
       data: { relation },
     }));
-  const seen = new Set<string>();
-  const edges: GraphEdgeSpec[] = [];
-  for (const e of g.edges) {
-    const source = relationOf.get(e.source);
-    const target = relationOf.get(e.target);
-    if (!source || !target || source === target) continue;
-    const id = `${source}->${target}`;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    edges.push({ id, source, target, arrow: "target" });
-  }
-  return { nodes, edges };
+  const lanes = new Map<string, number>();
+  for (const n of nodes) lanes.set(n.lane as string, laneOf(n.id).hops);
+  return {
+    spec: { nodes, edges },
+    lanes: [...lanes.entries()].map(([id, hops]) => ({ id, hops })).sort((a, b) => a.hops - b.hops),
+  };
 }

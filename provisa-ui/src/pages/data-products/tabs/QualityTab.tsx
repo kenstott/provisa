@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Badge, Group, List, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Group, List, Stack, Text } from "@mantine/core";
 import { ListChecks, Table as TableIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../../api/lineage";
@@ -26,6 +26,7 @@ import { ClaimsCallout, DqIcon, InputsList, OutcomeBadge } from "../dataProductD
 import { COLOR, dqStatus } from "../dataProductClaims";
 import { DqRulesModal } from "../DqRulesModal";
 import { modelName, restModelName, type CoreTable } from "../productCore";
+import { Empty } from "../DetailCard";
 import { sqlExample, type TableRef } from "../tableExamples";
 import { LineagePending, OwnerOnlyList } from "./LineagePending";
 
@@ -41,6 +42,7 @@ export function QualityTab({
   lineageError,
   outputTables,
   dqTables,
+  onShowLineage,
 }: {
   productId: string;
   owner: boolean;
@@ -50,6 +52,8 @@ export function QualityTab({
   lineageError: string;
   outputTables: CoreTable[] | undefined;
   dqTables: CoreTable[] | undefined;
+  /** Opens the Lineage tab, where the inputs are drawn with what is upstream of them. */
+  onShowLineage: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -149,6 +153,9 @@ export function QualityTab({
     if (!dq) return null;
     return (
       <Stack gap="sm" data-testid={`data-product-card-dataQuality-${productId}`}>
+        <Text size="sm" fw={500}>
+          {t("dataProductsTab.detail.field.dataQuality")}
+        </Text>
         <Text size="xs" c="dimmed">
           {t("dataProductsTab.detail.dataQualityHint")}
         </Text>
@@ -158,6 +165,9 @@ export function QualityTab({
           checks={dq.promises}
           testId={`data-product-detail-promises-${productId}`}
         />
+        {outputTables !== undefined && outputTables.length === 0 && (
+          <Empty text={t("dataProductsTab.tablesEmpty")} />
+        )}
         {outputTables !== undefined && outputTables.length > 0 && (
           <List size="sm" data-testid={`data-product-detail-tables-${productId}`}>
             {outputTables.map((tb) => (
@@ -263,6 +273,15 @@ export function QualityTab({
               expectations={lineageGraph.dq.expectations}
               testId={`data-product-detail-inputs-${productId}`}
             />
+            <Anchor
+              component="button"
+              type="button"
+              size="xs"
+              onClick={onShowLineage}
+              data-testid={`data-product-detail-inputs-lineage-link-${productId}`}
+            >
+              {t("dataProductsTab.detail.inputsLineageLink")}
+            </Anchor>
           </>
         ) : (
           <LineagePending loading={lineageLoading} error={lineageError} />

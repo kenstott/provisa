@@ -33,10 +33,28 @@ export function LineageTab({
   relationLabel?: (relation: string) => string;
 }) {
   const { t } = useTranslation();
-  const spec = useMemo(
+  const view = useMemo(
     () =>
-      graph ? productLineageSpec(upstreamLineage(graph), relationLabel ?? ((r: string) => r)) : null,
+      graph
+        ? productLineageSpec(upstreamLineage(graph), relationLabel ?? ((r: string) => r))
+        : null,
     [graph, relationLabel],
+  );
+  // REQ-1667, REQ-2174: each lane named in words.
+  const lanes = useMemo(
+    () =>
+      view && {
+        lanes: view.lanes.map(({ id, hops }) => ({
+          id,
+          title:
+            hops === 0
+              ? t("dataProductsTab.detail.lineageLaneTables")
+              : hops === -1
+                ? t("dataProductsTab.detail.lineageLaneInputs")
+                : t("dataProductsTab.detail.lineageLaneUpstream", { n: -hops - 1 }),
+        })),
+      },
+    [view, t],
   );
   if (loading) {
     return (
@@ -52,7 +70,7 @@ export function LineageTab({
       </Text>
     );
   }
-  if (!spec || spec.nodes.length === 0) {
+  if (!view || !lanes || view.spec.nodes.length === 0) {
     return (
       <Text size="sm" c="var(--text-muted)" data-testid={`data-product-lineage-empty-${productId}`}>
         {t("dataProductsTab.detail.lineageEmpty")}
@@ -60,15 +78,23 @@ export function LineageTab({
     );
   }
   return (
-    <div style={{ height: 560 }} data-testid={`data-product-detail-lineage-${productId}`}>
-      <ProvisaGraph
-        graph={spec}
-        preset="layered"
-        testId={`data-product-lineage-graph-${productId}`}
-        ariaLabel={t("dataProductsTab.detail.lineageTitle")}
-        exportName={`${productId}-lineage`}
-        hint={t("dataProductsTab.detail.lineageHint")}
-      />
+    <div data-testid={`data-product-detail-lineage-${productId}`}>
+      <Text size="sm" fw={500} data-testid={`data-product-lineage-title-${productId}`}>
+        {t("dataProductsTab.detail.lineageTitle")}
+      </Text>
+      <Text size="xs" c="dimmed" mb="xs">
+        {t("dataProductsTab.detail.lineageHint")}
+      </Text>
+      <div style={{ height: 560 }}>
+        <ProvisaGraph
+          graph={view.spec}
+          preset="lanes"
+          lanes={lanes}
+          testId={`data-product-lineage-graph-${productId}`}
+          ariaLabel={t("dataProductsTab.detail.lineageTitle")}
+          exportName={`${productId}-lineage`}
+        />
+      </div>
     </div>
   );
 }

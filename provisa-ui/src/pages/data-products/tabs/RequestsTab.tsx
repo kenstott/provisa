@@ -14,7 +14,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Group, Loader, Stack, Table, Text, Textarea, Title } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Stack,
+  Table,
+  Text,
+  Textarea,
+  Title,
+} from "@mantine/core";
 import {
   acceptBid,
   declineBid,

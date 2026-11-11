@@ -54,7 +54,8 @@ export function ProfileTab({
       </Alert>
     );
   }
-  if (read.profiles === null) return <Loader size="sm" data-testid="data-product-profile-loading" />;
+  if (read.profiles === null)
+    return <Loader size="sm" data-testid="data-product-profile-loading" />;
   if (read.profiles.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-testid="data-product-profile-empty">

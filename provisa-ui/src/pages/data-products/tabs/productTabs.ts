@@ -10,5 +10,12 @@
 
 /** A data product panel's tabs, in order, the same for its read view and its edit view; Requests
  *  is its owner's alone (REQ-2180 OFFERS). */
-export const PRODUCT_TABS = ["offers", "quality", "profile", "lineage", "related", "requests"] as const;
+export const PRODUCT_TABS = [
+  "offers",
+  "quality",
+  "profile",
+  "lineage",
+  "related",
+  "requests",
+] as const;
 export type ProductTab = (typeof PRODUCT_TABS)[number];

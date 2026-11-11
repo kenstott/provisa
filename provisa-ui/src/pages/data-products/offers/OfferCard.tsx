@@ -16,7 +16,18 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Anchor, Badge, Button, Group, List, Paper, Stack, Text, Textarea } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  List,
+  Paper,
+  Stack,
+  Text,
+  Textarea,
+} from "@mantine/core";
 import { Eye, Trash2 } from "lucide-react";
 import {
   bidForOffer,

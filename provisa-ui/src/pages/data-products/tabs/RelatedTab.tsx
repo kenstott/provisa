@@ -105,7 +105,12 @@ export function RelatedTab({
           <List size="sm">
             {sharing.map((p) => (
               <List.Item key={p.id}>
-                <Anchor component="button" type="button" size="sm" onClick={() => openProduct(p.id)}>
+                <Anchor
+                  component="button"
+                  type="button"
+                  size="sm"
+                  onClick={() => openProduct(p.id)}
+                >
                   {p.name}
                 </Anchor>
                 <Muted>— {p.datasets.join(", ")}</Muted>

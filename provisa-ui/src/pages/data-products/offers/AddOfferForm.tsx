@@ -37,12 +37,7 @@ import {
 } from "../../../api/dataProductOffers";
 import { fetchTableAccess, type TableAccess } from "../../../api/roleRights";
 import { MultiSelect } from "../../../components/MultiSelect";
-import {
-  FormChecks,
-  FormField,
-  FormFooter,
-  FormLayout,
-} from "../../../components/form/FormLayout";
+import { FormChecks, FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { AccessCells, AccessHeads } from "../../security/AccessCells";
 import { offerSummary } from "./offerTerms";
 
@@ -113,7 +108,12 @@ export function AddOfferForm({
     let live = true;
     Promise.all([
       fetchGrantableRoles(productId),
-      Promise.all(datasetIds.split(",").filter(Boolean).map((id) => fetchTableAccess(Number(id)))),
+      Promise.all(
+        datasetIds
+          .split(",")
+          .filter(Boolean)
+          .map((id) => fetchTableAccess(Number(id))),
+      ),
     ]).then(
       ([grantable, access]) => {
         if (!live) return;
@@ -149,7 +149,8 @@ export function AddOfferForm({
       </Alert>
     );
   }
-  if (roles === null || accesses === null) return <Loader size="sm" data-testid="add-offer-loading" />;
+  if (roles === null || accesses === null)
+    return <Loader size="sm" data-testid="add-offer-loading" />;
 
   return (
     <FormLayout data-testid="add-offer-form">
@@ -236,9 +237,7 @@ export function AddOfferForm({
             options={views.map((v) => ({ id: String(v.id), label: v.name }))}
             value={offer.sample_views.map(String)}
             onChange={(ids) => set({ sample_views: ids.map(Number) })}
-            placeholder={
-              views.length === 0 ? t("dataProductOffers.noSampleViews") : undefined
-            }
+            placeholder={views.length === 0 ? t("dataProductOffers.noSampleViews") : undefined}
           />
         </FormField>
       )}
@@ -261,7 +260,10 @@ export function AddOfferForm({
             data-testid="add-offer-dq"
           />
         </FormField>
-        <FormField size="short" hint={synthetic ? t("dataProductOffers.syntheticNoProfiles") : undefined}>
+        <FormField
+          size="short"
+          hint={synthetic ? t("dataProductOffers.syntheticNoProfiles") : undefined}
+        >
           <Checkbox
             label={t("dataProductOffers.includeProfiles")}
             checked={offer.profiles}

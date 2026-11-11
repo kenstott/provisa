@@ -44,7 +44,6 @@ import { RequestsTab } from "./tabs/RequestsTab";
 import { PRODUCT_TABS, type ProductTab } from "./tabs/productTabs";
 import { TablePreviewPane } from "../tables/TablePreviewPane";
 
-
 interface DataProductDetailPanelProps {
   p: DataProduct;
   /** The meta-domain core of the panel; null while it is read. */
@@ -304,6 +303,7 @@ export function DataProductDetailPanel({
             lineageError={lineageError}
             outputTables={outputTables}
             dqTables={dqTables}
+            onShowLineage={() => setTab("lineage")}
           />
         </Tabs.Panel>
         <Tabs.Panel value="profile" pt="sm" style={TAB_BODY}>

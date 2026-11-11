@@ -86,7 +86,13 @@ export function ProductHeader({
 
   const icon = (label: string, testId: string, onClick: () => void, glyph: ReactNode) => (
     <Tip text={label} named>
-      <ActionIcon variant="subtle" size="sm" aria-label={label} data-testid={testId} onClick={onClick}>
+      <ActionIcon
+        variant="subtle"
+        size="sm"
+        aria-label={label}
+        data-testid={testId}
+        onClick={onClick}
+      >
         {glyph}
       </ActionIcon>
     </Tip>
@@ -116,7 +122,11 @@ export function ProductHeader({
           <Text size="xs" c="dimmed">
             {t("dataProductOffers.freshness")}
           </Text>
-          <Badge size="sm" variant="light" data-testid={`data-product-header-freshness-${product.id}`}>
+          <Badge
+            size="sm"
+            variant="light"
+            data-testid={`data-product-header-freshness-${product.id}`}
+          >
             {freshness}
           </Badge>
         </Group>
@@ -143,7 +153,7 @@ export function ProductHeader({
             )}
           </Group>
         ) : (
-          <Empty text={t("dataProductsTab.tablesEmpty")} />
+          <Empty text={t("dataProductsTab.graphqlQueriesEmpty")} />
         )}
         {outputTables.length > 0 && (
           <Text size="xs" c="dimmed">
