@@ -32,6 +32,7 @@ import psycopg2.extensions
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.core.ir_types import interval_value
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.core.session_time_zone import carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
@@ -39,6 +40,7 @@ from provisa.executor.result import QueryResult, ResultStream, StreamingQueryRes
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL, SERVER_FORM_RAISE
+from provisa.transpiler.pg_type_literals import interval_fields
 
 _log = logging.getLogger(__name__)
 
@@ -190,6 +192,23 @@ _JSON_AS_TEXT = psycopg2.extensions.new_type((114, 3802), "PG_JSON_TEXT", lambda
 _JSON_ARRAY = psycopg2.extensions.new_array_type((199, 3807), "PG_JSON_ARRAY", _JSON_AS_TEXT)
 
 
+def _interval(text: str | bytes | None, _cur: Any) -> Any:  # noqa: ANN401 -- timedelta | relativedelta
+    """An interval as the IR interval it is (ir_types.interval_value), REQ-2167: psycopg2 reads
+    one as a timedelta, a month thirty days, so ``3 mons`` answered ``90 days``. Text in the
+    ``postgres`` IntervalStyle, which the engine's connections write; any other is refused."""
+    if text is None:
+        return None
+    written = text.decode() if isinstance(text, bytes) else text
+    fields = interval_fields(written)
+    if fields is None:
+        raise psycopg2.DataError(f"can't read interval {written!r}")
+    return interval_value(*fields)
+
+
+_INTERVAL = psycopg2.extensions.new_type((1186,), "PG_INTERVAL", _interval)
+_INTERVAL_ARRAY = psycopg2.extensions.new_array_type((1187,), "PG_INTERVAL_ARRAY", _INTERVAL)
+
+
 def _bounded(caster: Any) -> Any:
     """``caster``, an array type's reader, leaving an array whose lower bounds are not 1 as the text
     PostgreSQL writes of it ("[1:1][2:3]={...}"), which it refuses ("array does not start with
@@ -226,6 +245,10 @@ def _read_as_postgresql_writes(cur: Any) -> None:
     psycopg2.extensions.register_type(_XML_ARRAY, cur)
     psycopg2.extensions.register_type(_JSON_AS_TEXT, cur)
     psycopg2.extensions.register_type(_JSON_ARRAY, cur)
+    psycopg2.extensions.register_type(_INTERVAL, cur)
+    # After the bounded arrays, so it takes 1187 from theirs: an interval[] with its own bounds
+    # is not read as one on this engine; its elements are each read as an interval.
+    psycopg2.extensions.register_type(_INTERVAL_ARRAY, cur)
 
 
 class _AdbcConnectionPool:

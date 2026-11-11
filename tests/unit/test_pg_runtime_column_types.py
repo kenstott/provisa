@@ -117,3 +117,59 @@ async def test_an_array_with_its_own_bounds_is_postgresqls_own_text(runtime, sql
 
 def test_an_array_from_one_is_still_a_list(runtime):
     assert runtime.run_sync("SELECT array_fill(3, ARRAY[2]) AS v").rows == [([3, 3],)]
+
+
+#: REQ-2167 (function check run 42527458223): interval_in('3 mons') answered '90 days' on the pg
+#: engine, where PostgreSQL keeps the months. psycopg2 reads an interval as a timedelta, a month
+#: thirty days; the engine's read keeps PostgreSQL's months, days and microseconds.
+_INTERVALS = [
+    "3 mons",
+    "1 year 2 mons 3 days 04:05:06.789",
+    "-1 years +2 days",
+    "1 day -01:00:00",
+    "100:00:00",
+    "-00:00:01",
+]
+
+
+@pytest.mark.parametrize("text", _INTERVALS)
+async def test_an_interval_keeps_postgresqls_fields(runtime, text: str):
+    from provisa.core.ir_types import interval_parts
+    from provisa.transpiler.pg_type_literals import interval_fields
+
+    sql = f"SELECT '{text}'::interval AS v"
+    want = interval_fields(text)
+    assert interval_parts((await runtime.run(sql)).rows[0][0]) == want
+    assert interval_parts(runtime.run_sync(sql).rows[0][0]) == want
+
+
+@pytest.mark.parametrize("text", ["infinity", "-infinity"])
+def test_an_infinite_interval_keeps_its_fields(text: str):
+    """PostgreSQL 17's interval infinities, which the embedded 16 cannot write, read by the
+    engine's reader of interval_out's text."""
+    from provisa.core.ir_types import interval_parts
+    from provisa.federation.pg_runtime import _interval
+    from provisa.transpiler.pg_type_literals import interval_fields, interval_text
+
+    fields = interval_parts(_interval(text, None))
+    assert (fields, interval_text(*fields)) == (interval_fields(text), text)
+
+
+def test_an_interval_in_another_style_is_refused():
+    import psycopg2
+
+    from provisa.federation.pg_runtime import _interval
+
+    with pytest.raises(psycopg2.DataError, match="can't read interval '\\+0-3'"):
+        _interval("+0-3", None)
+
+
+def test_an_interval_array_keeps_each_elements_fields(runtime):
+    from provisa.core.ir_types import interval_parts
+
+    (value,) = runtime.run_sync("SELECT ARRAY['3 mons', '1 day']::interval[] AS v").rows[0]
+    assert [interval_parts(v) for v in value] == [(3, 0, 0), (0, 1, 0)]
+
+
+def test_a_null_interval_is_null(runtime):
+    assert runtime.run_sync("SELECT NULL::interval AS v").rows == [(None,)]
