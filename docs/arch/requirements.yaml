@@ -94882,7 +94882,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     rule and replaces it wherever the expression reads a column from an attached source of that type. Its
     replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint
     comes with the test that reproduced the bug, checking the answer, and the engine''s generated page lists
-    its hints under each source.'
+    its hints under each source. (Amended 2026-11-11, SQL CONNECTORS ONLY; EVERY ROW NAMES WHAT IT WAS MADE
+    ON:) Maintainer 2026-11-11. A polyfill is only for a connector that executes a variant of SQL -- a serving
+    engine, or a source a statement is sent to DIRECT; a connector that does not run SQL (REST, GraphQL,
+    gRPC, files, code sources) has no polyfill page, its data reaching a statement through Provisa''s reader
+    or the engine, whose rows cover it. The documentation shows the direct polyfills and the engine polyfills.
+    Every row names what it was made and verified on, printed from the configuration of the test that proves
+    it, never written by hand: an engine''s own rows on data the engine holds itself, a direct row on that
+    source alone, a hint on its engine and source pair (with the source''s version or setting where the
+    hint depends on it). Each engine''s page states that when the engine reads a source it attaches directly,
+    it may push work into that source, so a result can depend on the pair, and its hints are the cases known.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
