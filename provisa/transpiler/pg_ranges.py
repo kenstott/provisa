@@ -37,6 +37,7 @@ import sqlglot.expressions as exp
 from provisa.core import pg_range
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Range, RangeType
+from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     SubtypeOperationRefused,
@@ -1954,7 +1955,11 @@ class _Rewrite:
         )
 
     def _aggregate(self, name: str, argument: exp.Expr) -> exp.Expr:
+        if isinstance(argument, exp.Order):  # a union or an intersection is of no order
+            argument = argument.this
         value = self.value(argument)
+        if value is None and isinstance(argument, exp.Column):
+            value = self._of_values(argument)
         if value is None:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
         w, rtype = self.writer, value.rtype
@@ -1969,6 +1974,17 @@ class _Rewrite:
         # No value at all is NULL, as a strict aggregate's result is.
         nothing = _eq(exp.Count(this=text.copy()), _int(0))
         return _case([(nothing, _null())], folded)
+
+    def _of_values(self, column: exp.Column) -> _Value | None:
+        """A column of a VALUES list the statement casts to a range or multirange type, read as
+        that type's text (pg_literals.values_cast)."""
+        said = values_cast(column)
+        kind = said.to.this if said is not None else None
+        if kind in _CAST_RANGES:
+            return self.writer.parsed(column.copy(), RANGE_TYPES[_CAST_RANGES[kind]])
+        if kind in _CAST_MULTIRANGES:
+            return _M(MULTIRANGE_TYPES[_CAST_MULTIRANGES[kind]], _is_null(column), column.copy())
+        return None
 
     def _unnest(self, node: exp.Expr) -> exp.Expr:
         argument = node.this if isinstance(node, exp.Explode) else node.expressions[0]

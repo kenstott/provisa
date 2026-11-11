@@ -1514,6 +1514,14 @@ _ROWS: tuple[Macro, ...] = (
     _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
     _macro("pg_to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),  # as readable writes it
     _macro("netmask", "value", "host(netmask(value))"),
+    # DuckDB's broadcast of an IPv4 address of the high bit holds it as a negative integer, which
+    # is no address; its text is the address, read again.
+    _macro(
+        "broadcast",
+        "value",
+        "CAST(CAST(broadcast(value) AS VARCHAR) AS INET)",
+        own={_EVERY_BUT_DUCKDB: MAPPED},
+    ),
     _macro(
         "uuid_extract_version",
         "value",

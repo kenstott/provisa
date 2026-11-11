@@ -30,6 +30,7 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.time import format_time
 
 from provisa.core.pg_error import raising
 from provisa.transpiler import function_macros, pg_syntax, pg_xml
@@ -108,6 +109,8 @@ _CALLED = re.compile(
                 pg_syntax.OVERLAPS,
                 *_NAMED_OBJECT_SENDS,
                 "generate_subscripts",
+                "to_date",
+                "to_timestamp",
             }
         )
     )
@@ -415,6 +418,16 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         elif name == "pg_size_pretty" and len(args) == 1:
             written = f"PROVISA_SIZE_PRETTY(CAST({text(args[0])} AS HUGEINT))"
     return node if written is None else sqlglot.parse_one(written, read="postgres")
+
+
+def _said_text(node: exp.Expr | None) -> bool:
+    """Whether ``node`` is a string literal the statement casts to text."""
+    return (
+        isinstance(node, exp.Cast)
+        and _cast_to(node, exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
+        and isinstance(node.this, exp.Literal)
+        and node.this.is_string
+    )
 
 
 def _names_an_object(node: exp.Expr) -> bool:
@@ -928,6 +941,14 @@ def _collation_named(value: exp.Collate) -> exp.Expr | None:
 
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
+    if isinstance(node, (exp.StrToDate, exp.StrToTime)) and _said_text(node.args.get("format")):
+        # A format the statement casts to text ('YYYY-MM-DD'::text) is that format: sqlglot reads
+        # PostgreSQL's template into the engine's of a literal alone.
+        written = node.args["format"].this.this
+        read = format_time(written, Postgres.TIME_MAPPING, Postgres.TIME_TRIE)
+        called = node.copy()
+        called.set("format", exp.Literal.string(read))
+        return called
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
         inner = _call(node.expression)
         return node if inner is node.expression else inner

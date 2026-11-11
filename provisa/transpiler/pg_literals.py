@@ -211,6 +211,22 @@ def values_cast(column: exp.Column) -> exp.Cast | None:
     return value if isinstance(value, exp.Cast) else None
 
 
+def _depth(elements: list) -> int:
+    """An array's dimensions, as its text form nests them: '{{a,b}}' has two."""
+    inner = [_depth(e) for e in elements if isinstance(e, list)]
+    return 1 + (max(inner) if inner else 0)
+
+
+def _of_depth(to: exp.DataType, depth: int) -> exp.DataType:
+    """``to``, an array type, of ``depth`` dimensions: PostgreSQL's text[] holds any number of
+    them, an engine's list type one per nesting (a cast of a nested list to TEXT[] writes each
+    sublist as a text)."""
+    typed = to.copy()
+    for _ in range(depth - 1):
+        typed = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[typed], nested=True)
+    return typed
+
+
 def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
         return node
@@ -220,7 +236,7 @@ def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[re
             elements = array_elements(literal.this)
         except _NotAnArrayLiteral:
             return node  # not an array's text form: the engine's cast reports it
-        return exp.Cast(this=_as_array(elements), to=to)
+        return exp.Cast(this=_as_array(elements), to=_of_depth(to, _depth(elements)))
     if (
         literal.is_string
         and to.is_type(exp.DataType.Type.VARBINARY)

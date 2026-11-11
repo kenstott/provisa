@@ -159,6 +159,81 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
         TIMESTAMPTZ,
         ["2025-02-24 02:46:24.503+00"],
     ),
+    # broadcast of an IPv4 address of the high bit (DuckDB holds it as a negative integer).
+    ("SELECT pg_catalog.\"broadcast\"('192.168.0.1/24'::inet) AS v", 869, ["192.168.0.255/24"]),
+    (
+        "SELECT pg_catalog.\"broadcast\"('2001:db8::1/64'::inet) AS v",
+        869,
+        ["2001:db8::ffff:ffff:ffff:ffff/64"],
+    ),
+    # A template the statement casts to text is the template.
+    (
+        "SELECT pg_catalog.\"to_date\"('2024-06-15'::text, 'YYYY-MM-DD'::text) AS v",
+        1082,
+        ["2024-06-15"],
+    ),
+    (
+        "SELECT pg_catalog.\"to_timestamp\"('2024-06-15 12:30:45'::text, "
+        "'YYYY-MM-DD HH24:MI:SS'::text) AS v",
+        TIMESTAMPTZ,
+        ["2024-06-15 12:30:45+00"],
+    ),
+    # An array literal of two dimensions is a list of lists: xpath's namespace mapping.
+    (
+        "SELECT pg_catalog.\"xpath\"('/b/@x'::text, '<b x=\"y\"/>'::xml, "
+        "'{{x,http://example.com}}'::text[]) AS v",
+        143,
+        ["{y}"],
+    ),
+    (
+        "SELECT pg_catalog.\"xpath_exists\"('/b/@x'::text, '<b x=\"y\"/>'::xml, "
+        "'{{x,http://example.com}}'::text[]) AS v",
+        BOOL,
+        ["t"],
+    ),
+    ("SELECT '{{1,2},{3,4}}'::int[] AS v", 1007, ["{{1,2},{3,4}}"]),
+    # range_agg and range_intersect_agg of a column a VALUES list types, their ORDER BY no matter.
+    *(
+        (
+            f'SELECT pg_catalog."{name}"(c1 ORDER BY c1) AS v FROM (VALUES {rows}) AS t(c1)',
+            oid,
+            [answer],
+        )
+        for name, rows, oid, answer in (
+            (
+                "range_agg",
+                "('{[1,5),[7,9)}'::int4multirange), ('{}'::int4multirange), "
+                "('{(,3]}'::int4multirange)",
+                4451,
+                "{(,5),[7,9)}",
+            ),
+            (
+                "range_agg",
+                "('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)",
+                4451,
+                "{(,5)}",
+            ),
+            (
+                "range_intersect_agg",
+                "('{[1,5),[7,9)}'::int4multirange), ('{}'::int4multirange), "
+                "('{(,3]}'::int4multirange)",
+                4451,
+                "{}",
+            ),
+            (
+                "range_intersect_agg",
+                "('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)",
+                INT4RANGE,
+                "empty",
+            ),
+            (
+                "range_intersect_agg",
+                "('[1,5)'::int4range), ('[2,8)'::int4range)",
+                INT4RANGE,
+                "[2,5)",
+            ),
+        )
+    ),
     # A zone's text PostgreSQL reads as POSIX: '12' is twelve hours WEST of UTC.
     (
         "SELECT pg_catalog.\"date_add\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
@@ -221,6 +296,12 @@ ERRORS: list[tuple[str, str, str]] = [
         "bit string length 1 does not match type bit(3)",
     ),
     ('SELECT pg_catalog."char"(300::integer) AS v', "22003", '"char" out of range'),
+    # record_in of the anonymous record type: PostgreSQL's own refusal.
+    (
+        "SELECT pg_catalog.\"record_in\"('(1,x)'::cstring, 2249::oid, (-1)::integer) AS v",
+        "0A000",
+        "input of anonymous composite types is not implemented",
+    ),
     # Its time negative, whatever its days.
     (
         "SELECT pg_catalog.\"in_range\"('10:00'::time, '11:00'::time, '1 day -00:30'::interval, "
@@ -274,6 +355,12 @@ REFUSED: list[tuple[str, str]] = [
         "'abc'::text), ('Hello World'::text, 'Hello World'::text), ('12'::text, '12'::text)) "
         "AS t(c1, c2)",
         "string_agg",
+    ),
+    # record_in of a named composite type, whose columns the engine does not hold.
+    (
+        "SELECT pg_catalog.\"record_in\"('(1,x,10,)'::cstring, "
+        "'pg_catalog.pg_namespace'::regtype::oid, (-1)::integer) AS v",
+        "record_in",
     ),
     # A bit string of no bits, which DuckDB's BIT cannot hold.
     ("SELECT pg_catalog.\"substring\"('0'::bit, 2::integer) AS v", "substring"),
