@@ -291,11 +291,12 @@ def _member_reads(
 
     chains = state.role_build_inputs["role_chains"]
     masked = {(tid, col): (masks, dtype) for tid, col, masks, dtype in state.masked_columns}
-    # REQ-1494: a fake is the column's own declaration, read by every role in a Test environment
-    # in place of any mask (app_loaders._load_masking_rules); each member holds it alike.
+    # REQ-1494: a fake is read in place of any mask by every role in a Test environment, and by
+    # a synthetic offer's role on its product's datasets (REQ-2180; app_loaders._load_masking_rules);
+    # each member reads it as its own published rules hold it.
     faked = {
-        (tid, col): entry
-        for (tid, _rid), cols in state.masking_rules.items()
+        (tid, rid, col): entry
+        for (tid, rid), cols in state.masking_rules.items()
         for col, entry in cols.items()
         if entry[0].mask_type == MaskType.fake
     }
@@ -326,8 +327,8 @@ def _member_reads(
                 if not served:
                     treatments.append((HIDDEN, None, dtype))
                     continue
-                if (t["id"], name) in faked:
-                    rule, fake_type = faked[(t["id"], name)]
+                if (t["id"], m["id"], name) in faked:
+                    rule, fake_type = faked[(t["id"], m["id"], name)]
                     treatments.append((1, rule, fake_type))
                     continue
                 chain = [*chains[m["id"]], *qualifiers]
