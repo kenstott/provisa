@@ -26953,3 +26953,13 @@ Maintainer 2026-11-11: consistency across the 2D diagrams has been hard to keep,
 **Code:** —
 
 **Tests:** —
+
+### REQ-2240 · Admin UI {#REQ-2240}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+Maintainer 2026-11-11: a list such as Registered Tables gets long for a developer, so rows can be selected and deleted together. Selection lives in the shared list table, so every list page has it the same way: a checkbox column, shift-click to select a range, and a header checkbox that selects every row the current filter shows; a plain row click still opens the detail panel. Once anything is selected a bar shows the count with Delete and Clear; Delete asks once, naming the rows. The server deletes them in one call through the same guard a single delete runs: what can be deleted is deleted, and each row refused (for example a table a view, relationship or product uses) is named with its reason, as the bulk accept of reviewed terms reports what it decided and what it refused. It is available in every environment to whoever may delete those rows.
+
+**Code:** —
+
+**Tests:** —
