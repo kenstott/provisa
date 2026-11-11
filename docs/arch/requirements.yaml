@@ -91722,7 +91722,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     role request and ends if it is declined. (Amended 2026-10-29, APPROVING THE ROLE RELEASES THE COLUMN
     REQUEST:) Maintainer 2026-10-31: the column request is held pending and names no role until the role
     request is approved. That approval adds the new role to the column request and releases it to the data
-    steward.'
+    steward. (Amended 2026-11-11, A PRODUCT LISTS THE ROLES IT IS GRANTED THROUGH:) Maintainer 2026-11-11.
+    A data product names, when it is published, the roles access to it may be granted through; by default
+    that list is the viewer role. Approving a request is picking one of them (the only one, when the list
+    holds one, already picked), and the approval assigns that role to the requester with entitlements built
+    from the product itself -- its member tables and columns -- so no one writes an entitlement list by
+    hand. Masks, row rules and anything else applied on read are defined up front, on the listed roles and
+    the product, so what a consumer gets is known before anyone asks. A product whose list is empty cannot
+    be requested.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
