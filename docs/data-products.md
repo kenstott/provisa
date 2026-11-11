@@ -25,20 +25,39 @@ Each offer has:
 | `data_level` | `full` (the product's datasets), `sample` (one or more existing views over the datasets, named in `sample_views`, which together read every dataset and nothing else) or `synthetic` (every dataset must have a profiler) |
 | `dq_results` | Whether the product's data quality results are included |
 | `profiles` | Whether the datasets' profiles are included. A synthetic offer has none |
-| `open` | An open offer is accepted at once |
+| `open` | Allowed only when the data is already public: the role is one every role of the org inherits, it reads every dataset, and no grant of it leaves a dataset out. Marking an offer open otherwise is refused, naming what is not public. An open offer is no request: the API reports `query_now` for it |
 | `duration_days` | How long what accepting grants lasts; none means no end |
 
 A product's datasets are its member tables and views. A checker table the product owns holds its data quality results and is not a dataset.
 
 ### Bids
 
-A signed-in requester bids for an offer and states a reason. The product's owner role accepts or declines the bid as it was bid. If the offer changes after the bid, accepting is refused and the requester bids again. Declining states a reason, and a requester may withdraw a pending bid.
+A signed-in requester bids for an offer and states a reason. Provisa does not decide the bid: the bid fires the outbound request hook, and whatever receives it decides. If the offer changes after the bid, accepting is refused and the requester bids again. Declining states a reason. A requester may withdraw a pending bid or cancel an accepted one; either is a cancel, sent through the same hook.
 
-Accepting checks again that the one accepting may grant the offer's role. It then assigns the role, or re-grants a role the requester already holds, and adds entries to the requester's `tables` entitlement list for that role: the datasets (or, for a sample, the views alone, never the tables beneath them), plus the data quality results and the profiles where the offer includes them. A requester who did not hold the role is granted it narrowed to those entries.
+### Request hooks
+
+The org's request hook is a URL and a secret reference (`${secret:NAME}` or `${env:NAME}`), set at `PUT /admin/data-products/request-hook`. Each request is posted to it as JSON, signed in `X-Provisa-Signature` (`sha256=` and the hex HMAC-SHA256 of the body under the secret), with its id as the `Idempotency-Key`:
+
+```json
+{"id": "…", "kind": "bid", "requester": "u1", "product": "c360",
+ "offer": {"name": "default", "role": "viewer", "data_level": "full", "sample_views": [],
+           "dq_results": true, "profiles": false, "duration_days": null},
+ "contracts": {"sales.orders": "1.0.0"}, "reason": "churn study"}
+```
+
+A cancel carries the bid's terms, `"kind": "cancel"` and the id of the request it cancels in `cancels`.
+
+With no hook configured and no identity provider holding access, a request lands in the product's own queue: the owner role accepts or declines it there, and a cancel is applied at once. Where the identity provider holds access (`auth.assignments_source: claims`), a request with no hook configured is refused.
+
+The decision returns through `POST /admin/data-products/decisions`: `request_id`, `outcome` (`accepted` or `declined`), `decider`, `decided_at` and, for a decline, `reason`. An external caller signs the body with the hook's secret. A signed-in caller decides as themselves, as the product's owner role. A decision is refused when it matches no pending request or when the decider may not grant the offer's role. The same decision sent again is answered with the request as it stands.
+
+Where Provisa holds access, an accepted bid is an ordinary admin grant of exactly what was bid, attributed to the decider. It assigns the role, or re-grants a role the requester already holds, and adds entries to the requester's `tables` entitlement list for that role: the datasets (or, for a sample, the views alone, never the tables beneath them), plus the data quality results and the profiles where the offer includes them. A requester who did not hold the role is granted it narrowed to those entries.
 
 With a duration, the entries end after it, and so does a role grant the acceptance made. A role granted again ends at the latest of the expiries that granted it, and no end is later than any date. An offer's summary states any extension accepting it would make, for example "extends your viewer role from 21 Nov 2026 to no end date".
 
-An open offer is checked against the right of the owner who published it. While that right is gone, the bid stays pending and the offer is listed for review (`review`). Accepting a synthetic offer is refused for now, because no read yet serves a role the product's synthetic data.
+An accepted cancel removes what the bid's grant alone added: its entries, with their expiry, and the role if the grant made it. It does not bring an extended date back. Where the identity provider holds access, a decision only updates the request's status.
+
+An open offer whose data stops being public is listed for review (`review`). Accepting a synthetic offer is refused for now, because no read yet serves a role the product's synthetic data.
 
 ## Contracts
 
@@ -65,10 +84,13 @@ The ODPS export writes one output port per offer and dataset, versioned by and n
 | `GET /admin/data-products/{id}/offers` | `data_product_read` | The offers, each with its contracts and the caller's extension summary |
 | `GET /admin/data-products/{id}/grantable-roles` | `data_product_rw` in the domain | The roles the caller may put in an offer |
 | `POST /admin/data-products/{id}/offers`, `PUT .../offers/{offer_id}`, `DELETE .../offers/{offer_id}` | `data_product_rw` in the domain, and the product's row rules | Add, change or remove an offer. Removing one declines its pending bids |
-| `POST /admin/data-products/{id}/offers/{offer_id}/bids` | a signed-in requester | Bid, stating `reason`. An open offer is accepted at once |
+| `POST /admin/data-products/{id}/offers/{offer_id}/bids` | a signed-in requester | Bid, stating `reason`; fires the request hook. Refused for an open offer (`query_now`) |
 | `GET /admin/data-products/{id}/bids` | the owner role sees every bid, anyone else their own | The bids, newest first |
-| `POST /admin/data-products/{id}/bids/{bid_id}/accept`, `.../decline` (with `reason`) | the product's owner role | Decide a bid |
-| `POST /admin/data-products/{id}/bids/{bid_id}/withdraw` | the requester | Withdraw a pending bid |
+| `POST /admin/data-products/{id}/bids/{bid_id}/accept`, `.../decline` (with `reason`) | the product's owner role | Decide a bid in the local queue, through the decision hook |
+| `POST /admin/data-products/{id}/bids/{bid_id}/withdraw`, `.../cancel` (with `reason`) | the requester | Cancel a pending or an accepted bid |
+| `POST /admin/data-products/decisions` | a signed external caller, or the product's owner role | The decision hook |
+| `GET`, `PUT /admin/data-products/request-hook` | org settings | The org's request hook |
+| `GET /admin/data-products/{id}/profiles` | `data_product_read` | Each dataset's latest profile, sanitized for the caller's role: a masked or PII-tagged column shows its type, null rate and distinct count, and no value |
 
 ## Detail panel sections
 

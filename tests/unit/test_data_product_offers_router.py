@@ -86,9 +86,14 @@ def test_an_external_deciders_right_is_asked_of_the_roles_they_hold(monkeypatch)
         "provisa.security.rights.capabilities_for_claims",
         lambda acting, _roles: {"assign_entitlements"} if "owner" in acting else set(),
     )
-    monkeypatch.setattr(
-        router, "reaches_role", lambda _state, _role, caps: "assign_entitlements" in caps
-    )
+    from provisa.entitlements import runtime
+
+    def reaches(_state, _role, _caps):
+        bound = runtime._current.get()
+        assert bound is not None  # asked of the decider, bound as they hold their roles
+        return "owner" in bound.acting_roles
+
+    monkeypatch.setattr(router, "reaches_role", reaches)
     state = _state(idp_entitlements={}, auth_config={})
     assert asyncio.run(router.principal_refusal(None, state, "o1", "viewer")) is None
     refusal = asyncio.run(router.principal_refusal(None, state, "u9", "viewer"))
