@@ -88,28 +88,23 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   }),
 }));
 
+// One reader for every render, as the real hook's is (useCallback): the step reads again when it
+// changes.
+const readColumns = async (_source: string, _schema: string, table: string) =>
+  table === "accounts"
+    ? [
+        {
+          name: "id",
+          dataType: "integer",
+          comment: null,
+          nativeFilterType: null,
+          isPrimaryKey: true,
+        },
+      ]
+    : [{ name: "body", dataType: "", comment: null, nativeFilterType: null, isPrimaryKey: false }];
 vi.mock("../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAvailableColumnsMetadataLazy")>()),
-  useReadColumns: () => async (_source: string, _schema: string, table: string) =>
-    table === "accounts"
-      ? [
-          {
-            name: "id",
-            dataType: "integer",
-            comment: null,
-            nativeFilterType: null,
-            isPrimaryKey: true,
-          },
-        ]
-      : [
-          {
-            name: "body",
-            dataType: "",
-            comment: null,
-            nativeFilterType: null,
-            isPrimaryKey: false,
-          },
-        ],
+  useReadColumns: () => readColumns,
 }));
 
 vi.mock("../../components/SchemaDiscovery", () => ({
