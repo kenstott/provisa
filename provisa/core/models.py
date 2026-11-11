@@ -606,9 +606,9 @@ class DataProduct(BaseModel):  # REQ-1634
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
-    # REQ-2180: the freshness every contract of the product promises, an ISO 8601 duration
-    # (PT1H); None: each dataset's own cache freshness.
-    freshness: str | None = None
+    # REQ-2180: the freshness every contract of the product promises: a read trails its source
+    # by at most this many seconds. None: each dataset's own (its cache_ttl).
+    freshness: int | None = Field(default=None, gt=0)
     # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
     # relationship names a table (its alias, else its table name) or as source.schema.table where
     # that is not unique, and the commands, by name. A

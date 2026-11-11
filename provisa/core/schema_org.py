@@ -232,8 +232,8 @@ data_products = Table(  # REQ-1634
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # REQ-2219: who created it, set on insert only; it grants nothing.
     Column("created_by", Text),
-    # REQ-2180: the freshness every contract of the product promises (ISO 8601 duration).
-    Column("freshness", Text),
+    # REQ-2180: the freshness every contract of the product promises, in seconds.
+    Column("freshness", Integer),
 )
 
 naming_rules = Table(

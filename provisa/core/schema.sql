@@ -183,11 +183,11 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- REQ-2219: who created it, set on insert only; it grants nothing.
     created_by    TEXT,
     -- REQ-2180: how fresh every contract of the product promises its data, written once on the
-    -- product (an ISO 8601 duration, e.g. PT1H); NULL: each dataset's own cache freshness.
-    freshness     TEXT
+    -- product: a read trails its source by at most this many seconds; NULL: each dataset's own.
+    freshness     INTEGER
 );
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
-ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness TEXT;
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness INTEGER;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
