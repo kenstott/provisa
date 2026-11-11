@@ -12,9 +12,20 @@ import { test, expect, BACKEND_URL } from "./coverage";
 import { NEO4J_URL, describeNeo4jContainer } from "./neo4j-container";
 
 const EXPORT_BATCH = 200;
-// The discovery queries run this many at a time: one per label and one per relationship type,
-// each a second or more on a CI runner, serially outgrew the test's budget as the e2e model grew.
-const DISCOVERY_CONCURRENCY = 8;
+// The discovery queries run this many at a time. The backend serves 4 /data/cypher requests at a
+// time; above that they queue server-side ("still waiting for a thread") and add no throughput.
+const DISCOVERY_CONCURRENCY = 4;
+// Relationship types queried per wave. The spec asserts that edges export and that Neo4j's
+// relationship count equals the exported edge count, which needs some edges, not every type's:
+// it queries waves of this many types until a wave yields an edge. Querying all 150 types plus
+// 78 labels (228 calls) timed out at 300 s in run 43039578650.
+const REL_WAVE = 25;
+// Measured in run 43039578650 (J509a): 228 calls, plus the export, took 117 s on the retry, about
+// 0.5 s per call at saturation; the first attempt, which shared the runner with other workers and
+// logged "still waiting for a thread" 71 times, exceeded 300 s. Budget 2 s per discovery call
+// (4x measured) plus a fixed allowance for wipe, export and count.
+const SECONDS_PER_CALL = 2;
+const FIXED_BUDGET_S = 90;
 // Rows read of each label and each relationship type. The spec proves every label and type reaches
 // Neo4j; it does not need every row. Unbounded, it read the model's own catalog: ModelNames alone
 // was 15,246 nodes and NamesReport 8,373 of the 28,000 a run had exported when it hit the limit,
@@ -149,8 +160,6 @@ function extractNodesAndEdges(
 test("neo4j export: exports all queryable graph nodes and relationships to a community docker instance", async ({
   request,
 }) => {
-  test.setTimeout(300_000);
-
   await waitForNeo4j();
 
   // ── 0. Empty the database ─────────────────────────────────────────────────
@@ -176,6 +185,8 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
     (n: { label: string }) => n.label.split(":")[1],
   );
   expect(allLabels.length, "schema must have node labels").toBeGreaterThan(0);
+  // Worst case: every label and one wave of relationship types; more waves only run on no edges.
+  test.setTimeout((FIXED_BUDGET_S + SECONDS_PER_CALL * (allLabels.length + REL_WAVE)) * 1000);
 
   // ── 2. Query every label; skip those that require WHERE clause parameters ──
   const nodesById = new Map<number, ExportNode>();
@@ -194,14 +205,19 @@ test("neo4j export: exports all queryable graph nodes and relationships to a com
   // ── 3. Query all relationships from schema ────────────────────────────────
   const relTypes: Array<{ type: string; source: string; target: string }> =
     schema.relationship_types ?? [];
-  const relRowsAll = await mapLimit(relTypes, DISCOVERY_CONCURRENCY, (rel) =>
-    tryCypherQuery(
-      BASE,
-      `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b LIMIT ${DISCOVERY_ROWS}`,
-    ),
-  );
-  for (const relRows of relRowsAll) {
-    if (relRows) extractNodesAndEdges(relRows, nodesById, edgesMap);
+  for (let at = 0; at < relTypes.length && edgesMap.size === 0; at += REL_WAVE) {
+    const relRowsAll = await mapLimit(
+      relTypes.slice(at, at + REL_WAVE),
+      DISCOVERY_CONCURRENCY,
+      (rel) =>
+        tryCypherQuery(
+          BASE,
+          `MATCH (a:${rel.source})-[r:${rel.type}]->(b:${rel.target}) RETURN a, r, b LIMIT ${DISCOVERY_ROWS}`,
+        ),
+    );
+    for (const relRows of relRowsAll) {
+      if (relRows) extractNodesAndEdges(relRows, nodesById, edgesMap);
+    }
   }
 
   const nodes = Array.from(nodesById.values());

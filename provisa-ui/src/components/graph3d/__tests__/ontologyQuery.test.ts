@@ -24,7 +24,9 @@ import {
   ontologyCountQuery,
   ontologyGraph,
   ontologyQuery,
+  PRODUCT_TERM_HOPS,
   termEdges,
+  termLevels,
   type TermRow,
 } from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
@@ -307,6 +309,61 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     expect(q).toContain("query OntologyCount");
     expect(q).toContain('{ name: { ilike: "%cust%" } }');
     expect(q).toContain("{ id domains { domainId } }");
+  });
+});
+
+describe("REQ-2174: a focus's hops, read as steps across the term links", () => {
+  const focused = (focus: string, depth: number) =>
+    squash(
+      ontologyQuery(
+        reader(),
+        scope(["ontology", "columns", "data"], {
+          focus,
+          depth,
+          ...(focus.startsWith("p:") ? { products: true } : {}),
+        }),
+      ),
+    );
+  // Each term read in full (with what it touches) is one refs selection; each level nests both ways.
+  const fullTerms = (q: string) => q.match(/refs \{/g)?.length ?? 0;
+
+  it("counts a term's hops from the term: each hop a step", () => {
+    for (const depth of [1, 2, 3, 4])
+      expect(termLevels({ search: [], focus: "term:7", depth })).toBe(depth);
+    expect(termLevels({ search: ["cust"], focus: null, depth: 2 })).toBe(2);
+    expect(termLevels({ search: [], focus: null, depth: 2 })).toBe(0);
+  });
+
+  it("counts a product's hops from the product: its own terms are three hops off", () => {
+    expect(PRODUCT_TERM_HOPS).toBe(3);
+    expect([1, 2, 3, 4].map((depth) => termLevels({ search: [], focus: "p:c360", depth }))).toEqual(
+      [0, 0, 0, 1],
+    );
+  });
+
+  it("reads a product's graph at 3 hops as its own terms alone, no term link followed", () => {
+    // J509a: read three levels deep, nested both ways, the query was 20 KB and got no answer in a
+    // minute; its tables, columns and terms are all the product's own terms read once.
+    const q = focused("p:c360", 3);
+    expect(fullTerms(q)).toBe(1);
+    expect(q).not.toContain("edgesIn");
+    expect(q).toContain("targetTerm { id }");
+    expect(q).toBe(focused("p:c360", 1));
+    expect(q.length).toBeLessThan(focused("term:7", 1).length * 2);
+  });
+
+  it("reads a product's fourth hop as one step across the links, both ways", () => {
+    // The term panel's one-hop read: the product's terms, the terms a link reaches by their ids.
+    const q = focused("p:c360", 4);
+    expect(fullTerms(q)).toBe(1);
+    expect(q).toContain("edgesIn");
+    expect(q).toContain("sourceTerm { id }");
+  });
+
+  it("reads a term's graph a level to each hop, as before", () => {
+    expect(fullTerms(focused("term:7", 1))).toBe(1);
+    expect(fullTerms(focused("term:7", 2))).toBe(3);
+    expect(fullTerms(focused("term:7", 3))).toBe(7);
   });
 });
 
