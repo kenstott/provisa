@@ -3142,10 +3142,16 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     compiled schema from ``prod_rt`` into the current env's runtime, reads env-specific source
     rows from the env's model DB, and skips the full ``_rebuild_schemas_impl`` (~6 s per env).
 
+    The copy holds only while the env's sources give the build what PROD's gave it. A source
+    bound to a synthetic store (REQ-1942) does not: its type is the store's and its tables are
+    their generated forms, and from those a build derives the env's catalogs, types and dialects,
+    its compiled surfaces and view SQL, its API sources, routes, unbound set and connections. An
+    env with one is built in full -- ``_rebuild_schemas``, the one function that derives them.
+
     Called from ``_build_org_runtime`` when ``model_cloned=True`` and ``env != PROD``.  The
     sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
     """
-    from provisa.core.env_classes import BINDING_COLUMN, OWN, TEST_FAKE
+    from provisa.core.env_classes import BINDING_COLUMN, OWN, TEST_FAKE, UNBOUND
     from provisa.core.schema_org import sources as _sources_t
 
     _rt = state._active_runtime()
@@ -3156,7 +3162,18 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     assert state.model_db is not None
     async with state.model_db.acquire() as conn:
         _all_source_rows = (await conn.execute_core(select(_sources_t))).fetchall()
-        env_unbound = await _unbound_sources(conn)
+        # REQ-1942: a source bound to a synthetic store is served from the store -- it is not
+        # unbound. Use UNBOUND only, mirroring _reconcile_sources (model_reload.py).  The old
+        # call to _unbound_sources also included SYNTHETIC, so generated envs got a 409.
+        from provisa.synthetic.datasets import synthetic_sources as _synthetic_sources
+
+        _synthetic_bound = await _synthetic_sources(conn)
+
+    if _synthetic_bound:
+        # R508g3: a SYNTHETIC binding changes what the schema is compiled from; nothing of PROD's
+        # compiled state is the env's. The runtime build starts the replica convergence.
+        await _rebuild_schemas(converge=False)
+        return
 
     env_runtime_sources = {r._mapping["id"]: dict(r._mapping) for r in _all_source_rows}
     # source_binding_env: only OWN-bound sources; SYNTHETIC binding is not OWN.
@@ -3172,6 +3189,14 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
 
     _install_cloned_surfaces(_rt, prod_rt.surfaces)
     _rt.role_build_inputs = prod_rt.role_build_inputs
+    # R508e (4fbab161ec): copy catalog/type/dialect maps so the federation layer can resolve
+    # the catalogs PROD's compiled surfaces name (e.g. 'sales_pg') and '__derived__' has an
+    # entry.  Without these the native backend raised "unknown catalog" (400) or
+    # KeyError('__derived__').  Copies, not PROD's dicts (R508g3): a source the env registers or
+    # reconciles writes into its own maps, and PROD's must not move with them.
+    _rt.source_catalogs = dict(prod_rt.source_catalogs)
+    _rt.source_types = dict(prod_rt.source_types)
+    _rt.source_dialects = dict(prod_rt.source_dialects)
     _rt.tables = prod_rt.tables
     _rt.relationships = prod_rt.relationships
     _rt.roles = prod_rt.roles
@@ -3219,7 +3244,14 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.tracked_webhooks = prod_rt.tracked_webhooks
     _rt.column_transforms = prod_rt.column_transforms
     _rt.undefined_commands = prod_rt.undefined_commands
-    _rt.replica_routes = prod_rt.replica_routes
+    # REQ-1942, REQ-2006: rebuild replica_routes for this env rather than copying PROD's.
+    # PROD's routes floor a replicate=0 source (e.g. demo's zoo-db with replicate: 0, always
+    # replicate) to mat_store; the cloned env's store is the synthetic dataset, not the
+    # materialisation store catalog, so copying PROD's routes sends queries to mat_store which
+    # is not attached, raising Catalog "mat_store" does not exist.
+    from provisa.federation.replica_routing import replica_routes as _build_replica_routes
+
+    _rt.replica_routes = await _build_replica_routes(state)
     _rt.metrics = prod_rt.metrics
     _rt.schema_build_cache = prod_rt.schema_build_cache
     _rt.api_sources = prod_rt.api_sources
@@ -3239,13 +3271,6 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.source_cache = prod_rt.source_cache
     _rt.source_allowed_domains = prod_rt.source_allowed_domains
     _rt.source_federation_hints = prod_rt.source_federation_hints
-    # REQ-2006: copy source identity maps so the query pipeline's _known_cats_pgwire
-    # check and the native backend's catalog lookup succeed for the cloned env.
-    # source_catalogs maps source_id → org-prefixed catalog name; source_types and
-    # source_dialects are identical for a cloned env (same sources, same model).
-    _rt.source_catalogs = prod_rt.source_catalogs
-    _rt.source_types = prod_rt.source_types
-    _rt.source_dialects = prod_rt.source_dialects
     _rt.kafka_windows = prod_rt.kafka_windows
     _rt.kafka_bootstrap = prod_rt.kafka_bootstrap
     _rt.kafka_declared = prod_rt.kafka_declared
@@ -3253,7 +3278,11 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.kafka_table_physical = prod_rt.kafka_table_physical
 
     # --- Env-specific fields ---
-    _rt.unbound_sources = frozenset(env_unbound)
+    # Bug A fix: mirror _reconcile_sources (model_reload.py) — only UNBOUND sources block
+    # queries with 409 (REQ-1942).
+    _rt.unbound_sources = frozenset(
+        r._mapping["id"] for r in _all_source_rows if r._mapping[BINDING_COLUMN] == UNBOUND
+    )
     _rt.source_binding_env = env_source_binding_env
     _rt.runtime_sources = env_runtime_sources
     # REQ-1914: carry the same model stamp as PROD (same model).

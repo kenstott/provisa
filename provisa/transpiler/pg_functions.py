@@ -176,26 +176,90 @@ def _scale(node: exp.Expr) -> int | None:
     return None
 
 
-def _random(low: str, high: str, nodes: tuple[exp.Expr, exp.Expr]) -> str:
+def _said_scale(node: exp.Expr) -> int | None:
+    """A numeric bound's scale (its dscale) where the statement says it: a literal's digits after
+    the point, a whole number's none, a numeric cast's typmod scale; None where the engine alone
+    knows it (a column)."""
+    if isinstance(node, (exp.Paren, exp.Neg)):
+        return _said_scale(node.this)
+    if isinstance(node, exp.Literal) and not node.is_string:
+        if node.is_int:
+            return 0
+        written = node.this.lower()
+        return None if "e" in written else len(written.partition(".")[2])
+    if _cast_to(node, exp.DataType.Type.INT, exp.DataType.Type.SMALLINT, exp.DataType.Type.BIGINT):
+        return 0
+    if isinstance(node, exp.Cast) and _cast_to(node, exp.DataType.Type.DECIMAL):
+        typmod = node.to.expressions
+        if not typmod:
+            return _said_scale(node.this)
+        return int(typmod[1].this.name) if len(typmod) > 1 else 0
+    return None
+
+
+def _numeric_draw(low: exp.Expr, high: exp.Expr, scale: int) -> exp.Expr:
+    """numeric_random's draw: a whole number of steps of ``scale`` from ``low``, uniform over the
+    steps up to ``high``, both bounds among them, as a numeric of that scale."""
+    unit = exp.cast(
+        exp.Literal.number(f"0.{'0' * (scale - 1)}1" if scale else "1"),
+        exp.DataType.build(f"DECIMAL(38, {scale})"),
+    )
+    tens = exp.cast(exp.Literal.number(10**scale), exp.DataType.build("DECIMAL(38, 0)"))
+    steps = exp.cast((high.copy() - low.copy()) * tens, exp.DataType.build("BIGINT"))
+    step = exp.cast(
+        exp.Floor(this=exp.Rand() * (steps + exp.Literal.number(1))),
+        exp.DataType.build("DECIMAL(38, 0)"),
+    )
+    return exp.cast(low.copy() + step * unit, exp.DataType.build(f"DECIMAL(38, {scale})"))
+
+
+def _random(low: exp.Expr, high: exp.Expr) -> exp.Expr:
     """random(min, max): an integer of the bounds' type, or a numeric of the larger scale of the
     two, uniform between them, refused as PostgreSQL refuses inverted bounds."""
     type_ = exp.DataType.Type
-    whole = f"{low} + FLOOR(RANDOM() * ({high} - {low} + 1))"
-    between = f"{low} + ({high} - {low}) * RANDOM()"
+    nodes = (low, high)
+    whole = low.copy() + exp.Floor(
+        this=exp.Rand() * (high.copy() - low.copy() + exp.Literal.number(1))
+    )
+    between = low.copy() + (high.copy() - low.copy()) * exp.Rand()
+    said = [_said_scale(n) for n in nodes]
+    drawn: exp.Expr
     if any(_cast_to(n, type_.BIGINT) for n in nodes):
-        drawn = f"CAST({whole} AS BIGINT)"
+        drawn = exp.cast(whole, exp.DataType.build("BIGINT"))
     elif all(
         _cast_to(n, type_.INT, type_.SMALLINT) or (isinstance(n, exp.Literal) and n.is_int)
         for n in nodes
     ):
-        drawn = f"CAST({whole} AS INT)"
+        drawn = exp.cast(whole, exp.DataType.build("INT"))
     elif any(_cast_to(n, type_.DECIMAL) or _scale(n) is not None for n in nodes):
-        scales = [s for s in map(_scale, nodes) if s is not None]
-        drawn = f"ROUND({between}, {max(scales)})" if scales else between
+        if None not in said:
+            drawn = _numeric_draw(low, high, max(s for s in said if s is not None))
+        else:
+            scales = [s for s in map(_scale, nodes) if s is not None]
+            drawn = (
+                exp.Round(this=between, decimals=exp.Literal.number(max(scales)))
+                if scales
+                else between
+            )
     else:
         # The statement does not say the bounds' type: the engine knows it when it binds.
-        drawn = f"CASE WHEN TYPEOF({low}) LIKE 'DECIMAL%' THEN {between} ELSE {whole} END"
-    return f"CASE WHEN {low} > {high} THEN ERROR('{_RANDOM_BOUNDS}') ELSE {drawn} END"
+        drawn = exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.Like(
+                        this=exp.Anonymous(this="TYPEOF", expressions=[low.copy()]),
+                        expression=exp.Literal.string("DECIMAL%"),
+                    ),
+                    true=between,
+                )
+            ],
+            default=whole,
+        )
+    refused = exp.Anonymous(this="ERROR", expressions=[exp.Literal.string(_RANDOM_BOUNDS)])
+    return exp.Case(
+        ifs=[exp.If(this=exp.GT(this=low.copy(), expression=high.copy()), true=refused)],
+        default=drawn,
+    )
 
 
 def _hex_trimmed(value: str, chars: str, leading: bool, trailing: bool) -> str:
@@ -268,8 +332,7 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
                 f"WHEN NOT {text(node.this)} THEN ARRAY['public'] END"
             )
     elif isinstance(node, exp.Rand) and node.args.get("lower") is not None:
-        low, high = node.this, node.args["lower"]
-        written = _random(text(low), text(high), (low, high))
+        return _random(node.this.transform(_rewrite), node.args["lower"].transform(_rewrite))
     elif isinstance(node, exp.StrToTime):
         # PostgreSQL's to_timestamp says an instant, read in the session's time zone.
         node.set("this", node.this.transform(_rewrite))

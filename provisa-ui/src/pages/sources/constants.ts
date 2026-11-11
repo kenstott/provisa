@@ -122,11 +122,12 @@ export const SOURCE_TYPES = [
   { value: "qdrant", label: "Qdrant", category: "NoSQL", defaultPort: 0 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  // Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+  // Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a sandboxed
   // worker.
   { value: "node", label: "Node.js", category: "Code", defaultPort: 0 },
   { value: "python", label: "Python", category: "Code", defaultPort: 0 },
   { value: "go", label: "Go", category: "Code", defaultPort: 0 },
+  { value: "rust", label: "Rust", category: "Code", defaultPort: 0 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -306,6 +307,7 @@ export const NO_CONNECTION_TYPES = new Set([
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same
   "go", // REQ-2200: the same
+  "rust", // REQ-2227: the same
 ]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and

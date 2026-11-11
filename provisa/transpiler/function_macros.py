@@ -2527,8 +2527,8 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
     while isinstance(held, exp.Cast):
         held = held.this.unnest()
     whole = isinstance(held, exp.Null)  # the fraction, or the array of them, is NULL
-    if dialect == "clickhouse" and array and whole:  # no Array is Nullable: no NULL to answer
-        raise FunctionRefused(named, dialect)
+    # REQ-2167: let ClickHouse return its own engine error for a NULL array fraction rather than
+    # raising FunctionRefused (commit 4c510070b2 changed MATRIX["clickhouse"] to expect "error").
     placed = "trino" if dialect in _TRINO else dialect
     if None in fractions and not whole and placed not in _ELEMENT:
         raise FunctionRefused(named, dialect)

@@ -34,7 +34,7 @@ from provisa.cache.raw_sql import (
     entry_as_arrow,
     entry_as_result,
 )
-from provisa.executor.result import QueryResult, StreamingQueryResult
+from provisa.executor.result import ArrowStreamResult, QueryResult, StreamingQueryResult
 from provisa.pgwire._pipeline import (
     _Plan,
     _response_cache_key,
@@ -347,6 +347,30 @@ async def test_pgwire_miss_then_flight_hit_is_exact(bound):
     ]
     assert pa.types.is_timestamp(table.schema.field("ts").type)
     assert table.column("ts").to_pylist() == [_TS, _TS]
+
+
+@pytest.mark.asyncio
+async def test_pgwire_rows_called_with_arrow_stream_caches_as_rows(bound):
+    """REQ-1897: when tee.rows() is called with an ArrowStreamResult (e.g. DuckDB engine returning
+    Arrow), the cache entry must be of kind 'rows', not 'arrow_ipc'.  pgwire cannot serve an
+    arrow_ipc cache entry, so the entry kind is the fix's key invariant (commit r508-wire)."""
+    store = FakeCacheStore()
+    state = _state(store)
+    tee = response_cache_tee(_plan(), state, run=None)
+    assert tee is not None
+    schema, batches = _arrow_batches()
+
+    def _to_rows(batch: pa.RecordBatch) -> list[tuple]:
+        return [tuple(row.values()) for row in batch.to_pylist()]
+
+    arrow_stream = ArrowStreamResult(schema, iter(batches), _TYPES, to_rows=_to_rows)
+    served = [r for b in tee.rows(arrow_stream).batches() for r in b]
+    await tee.commit()
+    assert served == _ROWS, f"rows forwarded incorrectly: {served!r}"
+    assert tee.stored_entry is not None, "nothing was stored"
+    assert tee.stored_entry["kind"] == KIND_ROWS, (
+        f"expected 'rows' entry, got {tee.stored_entry['kind']!r}"
+    )
 
 
 def test_unknown_kind_raises_for_both_readers():
