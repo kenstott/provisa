@@ -9,10 +9,10 @@
 // permission from the copyright holder.
 
 // REQ-2239: a graph's one legend, bottom-right: each type drawn, as its node shows it -- the band's
-// colour, the icon, the type's name.
+// colour (a diamond for the junction), the icon, the type's name.
 
 import { useTranslation } from "react-i18next";
-import { NODE_TYPES, typeIcon, type NodeType } from "./tokens";
+import { NODE_TYPES, typeIcon, typeShape, type NodeType } from "./tokens";
 
 export function GraphLegend({
   types,
@@ -27,7 +27,10 @@ export function GraphLegend({
     <div className="pg-legend" role="list" aria-label={t("provisaGraph.legend")} data-testid="graph-legend">
       {types.map((type) => (
         <span key={type} className="pg-legend-item" role="listitem">
-          <i className="pg-legend-swatch" style={{ background: NODE_TYPES[type].colour }} />
+          <i
+            className={`pg-legend-swatch pg-legend-swatch--${typeShape(type)}`}
+            style={{ background: NODE_TYPES[type].colour }}
+          />
           <img src={typeIcon(type)} width={12} height={12} alt="" />
           {typeName(type)}
         </span>

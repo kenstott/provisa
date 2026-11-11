@@ -24,6 +24,9 @@ function arrowOf(cardinality: string, bidirectional: boolean): "target" | "both"
     : "target";
 }
 
+/** The class erd-model tags a declared junction table with (REQ-1588). */
+const JUNCTION_TAG = "erd-junction";
+
 export function erdGraph(elements: ErdElements, tables: ListedTable[]): GraphSpec {
   const views = new Set(tables.filter((t) => Boolean(t.viewSql)).map((t) => t.id));
   const data = elements.nodes.map((n) => n.data);
@@ -37,19 +40,24 @@ export function erdGraph(elements: ErdElements, tables: ListedTable[]): GraphSpe
         hue: d.domainId,
         data: { domainId: d.domainId },
       })),
-    nodes: data
-      .filter((d): d is ErdNodeTable => d.type === "table")
-      .map((d) => ({
-        id: d.id,
-        type: d.junction ? "junction" : views.has(d.tableId) ? "view" : "table",
-        name: d.tableName,
-        parent: d.parent,
-        description: d.description,
-        lines: d.junction
-          ? []
-          : d.columns.map((c) => ({ text: columnLine(c), key: c.isPrimaryKey || c.isForeignKey })),
-        data: { tableId: d.tableId, tableName: d.tableName, domainId: d.domainId },
-      })),
+    nodes: elements.nodes
+      .filter((n): n is { data: ErdNodeTable; classes: string } => n.data.type === "table")
+      .map(({ data: d, classes }) => {
+        // The model's erd-junction tag makes the node a junction, which the graph draws as a
+        // diamond (REQ-2239, A JUNCTION IS A DIAMOND).
+        const junction = classes.split(" ").includes(JUNCTION_TAG);
+        return {
+          id: d.id,
+          type: junction ? "junction" : views.has(d.tableId) ? "view" : "table",
+          name: d.tableName,
+          parent: d.parent,
+          description: d.description,
+          lines: junction
+            ? []
+            : d.columns.map((c) => ({ text: columnLine(c), key: c.isPrimaryKey || c.isForeignKey })),
+          data: { tableId: d.tableId, tableName: d.tableName, domainId: d.domainId },
+        };
+      }),
     edges: elements.edges.map(({ data: e }) => ({
       id: e.id,
       source: e.source,

@@ -11,7 +11,7 @@
 // REQ-2239: what a view hands the graph (nodes, edges, groups, each node's type) and the elements
 // the graph draws from it. A view says what a thing is; this file alone says how it is drawn.
 
-import { NODE_TYPES, SIZE, groupHue, type NodeType } from "./tokens";
+import { NODE_TYPES, SIZE, groupHue, typeShape, type NodeType } from "./tokens";
 
 /** A line of a node's body (an ERD table's column); ``key`` lines stay at detail "key". */
 export interface GraphLine {
@@ -119,10 +119,12 @@ export function graphElements(
   }));
   const nodes: Element[] = spec.nodes.map((n) => {
     const kind = n.kind ?? "node";
+    const shape = kind === "node" ? typeShape(n.type) : "box";
     const { label, lineCount } =
       kind === "more"
         ? { label: n.name, lineCount: 1 }
-        : nodeLabel(n, typeName(n.type), detail);
+        : // A diamond carries its name and type only; it has no body.
+          nodeLabel(n, typeName(n.type), shape === "diamond" ? "none" : detail);
     return {
       group: "nodes",
       data: {
@@ -133,8 +135,14 @@ export function graphElements(
         name: n.name,
         label,
         lineCount,
-        h: kind === "more" ? SIZE.nodeHeight - 12 : nodeHeight(lineCount),
-        w: SIZE.nodeWidth,
+        shape,
+        h:
+          shape === "diamond"
+            ? SIZE.diamondHeight
+            : kind === "more"
+              ? SIZE.nodeHeight - 12
+              : nodeHeight(lineCount),
+        w: shape === "diamond" ? SIZE.diamondWidth : SIZE.nodeWidth,
         body: lineCount > 2 ? "yes" : "no",
         description: n.description ?? "",
         ...(n.parent !== undefined ? { parent: n.parent } : {}),

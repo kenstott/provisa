@@ -85,6 +85,27 @@ export function graphStylesheet(t: GraphTokens) {
       },
     })),
     {
+      // The one exception to the single shape (REQ-2239, A JUNCTION IS A DIAMOND): a junction is
+      // Chen's relationship diamond. It keeps its band's colour (the border; the fill a tint of it),
+      // its icon above its name, and its legs (edge[tone = "via"]).
+      selector: 'node[kind = "node"][shape = "diamond"]',
+      style: {
+        shape: "diamond",
+        "background-fill": "solid",
+        "background-color": t.junctionFill,
+        "border-width": 1.5,
+        "border-color": (e: Ele) => NODE_TYPES[e.data("type") as NodeType].colour,
+        // Cytoscape draws no diamond underlay; the diamond goes without the box's under-glow.
+        "underlay-opacity": 0,
+        "text-max-width": `${SIZE.diamondWidth - 40}px`,
+        "text-justification": "center",
+        "text-margin-x": 0,
+        "text-margin-y": 7,
+        "background-position-x": "50%",
+        "background-position-y": 18,
+      },
+    },
+    {
       // A node with a body: its lines in monospace, its icon beside its name.
       selector: 'node[body = "yes"]',
       style: {
@@ -206,6 +227,11 @@ export function graphStylesheet(t: GraphTokens) {
         "underlay-opacity": 0.18,
         "underlay-padding": 5,
       },
+    },
+    {
+      // The diamond's selection: its border, without the box-shaped halo.
+      selector: `node[shape = "diamond"].${MARK.picked}, node[shape = "diamond"].${MARK.focused}`,
+      style: { "underlay-opacity": 0, "border-width": 2.5 },
     },
     {
       selector: `edge.${MARK.lit}, edge.${MARK.focused}, edge.${MARK.picked}`,

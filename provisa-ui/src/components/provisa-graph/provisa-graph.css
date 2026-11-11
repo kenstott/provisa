@@ -96,6 +96,13 @@
   height: 14px;
   border-radius: 1px;
 }
+/* The junction's diamond (REQ-2239, A JUNCTION IS A DIAMOND). */
+.pg-legend-swatch--diamond {
+  width: 8px;
+  height: 8px;
+  margin: 0 1px;
+  transform: rotate(45deg);
+}
 .pg-hint {
   font-size: 11px;
   color: var(--mantine-color-dimmed);

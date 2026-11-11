@@ -35,6 +35,8 @@ export interface GraphTokens {
   accent: string;
   /** The ERD junction's hue: the VIA badge's grape (REQ-1588). */
   via: string;
+  /** The junction diamond's fill: a tint of its grape. */
+  junctionFill: string;
 }
 
 const LIGHT: GraphTokens = {
@@ -49,6 +51,7 @@ const LIGHT: GraphTokens = {
   edge: gray[5],
   accent: brand[6],
   via: hue("grape"),
+  junctionFill: hue("grape", 0),
 };
 
 const DARK: GraphTokens = {
@@ -63,6 +66,7 @@ const DARK: GraphTokens = {
   edge: dark[3],
   accent: brand[4],
   via: hue("grape", 4),
+  junctionFill: dark[6],
 };
 
 export function graphTokens(isDark: boolean): GraphTokens {
@@ -83,6 +87,9 @@ export const SIZE = {
   edgeLabel: 9,
   groupLabel: 10,
   gridPitch: 16,
+  /** A diamond (the junction, the one exception to the node shape): wide enough for its name. */
+  diamondWidth: 150,
+  diamondHeight: 90,
 } as const;
 
 /** What a node is, as the graph draws it: the band's colour, the icon, the type's name (an i18n
@@ -90,6 +97,9 @@ export const SIZE = {
 export interface NodeTypeLook {
   colour: string;
   icon: IconName;
+  /** The one exception to the single node shape (REQ-2239, A JUNCTION IS A DIAMOND): a junction
+   * table is drawn as Chen's relationship diamond, in its band's colour, keeping its legs. */
+  shape?: "diamond";
 }
 
 export const NODE_TYPES = {
@@ -100,7 +110,7 @@ export const NODE_TYPES = {
   table: { colour: hue("blue"), icon: "table" },
   view: { colour: hue("cyan"), icon: "eye" },
   relation: { colour: hue("cyan"), icon: "merge" },
-  junction: { colour: hue("grape"), icon: "link" },
+  junction: { colour: hue("grape"), icon: "link", shape: "diamond" },
   column: { colour: hue("gray"), icon: "column" },
   term: { colour: hue("orange"), icon: "book" },
   concept: { colour: hue("orange"), icon: "book" },
@@ -114,6 +124,12 @@ export const NODE_TYPES = {
 } as const satisfies Record<string, NodeTypeLook>;
 
 export type NodeType = keyof typeof NODE_TYPES;
+
+/** The shape a type is drawn in: the rounded rectangle, or the junction's diamond. */
+export function typeShape(type: NodeType): "box" | "diamond" {
+  const look: NodeTypeLook = NODE_TYPES[type];
+  return look.shape ?? "box";
+}
 
 /** A type's icon, drawn in its colour, as an image cytoscape paints. */
 export function typeIcon(type: NodeType): string {
