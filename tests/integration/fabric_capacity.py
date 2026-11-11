@@ -304,10 +304,22 @@ def create_run_capacity() -> None:
             return capacity_id is not None
 
         _wait_for(f"Fabric capacity {name!r} listed by the Fabric API", listed)
-        fabric.post(
+        assigned_to = fabric.post(
             f"{_FABRIC_API}/workspaces/{workspace_id}/assignToCapacity",
             json={"capacityId": capacity_id},
-        ).raise_for_status()
+        )
+        if assigned_to.status_code == 403:
+            # The capacity side is already met: the Fabric API lists a capacity only to its admins
+            # and contributors (Capacities - List Capacities), and it listed this one. What is left
+            # is the workspace role (Workspaces - Assign To Capacity: "The caller must have admin
+            # workspace role"), which a workspace admin grants in the workspace's Manage access.
+            raise RuntimeError(
+                f"workspace {workspace_id} not assigned to {name!r}: HTTP 403: "
+                f"{assigned_to.text[:1000]} -- the principal is admin of the capacity (the Fabric "
+                "API lists it); assignToCapacity also needs the principal to hold the Admin role "
+                "on the workspace"
+            )
+        assigned_to.raise_for_status()
 
         def assigned() -> bool:
             ws = _workspace(fabric, workspace_id)

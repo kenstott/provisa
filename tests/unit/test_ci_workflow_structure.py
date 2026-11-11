@@ -393,7 +393,11 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
     ):
         step = steps[name]
         assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
-        assert step["if"] == "always()", name
+        if name == "Delete this run's Fabric capacity":
+            # Whenever the step that creates the capacity ran, whatever its outcome (below).
+            assert step["if"] == _FABRIC_DOWN_IF, name
+        else:
+            assert step["if"] == "always()", name
         assert call in step["run"] and "exit 1" in step["run"], name
 
 
@@ -407,6 +411,71 @@ def test_the_warehouse_lane_creates_its_own_fabric_capacity_before_any_test():
     up = names.index("This run's Fabric capacity")
     assert up < names.index("Run lane")
     assert "scripts/fabric_e2e.py up" in job["steps"][up]["run"]
+
+
+# The delete step's condition: it runs whenever the create step ran, and only then.
+_FABRIC_DOWN_IF = (
+    'always() && contains(fromJSON(\'["success", "failure", "cancelled"]\'), '
+    "steps.fabric-capacity.outcome)"
+)
+
+
+def _fabric_test_files() -> set[str]:
+    """The integration test files that reach Fabric: they resume its capacity or connect to its
+    SQL endpoint, so a run selecting one needs the run's capacity."""
+    return {
+        str(p.relative_to(REPO))
+        for p in (REPO / "tests/integration").glob("test_*.py")
+        if re.search(
+            r"fabric_capacity|FABRIC_SQL_SERVER|FABRIC_CAPACITY|FABRIC_WORKSPACE", p.read_text()
+        )
+    }
+
+
+def _fabric_up_runs(condition: str, tests: str) -> bool:
+    """The create step's ``if:`` evaluated for a run's ``inputs.tests``. The condition may only be
+    ``inputs.tests == ''`` or'd with ``contains(inputs.tests, '<file>')`` clauses; anything else
+    fails here rather than being guessed at."""
+    runs = False
+    for clause in (c.strip() for c in condition.split("||")):
+        if clause == "inputs.tests == ''":
+            runs = runs or tests == ""
+            continue
+        named = re.fullmatch(r"contains\(inputs\.tests, '([^']+)'\)", clause)
+        assert named, f"unexpected clause in the Fabric capacity step's condition: {clause!r}"
+        runs = runs or named.group(1) in tests
+    return runs
+
+
+def test_the_warehouse_lane_creates_a_fabric_capacity_only_for_a_run_selecting_a_fabric_test():
+    """REQ-254: a lane run that selects no Fabric test creates no capacity. The whole lane (no
+    inputs.tests) still makes it; a targeted run makes it only when it names a test file that
+    reaches Fabric -- every such file, so none runs without one. The delete step runs whenever
+    the create step ran, whatever happened, and is skipped with it."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse"]
+    steps = {s.get("name"): s for s in job["steps"]}
+    up = steps["This run's Fabric capacity"]
+    assert up["id"] == "fabric-capacity"
+    condition = up["if"]
+    fabric = _fabric_test_files()
+    assert fabric, "no integration test reaches Fabric: the condition below would be vacuous"
+    assert set(re.findall(r"contains\(inputs\.tests, '([^']+)'\)", condition)) == fabric
+
+    assert _fabric_up_runs(condition, "")
+    for f in sorted(fabric):
+        assert _fabric_up_runs(condition, f), f
+        assert _fabric_up_runs(
+            condition, f"tests/integration/test_google_sheets_source_e2e.py {f}::test_x"
+        ), f
+    # Run 42930869189: a targeted Google Sheets run made (and paid for) a capacity it never used.
+    assert not _fabric_up_runs(condition, "tests/integration/test_google_sheets_source_e2e.py")
+    assert not _fabric_up_runs(
+        condition, "tests/integration/test_metadata_export_purview_e2e.py::test_x"
+    )
+
+    assert steps["Delete this run's Fabric capacity"]["if"] == _FABRIC_DOWN_IF
 
 
 def test_the_warehouse_lane_sets_snowflake_auto_suspend_before_any_test():
