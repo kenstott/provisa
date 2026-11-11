@@ -94897,7 +94897,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB''s is its own
     store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric),
     their own or Iceberg tables. The baseline is printed as the rows'' provenance, and a hint exists only
-    for a pair that differs from it.'
+    for a pair that differs from it. (Amended 2026-11-11, THE COMPLETE TEST IS A LONG-TERM OBJECTIVE, NOT
+    A RELEASE GATE:) Maintainer 2026-11-11. With the grid defined, a complete test is possible: every row
+    on every SQL connector''s baseline and every hint on its pair, each answer checked against PostgreSQL.
+    It is expensive, so it is a long-term objective and never a release gate; the release gates stay as
+    REQ-1989 states them. Connectors that run in containers can be covered on a schedule; the paid warehouses
+    run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated
+    pages print, for each row, the last run that verified it.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
