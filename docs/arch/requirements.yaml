@@ -94023,7 +94023,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is added per provider, behind one interface, as customers need it. (Amended 2026-11-10, IDENTITY PROVIDER
     ROLES ARE MIRRORED:) Maintainer 2026-11-10: when roles come from the identity provider''s claims, each
     sign-in records the person''s role claims, as the identity provider''s attributes already are, and the
-    roles a person holds are listed with the identity provider as their origin. They are read-only in Provisa.'
+    roles a person holds are listed with the identity provider as their origin. They are read-only in Provisa.
+    (Amended 2026-11-11, EXPIRY RULES END EVERY CAPABILITY THEY NAME:) Maintainer 2026-11-11. An expiry
+    rule ends what it names on its date: data access (read, traverse, execute, consume) and any list-scoped
+    capability, enforced wherever that capability''s reach is checked; a grant-wide rule ends the whole
+    role for that person. A scheduled entitlement expiry run applies the rules and emits an expiring-soon
+    event ahead of each; that event''s own setting is the expiring-soon threshold, and the UI highlights
+    by it. An expiry rule whose end date is already past is refused, as a list''s end date is. Effective
+    access per capability includes the capabilities a role inherits from its parent roles, each shown with
+    the role it comes from.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]

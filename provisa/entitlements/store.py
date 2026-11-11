@@ -205,6 +205,182 @@ async def write_list(
         )
 
 
+async def _held_list(
+    conn: "Connection", principal: str, role_id: str, kind: str
+) -> tuple[str, ...] | None:
+    """``principal``'s Provisa-held list for ``role_id`` and ``kind`` now; None when none is held."""
+    rows = await conn.execute_core(
+        select(entitlements)
+        .where(
+            entitlements.c.source == PROVISA,
+            entitlements.c.principal == principal,
+            entitlements.c.role_id == role_id,
+            entitlements.c.kind == kind,
+            entitlements.c.capability.is_(None),
+        )
+        .order_by(entitlements.c.valid_from.desc(), entitlements.c.id.desc())
+        .limit(1)
+    )
+    row = rows.fetchone()
+    return None if row is None or row.removed else tuple(row.identifiers)
+
+
+async def add_to_list(
+    conn: "Connection",
+    principal: str,
+    role_id: str,
+    kind: str,
+    identifiers: Iterable[str],
+    *,
+    base: Iterable[str],
+    capabilities: Iterable[str] | None,
+    until: "datetime | None",
+    set_by: str,
+    reason: str,
+) -> tuple[str, ...]:
+    """Add access: append ``identifiers`` to ``principal``'s list for ``role_id`` and ``kind``,
+    without restating the rest, and with ``until`` an expiry rule ending what was added, for
+    ``capabilities`` (None: every one) at that date. ``base`` is the list the person has when
+    Provisa holds none (the role's default). Returns what was added: an identifier already listed
+    is not added again, and no rule ends it. The caller holds the transaction."""
+    held = await _held_list(conn, principal, role_id, kind)
+    current = list(base if held is None else held)
+    added = tuple(dict.fromkeys(i for i in identifiers if i not in current))
+    if not added:
+        return ()
+    await set_list(conn, principal, role_id, kind, [*current, *added], set_by=set_by, reason=reason)
+    if until is not None:
+        await add_expiry(
+            conn,
+            principal,
+            role_id,
+            until,
+            {capability: added for capability in (capabilities or ("*",))},
+            set_by=set_by,
+            reason=reason,
+            list_kind=kind,
+        )
+    return added
+
+
+async def change_expiry(
+    conn: "Connection",
+    rule: ExpiryRule,
+    principal: str,
+    ends_at: "datetime",
+    ends: Mapping[str, Iterable[str]],
+    *,
+    set_by: str,
+    reason: str,
+) -> None:
+    """Change ``rule`` on ``principal``'s grant: a row with its key, which is the rule from now on.
+    It keeps the list it was set with."""
+    assert rule.rule_key is not None
+    await conn.execute_core(
+        insert(entitlement_expiries).values(
+            rule_key=rule.rule_key,
+            principal=principal,
+            role_id=rule.role_id,
+            ends_at=ends_at,
+            ends={capability: list(ids) for capability, ids in ends.items()},
+            list_kind=rule.list_kind,
+            set_by=set_by,
+            reason=reason,
+        )
+    )
+
+
+async def withdraw_expiry(
+    conn: "Connection", rule: ExpiryRule, principal: str, *, set_by: str, reason: str
+) -> None:
+    """Withdraw ``rule`` from ``principal``'s grant."""
+    assert rule.rule_key is not None
+    await conn.execute_core(
+        insert(entitlement_expiries).values(
+            rule_key=rule.rule_key,
+            principal=principal,
+            role_id=rule.role_id,
+            ends_at=rule.ends_at,
+            ends={capability: list(ids) for capability, ids in rule.ends.items()},
+            list_kind=rule.list_kind,
+            removed=True,
+            set_by=set_by,
+            reason=reason,
+        )
+    )
+
+
+@dataclass(frozen=True)
+class Addition:
+    """One change to a person's list that added identifiers: what, by whom, why, when, and until
+    when (the rule set with it, as it stands now; None when there is none or it was withdrawn)."""
+
+    kind: str
+    added: tuple[str, ...]
+    set_by: str | None
+    reason: str | None
+    valid_from: "datetime"
+    until: "datetime | None"
+
+
+async def list_history(conn: "Connection", principal: str, role_id: str) -> list[Addition]:
+    """The timeline of what was added to ``principal``'s lists for ``role_id``, oldest first. A
+    rule belongs to the change it was set with: set in the same transaction, for the same list."""
+    rows = (
+        await conn.execute_core(
+            select(entitlements)
+            .where(
+                entitlements.c.source == PROVISA,
+                entitlements.c.principal == principal,
+                entitlements.c.role_id == role_id,
+                entitlements.c.capability.is_(None),
+            )
+            .order_by(entitlements.c.valid_from, entitlements.c.id)
+        )
+    ).fetchall()
+    rules = (
+        await conn.execute_core(
+            select(entitlement_expiries)
+            .where(
+                entitlement_expiries.c.principal == principal,
+                entitlement_expiries.c.role_id == role_id,
+            )
+            .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
+        )
+    ).fetchall()
+    first: dict[str, Any] = {}
+    last: dict[str, Any] = {}
+    for rule in rules:
+        first.setdefault(rule.rule_key, rule)
+        last[rule.rule_key] = rule
+    set_with = {
+        (r.list_kind, r.valid_from): last[key]
+        for key, r in first.items()
+        if r.list_kind is not None
+    }
+    out: list[Addition] = []
+    previous: dict[str, tuple[str, ...]] = {}
+    for row in rows:
+        before = previous.get(row.kind, ())
+        now_held = () if row.removed else tuple(row.identifiers)
+        previous[row.kind] = now_held
+        added = tuple(i for i in now_held if i not in before)
+        if not added:
+            continue
+        rule = set_with.get((row.kind, row.valid_from))
+        out.append(
+            Addition(
+                row.kind,
+                added,
+                row.set_by,
+                row.reason,
+                row.valid_from,
+                None if rule is None or rule.removed else rule.ends_at,
+            )
+        )
+    return out
+
+
 def idp_supersedes(idp: Mapping[str, IdpLists], principal: str, role_id: str, kind: str) -> bool:
     """Whether the identity provider sends ``principal``'s ``kind`` list for ``role_id``: that
     list wins, and no write reaches it (REQ-2219)."""
