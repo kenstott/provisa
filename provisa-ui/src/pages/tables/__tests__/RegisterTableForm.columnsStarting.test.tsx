@@ -47,6 +47,7 @@ describe("RegisterTableForm — columns of a starting source", () => {
       onContinue: vi.fn(),
       onCancel: () => {},
       onProductsRegistered: vi.fn(),
+      onRegisteredMany: vi.fn(),
       setError: vi.fn(),
     };
     const { rerender } = render(<RegisterTableForm {...props} columnsStarting />);

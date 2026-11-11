@@ -91,6 +91,9 @@ import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
 import { draftFromRegistration, type Registration } from "./tables/draftTable";
 import { useCreateTable } from "./tables/useCreateTable";
+import { registeredOf, type Registered } from "./tables/useManyTables";
+import { YourDataStep } from "./tables/YourDataStep";
+import { PanelWorking } from "./sources/PanelWorking";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
@@ -167,6 +170,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // Table awaiting native-param entry before its profile sample can run.
   const [profileParamsTable, setProfileParamsTable] = useState<RegisteredTable | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // REQ-2234: several tables just registered: the panel shows their data, the first in view.
+  const [registeredMany, setRegisteredMany] = useState<Registered | null>(null);
   // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard.
   const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
   // REQ-2115: Polly's read_screen reads the page's view from here, and the modeling form or wizard
@@ -804,6 +809,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // read view, or its edit form once editing has begun. Nothing selected: no panel, and the list
   // has the page.
   const closePanel = () => {
+    setRegisteredMany(null);
     setShowForm(false);
     setShowViewForm(false);
     setShowModeling(false);
@@ -862,7 +868,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     </ReplicaBuildsContext.Provider>
   );
   const panelBody =
-    newRegistration !== null && editingTable !== null ? (
+    registeredMany !== null ? (
+      <PanelWorking
+        back={translate("yourData.close")}
+        onBack={() => {
+          setRegisteredMany(null);
+          setExpanded(registeredMany.tableIds[0] ?? null);
+        }}
+        testId="your-data-back"
+      >
+        <YourDataStep registered={registeredMany} role={actingRole} />
+      </PanelWorking>
+    ) : newRegistration !== null && editingTable !== null ? (
       editForm(editingTable, null)
     ) : editingViewDef ? (
       // REQ-1318: a view's definition is edited in the panel, with a way back to its detail: a
@@ -911,6 +928,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}
+        onRegisteredMany={(outcomes) => {
+          setShowForm(false);
+          setRegisteredMany(registeredOf(outcomes));
+        }}
         // REQ-2228: the drafts a bulk dbt registration created are reviewed on Data Products.
         onProductsRegistered={() => {
           setShowForm(false);
@@ -1042,23 +1063,25 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     previewTable === null &&
     editingViewDef === null;
   const panelTitle =
-    newRegistration !== null
-      ? translate(viewsOnly ? "tablesPage.panelNewView" : "tablesPage.panelRegisterTable")
-      : showForm && !viewsOnly
-        ? translate("tablesPage.panelRegisterTable")
-        : showViewForm && viewsOnly
-          ? translate("tablesPage.panelNewView")
-          : showModeling
-            ? translate(
-                showModeling === "star"
-                  ? "tablesPage.panelStarSchema"
-                  : showModeling === "vault"
-                    ? "tablesPage.panelDataVault"
-                    : "tablesPage.panelNewModel",
-              )
-            : selectedTable
-              ? (selectedTable.alias ?? selectedTable.tableName)
-              : "";
+    registeredMany !== null
+      ? translate("yourData.title")
+      : newRegistration !== null
+        ? translate(viewsOnly ? "tablesPage.panelNewView" : "tablesPage.panelRegisterTable")
+        : showForm && !viewsOnly
+          ? translate("tablesPage.panelRegisterTable")
+          : showViewForm && viewsOnly
+            ? translate("tablesPage.panelNewView")
+            : showModeling
+              ? translate(
+                  showModeling === "star"
+                    ? "tablesPage.panelStarSchema"
+                    : showModeling === "vault"
+                      ? "tablesPage.panelDataVault"
+                      : "tablesPage.panelNewModel",
+                )
+              : selectedTable
+                ? (selectedTable.alias ?? selectedTable.tableName)
+                : "";
 
   return (
     <div className="page page-sticky-head">

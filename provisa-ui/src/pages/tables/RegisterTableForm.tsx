@@ -15,9 +15,13 @@ import { UntypedColumns } from "./UntypedColumns";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
 import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
-import { QDRANT, QDRANT_SCHEMA, offeredUnselected, searchQueryArgument } from "../sources/qdrant";
+import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
+import { defaultWatermark, discoveredColumns, registrationOf } from "./registrationDefaults";
+import { ManyTablesList, ManyTablesMode } from "./ManyTablesPicker";
+import { useManyTables } from "./useManyTables";
+import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
 import { QdrantVectorColumns } from "./QdrantVectorColumns";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
@@ -56,7 +60,7 @@ import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible } from "./helpers";
 import { CheckerFields } from "./CheckerFields";
 import { PagingField } from "./PagingField";
-import { declaredPaging, pagingProblem } from "./paging";
+import { pagingProblem } from "./paging";
 import {
   FormChecks,
   FormField,
@@ -132,6 +136,12 @@ interface RegisterTableFormProps {
   setError: (e: string | null) => void;
   /** What the page has to say of a registration that did not go through. */
   problem?: string | null;
+  /** REQ-2234: the source the form opens with already chosen (a source just saved). */
+  initialSourceId?: string;
+  /** REQ-2234: the form opens on picking several tables, not one. */
+  severalFirst?: boolean;
+  /** REQ-2234: several tables were registered in one action; what each one answered. */
+  onRegisteredMany: (outcomes: TableRegistrationOutcome[]) => void;
 }
 
 export function RegisterTableForm({
@@ -152,9 +162,14 @@ export function RegisterTableForm({
   onProductsRegistered,
   setError,
   problem,
+  initialSourceId = "",
+  severalFirst = false,
+  onRegisteredMany,
 }: RegisterTableFormProps) {
   const { t } = useTranslation();
-  const [sourceId, setSourceId] = useState("");
+  const [sourceId, setSourceId] = useState(initialSourceId);
+  // REQ-2234: several tables of the schema picked at once, each registered with its defaults.
+  const [several, setSeveral] = useState(severalFirst);
   const [chosenDomain, setDomainId] = useState("");
   const [schemaName, setSchemaName] = useState("");
   const [tableName, setTableName] = useState("");
@@ -396,38 +411,15 @@ export function RegisterTableForm({
   const applyColumns = (
     cols: NonNullable<Awaited<ReturnType<typeof getAvailableColumnsMetadata>>>,
   ) => {
-    const formed = cols.map((c) => {
-      const snake = toSnakeCase(c.name);
-      return {
-        name: c.name,
-        visibleTo: roles.map((r) => r.id),
-        masks: [],
-        alias: snake !== c.name ? snake : "",
-        description: c.comment || "",
-        // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
-        selected: !offeredUnselected(sourceType, c.path),
-        nativeFilterType: c.nativeFilterType ?? null,
-        nativeFilterRequired: c.nativeFilterRequired ?? null,
-        dataType: c.dataType,
-        subtype: c.subtype ?? null, // REQ-2171
-        isPrimaryKey: c.isPrimaryKey ?? false,
-        // REQ-1959: nothing is public by default. A parameter column is an argument, not
-        // data, and its scope publishes nothing whatever it says.
-        scope: "domain",
-        // REQ-1982: a document source says where a nested field is read from; REQ-1739: an
-        // ingest source's path is set below.
-        path: c.path ?? null,
-      };
-    });
+    const formed = discoveredColumns(
+      cols,
+      roles.map((r) => r.id),
+      sourceType,
+    );
     setColumns(formed);
     setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
-    const pickedType = sources.find((s) => s.id === sourceId)?.type ?? "";
-    if (!CDC_TYPES.has(pickedType)) {
-      const autoWm = formed.find(
-        (c) => (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType),
-      );
-      if (autoWm) setWatermarkColumn(autoWm.name);
-    }
+    const autoWm = defaultWatermark(formed, sources.find((s) => s.id === sourceId)?.type ?? "");
+    if (autoWm) setWatermarkColumn(autoWm);
   };
 
   // The columns of a source that was still starting arrive here, once its server answers.
@@ -596,37 +588,30 @@ export function RegisterTableForm({
       return;
     }
     onContinue({
-      input: {
+      ...registrationOf({
         sourceId,
         domainId,
-        ...regionInput,
-        // REQ-1673: the PHYSICAL schema the table was picked from (or the source's fixed schema),
-        // never the domain. The domain is `domainId`; registering the domain as the schema lost
-        // the physical location of every source whose schema is not named after the domain —
-        // the engine then attached "pet_store"."product_reviews" on a Mongo database called
-        // "provisa" and every query failed with "schema does not exist".
+        regionInput,
         schemaName,
         tableName,
-        alias: tableAlias || undefined,
-        description: tableDescription || undefined,
-        watermarkColumn: isQueryApi ? null : watermarkColumn || null,
-        cacheTtl: needsCacheTtl && cacheTtl.trim() !== "" ? Number(cacheTtl) : undefined,
-        discover: isQueryApi ? false : discover, // REQ-252
-        queryTemplate: isQueryApi ? cypher.trim() : undefined, // REQ-1670/REQ-1683
-        fileGlob: isFilesSource && fileGlob.trim() ? fileGlob.trim() : undefined, // REQ-788
-        sourceFileColumn:
-          isFilesSource && sourceFileColumn.trim() ? sourceFileColumn.trim() : undefined, // REQ-788
-        importSet: sourceType === "servicenow" ? importSet : undefined, // REQ-1954
+        alias: tableAlias,
+        description: tableDescription,
+        watermarkColumn: isQueryApi ? "" : watermarkColumn,
         columns: selectedCols,
-        // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
-        uniqueConstraints: uniqueConstraints
-          .filter((u) => u.name.trim() && u.columns.length > 0)
-          .map((u) => ({ name: u.name.trim(), columns: u.columns })),
-      },
-      // REQ-318: the short step declares no paging; the longer one sends what it declared.
-      pagination: pagingKind !== null ? declaredPaging(pagination) : null,
-      pagingKind,
-      pagingCeilingRows,
+        uniqueConstraints,
+        pagingKind,
+        pagination,
+        pagingCeilingRows,
+        extra: {
+          cacheTtl: needsCacheTtl && cacheTtl.trim() !== "" ? Number(cacheTtl) : undefined,
+          discover: isQueryApi ? false : discover, // REQ-252
+          queryTemplate: isQueryApi ? cypher.trim() : undefined, // REQ-1670/REQ-1683
+          fileGlob: isFilesSource && fileGlob.trim() ? fileGlob.trim() : undefined, // REQ-788
+          sourceFileColumn:
+            isFilesSource && sourceFileColumn.trim() ? sourceFileColumn.trim() : undefined, // REQ-788
+          importSet: sourceType === "servicenow" ? importSet : undefined, // REQ-1954
+        },
+      }),
       rowRules: isProfiler ? profilerRowRules : [],
     });
   };
@@ -700,6 +685,21 @@ export function RegisterTableForm({
     availableTables.length > 0 &&
     availableTables.every(isRegistered);
 
+  // REQ-2234: a source whose tables are listed can have several picked at once.
+  const listsTables = !isChecker && !isQueryApi && !isProfiler && !productsMode;
+  const many = several && listsTables;
+  const manyTables = useManyTables({
+    sourceId,
+    sourceType,
+    domainId,
+    schemaName,
+    regionInput,
+    roleIds: roles.map((r) => r.id),
+    // Nothing is read until several are being picked.
+    offered: many ? availableTables : [],
+    isRegistered,
+    suggestTableAlias,
+  });
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   const registerProducts = async () => {
@@ -827,10 +827,12 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
-        {!isChecker && !isQueryApi && !isProfiler && !productsMode && (
+        {listsTables && sourceId && <ManyTablesMode several={several} onChange={setSeveral} />}
+        {listsTables && (
           <>
             <SchemaTableSelects
               {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
+              withTable={!many}
               requiredOf={requiredOf}
               schemas={availableSchemas}
               loadingSchemas={loadingSchemas}
@@ -841,7 +843,7 @@ export function RegisterTableForm({
               starting={startingTables}
               startingTimedOut={startingTablesTimedOut}
             />
-            {tableName && (columnsStarting || columnsStartingTimedOut) && (
+            {!many && tableName && (columnsStarting || columnsStartingTimedOut) && (
               <Text
                 size="xs"
                 c={columnsStartingTimedOut ? "red" : "dimmed"}
@@ -852,14 +854,14 @@ export function RegisterTableForm({
                   : t("registerTableForm.tableStarting")}
               </Text>
             )}
-            {sourceType === "servicenow" && tableName && (
+            {!many && sourceType === "servicenow" && tableName && (
               <ImportSetField
                 {...{ sourceId, schemaName, tableName, value: importSet, onChange: setImportSet }}
               />
             )}
           </>
         )}
-        {!productsMode && (
+        {!productsMode && !many && (
           <FormField size="medium">
             <TextInput
               data-testid="register-table-alias"
@@ -875,6 +877,7 @@ export function RegisterTableForm({
           !isQueryApi &&
           !isProfiler &&
           !productsMode &&
+          !many &&
           sourceId &&
           schemaName &&
           !allTablesRegistered && (
@@ -889,7 +892,17 @@ export function RegisterTableForm({
       {productsMode && (
         <DbtPublicProducts key={sourceId} sourceId={sourceId} onPreview={onPreview} />
       )}
-      {!productsMode && (
+      {many && (
+        <ManyTablesList
+          offered={availableTables}
+          isRegistered={isRegistered}
+          readings={manyTables.readings}
+          ticked={manyTables.ticked}
+          setTicked={manyTables.setTicked}
+          loading={!schemaName || loadingTables}
+        />
+      )}
+      {!productsMode && !many && (
         <>
           {needsCacheTtl && (
             <FormField
@@ -1093,7 +1106,16 @@ export function RegisterTableForm({
         cancelProps={{ "data-testid": "register-table-cancel" }}
         // Choosing what is registered is not a save: every setting of it follows (REQ-2109).
         action={
-          productsMode ? (
+          many ? (
+            <Button
+              onClick={() => void manyTables.registerAll(domainId, onRegisteredMany, setError)}
+              loading={manyTables.registering}
+              disabled={manyTables.ticked.length === 0}
+              data-testid="register-many-tables-submit"
+            >
+              {t("registerManyTables.register", { count: manyTables.ticked.length })}
+            </Button>
+          ) : productsMode ? (
             <Button
               onClick={() => void registerProducts()}
               loading={registeringProducts}

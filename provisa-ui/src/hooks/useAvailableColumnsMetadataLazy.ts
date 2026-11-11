@@ -51,3 +51,21 @@ export function useAvailableColumnsMetadataLazy() {
   );
   return { fetchColumns, late, starting, startingTimedOut: timedOut };
 }
+
+/** REQ-2234: reads the columns of one listed table after another, for a picker of several. A
+ * read that fails throws, with what the server said. */
+export function useReadColumns() {
+  const [run] = useLazyQuery<{ availableColumnsMetadata: ColumnMetadata[] }>(
+    AvailableColumnsMetadata,
+    { fetchPolicy: "network-only" },
+  );
+  return useCallback(
+    async (sourceId: string, schemaName: string, tableName: string) => {
+      const { data, error } = await run({ variables: { sourceId, schemaName, tableName } });
+      if (error) throw error;
+      if (!data) throw new Error(`no columns answered for ${tableName}`);
+      return data.availableColumnsMetadata;
+    },
+    [run],
+  );
+}

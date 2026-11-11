@@ -1176,6 +1176,25 @@ mutation RegisterTable($input: TableInput!) {
   }
 }
 
+mutation RegisterTables($inputs: [TableInput!]!) {
+  registerTables(inputs: $inputs) {
+    tableName
+    result {
+      ...MutationResult
+    }
+  }
+}
+
+query TableAccess($tableId: Int!, $role: String!) {
+  tableAccess(tableId: $tableId, role: $role) {
+    graphql
+    sql
+    pgwire
+    rest
+    mcp
+  }
+}
+
 mutation RegisterEntity($input: EntityInput!) {
   registerEntity(input: $input) {
     ...MutationResult

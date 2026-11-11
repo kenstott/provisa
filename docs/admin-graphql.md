@@ -400,7 +400,7 @@ Register a new table (or view) into a domain, with every setting the input carri
 
 #### `registerTables(inputs: [TableInput!]!) → [TableRegistrationOutcome!]!`
 
-Register several tables in one action. Each input is registered by `registerTable`, with the same rights and checks as registering it alone. Each outcome names its table (`tableName`) and carries what its registration answered (`result`): a table one of the checks refuses is answered with its refusal, and the others are registered.
+Register several tables in one action. Each input is registered by `registerTable`, with the same rights and checks as registering it alone. Each outcome names its table (`tableName`) and carries the answer of that table's registration (`result`). A table that a check refuses gets that refusal as its result, and `registerTables` still registers the others.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
