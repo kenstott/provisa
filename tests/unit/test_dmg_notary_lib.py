@@ -8,12 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The macOS DMG builds staple through a bounded retry and read Apple's notarization log.
+"""The macOS DMG notarization staples through a bounded retry and read Apple's notarization log.
 
 `stapler staple` fetches the ticket from Apple's CloudKit ticket-delivery service, and that
 connection drops on GitHub's macOS runners (NSURLErrorDomain -1005, then "Error 68"): the Core
 DMG on v0.1.0-alpha.505 and the Container DMG on v0.1.0-alpha.506. Apple's notarization log is
-printed for every submission and any issue it lists fails the build.
+printed for every submission and any issue it lists fails the notarization.
 """
 
 from __future__ import annotations
@@ -25,11 +25,7 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _LIB = _REPO / "packaging/macos/notary-lib.sh"
-_SCRIPTS = (
-    "packaging/macos/build-dmg.sh",
-    "packaging/macos/build-dmg-obs.sh",
-    "packaging/macos/build-dmg-demo.sh",
-)
+_SCRIPTS = ("packaging/macos/notarize-dmg.sh",)
 
 
 def _run(

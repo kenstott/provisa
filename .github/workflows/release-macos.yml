@@ -1,6 +1,8 @@
 # Release: macOS installers
 #
 # The four macOS DMGs. The Obs and Demo DMGs embed image tarballs and plugins the prebuilt leg of the same run uploaded.
+# The build jobs build and sign each DMG and upload it as macos-<x>-unnotarized; the notarize job
+# (notarize-macos.yml) notarizes and staples them under its own limit and uploads macos-<x>-dist.
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
@@ -62,8 +64,8 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
-    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
-    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
+    # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
     # Native tier only — no compose, no observability, no container images, the same
     # payload the Windows native installer ships (packaging/windows/build-sfx.ps1).
@@ -102,9 +104,6 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
-          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
-          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
         run: |
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh
@@ -117,15 +116,15 @@ jobs:
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-core-dist
+          name: macos-core-unnotarized
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
-          retention-days: 1
+          retention-days: 7
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
-    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
-    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
+    # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
     # Docker tier only: the compose tree + observability config. Images are fetched on
     # demand (provisa-core-images-<version>.tar.gz), mirroring build-container.ps1.
@@ -164,9 +163,6 @@ jobs:
           PROVISA_EDITION: container
           VERSION: ${{ inputs.version }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
-          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
-          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
         run: |
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh
@@ -179,15 +175,15 @@ jobs:
       - name: Upload Container DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-container-dist
+          name: macos-container-unnotarized
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
-          retention-days: 1
+          retention-days: 7
 
   build-macos-obs:
     name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
-    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
-    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
+    # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
     needs: [metadata]
     steps:
@@ -215,9 +211,6 @@ jobs:
       - name: Build Obs DMG
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
-          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
-          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
         run: |
           chmod +x packaging/macos/build-dmg-obs.sh
           packaging/macos/build-dmg-obs.sh
@@ -230,15 +223,15 @@ jobs:
       - name: Upload Obs DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-obs-dist
+          name: macos-obs-unnotarized
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
-          retention-days: 1
+          retention-days: 7
 
   build-macos-demo:
     name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
-    # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
-    # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
+    # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
+    # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
     needs: [metadata]
     steps:
@@ -266,9 +259,6 @@ jobs:
       - name: Build Demo DMG
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
-          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
-          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
         run: |
           chmod +x packaging/macos/build-dmg-demo.sh
           packaging/macos/build-dmg-demo.sh
@@ -281,6 +271,23 @@ jobs:
       - name: Upload Demo DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-demo-dist
+          name: macos-demo-unnotarized
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"
-          retention-days: 1
+          retention-days: 7
+
+  # ── notarization ─────────────────────────────────────────────────────────────
+  # Each DMG above is built and signed, not notarized: Apple's notary queue is not ours to wait
+  # on inside a build (alpha.508's Obs DMG waited 44 minutes and the build's limit cancelled it,
+  # and rerunning rebuilt the DMG). This job notarizes and staples the four DMGs under its own
+  # limit and uploads them as the macos-<x>-dist artifacts the publish leg attaches. Re-run it
+  # alone with "Re-run failed jobs", or by hand with notarize-macos.yml.
+  notarize:
+    name: Notarize macOS DMGs
+    needs: [metadata, build-macos-core, build-macos-container, build-macos-obs, build-macos-demo]
+    uses: ./.github/workflows/notarize-macos.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets:
+      APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+      APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+      APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}

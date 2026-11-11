@@ -36,8 +36,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\03
 info() { printf "${CYAN}[build-dmg]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
-# shellcheck source=packaging/macos/notary-lib.sh
-source "${SCRIPT_DIR}/notary-lib.sh"
 
 curl_retry() {
   local url="$1" out="$2"
@@ -363,82 +361,6 @@ sign_app() {
   ok "App bundle signed."
 }
 
-# ── Notarization (targets the .app bundle, NOT the DMG) ──────────────────────
-# Images are kept outside the .app so the bundle is small and notarizes in
-# seconds rather than the 45-60 min needed to scan a 1.4 GB DMG.
-notarize_app() {
-  if [ -z "${APPLE_NOTARYTOOL_APPLE_ID:-}" ]; then
-    info "APPLE_NOTARYTOOL_APPLE_ID not set — skipping notarization."
-    return
-  fi
-
-  local notary_args=(
-    --apple-id "${APPLE_NOTARYTOOL_APPLE_ID}"
-    --password "${APPLE_NOTARYTOOL_PASSWORD}"
-    --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
-  )
-
-  # notarytool requires a zip, pkg, or dmg — zip the .app with ditto
-  local zip_path="${OUT_DIR}/Provisa-notarize.zip"
-  info "Zipping app bundle for notarization submission..."
-  ditto -c -k --keepParent "${APP_BUNDLE}" "$zip_path"
-
-  info "Submitting app bundle for notarization..."
-  local submit_out submit_err submit_rc
-  submit_out=$(xcrun notarytool submit "$zip_path" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
-  rm -f "$zip_path" /tmp/notary-submit-err
-  if [ $submit_rc -ne 0 ]; then
-    if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
-      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
-      return
-    fi
-    err "notarytool submit failed (exit $submit_rc): $submit_err"
-    exit 1
-  fi
-  local submission_id
-  submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  ok "Submission ID: ${submission_id}"
-
-  # Poll with retry — notarytool --wait has no retry on transient network errors
-  local max_polls=45   # 45 × 40 s = 30 min ceiling (small app should be fast)
-  local poll=0
-  local status=""
-  while [ $poll -lt $max_polls ]; do
-    status=$(xcrun notarytool info "$submission_id" "${notary_args[@]}" \
-               --output-format json 2>/dev/null \
-             | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
-             2>/dev/null || echo "network-error")
-
-    case "$status" in
-      Accepted)
-        ok "Notarization accepted."
-        break ;;
-      Invalid|Rejected)
-        err "Notarization ${status}:"
-        notary_log_check "$submission_id" "${notary_args[@]}"
-        exit 1 ;;
-      network-error)
-        info "  Network error — retrying in 40 s (poll $((poll+1))/${max_polls})..." ;;
-      *)
-        info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
-    esac
-
-    sleep 40
-    poll=$((poll + 1))
-  done
-
-  if [ "$status" != "Accepted" ]; then
-    err "Notarization timed out after $((max_polls * 40 / 60)) minutes."
-    exit 1
-  fi
-
-  notary_log_check "$submission_id" "${notary_args[@]}"
-  staple_retry "${APP_BUNDLE}"
-  ok "App bundle notarized and stapled."
-}
-
 # ── Create DMG ────────────────────────────────────────────────────────────────
 create_dmg() {
   info "Creating DMG..."
@@ -506,8 +428,8 @@ main() {
   bake_version         # write Contents/Resources/VERSION before signing seals the bundle
   sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
   sign_app
-  notarize_app   # notarize the small .app before images are added
-  create_dmg     # DMG bundles Provisa.app (notarized) + hidden native payload
+  # The DMG bundles Provisa.app + the hidden native payload; notarize-dmg.sh notarizes it.
+  create_dmg
 
   printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"

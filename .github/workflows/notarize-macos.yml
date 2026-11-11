@@ -1,0 +1,133 @@
+# Notarize the macOS installers
+#
+# Submits each DMG of one version to Apple's notary service, waits for the verdict under its own
+# limit (Apple's queue took 44 minutes for the Obs DMG of v0.1.0-alpha.508, run 42951512721, which
+# the DMG build's 45-minute limit cancelled), staples it, and uploads it as the macos-<x>-dist
+# artifact the release's publish leg attaches. The DMG build jobs (release-macos.yml) build and
+# sign; they do not notarize, and hand each DMG on as a macos-<x>-unnotarized artifact.
+#
+# Two ways in:
+#   - Called by release-macos.yml, in the release's run, after the DMG builds. A notarization that
+#     timed out is re-run alone with "Re-run failed jobs" on that run.
+#   - By hand (Actions -> Notarize macOS installers -> Run workflow), for a version whose DMGs an
+#     earlier run built: `run_id` is that run. Nothing is rebuilt. The notarized DMGs are uploaded
+#     to this run; `attach` also uploads them to the release of `version`, replacing the
+#     unnotarized DMGs there.
+name: Notarize macOS installers
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.477).
+        type: string
+        required: true
+      run_id:
+        description: The run holding the macos-*-unnotarized artifacts. Empty reads them from the calling run.
+        type: string
+        default: ""
+      attach:
+        description: Upload the notarized DMGs to the release of `version`. Only a manual run does.
+        type: boolean
+        default: false
+    secrets:
+      APPLE_NOTARYTOOL_APPLE_ID:
+        required: false
+      APPLE_NOTARYTOOL_PASSWORD:
+        required: false
+      APPLE_NOTARYTOOL_TEAM_ID:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release tag whose installers to notarize (v0.1.0-alpha.477).
+        type: string
+        required: true
+      run_id:
+        description: >-
+          The run that built the unnotarized DMGs (its macos-*-unnotarized artifacts). The run's id
+          is the number in its URL. Empty reads them from this run (a run that built them itself).
+        type: string
+        default: ""
+      attach:
+        description: Also upload the notarized DMGs to the release of `version`, replacing its DMGs.
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+      dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
+      dmg_container_name: ${{ steps.meta.outputs.dmg_container_name }}
+      dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        uses: ./.github/actions/release-metadata
+        with:
+          version: ${{ inputs.version }}
+
+  # One job per DMG, so Apple's queue waits run side by side. 180 minutes: the notarize script
+  # waits up to 150 for Apple's verdict (NOTARY_TIMEOUT_MINUTES), then reads the log and staples.
+  notarize:
+    name: Notarize macOS ${{ matrix.edition }} DMG
+    needs: [metadata]
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - edition: Core
+            artifact: macos-core
+            dmg: ${{ needs.metadata.outputs.dmg_name }}
+          - edition: Container
+            artifact: macos-container
+            dmg: ${{ needs.metadata.outputs.dmg_container_name }}
+          - edition: Obs
+            artifact: macos-obs
+            dmg: ${{ needs.metadata.outputs.dmg_obs_name }}
+          - edition: Demo
+            artifact: macos-demo
+            dmg: ${{ needs.metadata.outputs.dmg_demo_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the unnotarized DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-unnotarized
+          path: dmg/
+          run-id: ${{ inputs.run_id || github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Notarize and staple
+        env:
+          APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
+          APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}
+          APPLE_NOTARYTOOL_TEAM_ID: ${{ secrets.APPLE_NOTARYTOOL_TEAM_ID }}
+        run: |
+          chmod +x packaging/macos/notarize-dmg.sh
+          packaging/macos/notarize-dmg.sh "dmg/${{ matrix.dmg }}"
+
+      - name: Upload notarized DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-dist
+          path: "dmg/${{ matrix.dmg }}"
+          retention-days: 1
+
+      # Only by hand, and only when asked: the release of `version` takes the notarized DMG in
+      # place of the one it has.
+      - name: Attach the notarized DMG to the release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.attach }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.version }}" "dmg/${{ matrix.dmg }}" --clobber --repo "${{ github.repository }}"
