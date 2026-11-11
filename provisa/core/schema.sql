@@ -181,9 +181,13 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- REQ-2219: who created it, set on insert only; it grants nothing.
-    created_by    TEXT
+    created_by    TEXT,
+    -- REQ-2180: how fresh every contract of the product promises its data, written once on the
+    -- product: a read trails its source by at most this many seconds; NULL: each dataset's own.
+    freshness     INTEGER
 );
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness INTEGER;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
@@ -947,6 +951,10 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     retire_on       DATE,
     status_by       TEXT,
     status_at       TIMESTAMPTZ,
+    -- REQ-2237: the global identifier of the imported concept the term is (an ontology import,
+    -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
+    -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
+    iri             TEXT,
     tenant_id       UUID,
     UNIQUE (name)
 );
@@ -1876,6 +1884,73 @@ CREATE TABLE IF NOT EXISTS data_product_commands (
 );
 CREATE INDEX IF NOT EXISTS idx_data_product_commands_command ON data_product_commands(command_name);
 
+-- REQ-2180 OFFERS: access to a data product is by offers. Each is a role the owner may grant, a
+-- level of data (the product's datasets, a sample of existing views over them, or synthetic), and
+-- whether it includes the product's data quality results and its profiles, whether it is open
+-- (accepted at once), and how long what it grants lasts (none: no end). ``version`` counts its
+-- changes; ``published_by`` is the owner who published it; ``review`` says why it is listed for
+-- review (its data no longer public, or a profiler gone), NULL when not.
+CREATE TABLE IF NOT EXISTS data_product_offers (
+    id            SERIAL PRIMARY KEY,
+    product_id    TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    role_id       TEXT NOT NULL,
+    data_level    TEXT NOT NULL DEFAULT 'full'
+                  CONSTRAINT data_product_offers_data_level_check
+                  CHECK (data_level IN ('full', 'sample', 'synthetic')),
+    sample_views  JSONB NOT NULL DEFAULT '[]',
+    dq_results    BOOLEAN NOT NULL DEFAULT TRUE,
+    profiles      BOOLEAN NOT NULL DEFAULT FALSE,
+    open          BOOLEAN NOT NULL DEFAULT FALSE,
+    duration_days INTEGER,
+    version       INTEGER NOT NULL DEFAULT 1,
+    published_by  TEXT,
+    review        TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (product_id, name)
+);
+
+-- REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: for every offer, each dataset of the product has
+-- the contract that is the offer's terms applied to it, versioned on its own (offer_contracts).
+CREATE TABLE IF NOT EXISTS data_product_offer_contracts (
+    offer_id INTEGER NOT NULL REFERENCES data_product_offers(id) ON DELETE CASCADE,
+    table_id INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    contract JSONB NOT NULL,
+    PRIMARY KEY (offer_id, table_id)
+);
+
+-- REQ-2180: a requester's bid for an offer, or the cancel of an accepted one, as the request it
+-- fired through the outbound request hook (REQUESTS GO THROUGH HOOKS), and its outcome.
+-- ``request_id`` is the id the hook carries, which makes a repeat harmless and which the decision
+-- names; ``hook`` where the request went ('local': the org's own request queue, else the hook's
+-- URL); ``payload`` the request as fired. ``terms`` is the offer as bid, which the decider accepts
+-- or declines and never alters; ``granted`` what an accepted bid granted, which its cancel removes.
+CREATE TABLE IF NOT EXISTS data_product_bids (
+    id             SERIAL PRIMARY KEY,
+    request_id     TEXT NOT NULL UNIQUE,
+    kind           TEXT NOT NULL DEFAULT 'bid'
+                   CONSTRAINT data_product_bids_kind_check CHECK (kind IN ('bid', 'cancel')),
+    cancels        INTEGER REFERENCES data_product_bids(id) ON DELETE CASCADE,
+    product_id     TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    offer_id       INTEGER REFERENCES data_product_offers(id) ON DELETE SET NULL,
+    offer_version  INTEGER NOT NULL,
+    terms          JSONB NOT NULL,
+    requester      TEXT NOT NULL,
+    reason         TEXT NOT NULL,
+    hook           TEXT NOT NULL,
+    payload        JSONB NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CONSTRAINT data_product_bids_status_check
+                   CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')),
+    decided_by     TEXT,
+    decided_at     TIMESTAMPTZ,
+    decline_reason TEXT,
+    granted        JSONB,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_data_product_bids_product ON data_product_bids(product_id);
+
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
 CREATE TABLE IF NOT EXISTS table_meta_links (
@@ -2551,6 +2626,66 @@ CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     decided_at      TIMESTAMPTZ,
     tenant_id       UUID,
     UNIQUE (scan_id, ordinal)
+);
+
+-- REQ-2237: an ontology imported as an alignment (provisa/ontology_import). An import keeps the
+-- file's ontology as items, each an imported class, property, value type or concept with its
+-- definition and IRI, and the alignments proposed between each item and the glossary's terms or
+-- another item, until a steward approves or rejects each. Applying an import makes each item a
+-- draft term (or, aligned as the same entity, the existing term it is) and writes the approved
+-- alignments as edges. Mirrors schema_org.glossary_ontology_imports, glossary_ontology_items and
+-- glossary_ontology_alignments.
+CREATE TABLE IF NOT EXISTS glossary_ontology_imports (
+    id          SERIAL PRIMARY KEY,
+    title       TEXT NOT NULL,
+    file_name   TEXT NOT NULL,
+    format      TEXT NOT NULL CONSTRAINT glossary_ontology_imports_format_check
+                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')),
+    domains     TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    imported_by TEXT,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    applied_by  TEXT,
+    applied_at  TIMESTAMPTZ,
+    tenant_id   UUID
+);
+
+CREATE TABLE IF NOT EXISTS glossary_ontology_items (
+    id          SERIAL PRIMARY KEY,
+    import_id   INTEGER NOT NULL REFERENCES glossary_ontology_imports(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CONSTRAINT glossary_ontology_items_kind_check
+                    CHECK (kind IN ('class', 'property', 'value', 'concept')),
+    definition  TEXT,
+    iri         TEXT,
+    payload     TEXT NOT NULL,
+    status      TEXT NOT NULL CONSTRAINT glossary_ontology_items_status_check
+                    CHECK (status IN ('pending', 'excluded', 'applied')),
+    term_id     INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    tenant_id   UUID,
+    UNIQUE (import_id, ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS glossary_ontology_alignments (
+    id             SERIAL PRIMARY KEY,
+    import_id      INTEGER NOT NULL REFERENCES glossary_ontology_imports(id) ON DELETE CASCADE,
+    item_id        INTEGER NOT NULL REFERENCES glossary_ontology_items(id) ON DELETE CASCADE,
+    term_id        INTEGER REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    other_item_id  INTEGER REFERENCES glossary_ontology_items(id) ON DELETE CASCADE,
+    rel_type       TEXT NOT NULL CONSTRAINT glossary_ontology_alignments_rel_type_check
+                       CHECK (rel_type IN ('SAME_AS', 'SYNONYM_OF', 'KIND_OF', 'PART_OF',
+                                           'VALID_VALUE_OF', 'RELATED_TO')),
+    item_is_source BOOLEAN NOT NULL,
+    basis          TEXT NOT NULL,
+    status         TEXT NOT NULL CONSTRAINT glossary_ontology_alignments_status_check
+                       CHECK (status IN ('proposed', 'approved', 'rejected', 'written')),
+    use_definition BOOLEAN NOT NULL DEFAULT FALSE,
+    decided_by     TEXT,
+    decided_at     TIMESTAMPTZ,
+    tenant_id      UUID,
+    CONSTRAINT glossary_ontology_alignments_end_check
+        CHECK ((term_id IS NULL) <> (other_item_id IS NULL))
 );
 
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member

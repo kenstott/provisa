@@ -13,10 +13,11 @@
 A data product becomes a schema of the engine's catalog, ``<catalog>.<product id>``: its prose in
 the schema's comment, its owner, team, version and status as tags, and one view per member over
 the member's replica -- nothing copied -- each view described and its governance facts tagged by
-rule, never by rule body. A former member's view is dropped; with ``delta_share`` the views are
+rule, never by rule body. Each view column's grounded term is a provisa_term tag naming it, and
+its definition follows the column's description in its comment (REQ-2238). A former member's view is dropped; with ``delta_share`` the views are
 shared, and a member not in Delta is reported and left out."""
 
-# Requirements: REQ-2117
+# Requirements: REQ-2117, REQ-2238
 
 from __future__ import annotations
 
@@ -74,11 +75,20 @@ class _Warehouse:
         self.views: list[str] = []
         self.shared: list[str] = []
         self.schema_tags: list[str] = []
+        # What the warehouse still holds on a view: (table, tag, value) and (table, column, tag, value).
+        self.table_tags: list[tuple[str, str, str]] = []
+        self.column_tags: list[tuple[str, str, str, str]] = []
         self.formats: dict[str, str] = {}
 
     def answer(self, sql: str) -> list[tuple]:
         if "information_schema.schema_tags" in sql:
             return [(t,) for t in self.schema_tags]
+        if "information_schema.column_tags" in sql:
+            table = sql.split("table_name = '")[1].split("'")[0]
+            return [(c, k, v) for t, c, k, v in self.column_tags if t == table]
+        if "information_schema.table_tags" in sql:
+            table = sql.split("table_name = '")[1].split("'")[0]
+            return [(k, v) for t, k, v in self.table_tags if t == table]
         if "information_schema.views" in sql:
             return [(v,) for v in self.views]
         if "SHOW ALL IN SHARE" in sql:
@@ -112,7 +122,12 @@ class _Runtime:
         pass
 
 
-def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0"):
+def _snapshot(
+    *,
+    tables: list[Table] | None = None,
+    version: str | None = "1.2.0",
+    glossary: dict | None = None,
+):
     config = ProvisaConfig(
         sources=[
             Source(
@@ -168,7 +183,11 @@ def _snapshot(*, tables: list[Table] | None = None, version: str | None = "1.2.0
     )
     # REQ-1634: every table is a member of customer_360.
     return build_snapshot(
-        all_members_of(config, "customer_360"), org_id="acme", dialect="databricks", contexts={}
+        all_members_of(config, "customer_360"),
+        org_id="acme",
+        dialect="databricks",
+        contexts={},
+        glossary=glossary,
     )
 
 
@@ -271,3 +290,77 @@ async def test_on_another_engine_nothing_is_published(monkeypatch):
     monkeypatch.setattr(UnityCatalogExport, "_runtime_or_none", lambda self: None)
     result = await _export().publish(_snapshot())
     assert result.ok and result.published == {}
+
+
+def _term(term_id: int, name: str, definition: str | None, *, approved: bool = True) -> dict:
+    return {
+        "id": term_id,
+        "name": name,
+        "definition": definition,
+        "is_abstract": False,
+        "deprecated": False,
+        "deprecation_asserted": False,
+        "approved": approved,
+        "retired": False,
+        "export_excluded": False,
+        "status_reason": None,
+        "retire_on": None,
+    }
+
+
+async def test_a_view_column_carries_its_grounded_term_as_a_tag_and_in_its_comment(warehouse):
+    glossary = {
+        "terms": [
+            _term(1, "order key", "Identifies an order."),
+            _term(2, "ssn draft", "Undecided.", approved=False),  # a draft on no approved path
+        ],
+        "refs": [
+            {
+                "term_id": 1,
+                "column_name": "id",
+                "source_id": "pg",
+                "schema_name": "public",
+                "table_name": "orders",
+            },
+            {
+                "term_id": 2,
+                "column_name": "ssn",
+                "source_id": "pg",
+                "schema_name": "public",
+                "table_name": "orders",
+            },
+        ],
+        "edges": [],
+        "experts": [],
+        "domains": [],
+    }
+    result = await _export().publish(_snapshot(glossary=glossary))
+    assert result.ok, result.errors
+    sql = warehouse.statements
+    (orders,) = [s for s in sql if "VIEW `main`.`customer_360`.`orders`" in s and "CREATE" in s]
+    assert "`id` COMMENT 'Key\n\n[provisa:term order key] Identifies an order.'" in orders
+    assert "`ssn` COMMENT" not in orders  # its term is out of an agent's sight
+    terms = [s for s in sql if "provisa_term" in s]
+    assert terms == [
+        "ALTER TABLE `main`.`customer_360`.`orders` ALTER COLUMN `id` "
+        "SET TAGS ('provisa_term' = 'order key')"
+    ]
+
+
+async def test_a_tag_a_column_no_longer_carries_is_unset_from_its_view(warehouse):
+    # CREATE OR REPLACE VIEW keeps the tags of the view it replaces, so the export unsets what the
+    # column no longer carries: a term that left it, a governance tag whose rule no longer fires.
+    warehouse.column_tags = [
+        ("orders", "ssn", "provisa_term", "old term"),
+        ("orders", "ssn", "provisa_governance:mask", "r1"),
+        ("orders", "id", "someone_elses_tag", "x"),
+    ]
+    warehouse.table_tags = [("orders", "provisa_governance:rls", "r2")]
+    result = await _export().publish(_snapshot())
+    assert result.ok, result.errors
+    sql = warehouse.statements
+    view = "`main`.`customer_360`.`orders`"
+    assert f"ALTER TABLE {view} ALTER COLUMN `ssn` UNSET TAGS ('provisa_term')" in sql
+    assert f"ALTER TABLE {view} ALTER COLUMN `ssn` UNSET TAGS ('provisa_governance:mask')" in sql
+    assert f"ALTER VIEW {view} UNSET TAGS ('provisa_governance:rls')" in sql
+    assert not any("someone_elses_tag" in s and "UNSET" in s for s in sql)

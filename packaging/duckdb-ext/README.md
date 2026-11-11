@@ -24,7 +24,7 @@ package's.
 
 This package carries what those wheels lack: `crypto` and the community extensions. They are filled
 in this order while each wheel stays under PyPI's 100 MB limit: `crypto`, `mssql`, `snowflake`,
-`bigquery`, `mongo`, `gsheets`, `airport`, `firebird`. The build names any extension it leaves out.
+`bigquery`, `mongo`, `airport`, `firebird`. The build names any extension it leaves out.
 
 On DuckDB 2.0 the `crypto` extension is published by Query.Farm in its own extension repository
 (`query_farm`, prefix `https://duckdb-extensions.query.farm`), not in DuckDB's. It is mirrored here

@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "圖例",
+    "type": {
+      "product": "數據產品",
+      "source": "來源",
+      "domain": "域",
+      "group": "組",
+      "table": "表",
+      "view": "視圖",
+      "relation": "外部表",
+      "junction": "連接表",
+      "column": "欄",
+      "term": "術語",
+      "concept": "概念",
+      "class": "類",
+      "property": "屬性",
+      "command": "命令",
+      "checker": "質量檢查",
+      "profile": "剖析",
+      "tag": "標籤",
+      "more": "更多"
+    }
+  }
+}

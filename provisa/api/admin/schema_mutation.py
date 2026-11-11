@@ -954,6 +954,17 @@ async def _save_tag(
             code="schema.tag_id_has_separator",
             params={"tag": input.id},
         )
+    # REQ-2238: the grounded term is landed as the PROVISA_GOVERNANCE.TERM tag, so a steward tag of
+    # that name (any case) would be overwritten by the term value unannounced.
+    from provisa.core.modeling_tags import is_reserved_tag_name
+
+    if is_reserved_tag_name(input.id):
+        return MutationResult(
+            success=False,
+            message=f"Tag id {input.id!r} is reserved for the grounded term",
+            code="schema.tag_id_reserved",
+            params={"tag": input.id},
+        )
     # REQ-1415: the id is listed in the catalog description suffix, so it is a slug: it can
     # never hold a comma or bracket, and no surface needs an escaping rule.
     from provisa.core.modeling_tags import TAG_SLUG_CHARSET, is_tag_slug

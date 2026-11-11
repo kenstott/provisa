@@ -394,12 +394,19 @@ async def test_the_mcp_tool_answers_under_meta_with_the_bound_org(resolved, monk
     from provisa.api.mcp import server
     from tests.unit.test_mcp_server import _make_state
 
-    token = server._request_role.set("analyst")  # what the bearer token resolves to
+    from provisa.auth.models import AuthIdentity
+
+    # What the transport binds for a bearer token: its principal and the role it resolves to
+    # (REQ-1105: a call runs as a principal, never a role alone).
+    identity = AuthIdentity(user_id="ada", email=None, display_name=None, roles=["analyst"])
+    token = server._request_role.set("analyst")
+    identity_token = server._request_identity.set(identity)
     try:
         content = await server.build_mcp_server(_make_state()).call_tool(
             "meta_resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
         )
     finally:
+        server._request_identity.reset(identity_token)
         server._request_role.reset(token)
     blocks = content[0] if isinstance(content, tuple) else content
     assert json.loads(blocks[0].text)["row"] == {"amount": 1}

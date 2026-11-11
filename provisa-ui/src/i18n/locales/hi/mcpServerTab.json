@@ -9,8 +9,10 @@
     "transportLabel": "ट्रांसपोर्ट",
     "stdioRoleLabel": "बाउंड stdio भूमिका",
     "stdioRoleNone": "कोई सेट नहीं — stdio कॉल के लिए <code>{{envVar}}</code> आवश्यक है",
+    "principalLabel": "स्थानीय प्रिंसिपल",
+    "principalNone": "कोई सेट नहीं — जब तक <code>{{envVar}}</code> किसी को नामित नहीं करता, स्थानीय कॉल अस्वीकार की जाती हैं",
     "maxRowsLabel": "पंक्ति सीमा (run_sql)",
-    "enableHint": "MCP सर्वर ऑप्ट-इन है। इसे सक्षम करने के लिए <code>{{enableEnvVar}}</code> पर्यावरण वेरिएबल में एक पोर्ट सेट करें और सेवा को पुनः प्रारंभ करें। स्थानीय stdio ट्रांसपोर्ट के लिए, <code>{{roleEnvVar}}</code> को भी एक provisa भूमिका पर सेट करें।",
+    "enableHint": "MCP सर्वर ऑप्ट-इन है। इसे सक्षम करने के लिए <code>{{enableEnvVar}}</code> पर्यावरण वेरिएबल में एक पोर्ट सेट करें और सेवा को पुनः प्रारंभ करें। स्थानीय stdio ट्रांसपोर्ट के लिए, <code>{{roleEnvVar}}</code> को भी एक provisa भूमिका पर, और <code>{{principalEnvVar}}</code> को उस प्रिंसिपल (उपयोगकर्ता आईडी) पर सेट करें जिसकी ओर से ये कॉल कार्य करती हैं।",
     "toolsHeading": "उपलब्ध टूल",
     "colTool": "टूल",
     "colDescription": "विवरण"

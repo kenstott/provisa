@@ -31,9 +31,11 @@ const drawn = vi.hoisted(() => ({
 // The real cytoscape, with the instance each ERD draws kept for the test to click on.
 vi.mock("cytoscape", async (importOriginal) => {
   const real = (await importOriginal<{ default: (o: unknown) => unknown }>()).default;
-  const keeping = Object.assign((o: unknown) => {
-    drawn.cy = real(o) as typeof drawn.cy;
-    return drawn.cy;
+  // A call naming an extension (cytoscape("layout", "elk")) asks whether it is registered.
+  const keeping = Object.assign((...args: unknown[]) => {
+    const made = (real as (...a: unknown[]) => unknown)(...args);
+    if (typeof args[0] !== "string") drawn.cy = made as typeof drawn.cy;
+    return made;
   }, real);
   return { default: keeping };
 });
@@ -299,7 +301,7 @@ const param = (key: string) => new URL(where(), "http://x").searchParams.get(key
 const drawnHas = (id: string) => (drawn.cy?.getElementById(id).length ?? 0) > 0;
 const diagramHolds = async (id: string) => waitFor(() => expect(drawnHas(id)).toBe(true));
 const tap = (id: string) => act(() => drawn.cy?.getElementById(id).emit("tap"));
-const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 const settled = (ids: string) =>
   waitFor(() => expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", ids));
 const toggle = (page: "tables" | "relationships") =>
@@ -675,7 +677,7 @@ describe("the page's filter box on the ERD", () => {
   const dimmed = (id: string) =>
     (drawn.cy as unknown as { getElementById(id: string): { hasClass(c: string): boolean } })
       .getElementById(id)
-      .hasClass("erd-dim");
+      .hasClass("dim");
   const type = (value: string) =>
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value } });
 
@@ -728,7 +730,7 @@ describe("the page's filter box on the ERD", () => {
 });
 
 describe("the item whose detail panel is open", () => {
-  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 
   it("on Tables is highlighted when the ERD opens from the list", async () => {
     open("/tables");
@@ -776,7 +778,7 @@ describe("the diagram's image controls", () => {
     open("/tables?view=erd");
     await diagramHolds("t:1");
     expect(bar()).toHaveAttribute("aria-orientation", "vertical");
-    expect(bar().closest(".erd-stage")).not.toBeNull();
+    expect(bar().closest(".pg-stage")).not.toBeNull();
     for (const id of [
       "erd-zoom-in",
       "erd-zoom-out",
@@ -835,7 +837,7 @@ describe("the diagram's image controls", () => {
     await diagramHolds("t:1");
     fireEvent.click(screen.getByTestId("erd-fullscreen"));
     expect(fullscreen.asked).toHaveLength(1);
-    expect(fullscreen.asked[0]).toHaveClass("erd-stage");
+    expect(fullscreen.asked[0]).toHaveClass("pg-stage");
     expect(fullscreen.asked[0]).toContainElement(bar());
   });
 });
@@ -845,14 +847,14 @@ describe("the diagram's hint", () => {
     open("/tables?view=erd");
     await diagramHolds("t:1");
     const hint = screen.getByTestId("erd-hint");
-    expect(hint.closest(".erd-stage")).toBeNull();
+    expect(hint.closest(".pg-stage")).toBeNull();
     const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
     expect(toolbar).toContainElement(hint);
     expect(
       screen.getByTestId("erd-toggle-all").compareDocumentPosition(hint) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const stage = document.querySelector(".erd-stage") as HTMLElement;
+    const stage = document.querySelector(".pg-stage") as HTMLElement;
     expect(stage).not.toHaveTextContent("Click a domain group");
     fireEvent.mouseEnter(hint);
     expect(await screen.findByTestId("erd-hint-card")).toHaveTextContent(

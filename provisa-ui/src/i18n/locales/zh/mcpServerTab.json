@@ -9,8 +9,10 @@
     "transportLabel": "传输",
     "stdioRoleLabel": "绑定的 stdio 角色",
     "stdioRoleNone": "未设置 — stdio 调用需要 <code>{{envVar}}</code>",
+    "principalLabel": "本地主体",
+    "principalNone": "未设置 — 在 <code>{{envVar}}</code> 指定主体之前，本地调用将被拒绝",
     "maxRowsLabel": "行数上限 (run_sql)",
-    "enableHint": "MCP 服务器为可选启用。将环境变量 <code>{{enableEnvVar}}</code> 设置为端口并重启服务即可启用。对于本地 stdio 传输，还需将 <code>{{roleEnvVar}}</code> 设置为一个 provisa 角色。",
+    "enableHint": "MCP 服务器为可选启用。将环境变量 <code>{{enableEnvVar}}</code> 设置为端口并重启服务即可启用。对于本地 stdio 传输，还需将 <code>{{roleEnvVar}}</code> 设置为一个 provisa 角色，并将 <code>{{principalEnvVar}}</code> 设置为这些调用所代表的主体（用户 ID）。",
     "toolsHeading": "开放的工具",
     "colTool": "工具",
     "colDescription": "描述"

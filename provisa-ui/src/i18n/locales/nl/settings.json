@@ -595,6 +595,10 @@
         "label": "Lokale rol voor MCP",
         "help": "De rol waaronder lokale (stdio) MCP-aanroepen worden uitgevoerd; zolang deze niet is ingesteld worden die aanroepen geweigerd. Met bevestiging omdat dit de toegang van die rol verleent aan iedereen die de lokale client kan starten."
       },
+      "principal": {
+        "label": "Lokale principal voor MCP",
+        "help": "De principal (gebruikers-id) namens wie lokale (stdio) MCP-aanroepen handelen, naast de lokale rol; de rechten van die persoon beperken de rol. Zolang die niet is ingesteld, worden die aanroepen geweigerd. Beveiligd, omdat iedereen die de lokale client kan starten met de toegang van die persoon handelt."
+      },
       "external_url": {
         "label": "Extern MCP-adres",
         "help": "Het MCP-adres dat aan gebruikers wordt getoond wanneer de deployment achter een proxy staat."

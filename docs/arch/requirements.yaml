@@ -47591,55 +47591,65 @@
   type: constraint
   description: 'Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter.
     Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk,
-    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
-    attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance
-    projections, provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
-    reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END SUPERSEDED BLOCK]
-    labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment in the catalog survives
-    every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
-    — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
-    a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
-    to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
-    overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This
-    is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only),
-    each data element has exactly ONE owning system, and the read step exists only because replace-style
-    catalog APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional:
-    the classification read-merge and attribute drift-correction ride the single publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
-    default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute)
-    is the canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes
-    live entities by URN; an entity Provisa published before whose physical address changed (re-platform,
-    physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding, enrichment
-    and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate replaces
-    the full attribute map (empirically verified: an update wiped a steward-written userDescription),
-    so every update starts from the LIVE attributes and overlays only the fields Provisa authors; fields
-    Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their guids and use
-    them to sync"): every successful publish CAPTURES the vendor''s own id per published asset — Atlas
-    entity guid (from the bulk response''s guidAssignments), OpenMetadata entity UUID (from the table
-    PUT response), Collibra asset UUID (exact-name lookup after the import job, only when the binding
+    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate,
+    and entities absent from a later snapshot are never pruned by publish. Every attribute is classified
+    as either PROVISA-OWNED (identity, physical binding, technical facts, governance projections, provisa_*
+    classifications — written on every publish and drift-corrected by the REQ-1072 reconcile) or HUMAN-OWNED
+    (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa
+    writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM
+    ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END
+    SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment
+    in the catalog survives every publish and reconcile). Consequence: the Atlas governance document moves
+    OFF userDescription — the exact field the Atlas UI edits for human descriptions, clobbered today on
+    every publish — onto a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift
+    correction applies to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If
+    Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications)
+    Provisa overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
+    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated
+    term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history;
+    do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins
+    and Provisa never writes it. This is a single-writer MERGE, not a sync: nothing flows back into Provisa
+    (publication is outbound-only), each data element has exactly ONE owning system, and the read step exists
+    only because replace-style catalog APIs force carrying the catalog-owned fields through unchanged. The
+    merge is NOT optional: the classification read-merge and attribute drift-correction ride the single
+    publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile
+    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
+    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
+    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
+    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog entity,
+    new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk
+    createOrUpdate replaces the full attribute map (empirically verified: an update wiped a steward-written
+    userDescription), so every update starts from the LIVE attributes and overlays only the fields Provisa
+    authors; fields Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their
+    guids and use them to sync"): every successful publish CAPTURES the vendor''s own id per published asset
+    — Atlas entity guid (from the bulk response''s guidAssignments), OpenMetadata entity UUID (from the
+    table PUT response), Collibra asset UUID (exact-name lookup after the import job, only when the binding
     is missing or the name changed), DataHub dataset URN — into the catalog_bindings table, one row per
-    (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the
-    stored id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert:
-    Atlas prefers the STORED guid over the laggy basic-search index (the index only covers URIs with no
-    binding); OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository
-    never opts into renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored
-    UUID, its steward enrichment carried onto the successor''s first publish, and its description marked
-    superseded with a pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset
-    by stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
-    identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
-    naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
-    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.
-    (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it.
-    A Class term (REQ-2141) is assigned to the published tables it grounds and a Property term to its
-    published columns; a Concept is assigned to nothing. Each is written as the catalog''s own automated
-    or system assignment, attributed to Provisa -- OpenMetadata labelType Automated, DataHub term associations
-    attributed to Provisa''s actor, Atlas and Atlan semantic assignments whose source is Provisa, Collibra
-    relations created by Provisa''s own user -- and that attribution is the ownership test. Provisa writes
-    and removes only its own assignments, which track the snapshot: one the snapshot no longer carries,
-    including every assignment of a term that left it, is withdrawn. A human assignment stays human-owned:
-    Provisa never removes or overwrites it, and adds none beside it for the same term on the same asset.
-    An assignment is never withdrawn because a request failed, and a live assignment list that cannot
-    be read is not written over.'
+    (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the stored
+    id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert: Atlas prefers
+    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding); OpenMetadata
+    cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository never opts into
+    renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID, its steward
+    enrichment carried onto the successor''s first publish, and its description marked superseded with a
+    pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by stored UUID BEFORE
+    the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable identity, so the
+    successor publishes as a new URN and the OLD bound URN gets the deprecation aspect naming the successor
+    and the Provisa URN. The binding lifecycle (load before publish, persist capture and prune departed-asset
+    bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain,
+    the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment
+    is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is assigned to the published tables
+    it grounds and a Property term to its published columns; a Concept is assigned to nothing. Each is written
+    as the catalog''s own automated or system assignment, attributed to Provisa -- OpenMetadata labelType
+    Automated, DataHub term associations attributed to Provisa''s actor, Atlas and Atlan semantic assignments
+    whose source is Provisa, Collibra relations created by Provisa''s own user -- and that attribution is
+    the ownership test. Provisa writes and removes only its own assignments, which track the snapshot: one
+    the snapshot no longer carries, including every assignment of a term that left it, is withdrawn. A human
+    assignment stays human-owned: Provisa never removes or overwrites it, and adds none beside it for the
+    same term on the same asset. An assignment is never withdrawn because a request failed, and a live assignment
+    list that cannot be read is not written over. (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY
+    COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a Class term is assigned to its tables and to its key columns
+    (whose references sit on the Class, REQ-2141), so a catalog links a primary or foreign key column to
+    its term.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -85620,7 +85630,53 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   feature: roles-and-capabilities-capabilities
   priority: MUST
   type: behavioral
-  description: "A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant it is absent from the user's held roles on every request, however the request arrives, and an expired org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant of it that no request has depended on for longer than that, counted from the later of the grant's last use and its creation, is removed. A request depended on a role when that role served it as the single acting role, or, acting as several roles (a named set or All), when the role is granted a table the governed statement read; acting as All does not count every held role as used. The grant's last use (last_used_at) is recorded at most once a day per grant, after the statement's audit row lands. A sweep on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records each in the org's administrative trail as role.expired or role.removed_inactive. Wherever mail is configured (mail.provider), a self-hosted single-org deployment included, the holder and the org's administrators are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires or is removed for going unused, once per coming end (again after a grant is used and falls idle again, or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail is configured the trail entry is the record. Security notices are sent whatever a user's email opt-in says. A grant given again states its expiry anew. Roles from an identity provider's claims or role mappings are the provider's to time-limit, and derived roles and meta-roles never expire. The grant form takes an optional until date (the grant ends at the close of that day), the role form takes remove after N days unused, and the grant list shows each grant's end and last use."
+  description: 'A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role
+    may remove its grants once they go unused. A grant may carry an expiry (expires_at): from that instant
+    it is absent from the user''s held roles on every request, however the request arrives, and an expired
+    org_admin or platform_admin grant counts as no administrator. A role may state inactivity_days: a grant
+    of it that no request has depended on for longer than that, counted from the later of the grant''s last
+    use and its creation, is removed. A request depended on a role when that role served it as the single
+    acting role, or, acting as several roles (a named set or All), when the role is granted a table the
+    governed statement read; acting as All does not count every held role as used. The grant''s last use
+    (last_used_at) is recorded at most once a day per grant, after the statement''s audit row lands. A sweep
+    on the scheduler, every 15 minutes per org, deletes the expired grants and the unused ones and records
+    each in the org''s administrative trail as role.expired or role.removed_inactive. Wherever mail is configured
+    (mail.provider), a self-hosted single-org deployment included, the holder and the org''s administrators
+    are emailed auth.role_grant_notice_days days (an operator setting, default 7) before a grant expires
+    or is removed for going unused, once per coming end (again after a grant is used and falls idle again,
+    or is given a new expiry), and the administrators are emailed when a grant is removed; where no mail
+    is configured the trail entry is the record. Security notices are sent whatever a user''s email opt-in
+    says. A grant given again states its expiry anew. Roles from an identity provider''s claims or role
+    mappings are the provider''s to time-limit, and derived roles and meta-roles never expire. The grant
+    form takes an optional until date (the grant ends at the close of that day), the role form takes remove
+    after N days unused, and the grant list shows each grant''s end and last use. (Amended 2026-11-11, EXPIRY
+    IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer 2026-11-11. Expiry belongs to two things and only two.
+    A role grant may expire (REQ-2077): at that instant the whole role ends for that person, with every
+    entitlement under it. Each entitlement entry of a grant may expire on its own date: on that date that
+    entry alone ends, and the role and the rest of the list carry on (a person can hold viewer with no end
+    and a list in which some entries expire); an entry never outlives its grant, and a date past the grant''s
+    is refused. A rule that ends a whole grant is the grant''s own expiry, not a second mechanism. One expiring-soon
+    setting, one scheduled run and one notice cover both: the notice names the role when it is ending and
+    each entry that is. Each person''s access shows one timeline: each grant, and the dated entries under
+    it. (Amended 2026-11-11, EXPIRY IS THE LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds
+    a role once, and an entitlement entry once; when either is granted again (by an offer, an admin, any
+    grant), its expiry becomes the latest of the expiries that granted it, and no expiry is later than any
+    date. An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
+    Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
+    an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
+    Dec to no end date"). (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:) Maintainer 2026-11-11. An
+    expiry is more data on the request: a requested duration or end date travels in the request hook''s
+    payload with the rest of what is asked, and is applied with the grant wherever the grant is made. The
+    expiring-soon and expired events (one setting, one run) are sent to the same outbound hook, so whatever
+    decides requests also hears what is about to end or has ended and can renew it, by a new request, or
+    let it go. (Amended 2026-11-11, AN EXPIRY IS A CANCEL THROUGH THE HOOK:) Maintainer 2026-11-11: Provisa
+    cannot stop honouring anything the external identity provider is the authority for. So an expiry is
+    a cancel: when a grant or an entry reaches its date, the expiry run sends "cancel this grant, expired"
+    through the same outbound hook as any cancel, and the authority acts. With an external identity provider,
+    it decides, and Provisa enforces whatever its claims say. With none, the local default applies an expiry
+    cancel at once -- the date was agreed when the grant was made, so it needs no second approval -- as
+    the matching ordinary removal, attributed to the expiry; access ends within the run''s interval. Provisa
+    holds no separate read-time check of an expiry date.'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -91746,44 +91802,94 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its offers when publishing it; each offer is a role together with two choices, whether it includes the
     product''s data quality results and whether it includes its profiles, and whether it is open. The default
     offer is the viewer role with data quality results and without profiles. A requester bids for an offer;
-    the approver accepts or declines that offer as bid, never altering it; an open offer is accepted at
-    once and recorded like any acceptance, with no one to wait for (meant for common reference data such
-    as the organisation structure). Accepting assigns the offer''s role to the requester with entitlements
-    built from the product -- its datasets, with its data quality results and profiles where the offer includes
-    them -- so no one writes an entitlement list by hand. Masks, row rules and anything else applied on
-    read come from the offer''s role, defined up front. A product with no offers cannot be requested. (Amended
-    2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11. A product owner can
-    put in an offer only a role they have the right to grant: the role picker lists only those, and saving
-    an offer with any other role is refused by name. Rights can change after an offer is published, so accepting
-    a bid checks again that the one accepting may grant the offer''s role; an open offer is checked against
-    the right of the owner who published it, and while that right is gone the offer is not accepted, its
-    owner is told, and the offer is listed for review. (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A
-    SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11. Each offer gives one level of data: full (the product''s
-    datasets); a sample, which is one or more views that already exist in the model over the product''s
-    datasets, named on the offer -- accepting it builds entitlements on those views alone, never on the
-    tables beneath them, so no query can widen the sample past what the views express; or synthetic, the
-    product''s shape served by the existing fake-data generator (REQ-1494), with no real records. An offer''s
-    data quality results and profiles stay its own choices; a synthetic offer has no profiles. (Amended
-    2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A product starts with one offer and only one:
-    the viewer role, the full data, with data quality results, without profiles, not open. Any other offer
-    is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer
-    2026-11-11. Synthetic data is generated from each dataset''s profile (the Data Profiler, REQ-1934),
-    so an offer of synthetic data can be saved only when every dataset of the product has a profiler; one
-    without is named in the refusal. If a dataset''s profiler is later removed, the offer is not accepted,
-    its owner is told, and the offer is listed for review. (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM
-    THE OFFERS:) Maintainer 2026-11-11. An offer always covers all of the product''s datasets, and accepting
-    it gives its terms on each of them. The data contracts are derived from the offers: for every offer,
-    each dataset of the product has a contract that is that offer''s terms applied to that dataset -- its
-    schema as the offer''s role sees it (masked columns stated as masked, row rules stated in words), its
-    data level (the full dataset, the offer''s sample view over it, or synthetic), the data quality promises
-    (always stated; the offer decides whether its results can be read), and its profiles where the offer
-    includes them -- so the contracts are every contract the product can give, and a requester reads the
-    ones an offer would give before bidding. What is written by hand is only what all of a product''s contracts
-    share (owner, description, freshness and support terms), entered once on the product. Changing an offer
-    changes its contracts'' versions, and a change that removes or masks a column is a breaking one. (Amended
-    2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:) Maintainer 2026-11-11. Where a product''s contracts are
-    shown -- to its owner and to a requester -- they are shown per offer, not as one fixed list: the product
-    lists its offers, and each offer opens to the contracts it gives, one per dataset.'
+    the approver accepts or declines that offer as bid, never altering it; [SUPERSEDED by REQ-2180 (amended
+    2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no grant at all (REQ-2180,
+    REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against it.] an open offer is accepted
+    at once and recorded like any acceptance, with no one to wait for (meant for common reference data such
+    as the organisation structure) [END SUPERSEDED BLOCK]. Accepting assigns the offer''s role to the requester
+    with entitlements built from the product -- its datasets, with its data quality results and profiles
+    where the offer includes them -- so no one writes an entitlement list by hand. Masks, row rules and
+    anything else applied on read come from the offer''s role, defined up front. A product with no offers
+    cannot be requested. (Amended 2026-11-11, AN OFFER''S ROLE IS ONE ITS OWNER MAY GRANT:) Maintainer 2026-11-11.
+    A product owner can put in an offer only a role they have the right to grant: the role picker lists
+    only those, and saving an offer with any other role is refused by name. Rights can change after an offer
+    is published, so accepting a bid checks again that the one accepting may grant the offer''s role; [SUPERSEDED
+    by REQ-2180 (amended 2026-11-11, REQUESTS GO THROUGH HOOKS), 2026-11-11 -- an open offer now needs no
+    grant at all (REQ-2180, REQUESTS GO THROUGH HOOKS). Kept here for history; do not implement against
+    it.] an open offer is checked against the right of the owner who published it, and while that right
+    is gone the offer is not accepted, its owner is told, and the offer is listed for review. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, AN OFFER''S DATA IS FULL, A SAMPLE VIEW, OR SYNTHETIC:) Maintainer 2026-11-11.
+    Each offer gives one level of data: full (the product''s datasets); a sample, which is one or more views
+    that already exist in the model over the product''s datasets, named on the offer -- accepting it builds
+    entitlements on those views alone, never on the tables beneath them, so no query can widen the sample
+    past what the views express; or synthetic, the product''s shape served by the existing fake-data generator
+    (REQ-1494), with no real records. An offer''s data quality results and profiles stay its own choices;
+    a synthetic offer has no profiles. (Amended 2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A
+    product starts with one offer and only one: the viewer role, the full data, with data quality results,
+    without profiles, not open. Any other offer is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC
+    OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer 2026-11-11. Synthetic data is generated from each
+    dataset''s profile (the Data Profiler, REQ-1934), so an offer of synthetic data can be saved only when
+    every dataset of the product has a profiler; one without is named in the refusal. If a dataset''s profiler
+    is later removed, the offer is not accepted, its owner is told, and the offer is listed for review.
+    (Amended 2026-11-11, CONTRACTS ARE DERIVED FROM THE OFFERS:) Maintainer 2026-11-11. An offer always
+    covers all of the product''s datasets, and accepting it gives its terms on each of them. The data contracts
+    are derived from the offers: for every offer, each dataset of the product has a contract that is that
+    offer''s terms applied to that dataset -- its schema as the offer''s role sees it (masked columns stated
+    as masked, row rules stated in words), its data level (the full dataset, the offer''s sample view over
+    it, or synthetic), the data quality promises (always stated; the offer decides whether its results can
+    be read), and its profiles where the offer includes them -- so the contracts are every contract the
+    product can give, and a requester reads the ones an offer would give before bidding. What is written
+    by hand is only what all of a product''s contracts share (owner, description, freshness and support
+    terms), entered once on the product. Changing an offer changes its contracts'' versions, and a change
+    that removes or masks a column is a breaking one. (Amended 2026-11-11, THE UI SHOWS CONTRACTS PER OFFER:)
+    Maintainer 2026-11-11. Where a product''s contracts are shown -- to its owner and to a requester --
+    they are shown per offer, not as one fixed list: the product lists its offers, and each offer opens
+    to the contracts it gives, one per dataset. (Amended 2026-11-11, AN OFFER''S DURATION DATES THE ENTRIES
+    IT ADDS:) Maintainer 2026-11-11. An offer can carry a duration. Accepting it when the requester already
+    holds the offer''s role adds the product''s entitlements to that grant as entries expiring after the
+    duration; when the requester does not hold the role, the role grant is made with them, and both end
+    after the duration. Without a duration nothing accepted expires. (Amended 2026-11-11, EXPIRY IS THE
+    LATEST OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once;
+    when either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the
+    expiries that granted it, and no expiry is later than any date. An operator who needs a hard end on
+    some access makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone
+    added; it does not bring an extended date back. Before a bid, an offer''s summary states any extension
+    accepting it would make ("extends your viewer role from 31 Dec to no end date"). (Amended 2026-11-11,
+    REQUESTS GO THROUGH HOOKS:) Maintainer 2026-11-11: no one would have Provisa grant roles and entitlements
+    on its own. Provisa defines access (offers, contracts, roles, masks, entitlements) and enforces it on
+    every query, whatever granted it; it does not decide grants. Bidding on an offer, requesting a role
+    or entitlements by any path (the UI, MCP, the API), and cancelling a contract each only fire an outbound
+    request hook, carrying who asks, the offer and its terms (role, data level, entries, duration), the
+    contract versions, the reason and an id that makes a repeat harmless. Whatever receives it decides,
+    and the decision returns through one inbound decision hook (the request id, accepted or declined, who
+    decided, when), which refuses a decision that does not match its request or comes from one who may not
+    grant the role. Where access is held by Provisa (no external identity provider), an accepted decision
+    is applied as an ordinary admin grant of exactly what was requested, attributed to the one who decided,
+    and a cancel as the matching ordinary removal; any elaborate cancel bookkeeping is the receiving system''s.
+    Where access is held by an identity provider, the decision only updates the request''s status, and the
+    grant arrives as claims once that system makes it. With no external identity provider, the default outbound
+    hook writes the request into Provisa''s own request queue, and the approver decides there, through the
+    same decision hook. An offer can be open only when its data is already public -- readable by every member
+    through a role every member holds, which is checked when it is marked open and refused naming what is
+    not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
+    the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
+    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
+    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
+    PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
+    no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
+    Maintainer 2026-11-11. An expiry is more data on the request: a requested duration or end date travels
+    in the request hook''s payload with the rest of what is asked, and is applied with the grant wherever
+    the grant is made. The expiring-soon and expired events (one setting, one run) are sent to the same
+    outbound hook, so whatever decides requests also hears what is about to end or has ended and can renew
+    it, by a new request, or let it go. (Amended 2026-11-11, AN EXPIRY IS A CANCEL THROUGH THE HOOK:) Maintainer
+    2026-11-11: Provisa cannot stop honouring anything the external identity provider is the authority for.
+    So an expiry is a cancel: when a grant or an entry reaches its date, the expiry run sends "cancel this
+    grant, expired" through the same outbound hook as any cancel, and the authority acts. With an external
+    identity provider, it decides, and Provisa enforces whatever its claims say. With none, the local default
+    applies an expiry cancel at once -- the date was agreed when the grant was made, so it needs no second
+    approval -- as the matching ordinary removal, attributed to the expiry; access ends within the run''s
+    interval. Provisa holds no separate read-time check of an expiry date.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94130,7 +94236,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     event ahead of each; that event''s own setting is the expiring-soon threshold, and the UI highlights
     by it. An expiry rule whose end date is already past is refused, as a list''s end date is. Effective
     access per capability includes the capabilities a role inherits from its parent roles, each shown with
-    the role it comes from.'
+    the role it comes from. (Amended 2026-11-11, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES:) Maintainer
+    2026-11-11. Expiry belongs to two things and only two. A role grant may expire (REQ-2077): at that instant
+    the whole role ends for that person, with every entitlement under it. Each entitlement entry of a grant
+    may expire on its own date: on that date that entry alone ends, and the role and the rest of the list
+    carry on (a person can hold viewer with no end and a list in which some entries expire); an entry never
+    outlives its grant, and a date past the grant''s is refused. A rule that ends a whole grant is the grant''s
+    own expiry, not a second mechanism. One expiring-soon setting, one scheduled run and one notice cover
+    both: the notice names the role when it is ending and each entry that is. Each person''s access shows
+    one timeline: each grant, and the dated entries under it. (Amended 2026-11-11, EXPIRY IS THE LATEST
+    OF ITS GRANTS:) Maintainer 2026-11-11. A person holds a role once, and an entitlement entry once; when
+    either is granted again (by an offer, an admin, any grant), its expiry becomes the latest of the expiries
+    that granted it, and no expiry is later than any date. An operator who needs a hard end on some access
+    makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone added; it
+    does not bring an extended date back. Before a bid, an offer''s summary states any extension accepting
+    it would make ("extends your viewer role from 31 Dec to no end date"). (Amended 2026-11-11, EXPIRIES
+    GO TO THE SAME HOOK:) Maintainer 2026-11-11. An expiry is more data on the request: a requested duration
+    or end date travels in the request hook''s payload with the rest of what is asked, and is applied with
+    the grant wherever the grant is made. The expiring-soon and expired events (one setting, one run) are
+    sent to the same outbound hook, so whatever decides requests also hears what is about to end or has
+    ended and can renew it, by a new request, or let it go. (Amended 2026-11-11, AN EXPIRY IS A CANCEL THROUGH
+    THE HOOK:) Maintainer 2026-11-11: Provisa cannot stop honouring anything the external identity provider
+    is the authority for. So an expiry is a cancel: when a grant or an entry reaches its date, the expiry
+    run sends "cancel this grant, expired" through the same outbound hook as any cancel, and the authority
+    acts. With an external identity provider, it decides, and Provisa enforces whatever its claims say.
+    With none, the local default applies an expiry cancel at once -- the date was agreed when the grant
+    was made, so it needs no second approval -- as the matching ordinary removal, attributed to the expiry;
+    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -94865,7 +94997,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (a join across sources, a replica build), the engine reads a code host by the first of these it can:
     Arrow Flight, then pgwire, and failing both the host''s tables are read as a replica. A statement reading
     one code source''s tables alone keeps going DIRECT to the host (REQ-2100), the governed statement in
-    and Arrow out.'
+    and Arrow out. (Amended 2026-11-11, ONE CONTRACT, A TREE OF CONNECTORS:) Maintainer 2026-11-11, so that
+    a long list of sources is credible: every connector derives from one source contract (the catalog of
+    tables, columns, types and descriptions; rows; what the source can be pushed; the values it requires;
+    how it signs in; in process or on a host -- the code resolver''s tags, REQ-2221). Code resolvers implement
+    that contract, one runtime per supported language (Node, Python, Go, Rust). The API resolvers -- OpenAPI
+    and REST, GraphQL, gRPC, OData -- are instances of code resolvers, each reading its API''s own description.
+    Every other connector descends from a code resolver or an API resolver: a branded connector is its connector.yaml
+    and small overrides on one of them, and a hand-built one is the exception. The one other root is the
+    SQL family, read by the serving engines natively; it is stated as such, not hidden. Each base has a
+    conformance suite every connector built on it inherits, so a branded connector''s own tests cover only
+    its configuration and overrides. Each named source has a page generated from its definition -- its base,
+    what it can be pushed, what it needs to connect, and when it was last verified live (or verified against
+    its base) -- never written by hand. The audit of every existing connector, naming the base it sits or
+    would sit on and what it needs from it, is the first step. (Amended 2026-11-11, THE OTHER ROOT IS WHAT
+    THE ENGINES READ NATIVELY:) Maintainer 2026-11-11, after the connector audit. The tree''s other root
+    is everything the serving engines read natively, named for that, not "the SQL family": SQL databases
+    and warehouses, files and lakes (Parquet, CSV, Delta, Iceberg, Hive) and the stores the engines attach
+    directly (MongoDB, Cassandra, Redis, Elasticsearch, Pinot, Druid, Prometheus, Kafka), as named groups
+    within it. A host that serves the source contract over pgwire is a code-resolver instance whatever its
+    language, so the Calcite adapters (Salesforce, ServiceNow, Jira, SharePoint, Splunk and the rest) sit
+    in the tree as Java-runtime hosts, not as hand-built connectors.'
 - id: REQ-2236
   status: proposed
   target: 2027-Q1
@@ -94902,35 +95054,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine
     does natively with no difference is left out. Each page states that rule at its top and counts the features
     left out as native, and the conformance check is what makes the omission hold: a feature left out that
-    answers otherwise than PostgreSQL fails the run. Beside the pages, a generated summary shows each feature
-    across the engines (native, polyfilled, differs, refused) for choosing an engine. Both come from the
-    one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11.
-    A grid row''s polyfill is written as a rule in a notation the translator itself executes, not described
-    beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray,
-    1)) and, for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a);
-    trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot
-    in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts
-    the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling.
-    A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or
-    literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to
-    an array''s depth, choosing by a value''s type, a check that refuses a bad value at run time), the rule''s
-    replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim,
-    with the helper''s name and one-line purpose where one is used, so what the docs show is what runs.
-    Each engine''s page counts its rows that are rules and those that use helpers. (Amended 2026-11-11,
-    THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be
-    just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement,
-    the row''s rule is that function''s name, the function does the matching and the rewrite on the tree,
-    and the documentation prints the name with its one-line purpose. Every row still has a rule; the count
-    of rules that are only a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES
-    ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s
-    limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid
-    covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate
-    an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source
-    with its own semantics, and the documentation says so once; a difference that comes from the source
-    is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific
-    source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source
-    type (and, where it matters, its version or a setting) that either keeps an operation from being pushed
-    to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
+    answers otherwise than PostgreSQL fails the run. [SUPERSEDED by REQ-2236, 2026-11-11 -- the summary
+    is one table per engine, not a cross-engine matrix. Kept here for history; do not implement against
+    it.] Beside the pages, a generated summary shows each feature across the engines (native, polyfilled,
+    differs, refused) for choosing an engine. [END SUPERSEDED BLOCK] Both come from the one grid in code.
+    (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11. A grid row''s
+    polyfill is written as a rule in a notation the translator itself executes, not described beside the
+    code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray, 1)) and,
+    for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a); trino: cardinality($a)),
+    or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot in their own dialects into
+    trees with placeholder nodes, and a rule matches tree against tree and grafts the matched subtrees into
+    the replacement, so applying a rule is AST manipulation, never string handling. A write polyfill is
+    a rule of the same form whose pattern is a value going in (a cast, a parameter or literal of a type,
+    an assigned column). Where a polyfill is logic a rule cannot state (recursing to an array''s depth,
+    choosing by a value''s type, a check that refuses a bad value at run time), the rule''s replacement
+    names a helper, and the helper is the exception. The documentation prints each rule verbatim, with the
+    helper''s name and one-line purpose where one is used, so what the docs show is what runs. Each engine''s
+    page counts its rows that are rules and those that use helpers. (Amended 2026-11-11, THE ESCAPE HATCH
+    IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be just the name of
+    its rewrite function: where a polyfill cannot be stated as a pattern and replacement, the row''s rule
+    is that function''s name, the function does the matching and the rewrite on the tree, and the documentation
+    prints the name with its one-line purpose. Every row still has a rule; the count of rules that are only
+    a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES ONLY; SOURCES GET
+    HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s limitations,
+    as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid covers the
+    serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate an engine
+    pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source with its
+    own semantics, and the documentation says so once; a difference that comes from the source is not a
+    polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific source
+    or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source type
+    (and, where it matters, its version or a setting) that either keeps an operation from being pushed to
+    it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
     documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY
     CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above.
     The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source
@@ -94968,7 +95122,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     It is expensive, so it is a long-term objective and never a release gate; the release gates stay as
     REQ-1989 states them. Connectors that run in containers can be covered on a schedule; the paid warehouses
     run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated
-    pages print, for each row, the last run that verified it.'
+    pages print, for each row, the last run that verified it. (Amended 2026-11-11, THE SUMMARY IS PIVOTED,
+    ONE TABLE PER ENGINE:) Maintainer 2026-11-11: a feature-by-engine matrix with a column per dialect is
+    unreadable; it is fine to store the grid that way, not to show it. The summary page is one section per
+    engine, each the same table as that engine''s own page: one row per feature that is not native there
+    (feature, read polyfill, read limitations, write polyfill, write limitations), the native features counted,
+    not listed.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -94985,8 +95144,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     standard like FIBO -- can be imported. Importing is an alignment, not an attachment: its classes and
     properties come in as curated terms with their definitions, and each is aligned with the terms Provisa
     already derived from the model (synonym, kind of, part of, same entity), so the imported meaning grounds
-    through the model''s own columns and tables. Nothing is linked field by field; a term that aligns
-    with nothing stays a Concept until it does.'
+    through the model''s own columns and tables. Nothing is linked field by field; a term that aligns with
+    nothing stays a Concept until it does. (Amended 2026-11-11, A WHOLE RELEASE IMPORTS, AND NOTHING IS
+    LOST:) Maintainer 2026-11-11. An import can take a whole ontology release -- every module file of it,
+    as one archive -- and resolves the release''s own imports between its files locally, never by fetching;
+    a reference to a module outside the archive is still counted as left out. What Provisa''s terms do not
+    model is kept, not dropped: restrictions and cardinalities, disjointness, inverse and transitive properties,
+    property chains, named individuals with properties of their own, datatype ranges and annotations (sources,
+    editorial notes, labels by language) are stored on the term they belong to, shown on its page, and written
+    back out on export, so an imported ontology round-trips. Provisa does not reason over them. Plain enumerated
+    individuals still come in as valid values. How a relation between two classes (an OWL object property
+    with a domain and a range) is modelled is a separate decision; until it is made, such a property is
+    kept with its domain and range as above, not reduced to a part-of edge.'
   use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
     Provisa already knows.
 - id: REQ-2238
@@ -95010,7 +95179,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     term (authoritativeDefinitions of type semantics), and the ODPS export carries the same links; an Apache
     Ossie export of the terms a product reaches; and Snowflake Horizon and Unity Catalog, which have no
     glossary to write into, carry each column''s grounded term through their own primitives -- a tag naming
-    the term and the term''s definition in the column comment.'
+    the term and the term''s definition in the column comment. (Amended 2026-11-11, DATAZONE LINKS NO TERM:)
+    Lead 2026-11-11, following REQ-1389: DataZone records no author for a glossary assignment, so Provisa''s
+    links could not be told from a steward''s; DataZone receives no column-to-term links. Every other glossary
+    catalog links each exported column to its grounded term, a key column included.'
   use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.
 - id: REQ-2239
   status: proposed
@@ -95021,14 +95193,47 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: MUST
   type: ui
   description: 'Maintainer 2026-11-11: consistency across the 2D diagrams has been hard to keep, so every
-    2D graph view (the ERD, the graph explorer''s lane diagram, the ontology graph and any later one)
-    is drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and
-    by nothing else. The component owns the library''s setup, one prescriptive visual language (a node
-    shape with a type-coloured band, an icon and a two-line label, one edge style with arrows only where
-    direction carries meaning and dashes for pending or indirect, dashed tinted group boxes labelled on
-    their border, a dot-grid canvas, one place for the controls and the legend, one hover and selection
-    state), its layout presets, focus actions, saved layouts and export. A view supplies only its nodes,
-    edges, groups, each node''s type and the layout preset; it sets no colour, shape or control of its
-    own. The visual language takes its tokens from the detail cards. A test fails any code outside the
-    component that imports the graph library or its layout extensions. No other 2D graph library is added;
-    the 3D view and text diagrams (mermaid in Analyze) are not 2D graph views and keep their own.'
+    2D graph view (the ERD, the graph explorer''s lane diagram, the ontology graph and any later one) is
+    drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and by nothing
+    else. The component owns the library''s setup, one prescriptive visual language (a node shape with a
+    type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries
+    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid
+    canvas, one place for the controls and the legend, one hover and selection state), its layout presets,
+    focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node''s
+    type and the layout preset; it sets no colour, shape or control of its own. The visual language takes
+    its tokens from the detail cards. A test fails any code outside the component that imports the graph
+    library or its layout extensions. No other 2D graph library is added; the 3D view and text diagrams
+    (mermaid in Analyze) are not 2D graph views and keep their own. (Amended 2026-11-11, PRODUCT PAGES REUSE
+    TABLE COMPONENTS:) Maintainer 2026-11-11: one clean visual language. A data product''s page is composed
+    of the components the tables page already uses -- the columns table with its mask, PII and term marks
+    for each offer''s contracts, the data quality panel and checks bar, the profile panel and terrain, the
+    preview pane, the access panel, the associations -- each parameterized (owner or consumer mode, scoped
+    to an offer''s role and data level, fed a profile the server has already sanitized) rather than rebuilt.
+    New UI is only what has no table counterpart: the offer cards and the form that adds an offer. A column,
+    a quality result or a profile looks the same wherever it appears. (Amended 2026-11-11, A JUNCTION IS
+    A DIAMOND:) Maintainer 2026-11-11. The one exception to the single node shape: a junction table (an
+    associative table that exists to connect others, REQ-1588) is drawn as a diamond, as Chen''s ER notation
+    draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
+    colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
+    with arrows; dashed lines mean pending or indirect.'
+- id: REQ-2240
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-11: a list such as Registered Tables gets long for a developer, so rows
+    can be selected and deleted together. Selection lives in the shared list table, so every list page has
+    it the same way: a checkbox column, shift-click to select a range, and a header checkbox that selects
+    every row the current filter shows; a plain row click still opens the detail panel. Once anything is
+    selected a bar shows the count with Delete and Clear; Delete asks once, naming the rows. The server
+    deletes them in one call through the same guard a single delete runs: what can be deleted is deleted,
+    and each row refused (for example a table a view, relationship or product uses) is named with its reason,
+    as the bulk accept of reviewed terms reports what it decided and what it refused. It is available in
+    every environment to whoever may delete those rows. (Amended 2026-11-11, EACH DEPENDENT IS A LINK:)
+    Maintainer 2026-11-11: when a delete is refused because other objects still refer to the row (the "Cannot
+    delete X yet" dialog, and each refusal of a bulk delete), every object named is itself a link that opens
+    that object''s own detail panel on its page, where it can be changed or deleted; there is no separate
+    per-kind "Open the page" link.'

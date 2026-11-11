@@ -111,7 +111,12 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
   // source opens in edit; a step that navigates before then waits behind those rebuilds (run
   // 40227062159: the next page's tables query outlasted its 15 s).
+  // REQ-2234: the panel opens first on the "Register tables" step, the edit behind it; skipping
+  // the step reveals the edit.
   const save = page.getByTestId("sources-edit-submit");
+  const skipRegister = page.getByTestId("register-tables-skip");
+  await expect(skipRegister.or(save)).toBeVisible({ timeout: 60000 });
+  if (await skipRegister.isVisible()) await skipRegister.click();
   await expect(save).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
   if (seconds === undefined) return;
@@ -462,7 +467,10 @@ export async function registeredTableNames(page: Page, sourceId: string): Promis
 /**
  * Register one of the tables a remote source offers (REQ-308, REQ-322): adding such a source
  * registers nothing, so the table is found in what the source offers and registered with the
- * columns named, each visible to every role. Returns the table's registered name.
+ * columns named, each granted to org_admin, the role runSqlOnPage reads as. A named grant is used
+ * as given (REQ-2154, amended 2026-11-10): "*" names no role, so a column granted ["*"] is served
+ * to none and the table is in no role's schema (run 43067159378: V006 on the SQL page).
+ * Returns the table's registered name.
  */
 export async function registerOfferedTable(
   page: Page,
@@ -495,7 +503,7 @@ export async function registerOfferedTable(
           domainId: "",
           schemaName,
           tableName,
-          columns: columns.map((name) => ({ name, visibleTo: ["*"] })),
+          columns: columns.map((name) => ({ name, visibleTo: ["org_admin"] })),
         },
       },
     },
@@ -573,9 +581,16 @@ export async function runSqlOnPage(
     await page.waitForTimeout(SOURCE_STARTING_RETRY_AFTER_MS);
   }
   // The first query on a materialize-only source lands it first; allow for that. A statement that
-  // matched nothing is answered too, with no grid: a caller polling for rows asks again.
+  // matched nothing is answered too, with no grid: a caller polling for rows asks again. A
+  // statement the page answers with an error fails here with that error, not after waiting out
+  // the test for a grid that cannot come (run 43067159378: a V006 sat on the page for 120 s).
   const grid = page.getByTestId("download-csv-btn");
-  await expect(grid.or(page.getByTestId("sql-results-empty"))).toBeVisible({ timeout: 120000 });
+  const empty = page.getByTestId("sql-results-empty");
+  const error = page.getByTestId("sql-results-error");
+  await expect(grid.or(empty).or(error)).toBeVisible({ timeout: 120000 });
+  if (await error.isVisible()) {
+    throw new Error(`the SQL page answered ${sql} with an error: ${await error.innerText()}`);
+  }
   if (!(await grid.isVisible())) return [];
   const rows = page.locator(".sql-results-table tbody tr");
   return rows.evaluateAll((trs) =>

@@ -232,6 +232,8 @@ data_products = Table(  # REQ-1634
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # REQ-2219: who created it, set on insert only; it grants nothing.
     Column("created_by", Text),
+    # REQ-2180: the freshness every contract of the product promises, in seconds.
+    Column("freshness", Integer),
 )
 
 naming_rules = Table(
@@ -783,6 +785,8 @@ glossary_terms = Table(
     Column("retire_on", Date),
     Column("status_by", Text),
     Column("status_at", DateTime(timezone=True)),
+    # REQ-2237: the IRI of the imported concept the term is (schema.sql).
+    Column("iri", Text),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )
@@ -1354,6 +1358,80 @@ data_product_commands = Table(
         nullable=False,
     ),
     PrimaryKeyConstraint("product_id", "command_name"),
+)
+
+# REQ-2180 OFFERS: a product's offers (see schema.sql).
+data_product_offers = Table(
+    "data_product_offers",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("data_level", Text, nullable=False, server_default="full"),
+    Column("sample_views", JSON, nullable=False, default=list, server_default="[]"),
+    Column("dq_results", Boolean, nullable=False, server_default=true()),
+    Column("profiles", Boolean, nullable=False, server_default=false()),
+    Column("open", Boolean, nullable=False, server_default=false()),
+    Column("duration_days", Integer),
+    Column("version", Integer, nullable=False, server_default="1"),
+    Column("published_by", Text),
+    Column("review", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("product_id", "name"),
+    CheckConstraint(
+        "data_level IN ('full', 'sample', 'synthetic')",
+        name="data_product_offers_data_level_check",
+    ),
+)
+
+# REQ-2180: each offer's contract for each dataset of its product, versioned on its own.
+data_product_offer_contracts = Table(
+    "data_product_offer_contracts",
+    metadata,
+    Column(
+        "offer_id",
+        Integer,
+        ForeignKey("data_product_offers.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("contract", JSON, nullable=False),
+    PrimaryKeyConstraint("offer_id", "table_id"),
+)
+
+# REQ-2180: a bid, or the cancel of an accepted one, as the request it fired through the outbound
+# request hook, and its outcome (see schema.sql).
+data_product_bids = Table(
+    "data_product_bids",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_id", Text, nullable=False, unique=True),
+    Column("kind", Text, nullable=False, server_default="bid"),
+    Column("cancels", Integer, ForeignKey("data_product_bids.id", ondelete="CASCADE")),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("offer_id", Integer, ForeignKey("data_product_offers.id", ondelete="SET NULL")),
+    Column("offer_version", Integer, nullable=False),
+    Column("terms", JSON, nullable=False),
+    Column("requester", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("hook", Text, nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decline_reason", Text),
+    # none_as_null: a bid with nothing granted (None) is SQL NULL, never the JSON value null.
+    Column("granted", JSON(none_as_null=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
+        name="data_product_bids_status_check",
+    ),
 )
 
 tracked_webhooks = Table(
@@ -2535,6 +2613,123 @@ glossary_term_drafts = Table(
     CheckConstraint(
         "status IN ('draft', 'accepted', 'merged', 'rejected')",
         name="glossary_term_drafts_status_check",
+    ),
+)
+
+# REQ-2237: an ontology imported as an alignment (provisa/ontology_import, schema.sql). ``domains``
+# is the steward's working domains as a JSON list, given to the terms the import creates;
+# ``summary`` a JSON object of what the file held and what was left out, by why.
+glossary_ontology_imports = Table(
+    "glossary_ontology_imports",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("title", Text, nullable=False),
+    Column("file_name", Text, nullable=False),
+    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld
+    Column("domains", Text, nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("imported_by", Text, nullable=True),
+    Column("imported_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("applied_by", Text, nullable=True),
+    Column("applied_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')",
+        name="glossary_ontology_imports_format_check",
+    ),
+)
+
+# REQ-2237: each class, property, value type or concept an import holds. ``payload`` is a JSON
+# object: the item's source keys (its IRIs or Ossie names, several when one name folds them) and
+# its alternative labels. ``term_id`` is the term an applied item became or was aligned with.
+glossary_ontology_items = Table(
+    "glossary_ontology_items",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "import_id",
+        Integer,
+        ForeignKey("glossary_ontology_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("ordinal", Integer, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("kind", Text, nullable=False),  # class | property | value | concept
+    Column("definition", Text, nullable=True),
+    Column("iri", Text, nullable=True),
+    Column("payload", Text, nullable=False),
+    Column("status", Text, nullable=False),  # pending | excluded | applied
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("import_id", "ordinal"),
+    CheckConstraint(
+        "kind IN ('class', 'property', 'value', 'concept')",
+        name="glossary_ontology_items_kind_check",
+    ),
+    CheckConstraint(
+        "status IN ('pending', 'excluded', 'applied')",
+        name="glossary_ontology_items_status_check",
+    ),
+)
+
+# REQ-2237: an alignment between an imported item and a glossary term (``term_id``) or another
+# item of the import (``other_item_id``): SAME_AS (the item is that term) or a relationship type,
+# read from the item when ``item_is_source``. ``basis`` says why it was proposed (or that a steward
+# added it); ``status`` is proposed until a steward approves or rejects it, and written once
+# applied.
+glossary_ontology_alignments = Table(
+    "glossary_ontology_alignments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "import_id",
+        Integer,
+        ForeignKey("glossary_ontology_imports.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "item_id",
+        Integer,
+        ForeignKey("glossary_ontology_items.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "other_item_id",
+        Integer,
+        ForeignKey("glossary_ontology_items.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column("rel_type", Text, nullable=False),
+    Column("item_is_source", Boolean, nullable=False),
+    Column("basis", Text, nullable=False),
+    Column("status", Text, nullable=False),  # proposed | approved | rejected | written
+    Column("use_definition", Boolean, nullable=False, server_default=false()),
+    Column("decided_by", Text, nullable=True),
+    Column("decided_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "rel_type IN ('SAME_AS', 'SYNONYM_OF', 'KIND_OF', 'PART_OF', 'VALID_VALUE_OF', "
+        "'RELATED_TO')",
+        name="glossary_ontology_alignments_rel_type_check",
+    ),
+    CheckConstraint(
+        "status IN ('proposed', 'approved', 'rejected', 'written')",
+        name="glossary_ontology_alignments_status_check",
+    ),
+    CheckConstraint(
+        "(term_id IS NULL) <> (other_item_id IS NULL)",
+        name="glossary_ontology_alignments_end_check",
     ),
 )
 

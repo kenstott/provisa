@@ -33,6 +33,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1634: a product's members travel with the product and the tables and commands.
         "data_product_tables",
         "data_product_commands",
+        # REQ-2180: a product's offers and the contracts derived from them travel with it.
+        "data_product_offers",
+        "data_product_offer_contracts",
         "naming_rules",
         "registered_tables",
         "table_columns",
@@ -134,6 +137,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "entitlement_expiries",
         # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
         "entitlement_pending",
+        # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
+        # them, as the entitlements are.
+        "data_product_bids",
     }
 )
 
@@ -194,6 +200,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # queue of the terms they propose, drafts until a steward decides on them.
         "glossary_term_scans",
         "glossary_term_drafts",
+        # REQ-2237: the ontologies imported into this environment's glossary and the alignments
+        # proposed for them, until a steward decides on each and applies the import.
+        "glossary_ontology_imports",
+        "glossary_ontology_items",
+        "glossary_ontology_alignments",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
@@ -253,7 +264,14 @@ PARTIAL: frozenset[str] = frozenset({"org_settings"})
 #: (``metadata_export.endpoint``, ``cache.redis_url``), and an exact list would miss the next key
 #: added inside one.
 #: REQ-2122: ``catalogs`` names the external catalogs and how to sign in to them.
-NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "catalogs", "redirect", "cache")
+NEVER_SETTING_PREFIXES: tuple[str, ...] = (
+    "metadata_export",
+    "catalogs",
+    "redirect",
+    "cache",
+    # REQ-2180: the system an environment's access requests go to is the environment's own.
+    "offer_hook",
+)
 
 #: Every table name this module classifies. The test asserts it equals ``schema_org``'s metadata.
 CLASSIFIED: frozenset[str] = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL

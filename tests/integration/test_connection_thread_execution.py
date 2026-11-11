@@ -528,6 +528,7 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
     from provisa.api.mcp import tools
     from provisa.core import request_thread
     from provisa.core.connection_loop import current_connection_loop
+    from tests.unit.mcp_local_principal import act_for
 
     monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
     request_idents: set[int] = set()
@@ -552,9 +553,11 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
 
     # The state a first start has: no org setting and no config file, so no derived role is
     # declared (the loopback reads them to name the role it acts as).
-    mcp = mcp_server.build_mcp_server(
-        SimpleNamespace(org_id="default", settings_overrides={}, config=None)
-    )
+    mcp_state = SimpleNamespace(org_id="default", settings_overrides={}, config=None)
+    # REQ-1105: a loopback call acts for the principal the operator names, found in the org; the
+    # subject here is the request thread, not the principal (tests/unit/mcp_local_principal).
+    act_for(monkeypatch, mcp_state)
+    mcp = mcp_server.build_mcp_server(mcp_state)
     front_ident = threading.get_ident()
     with (
         patch.object(tools, "run_sql", _blocking_run_sql),

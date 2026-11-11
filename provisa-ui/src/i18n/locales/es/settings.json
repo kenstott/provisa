@@ -595,6 +595,10 @@
         "label": "Rol local de MCP",
         "help": "El rol con el que se ejecutan las llamadas MCP locales (stdio); hasta que se defina, esas llamadas se rechazan. Requiere confirmación al guardar porque concede el acceso de ese rol a cualquiera que pueda iniciar el cliente local."
       },
+      "principal": {
+        "label": "Principal local de MCP",
+        "help": "El principal (id de usuario) en cuyo nombre actúan las llamadas MCP locales (stdio), junto al rol local; los derechos de esa persona acotan el rol. Mientras no esté definido, esas llamadas se rechazan. Protegido porque quien pueda iniciar el cliente local actúa con el acceso de esa persona."
+      },
       "external_url": {
         "label": "Dirección externa de MCP",
         "help": "La dirección de MCP que se muestra a los usuarios cuando la implementación está detrás de un proxy."

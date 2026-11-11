@@ -46,7 +46,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.dialect import Dialects
 
-from provisa.core.pg_error import END, MARK, PostgresError, raising
+from provisa.core.pg_error import MARK, PostgresError, raising
 from provisa.core.pg_range import (
     MULTIRANGE_TYPES,
     RANGE_TYPES,
@@ -56,6 +56,7 @@ from provisa.core.pg_range import (
 )
 from provisa.transpiler import (
     engine_refusals,
+    polyfill,
     pg_forms,
     pg_forms_aggregate,
     pg_forms_enum,
@@ -70,6 +71,7 @@ from provisa.transpiler import (
     pg_zones,
 )
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
+from provisa.transpiler.polyfill import notation as polyfill_notation
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
 
@@ -161,6 +163,16 @@ class FunctionRefused(ValueError):
     def __init__(self, function: str, dialect: str) -> None:
         self.params = {"function": function, "dialect": dialect}
         super().__init__(f"{function}() has no form on {dialect}")
+
+
+class RowRefused(FunctionRefused):
+    """A call the polyfill grid's row refuses on the routed engine (REQ-2236, THE REFUSAL LIVES IN
+    THE GRID): the client receives the row's SQLSTATE and message."""
+
+    def __init__(self, function: str, dialect: str, refusal: polyfill.Refusal) -> None:
+        super().__init__(function, dialect)
+        self.sqlstate = refusal.sqlstate
+        self.args = (refusal.message,)
 
 
 def strict(params: str, sql_type: str, answer: str) -> str:
@@ -992,244 +1004,6 @@ _NUMBERS: tuple[Macro, ...] = (
     ),
 )
 
-#: A list's dimensions, of its type: PostgreSQL's empty array has none.
-_ARRAY_NDIMS = (
-    "CAST(CASE WHEN len(a) > 0 THEN length(regexp_extract(typeof(a), '(\\[\\])+$')) // 2 END "
-    "AS INTEGER)"
-)
-_TRINO_NDIMS = (
-    "CAST(CASE WHEN cardinality(a) > 0 "
-    "THEN length(regexp_extract(typeof(a), '^(array\\()+')) / 6 END AS INTEGER)"
-)
-_CLICKHOUSE_NDIMS = (
-    "CAST(CASE WHEN length(a) > 0 THEN countSubstrings(toTypeName(a), 'Array(') END "
-    "AS Nullable(Int32))"
-)
-#: PostgreSQL's MAXDIM.
-_MAX_DIMENSIONS = 6
-_NO_DIMENSIONS = "'dimension array or low bound array cannot be null'"
-
-
-def _dimension_length(dimension: str) -> str:
-    """The length of one dimension of a rectangular list, from 0: each sublist is as long."""
-    return f"json_array_length(to_json(a), '$' || repeat('[0]', CAST({dimension} AS INTEGER)))"
-
-
-def _trino_dimension_length(depth: int) -> str:
-    first = "CAST(a AS JSON)"
-    for _ in range(depth):
-        first = f"json_extract({first}, '$[0]')"
-    return f"json_array_length({first})"
-
-
-def _clickhouse_dimension_length(depth: int) -> str:
-    return f"JSONLength({', '.join(('toJSONString(a)', *('1',) * depth))})"
-
-
-def _each_dimension(length: Callable[[int], str]) -> str:
-    whens = (f"WHEN {i + 1} THEN {length(i)}" for i in range(_MAX_DIMENSIONS))
-    return f"CASE d {' '.join(whens)} END"
-
-
-def _in_dimensions(answer: str, ndims: str = _ARRAY_NDIMS, as_type: str = "INTEGER") -> str:
-    return f"CAST(CASE WHEN d BETWEEN 1 AND {ndims} THEN {answer} END AS {as_type})"
-
-
-_ARRAY_UPPER = _in_dimensions(_dimension_length("d - 1"))
-_TRINO_UPPER = _in_dimensions(_each_dimension(_trino_dimension_length), _TRINO_NDIMS)
-_CLICKHOUSE_UPPER = _in_dimensions(
-    _each_dimension(_clickhouse_dimension_length), _CLICKHOUSE_NDIMS, "Nullable(Int32)"
-)
-
-
-def _trino_raising(sqlstate: str, message_sql: str) -> str:
-    return f"fail('{MARK} {sqlstate}: ' || {message_sql} || ' {END}')"
-
-
-def _clickhouse_refused(condition: str, function: str) -> str:
-    """0 unless ``condition``, where it raises: throwIf's message is a constant, so a message
-    PostgreSQL writes from the value is refused by name, as an answer that differs."""
-    return f"throwIf({condition}, '{MARK} 0A000: {function} {pg_forms_types.REFUSED} {END}')"
-
-
-def _filled(*rest: str) -> str:
-    """array_fill of one dimension, from 1: a list has no other shape to hold what it asks for."""
-    ones = "".join(f" AND list_filter({r}, _b -> _b <> 1) = []" for r in rest)
-    missing = " OR ".join(f"{r} IS NULL" for r in ("dims", *rest))
-    return (
-        f"CASE WHEN {missing} THEN {raising('22004', _NO_DIMENSIONS)} "
-        f"WHEN len(dims) = 1{ones} THEN list_transform(range(dims[1]), _i -> v) "
-        f"ELSE {raising('0A000', f"'array_fill {pg_forms_types.REFUSED}'")} END"
-    )
-
-
-def _trino_filled(*rest: str) -> str:
-    ones = "".join(f" AND all_match({r}, _b -> _b = 1)" for r in rest)
-    missing = " OR ".join(f"{r} IS NULL" for r in ("dims", *rest))
-    return (
-        f"CASE WHEN {missing} THEN {_trino_raising('22004', _NO_DIMENSIONS)} "
-        f"WHEN cardinality(dims) = 1{ones} THEN repeat(v, dims[1]) "
-        f"ELSE {_trino_raising('0A000', f"'array_fill {pg_forms_types.REFUSED}'")} END"
-    )
-
-
-def _clickhouse_filled(*rest: str) -> str:
-    ones = "".join(f" OR NOT arrayAll(_b -> _b = 1, {r})" for r in rest)
-    wrong = _clickhouse_refused(f"length(dims) <> 1{ones}", "array_fill")
-    return f"arrayWithConstant({wrong} + assumeNotNull(dims[1]), v)"
-
-
-def _trimmed(limit: str, sqlstate: str, message: str, answer: str, length: str = "len(a)") -> str:
-    return (
-        f"CASE WHEN a IS NULL OR n IS NULL THEN NULL WHEN n < 0 OR n > {length} THEN "
-        f"{limit.format(raising=raising(sqlstate, f"'{message} ' || {length}"))} ELSE {answer} END"
-    )
-
-
-_SHUFFLED = (
-    "list_transform(list_sort(list_transform(a, _x -> {'k': random(), 'v': _x})), _e -> _e.v)"
-)
-_TRINO_SORTED_OUT = (
-    "CASE WHEN a IS NULL OR n IS NULL THEN NULL WHEN n < 0 OR n > cardinality(a) THEN "
-    "{raises} ELSE {answer} END"
-)
-_TRINO_POSITIONS = (
-    "CASE WHEN cardinality(a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE "
-    "CAST(filter(sequence(1, cardinality(a)), _i -> a[_i] IS NOT DISTINCT FROM v) "
-    "AS ARRAY(INTEGER)) END"
-)
-_CLICKHOUSE_SAME = "((_x IS NULL AND v IS NULL) OR _x = v)"
-
-
-def _trino_out_of(sqlstate: str, message: str, answer: str) -> str:
-    raises = _trino_raising(sqlstate, f"'{message} ' || CAST(cardinality(a) AS VARCHAR)")
-    return _TRINO_SORTED_OUT.format(raises=raises, answer=answer)
-
-
-def _clickhouse_out_of(function: str, answer: str) -> str:
-    return answer.format(wrong=_clickhouse_refused("n IS NULL OR n < 0 OR n > length(a)", function))
-
-
-_ARRAYS: tuple[Macro, ...] = (
-    _macro(
-        "array_ndims",
-        "a",
-        _ARRAY_NDIMS,
-        {_TRINO: _TRINO_NDIMS, _CLICKHOUSE: _CLICKHOUSE_NDIMS},
-    ),
-    _macro(
-        "array_dims",
-        "a",
-        f"array_to_string(list_transform(range({_ARRAY_NDIMS}), "
-        f"_d -> '[1:' || {_dimension_length('_d')} || ']'), '')",
-        {
-            _TRINO: f"array_join(transform(sequence(1, {_TRINO_NDIMS}), d -> '[1:' || "
-            f"CAST({_each_dimension(_trino_dimension_length)} AS VARCHAR) || ']'), '')",
-            _CLICKHOUSE: f"CASE WHEN length(a) > 0 THEN arrayStringConcat(arrayMap(d -> "
-            f"concat('[1:', toString({_each_dimension(_clickhouse_dimension_length)}), ']'), "
-            f"range(1, assumeNotNull({_CLICKHOUSE_NDIMS}) + 1)), '') END",
-        },
-    ),
-    _macro(
-        "array_lower",
-        "a, d",
-        _in_dimensions("1"),
-        {
-            _TRINO: _in_dimensions("1", _TRINO_NDIMS),
-            _CLICKHOUSE: _in_dimensions("1", _CLICKHOUSE_NDIMS, "Nullable(Int32)"),
-        },
-    ),
-    _macro(
-        "array_upper",
-        "a, d",
-        _ARRAY_UPPER,
-        {_TRINO: _TRINO_UPPER, _CLICKHOUSE: _CLICKHOUSE_UPPER},
-    ),
-    _macro(
-        "array_fill",
-        "v, dims",
-        _filled(),
-        {_TRINO: _trino_filled(), _CLICKHOUSE: _clickhouse_filled()},
-    ),
-    _macro(
-        "array_fill",
-        "v, dims, lower_bounds",
-        _filled("lower_bounds"),
-        {
-            _TRINO: _trino_filled("lower_bounds"),
-            _CLICKHOUSE: _clickhouse_filled("lower_bounds"),
-        },
-    ),
-    _macro(
-        "array_positions",
-        "a, v",
-        "CAST(list_filter(range(1, len(a) + 1), _i -> a[_i] IS NOT DISTINCT FROM v) AS INTEGER[])",
-        {
-            _TRINO: _TRINO_POSITIONS,
-            _CLICKHOUSE: "arrayMap(_p -> toInt32(_p.2), arrayFilter(_p -> "
-            f"{_CLICKHOUSE_SAME.replace('_x', '_p.1')}, arrayZip(a, arrayEnumerate(a))))",
-        },
-    ),
-    _macro(
-        "array_replace",
-        "a, v, w",
-        "list_transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
-        {
-            _TRINO: "transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
-            _CLICKHOUSE: f"arrayMap(_x -> CASE WHEN {_CLICKHOUSE_SAME} THEN w ELSE _x END, a)",
-        },
-    ),
-    _macro(
-        "array_sample",
-        "a, n",
-        _trimmed("{raising}", "22023", "sample size must be between 0 and", f"{_SHUFFLED}[1:n]"),
-        {
-            _TRINO: _trino_out_of(
-                "22023", "sample size must be between 0 and", "slice(shuffle(a), 1, n)"
-            ),
-            _CLICKHOUSE: _clickhouse_out_of(
-                "array_sample", "arraySlice(arrayShuffle(a), 1 + {wrong}, n)"
-            ),
-        },
-    ),
-    _macro(
-        "array_shuffle",
-        "a",
-        _SHUFFLED,
-        own={_TRINO: "shuffle(a)", _CLICKHOUSE: "arrayShuffle(a)"},
-    ),
-    _macro(
-        "trim_array",
-        "a, n",
-        _trimmed(
-            "{raising}",
-            "2202E",
-            "number of elements to trim must be between 0 and",
-            "a[1:len(a) - n]",
-        ),
-        {
-            _TRINO: _trino_out_of(
-                "2202E",
-                "number of elements to trim must be between 0 and",
-                "slice(a, 1, cardinality(a) - n)",
-            ),
-            _CLICKHOUSE: _clickhouse_out_of(
-                "trim_array", "arraySlice(a, 1 + {wrong}, length(a) - n)"
-            ),
-        },
-    ),
-    # DuckDB's array_length takes no dimension but the first, and refuses the call for any
-    # other: a dimension the list does not have is NULL, as array_upper's (a list counts from 1).
-    # (generate_subscripts(a, d) is read as its reverse-false form: pg_functions.)
-    _macro("array_length", "a, d", _ARRAY_UPPER, own={_EVERY_BUT_DUCKDB: MAPPED}),
-    _macro(
-        "generate_subscripts",
-        "a, d, reverse",
-        f"unnest(CASE WHEN reverse THEN range({_ARRAY_UPPER}, 0, -1) "
-        f"ELSE range(1, {_ARRAY_UPPER} + 1) END)",
-    ),
-)
-
 
 def _enum_ordered(answer: str) -> str:
     """``answer`` over two values of an enum, in its labels' order. A value the engine holds as
@@ -1826,7 +1600,6 @@ _ROWS: tuple[Macro, ...] = (
     ),
     *_NUMBERS,
     *_DATES,
-    *_ARRAYS,
     *_ENUMS,
     *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
     *(Macro(name, params, forms) for name, params, forms in pg_forms_enum.ROWS),
@@ -2092,6 +1865,7 @@ _NAMES = (
     | _SPELLED
     | set(_COUNTS_NAMES)
     | engine_refusals.NAMES
+    | polyfill.GRID.names
 )
 _MENTIONED = re.compile(
     r"\b("
@@ -2286,10 +2060,24 @@ def _is_volatile(value: exp.Expr) -> bool:
     )
 
 
-def _repeats_volatile(form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr]) -> bool:
-    """Whether the form names twice a parameter whose argument differs each time it is evaluated."""
-    named = [c.name for c in form.find_all(exp.Column) if not c.table]
+def _repeats_volatile(named: list[str], params: tuple[str, ...], args: list[exp.Expr]) -> bool:
+    """Whether a form names twice (``named``: each parameter it names, as often as it does) a
+    parameter whose argument differs each time it is evaluated."""
     return any(named.count(p) > 1 and _is_volatile(a) for p, a in zip(params, args))
+
+
+def _held_once(
+    form: exp.Expr, params: tuple[str, ...], args: list[exp.Expr], node: exp.Expr, name: str,
+    dialect: str,
+) -> exp.Expr:  # fmt: skip
+    """``form`` over a row of its arguments, each evaluated once. A row of arguments naming no
+    column is the same row for every row of a FROM, so that call is refused by name rather than
+    answered with one value for all of them."""
+    select = node.find_ancestor(exp.Select)
+    reads_rows = select is not None and select.args.get("from_") is not None
+    if reads_rows and not any(a.find(exp.Column) is not None for a in args):
+        raise FunctionRefused(name, dialect)
+    return _in_a_subquery(form, params, args)
 
 
 def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -> exp.Expr:
@@ -2299,12 +2087,10 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     so that call is refused by name rather than answered with one value for all of them."""
     form = _parsed(macro.name, len(args), dialect).copy()
     held = macro.name in pg_forms_types.HELD | pg_forms_hash.HELD | pg_forms_index.HELD
-    if _repeats_volatile(form, macro.params, args):
-        select = node.find_ancestor(exp.Select)
-        reads_rows = select is not None and select.args.get("from_") is not None
-        if reads_rows and not any(a.find(exp.Column) is not None for a in args):
-            raise FunctionRefused(macro.name, dialect)
-        return _in_a_subquery(form, macro.params, [_argument(a, held) for a in args])
+    named = [c.name for c in form.find_all(exp.Column) if not c.table]
+    if _repeats_volatile(named, macro.params, args):
+        each = [_argument(a, held) for a in args]
+        return _held_once(form, macro.params, each, node, macro.name, dialect)
     if form.find(exp.Lambda) is not None and any(a.find(exp.Select) is not None for a in args):
         return _in_a_subquery(form, macro.params, [_argument(a) for a in args])
     values = dict(zip(macro.params, args))
@@ -2315,6 +2101,64 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
         return node
 
     return form.transform(bound)
+
+
+@functools.lru_cache(maxsize=512)
+def _replacement(form: str, dialect: str, pattern: str) -> exp.Expr:
+    """A grid rule's replacement on ``dialect``, as a form here is read: on ClickHouse, with its
+    refusals thrown (:func:`_thrown`). The tree is shared: graft copies it."""
+    tree = polyfill_notation.replacement(form, polyfill.written_in(dialect), pattern)
+    return tree.transform(_thrown) if dialect == "clickhouse" else tree
+
+
+def _grafted(
+    replacement: exp.Expr, params: tuple[str, ...], args: list[exp.Expr], node: exp.Expr,
+    name: str, dialect: str,
+) -> exp.Expr:  # fmt: skip
+    """A grid rule's replacement with each hole its argument, as :func:`_written` binds a form."""
+    bound = [_argument(a) for a in args]
+    named = [h for h in map(polyfill.hole_name, replacement.walk()) if h is not None]
+    once = _repeats_volatile(named, params, args) or (
+        replacement.find(exp.Lambda) is not None and any(a.find(exp.Select) for a in args)
+    )
+    if once:
+        over_columns = polyfill.graft(replacement, {p: exp.column(p) for p in params})
+        return _held_once(over_columns, params, bound, node, name, dialect)
+    return polyfill.graft(replacement, dict(zip(params, bound)))
+
+
+def _polyfilled(
+    target: exp.Expr, node: exp.Expr, dialect: str, rewrite: Callable[[exp.Expr], exp.Expr]
+) -> exp.Expr | None:
+    """A call a rule of the polyfill grid matches (REQ-2236), written in the routed engine's form;
+    None where no rule matches. A dialect that is no column of the grid has no form of it, and the
+    call is refused by name."""
+    applied = polyfill.GRID.read(target, dialect)
+    if applied is None:
+        return None
+    called = target.name.lower() if isinstance(target, exp.Anonymous) else applied.feature.name
+    form = applied.form
+    if polyfill.column_of(dialect) is None:
+        raise FunctionRefused(called, dialect)
+    if form is None:
+        return target  # the engine's own
+    if isinstance(form, polyfill.Refusal):
+        raise RowRefused(called, dialect, form)
+    if isinstance(form, polyfill.Rewrite):
+        written = applied.rewritten
+        if written is None:
+            written = form.function(target, dialect)
+        if written is None:
+            return None
+    else:
+        assert applied.rule.pattern is not None
+        params = applied.rule.holes()
+        args = [applied.bindings[p].transform(rewrite) for p in params]
+        replacement = _replacement(form, dialect, applied.rule.pattern)
+        written = _grafted(replacement, params, args, node, called, dialect)
+    if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
+        return exp.alias_(written, called)  # named for the function
+    return written
 
 
 #: The functions that count the NULLs of any number of arguments: which of the two a form answers.
@@ -2654,8 +2498,6 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
     if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
         return "array_cat", [node.this, node.expressions[0]]
-    if isinstance(node, exp.ArraySize) and node.expression is not None:  # array_length(a, d)
-        return "array_length", [node.this, node.expression]
     if isinstance(node, exp.Repeat):
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
@@ -3063,6 +2905,9 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
+        polyfilled = _polyfilled(target, node, dialect, rewrite)
+        if polyfilled is not None:
+            return polyfilled
         call = _call(target)
         if call is None:
             return node

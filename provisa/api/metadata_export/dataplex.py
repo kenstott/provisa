@@ -32,8 +32,9 @@ in the target's location (REQ-1387). Its terms sit in one category per role, Cla
 Properties and Concepts (REQ-2141), and carry the role as the ``provisa-role`` label; a
 deprecated term carries ``provisa-deprecated``. A steward's own labels stand. SYNONYM_OF is a
 synonym entry link and every other edge a related one: Dataplex's glossary has no hierarchy
-between terms. A Class term is linked to the BigQuery entries of the tables it grounds and a
-Property term to their columns, by definition entry links (REQ-1389); a table with no BigQuery
+between terms. A Class term is linked to the BigQuery entries of the tables it grounds and of
+their key columns it holds, and a Property term to its columns, by definition entry links
+(REQ-1389, REQ-2238); a table with no BigQuery
 object, or whose entry does not appear in the target's location within a minute (Dataplex catalogs
 a new BigQuery view some time after it is made), is reported by name. Provisa chooses
 every entry link's id, and the ``provisa-`` prefix is the ownership test: Provisa creates and
@@ -401,6 +402,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
     ) -> None:
         """The org's glossary, its role categories, its terms and Provisa's entry links
         (module docstring)."""
+        from provisa.api.metadata_export.model import AssetKind
+
         glossary = f"{self._parent()}/glossaries/{resource_id(f'provisa-{snapshot.org_id}')}"
         await self._ensure(
             client,
@@ -467,7 +470,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
             if term.term_id not in entries:
                 continue
             for ref in term.assigned_to():
-                table_ref = ref if term.role == "class" else _table_of(ref)
+                # A Class holds its tables and their key columns (REQ-2141), a Property columns.
+                on_column = ref.kind != AssetKind.TABLE
+                table_ref = _table_of(ref) if on_column else ref
                 resource = member_resource(
                     table_ref,
                     sources=sources,
@@ -489,7 +494,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     f"{resource.removeprefix('//')}",
                     "type": "SOURCE",
                 }
-                if term.role == "property":
+                if on_column:
                     source["path"] = f"Schema.{ref.parts[-1]}"
                 _link("definition", [source, {"name": entries[term.term_id], "type": "TARGET"}])
         # Every term in the Provisa glossary, so a term that left the snapshot loses its links too.

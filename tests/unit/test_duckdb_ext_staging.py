@@ -395,7 +395,11 @@ def test_the_server_tier_gates_attach_on_what_installed(server_tier):
     from provisa.federation.duckdb_extensions import install_extension_set
     from provisa.federation.engine import build_duckdb_engine
 
-    assert "google_sheets" in build_duckdb_engine().connectors  # nothing installed yet: not gated
+    # Nothing installed yet: only what has no build for the running DuckDB is gated. gsheets has
+    # none from DuckDB 2.0.0 (REQ-1998), known from the version alone, so a sheet is a replica
+    # even before the server installs anything.
+    before = build_duckdb_engine().connectors
+    assert "postgresql" in before and "google_sheets" not in before
     install_extension_set()
     engine = build_duckdb_engine()
     assert "postgresql" in engine.connectors

@@ -9,8 +9,10 @@
     "transportLabel": "Транспорт",
     "stdioRoleLabel": "Привязанная роль stdio",
     "stdioRoleNone": "не задана — для вызовов stdio требуется <code>{{envVar}}</code>",
+    "principalLabel": "Локальный субъект",
+    "principalNone": "не задан — локальные вызовы отклоняются, пока <code>{{envVar}}</code> не назовёт его",
     "maxRowsLabel": "Предел строк (run_sql)",
-    "enableHint": "Сервер MCP включается явно. Задайте переменной окружения <code>{{enableEnvVar}}</code> номер порта и перезапустите службу, чтобы включить его. Для локального транспорта stdio также задайте <code>{{roleEnvVar}}</code> — роль provisa.",
+    "enableHint": "Сервер MCP включается явно. Задайте переменной окружения <code>{{enableEnvVar}}</code> номер порта и перезапустите службу, чтобы включить его. Для локального транспорта stdio также задайте <code>{{roleEnvVar}}</code> — роль provisa, и <code>{{principalEnvVar}}</code> — субъект (идентификатор пользователя), от имени которого выполняются эти вызовы.",
     "toolsHeading": "Доступные инструменты",
     "colTool": "Инструмент",
     "colDescription": "Описание"

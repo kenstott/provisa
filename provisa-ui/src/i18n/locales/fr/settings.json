@@ -595,6 +595,10 @@
         "label": "Rôle local MCP",
         "help": "Le rôle sous lequel s'exécutent les appels MCP locaux (stdio) ; tant qu'il n'est pas défini, ces appels sont refusés. Confirmation demandée car cela accorde les accès de ce rôle à quiconque peut démarrer le client local."
       },
+      "principal": {
+        "label": "Principal local MCP",
+        "help": "Le principal (identifiant utilisateur) pour lequel agissent les appels MCP locaux (stdio), à côté du rôle local ; les droits de cette personne restreignent le rôle. Tant qu'il n'est pas défini, ces appels sont refusés. Protégé, car quiconque peut lancer le client local agit avec l'accès de cette personne."
+      },
       "external_url": {
         "label": "Adresse externe MCP",
         "help": "L'adresse MCP affichée aux utilisateurs lorsque le déploiement se trouve derrière un proxy."

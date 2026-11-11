@@ -10,7 +10,7 @@
 
 """DataProduct repository — CRUD, domain-scoped, via SQLAlchemy Core (dialect-portable)."""
 
-# Requirements: REQ-1634
+# Requirements: REQ-1634, REQ-2180
 
 import logging
 from collections.abc import Iterable
@@ -49,8 +49,12 @@ async def refs(conn: "Connection") -> tuple[tuple[str, str], ...]:  # REQ-2219
 async def upsert(  # REQ-1634, REQ-1919
     conn: "Connection", product: DataProduct
 ) -> None:
-    """Create the data product, or replace its definition."""
+    """Create the data product, or replace its definition. A product created starts with its one
+    default offer (REQ-2180)."""
+    from provisa.core.repositories import data_product_offer
+
     model_change.name("upsert", "data product", product.id)  # REQ-1524
+    is_new = await get(conn, product.id) is None
     await conn.upsert(
         data_products,
         {
@@ -70,6 +74,7 @@ async def upsert(  # REQ-1634, REQ-1919
             "support": product.support,
             "support_contact": product.support_contact,
             "custom_properties": product.custom_properties,
+            "freshness": product.freshness,  # REQ-2180
             "created_by": product.created_by,  # REQ-2219: on insert; update_columns leaves it
         },
         index_elements=["id"],
@@ -89,8 +94,11 @@ async def upsert(  # REQ-1634, REQ-1919
             "support",
             "support_contact",
             "custom_properties",
+            "freshness",
         ],
     )
+    if is_new:
+        await data_product_offer.add_default(conn, product.id, by=product.created_by)
 
 
 async def get(conn: "Connection", product_id: str) -> dict | None:  # REQ-1634

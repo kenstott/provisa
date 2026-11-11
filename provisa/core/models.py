@@ -606,6 +606,9 @@ class DataProduct(BaseModel):  # REQ-1634
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
+    # REQ-2180: the freshness every contract of the product promises: a read trails its source
+    # by at most this many seconds. None: each dataset's own (its cache_ttl).
+    freshness: int | None = Field(default=None, gt=0)
     # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
     # relationship names a table (its alias, else its table name) or as source.schema.table where
     # that is not unique, and the commands, by name. A
@@ -697,6 +700,15 @@ class ContractChange(BaseModel):  # REQ-2158
         "check_changed",
         "description_changed",
         "terms_changed",
+        # REQ-2180: an offer's contract on a dataset changing with the offer.
+        "field_masked",
+        "field_unmasked",
+        "row_rule_added",
+        "row_rule_removed",
+        "data_level_changed",
+        "dq_results_changed",
+        "profiles_changed",
+        "duration_changed",
     ]
     subject: str = Field(min_length=1)
     before: str | None = None
@@ -741,6 +753,97 @@ class ContractVersion(BaseModel):  # REQ-2158
 
 
 DataContract.model_rebuild()
+
+
+#: REQ-2180: an offer's level of data: the product's datasets, a sample (existing views over
+#: them), or synthetic (the product's shape, generated from each dataset's profile).
+OFFER_DATA_LEVELS = ("full", "sample", "synthetic")
+
+
+class DataProductOffer(BaseModel):  # REQ-2180
+    """One offer of a data product: a role its owner may grant, the level of data it gives, whether
+    it includes the product's data quality results and its profiles, whether it is open (accepted
+    at once), and how long what accepting it grants lasts (None: no end). A sample names the views
+    it gives by table id; a synthetic offer has no profiles."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    role_id: str = Field(min_length=1)
+    data_level: Literal["full", "sample", "synthetic"] = "full"
+    sample_views: list[int] = Field(default_factory=list)
+    dq_results: bool = True
+    profiles: bool = False
+    open: bool = False
+    duration_days: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _data_fits(self) -> "DataProductOffer":
+        if self.data_level == "sample" and not self.sample_views:
+            raise ValueError("a sample offer names one or more views (sample_views)")
+        if self.data_level != "sample" and self.sample_views:
+            raise ValueError("only a sample offer names views (sample_views)")
+        if self.data_level == "synthetic" and self.profiles:
+            raise ValueError("a synthetic offer has no profiles")
+        return self
+
+
+#: REQ-2180: the offer every product starts with, and only it.
+DEFAULT_OFFER = DataProductOffer(name="default", role_id="viewer")
+
+
+class OfferField(BaseModel):  # REQ-2180
+    """A dataset's column as an offer's role sees it: masked (and how) or not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str | None = None
+    masked: str | None = None  # the mask's kind (regex, constant, truncate); None: unmasked
+
+
+class OfferTerms(BaseModel):  # REQ-2180
+    """What one offer gives on one dataset: what its contract states. Its fields are the dataset's
+    columns its role reads; its row rules each in words; its data level, with the sample views over
+    the dataset; the data quality promises, always; whether their results can be read; and the
+    profile tables where the offer includes them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[OfferField] = Field(default_factory=list)
+    row_rules: list[str] = Field(default_factory=list)
+    data_level: Literal["full", "sample", "synthetic"] = "full"
+    sample_views: list[str] = Field(default_factory=list)
+    checks: list[ContractCheck] = Field(default_factory=list)
+    dq_results: bool = True
+    profiles: list[str] = Field(default_factory=list)
+    duration_days: int | None = None
+
+
+class OfferContractVersion(BaseModel):  # REQ-2180
+    """A saved version of an offer's contract on a dataset, how it differs from the one before it,
+    and when and by whom it was saved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    terms: OfferTerms
+    changes: list[ContractChange] = Field(default_factory=list)
+    saved_at: datetime
+    saved_by: str | None = None
+
+
+class OfferContract(BaseModel):  # REQ-2180
+    """An offer's contract on one dataset: its terms now, at its version, with every saved
+    version, oldest first, the last this one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    terms: OfferTerms
+    created_at: datetime
+    versions: list[OfferContractVersion] = Field(default_factory=list)
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641

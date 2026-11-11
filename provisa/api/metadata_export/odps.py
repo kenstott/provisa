@@ -20,30 +20,44 @@ target is published from, so they say what the catalogs are told:
 * an output port per member, each its declared ODCS contract (REQ-2158): its schema, the member's
   columns with their types and descriptions, the governance tags on them (masked, hidden from some roles,
   row-filtered; never a rule body), its terms, its declared service levels beside its freshness
-  (the cache_ttl it is kept at) and the quality checks registered against it.
+  (the cache_ttl it is kept at) and the quality checks registered against it;
+* each field's grounded term (REQ-2238), as an authoritative definition of type ``semantics``
+  naming the term's URI, name and definition, and each output port the same links for its
+  member's columns. Only a term an agent may see is named: approved, or a defined draft on a path
+  holding an approved term, marked draft.
+
+REQ-2180: access to a product is by offers, and its contracts are derived from them. Each offer's
+contract on each dataset is an output port, and its ODCS document is the dataset's as the offer's
+role sees it (:func:`offer_contract`); the document lists the offers (``customProperties``,
+``offers``). They supersede the per-table contracts written by hand.
 
 A contract has its own version and status, as ODPS versions each port by its contract. The
 product's version is its own; a product with no version says so -- ``unversioned`` -- since ODPS
 requires the field and inventing a number would claim a release that never happened.
 """
 
-# Requirements: REQ-2118
+# Requirements: REQ-2118, REQ-2238
 
 from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Literal
 
 from provisa.core.cache_ttl import NEVER_EXPIRES
 
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from provisa.core.models import OfferContract
+
     from provisa.api.metadata_export.model import (
         ColumnAsset,
         DataProductAsset,
         DataQualityAssertion,
+        GroundedTerm,
         MetadataSnapshot,
         TableAsset,
     )
@@ -177,6 +191,33 @@ def _authoritative_definitions(product: "DataProductAsset") -> list[dict[str, st
     ]
 
 
+#: REQ-2238: the authoritative definition type naming a field's grounded term.
+SEMANTICS = "semantics"
+
+
+def term_definition(term: "GroundedTerm") -> dict[str, str]:
+    """A field's grounded term as an authoritative definition of type semantics (REQ-2238): its
+    URI, and its name and definition, a draft marked so."""
+    label = term.name if term.status == "approved" else f"{term.name} (draft)"
+    return {
+        "type": SEMANTICS,
+        "url": term.semantic_uri,
+        "description": f"{label}: {term.definition}" if term.definition else str(label),
+    }
+
+
+def _port_terms(snapshot: "MetadataSnapshot", table: "TableAsset") -> list[dict[str, str]]:
+    """The grounded terms of a member's columns, each once, as its output port's authoritative
+    definitions (REQ-2238): the links its contract's fields carry."""
+    by_column = snapshot.column_terms()
+    terms = {
+        term.term_id: term
+        for column in table.columns
+        if (term := by_column.get(column.ref.fqn())) is not None
+    }
+    return [term_definition(term) for term in sorted(terms.values(), key=lambda t: str(t.name))]
+
+
 def _management_ports(product: "DataProductAsset") -> list[dict[str, str]]:
     """The endpoints that observe and control the product: its page, its lineage and the admin
     GraphQL API that edits it."""
@@ -296,6 +337,7 @@ def _output_port(
         "contractId": contract_id(table),
         **({"description": table.description} if table.description else {}),
         **({"inputContracts": reads} if reads else {}),
+        **({"authoritativeDefinitions": terms} if (terms := _port_terms(snapshot, table)) else {}),
     }
 
 
@@ -304,17 +346,15 @@ def _members(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list[
     return [by_fqn[member.fqn()] for member in product.members]
 
 
-def _ports(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> list["TableAsset"]:
-    """The product's output ports: each member with a contract (REQ-2158). A checker table the
-    product owns is no output of it, and has none."""
-    return [table for table in _members(snapshot, product) if table.contract is not None]
-
-
-def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> dict[str, Any]:
+def odps_document(
+    snapshot: "MetadataSnapshot",
+    product: "DataProductAsset",
+    offers: Sequence["OfferExport"],
+) -> dict[str, Any]:
     """The product's ODPS 1.0 document (REQ-2118): its fields; an input port per input another
     product promises, naming that contract and the product's expectations of it; an output port
-    per member naming the member's ODCS contract and the input contracts it reads; and the
-    endpoints that observe and control it."""
+    per offer and dataset naming the ODCS contract the offer gives on it (REQ-2180) and the input
+    contracts it reads; its offers; and the endpoints that observe and control it."""
     members = _members(snapshot, product)
     checkers = _checker_tables(snapshot)
     inputs = _inputs(snapshot, product, {table.ref.parts for table in members})
@@ -331,7 +371,9 @@ def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> 
             _input_port(snapshot, product, table) for table in inputs if table.contract is not None
         ],
         "outputPorts": [
-            _output_port(snapshot, product, table) for table in _ports(snapshot, product)
+            _offer_port(snapshot, product, table, offer)
+            for offer in offers
+            for table in _offered(snapshot, product, offer)
         ],
     }
     if product.created_at:
@@ -348,14 +390,22 @@ def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> 
         document["team"] = team
     if management := _management_ports(product):
         document["managementPorts"] = management
+    offered = {fqn for offer in offers for fqn in offer.contracts}
     without_contract = [
         table.name
         for table in members
-        if table.contract is None and table.ref.parts not in checkers
+        if table.ref.fqn() not in offered and table.ref.parts not in checkers
     ]
     inputs_without = [table.name for table in inputs if table.contract is None]
     if custom := _custom_properties(product, without_contract, inputs_without):
         document["customProperties"] = custom
+    if offers:
+        document.setdefault("customProperties", []).append(
+            {
+                "property": "offers",
+                "value": [_offer_summary(snapshot, product, offer) for offer in offers],
+            }
+        )
     return document
 
 
@@ -756,8 +806,10 @@ def _property(
     signals: list[str],
     sensitive: set[tuple[str, ...]],
     quality: list["DataQualityAssertion"],
+    term: "GroundedTerm | None",
 ) -> dict[str, Any]:
-    """One of the member's columns as its contract's schema property (REQ-2158)."""
+    """One of the member's columns as its contract's schema property (REQ-2158), naming its
+    grounded term (REQ-2238)."""
     prop: dict[str, Any] = {"name": column.name, "physicalType": column.data_type}
     if logical := logical_type(column.data_type):
         prop["logicalType"] = logical
@@ -780,6 +832,8 @@ def _property(
             prop["transformLogic"] = "; ".join(operations)
     if quality:
         prop["quality"] = [_quality_rule(assertion) for assertion in quality]
+    if term is not None:
+        prop["authoritativeDefinitions"] = [term_definition(term)]
     return prop
 
 
@@ -803,6 +857,7 @@ def odcs_contract(
             on_column.setdefault(assertion.asset.parts[3], []).append(assertion)
         else:
             on_table.append(assertion)
+    terms = snapshot.column_terms()
     # REQ-2158: a contract's schema is its member's columns; it selects none of its own.
     properties = [
         _property(
@@ -812,6 +867,7 @@ def odcs_contract(
             tags.get(column.ref.fqn(), []),
             sensitive,
             on_column.get(column.name, []),
+            terms.get(column.ref.fqn()),
         )
         for column in table.columns
     ]
@@ -879,11 +935,171 @@ def _utc(at: "datetime") -> str:
 
 
 def product_documents(
-    snapshot: "MetadataSnapshot", product: "DataProductAsset"
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", offers: Sequence["OfferExport"]
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    """``(the product's ODPS document, {member: its ODCS contract})``, each member by its address
-    (source, schema, table): two members of one name in different sources stay apart."""
-    return odps_document(snapshot, product), {
-        table.ref.fqn(): odcs_contract(snapshot, product, table)
-        for table in _ports(snapshot, product)
+    """``(the product's ODPS document, {contract key: its ODCS contract})``: one contract per offer
+    and dataset (REQ-2180), each keyed ``<offer>/<source.schema.table>`` (:func:`offer_key`), so
+    two members of one name in different sources stay apart."""
+    return odps_document(snapshot, product, offers), {
+        offer_key(offer, table): offer_contract(snapshot, product, table, offer)
+        for offer in offers
+        for table in _offered(snapshot, product, offer)
     }
+
+
+# -- REQ-2180: the contracts derived from the offers ----------------------------------------------
+
+
+@dataclass(frozen=True)
+class OfferExport:
+    """One offer of the product as the export writes it: its terms, and its contract on each
+    dataset by the dataset's address (``TableAsset.ref.fqn()``). ``freshness`` is the product's
+    (seconds), written once on it; None: each dataset's own."""
+
+    name: str
+    role_id: str
+    data_level: str
+    dq_results: bool
+    profiles: bool
+    open: bool
+    duration_days: int | None
+    contracts: Mapping[str, "OfferContract"]
+    freshness: int | None = None
+
+
+#: A contract's ODCS status as its product's lifecycle says it.
+_OFFER_CONTRACT_STATUS: dict[str, Literal["draft", "active", "deprecated", "retired"]] = {
+    "draft": "draft",
+    "live": "active",
+    "deprecated": "deprecated",
+    "retired": "retired",
+}
+
+
+def offer_key(offer: OfferExport, table: "TableAsset") -> str:
+    """The key of an offer's contract on a dataset: the offer, then the dataset's address."""
+    return f"{offer.name}/{table.ref.fqn()}"
+
+
+def offer_contract_id(offer: OfferExport, table: "TableAsset") -> str:
+    """An offer's contract id on a dataset: the dataset's URN, then the offer."""
+    return f"{contract_id(table)}/offers/{offer.name}"
+
+
+def _offered(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", offer: OfferExport
+) -> list["TableAsset"]:
+    """The members ``offer`` gives a contract on: its datasets, in the product's member order."""
+    return [table for table in _members(snapshot, product) if table.ref.fqn() in offer.contracts]
+
+
+def _as_declared(
+    product: "DataProductAsset", table: "TableAsset", offer: OfferExport
+) -> "TableAsset":
+    """``table`` as the export reads it under ``offer``: its contract the offer's -- its version,
+    its product's status, and the terms all of the product's contracts share, written once on the
+    product -- and its freshness the product's where the product states one."""
+    from provisa.core.models import ContractTerms, DataContract
+
+    derived = offer.contracts[table.ref.fqn()]
+    declared = DataContract(
+        version=derived.version,
+        status=_OFFER_CONTRACT_STATUS[product.status],
+        description=product.description or None,
+        terms=ContractTerms(usage=product.usage or None, limitations=product.limitations or None),
+        created_at=derived.created_at,
+    )
+    freshness = offer.freshness if offer.freshness is not None else table.cache_ttl
+    return replace(table, contract=declared, cache_ttl=freshness)
+
+
+def _offer_terms(offer: OfferExport, table: "TableAsset") -> list[dict[str, Any]]:
+    """What the offer gives on the dataset, as ODCS and ODPS custom properties."""
+    terms = offer.contracts[table.ref.fqn()].terms
+    props: list[dict[str, Any]] = [
+        {"property": "offer", "value": offer.name},
+        {"property": "role", "value": offer.role_id},
+        {"property": "dataLevel", "value": terms.data_level},
+        {"property": "dataQualityResults", "value": terms.dq_results},
+    ]
+    if terms.sample_views:
+        props.append({"property": "sampleViews", "value": terms.sample_views})
+    if terms.row_rules:
+        props.append({"property": "rowRules", "value": terms.row_rules})
+    if terms.profiles:
+        props.append({"property": "profiles", "value": terms.profiles})
+    if terms.duration_days is not None:
+        props.append({"property": "durationDays", "value": terms.duration_days})
+    return props
+
+
+def _offer_port(
+    snapshot: "MetadataSnapshot",
+    product: "DataProductAsset",
+    table: "TableAsset",
+    offer: OfferExport,
+) -> dict[str, Any]:
+    """The output port an offer's contract on a dataset is: the member's port, versioned by and
+    naming that contract, with the offer's terms."""
+    port = _output_port(snapshot, product, _as_declared(product, table, offer))
+    return {
+        **port,
+        "name": f"{table.name} ({offer.name})",
+        "contractId": offer_contract_id(offer, table),
+        "customProperties": _offer_terms(offer, table),
+    }
+
+
+def _offer_summary(
+    snapshot: "MetadataSnapshot", product: "DataProductAsset", offer: OfferExport
+) -> dict[str, Any]:
+    return {
+        "name": offer.name,
+        "role": offer.role_id,
+        "dataLevel": offer.data_level,
+        "dataQualityResults": offer.dq_results,
+        "profiles": offer.profiles,
+        "open": offer.open,
+        "durationDays": offer.duration_days,
+        "contracts": [
+            {
+                "id": offer_contract_id(offer, table),
+                "version": offer.contracts[table.ref.fqn()].version,
+            }
+            for table in _offered(snapshot, product, offer)
+        ],
+    }
+
+
+def offer_contract(
+    snapshot: "MetadataSnapshot",
+    product: "DataProductAsset",
+    table: "TableAsset",
+    offer: OfferExport,
+) -> dict[str, Any]:
+    """The ODCS 3.1 contract ``offer`` gives on ``table`` (REQ-2180): the member's contract
+    (:func:`odcs_contract`) as the offer's role sees it -- only the columns it reads, a masked one
+    stated as masked, its row rules in words -- at the offer contract's version, with the offer's
+    data level, its data quality promises (always), and its profiles where it includes them."""
+    terms = offer.contracts[table.ref.fqn()].terms
+    contract = odcs_contract(snapshot, product, _as_declared(product, table, offer))
+    contract["id"] = offer_contract_id(offer, table)
+    fields = {f.name: f for f in terms.fields}
+    for schema_object in contract["schema"]:
+        kept = []
+        for prop in schema_object["properties"]:
+            field = fields.get(prop["name"])
+            if field is None:
+                continue
+            if field.masked is not None:
+                prop["classification"] = "restricted"
+                prop.setdefault("customProperties", []).append(
+                    {"property": "masked", "value": field.masked}
+                )
+            kept.append(prop)
+        schema_object["properties"] = kept
+    contract["customProperties"] = [
+        *contract.get("customProperties", []),
+        *_offer_terms(offer, table),
+    ]
+    return contract

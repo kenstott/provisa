@@ -162,7 +162,11 @@ KINDS: dict[str, Kind] = {
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
     "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "ontology_import": Kind("glossary_ontology_imports", "id"),  # REQ-2237
+    "ontology_item": Kind("glossary_ontology_items", "id"),  # REQ-2237
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
+    "data_product_offer": Kind("data_product_offers", "id"),  # REQ-2180
+    "data_product_bid": Kind("data_product_bids", "id"),  # REQ-2180
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -330,6 +334,15 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "product_id", "data_product"),
     # REQ-1634 STATUS: a retired product names the product its members moved to.
     _dep("data_products", "successor_id", "data_product", "data_product", "id"),
+    # REQ-2180: a product's offers and the requests made of them go with it; an offer's contracts
+    # go with the offer, and a contract on a dataset with that dataset (contracts are derived).
+    # A request outlives its offer (it records what was asked), and a cancel goes with its bid.
+    _part("data_product_offers", "product_id", "data_product", of="data_product_offer", owner="id"),
+    _part("data_product_bids", "product_id", "data_product", of="data_product_bid", owner="id"),
+    _part("data_product_offer_contracts", "offer_id", "data_product_offer"),
+    _part("data_product_offer_contracts", "table_id", "table"),
+    _link("data_product_bids", "offer_id", "data_product_offer"),
+    _part("data_product_bids", "cancels", "data_product_bid"),
     # --- to a glossary term --------------------------------------------------------------------
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
@@ -377,6 +390,16 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_drafts", "scan_id", "term_scan"),
     _link("glossary_term_drafts", "match_term_id", "glossary_term"),
     _link("glossary_term_drafts", "term_id", "glossary_term"),
+    # --- to an ontology import, and the terms it aligns ----------------------------------------
+    # REQ-2237: an import's items and alignments go with it, and an item's alignments with the
+    # item. An item outlives the term it became, as a draft does; a proposal to align with a term
+    # goes with the term, since there is nothing left to align with.
+    _part("glossary_ontology_items", "import_id", "ontology_import"),
+    _link("glossary_ontology_items", "term_id", "glossary_term"),
+    _part("glossary_ontology_alignments", "import_id", "ontology_import"),
+    _part("glossary_ontology_alignments", "item_id", "ontology_item"),
+    _part("glossary_ontology_alignments", "other_item_id", "ontology_item"),
+    _part("glossary_ontology_alignments", "term_id", "glossary_term"),
 )
 
 

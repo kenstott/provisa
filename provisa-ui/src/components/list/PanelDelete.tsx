@@ -110,6 +110,7 @@ export function PanelDelete({
   }, []);
 
   const release = useRef<(() => void) | null>(null);
+  const unlock = useRef<(() => void) | null>(null);
   const deleting = useRef<string | null>(null);
   const { busy, press } = usePendingPress<boolean | void>(
     () => {
@@ -117,12 +118,16 @@ export function PanelDelete({
       setFailed(null);
       deleting.current = key;
       release.current = pane?.markDeleting(key) ?? null;
+      unlock.current = pane?.lock() ?? null;
       return onDelete();
     },
     (outcome) => {
       const key = deleting.current;
       release.current?.();
       release.current = null;
+      // Released with the settle, in the commit that shows the problem, not in a later effect pass.
+      unlock.current?.();
+      unlock.current = null;
       deleting.current = null;
       if (!outcome.ok) {
         if (key !== null)
@@ -136,10 +141,7 @@ export function PanelDelete({
     },
   );
   // The panel is locked while this delete is pending, and no longer than this control is shown.
-  useEffect(() => {
-    if (!busy || !pane) return;
-    return pane.lock();
-  }, [busy, pane]);
+  useEffect(() => () => unlock.current?.(), []);
 
   const said = problem ? (
     <div

@@ -19,6 +19,10 @@ table the engine reads in place, its external table (``DatabricksFederationRunti
 - The view is named for the member's business name; its columns and the view itself carry the
   member's descriptions, and each governance fact is a ``provisa_governance:<signal>`` tag naming
   the rule, never its body.
+- Unity Catalog has no glossary to link a column to, so a column's grounded term (REQ-2238) is a
+  ``provisa_term`` tag naming it, and the term's definition follows the column's description in
+  its comment. Only a term an agent may see is named: approved, or a defined draft on a path
+  holding an approved term, marked draft.
 - The schema's comment holds the product's purpose, limitations, usage, service level and
   support; its owner, team, version and status are ``provisa_product:<field>`` tags (a tag value
   holds 256 characters, so the prose stays in the comment).
@@ -31,26 +35,32 @@ It runs only when Databricks is the configured engine; on any other engine a pub
 Each schema's and view's full name is recorded in the target's bindings (REQ-1389).
 """
 
-# Requirements: REQ-2117
+# Requirements: REQ-2117, REQ-2238
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable, Mapping
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from provisa.api.metadata_export.model import column_terms, term_note
 from provisa.api.metadata_export.provider import AssetError, MetadataExport, PublishResult
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
+        ColumnAsset,
         DataProductAsset,
         GovernanceTag,
+        GroundedTerm,
         MetadataSnapshot,
         TableAsset,
     )
 
 GOVERNANCE_PREFIX = "provisa_governance:"
+#: REQ-2238: the tag naming a view column's grounded term.
+TERM_TAG = "provisa_term"
 PRODUCT_PREFIX = "provisa_product:"
 _TAG_VALUE_LIMIT = 256
 
@@ -104,10 +114,22 @@ def schema_tags(product: "DataProductAsset") -> dict[str, str]:
     }
 
 
-def view_statement(view: Parts, member: Parts, table: "TableAsset") -> str:
-    """The view over ``member``: each column named and described, and the view described."""
+def _column_comment(column: "ColumnAsset", terms_by_column: Mapping[str, "GroundedTerm"]) -> str:
+    """A view column's comment: its description, then its grounded term and the term's
+    definition (REQ-2238)."""
+    note = term_note(terms_by_column.get(column.ref.fqn()))
+    return "\n\n".join(part for part in (column.description, note) if part)
+
+
+def view_statement(
+    view: Parts, member: Parts, table: "TableAsset", terms_by_column: Mapping[str, "GroundedTerm"]
+) -> str:
+    """The view over ``member``: each column named and described, its grounded term's definition
+    in its comment (REQ-2238), and the view described."""
     columns = ", ".join(
-        f"{q(c.name)} COMMENT '{lit(c.description)}'" if c.description else q(c.name)
+        f"{q(c.name)} COMMENT '{lit(comment)}'"
+        if (comment := _column_comment(c, terms_by_column))
+        else q(c.name)
         for c in table.columns
     )
     select = ", ".join(q(c.name) for c in table.columns)
@@ -139,6 +161,66 @@ def governance_statements(
                 f"ALTER TABLE {q(*view)} ALTER COLUMN {q(columns[fqn])} "
                 f"SET TAGS ('{key}' = '{value}')"
             )
+    return stmts
+
+
+def term_statements(
+    view: Parts, table: "TableAsset", terms_by_column: Mapping[str, "GroundedTerm"]
+) -> list[str]:
+    """Each column's grounded term (REQ-2238) as a ``provisa_term`` tag on its view's column,
+    naming the term."""
+    return [
+        # A view's column is tagged through ALTER TABLE: Databricks has no ALTER VIEW ... ALTER
+        # COLUMN.
+        f"ALTER TABLE {q(*view)} ALTER COLUMN {q(column.name)} "
+        f"SET TAGS ('{TERM_TAG}' = '{lit(str(term.name)[:_TAG_VALUE_LIMIT])}')"
+        for column in table.columns
+        if (term := terms_by_column.get(column.ref.fqn())) is not None
+    ]
+
+
+def _owned(tag: str) -> bool:
+    """A tag this export sets: the term tag or a governance tag; any other origin is never touched."""
+    return tag == TERM_TAG or tag.startswith(GOVERNANCE_PREFIX)
+
+
+def stale_tag_statements(
+    view: Parts,
+    table: "TableAsset",
+    governance_tags: list["GovernanceTag"],
+    terms_by_column: Mapping[str, "GroundedTerm"],
+    table_tags: Iterable[str],
+    column_tags: Iterable[tuple[str, str]],
+) -> list[str]:
+    """Unsets the tags the view still holds that its member no longer carries. ``CREATE OR REPLACE
+    VIEW`` keeps the tags of the view it replaces, so a term that left a column, or a governance
+    rule that no longer fires, would stay tagged. ``table_tags`` and ``column_tags``
+    (``(column, tag)``) are what the view holds now."""
+    table_fqn = table.ref.fqn()
+    names = {c.ref.fqn(): c.name for c in table.columns}
+    wanted_table: set[str] = set()
+    wanted_columns: set[tuple[str, str]] = set()
+    for tag in governance_tags:
+        key = f"{GOVERNANCE_PREFIX}{tag.signal.value}"
+        fqn = tag.asset.fqn()
+        if fqn == table_fqn:
+            wanted_table.add(key)
+        elif fqn in names:
+            wanted_columns.add((names[fqn], key))
+    for column in table.columns:
+        if column.ref.fqn() in terms_by_column:
+            wanted_columns.add((column.name, TERM_TAG))
+    stmts = [
+        f"ALTER VIEW {q(*view)} UNSET TAGS ('{lit(tag)}')"
+        for tag in sorted(set(table_tags))
+        if _owned(tag) and tag not in wanted_table
+    ]
+    stmts += [
+        # A view's column is untagged through ALTER TABLE, as it is tagged.
+        f"ALTER TABLE {q(*view)} ALTER COLUMN {q(column)} UNSET TAGS ('{lit(tag)}')"
+        for column, tag in sorted(set(column_tags))
+        if _owned(tag) and (column, tag) not in wanted_columns
+    ]
     return stmts
 
 
@@ -246,6 +328,7 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
             pairs = ", ".join(f"'{lit(k)}' = '{lit(v)}'" for k, v in sorted(wanted_tags.items()))
             cur.execute(f"ALTER SCHEMA {q(catalog, schema)} SET TAGS ({pairs})")
         result.bindings[product.semantic_uri] = (f"{catalog}.{schema}", f"{catalog}.{schema}")
+        terms = column_terms(snapshot.grounded_terms)
 
         views: dict[str, Parts] = {}
         members: dict[str, Parts] = {}
@@ -263,8 +346,31 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
                 continue
             view = (catalog, schema, name)
             member = self._member_parts(runtime, snapshot, ref)
-            cur.execute(view_statement(view, member, table))
+            cur.execute(view_statement(view, member, table, terms))
+            where = f"schema_name = '{lit(schema)}' AND table_name = '{lit(name)}'"
+            held_table = [
+                str(k)
+                for (k, _) in self._rows(
+                    cur,
+                    f"SELECT tag_name, tag_value FROM {q(catalog)}.information_schema.table_tags "
+                    f"WHERE {where}",
+                )
+            ]
+            held_columns = [
+                (str(c), str(k))
+                for (c, k, _) in self._rows(
+                    cur,
+                    f"SELECT column_name, tag_name, tag_value "
+                    f"FROM {q(catalog)}.information_schema.column_tags WHERE {where}",
+                )
+            ]
+            for stmt in stale_tag_statements(
+                view, table, governance, terms, held_table, held_columns
+            ):
+                cur.execute(stmt)
             for stmt in governance_statements(view, table, governance):
+                cur.execute(stmt)
+            for stmt in term_statements(view, table, terms):
                 cur.execute(stmt)
             views[name] = view
             members[name] = member

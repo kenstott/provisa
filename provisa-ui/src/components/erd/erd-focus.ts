@@ -14,7 +14,8 @@
 
 import { catalogTableName } from "../../naming";
 import type { ListedTable } from "../../types/admin";
-import type { CyInstance } from "../graph/cytoscape-types";
+import type { GraphFilter } from "../provisa-graph/marks";
+import type { GraphSpec } from "../provisa-graph/model";
 import { matchesSearch, searchItems } from "../../lib/searchItems";
 
 export interface ErdFocus {
@@ -34,11 +35,6 @@ export interface ResolvedErdFocus {
   /** What it names that does not exist. */
   missing: string[];
 }
-
-const FOCUSED = "erd-focused";
-const FIT_PADDING = 40;
-/** The closest a fit comes: one table is read in its place, not blown up to the whole canvas. */
-const MOST_ZOOM = 1.5;
 
 const named = (list: string | null): string[] => [
   ...new Set((list ?? "").split(",").filter((name) => name !== "")),
@@ -108,89 +104,55 @@ export function addTableToFocus(focus: ErdFocus, table: FocusTable): ErdFocus {
   };
 }
 
-/** Highlight the tables, and the relationships' lines, the diagram holds and fit them into view;
- * the ids of the tables it held. A relationship drawn as two legs through its junction is both. */
-export function highlightErdTables(
-  cy: CyInstance,
+/** The elements a focus marks on the graph: its tables' nodes, and the lines of its relationships
+ * (a relationship drawn as two legs through its junction is both). */
+export function erdFocusIds(
+  graph: GraphSpec,
   tableIds: number[],
   relationshipIds: string[] = [],
-): number[] {
-  cy.$(`.${FOCUSED}`).removeClass(FOCUSED);
-  const held = tableIds.filter((id) => {
-    const node = cy.getElementById(`t:${id}`);
-    if (node.empty()) return false;
-    node.addClass(FOCUSED);
-    return true;
-  });
-  if (relationshipIds.length > 0) {
-    const named = new Set(relationshipIds);
-    cy.edges(".erd-rel")
-      .filter((e) => named.has(String(e.data("relationshipId"))))
-      .addClass(FOCUSED);
-  }
-  const focused = cy.$(`.${FOCUSED}`);
-  if (focused.empty()) return held;
-  cy.fit(focused, FIT_PADDING);
-  if (cy.zoom() > MOST_ZOOM) {
-    cy.zoom(MOST_ZOOM);
-    cy.center(focused);
-  }
-  return held;
+): string[] {
+  const named = new Set(relationshipIds);
+  return [
+    ...tableIds.map((id) => `t:${id}`),
+    ...graph.edges.filter((e) => named.has(String(e.data?.relationshipId))).map((e) => e.id),
+  ];
 }
 
-const DIM = "erd-dim";
-const MATCH = "erd-match";
-
-const text = (el: { data(key: string): unknown }, key: string): string | undefined => {
-  const v = el.data(key);
-  return typeof v === "string" ? v : undefined;
-};
+/** The tables a focus marked: the table ids among the ids the graph held. */
+export const heldTables = (held: string[]): number[] =>
+  held.filter((id) => id.startsWith("t:")).map((id) => Number(id.slice(2)));
 
 /** The page's filter box on the diagram, as a search focuses the Ontology graph (searchItems' rule):
- * what matches is marked and the rest dimmed, by classes -- nothing moved, nothing rebuilt. On
- * Tables a table matches by name or domain, and its lines and domain stay lit; on Relationships a
- * line matches by its source or its target, and its two tables and their domains stay lit. An empty
- * search clears the classes. Returns the ids of what matched. */
-export function applyErdSearch(
-  cy: CyInstance,
+ * what matches is marked and the rest dimmed -- nothing moved, nothing rebuilt. On Tables a table
+ * matches by name or domain, and its lines and domain stay lit; on Relationships a line matches by
+ * its source or its target, and its two tables and their domains stay lit. An empty search is no
+ * filter. */
+export function erdSearchMarks(
+  graph: GraphSpec,
   search: string,
   page: "tables" | "relationships",
-): string[] {
+): GraphFilter | null {
   const items = searchItems(search);
+  if (items.length === 0) return null;
   const marked = new Set<string>();
   const lit = new Set<string>();
-  const tableName = (id: string): string => text(cy.getElementById(id), "tableName") ?? "";
-  if (items.length > 0) {
-    if (page === "tables") {
-      cy.nodes(".erd-table").forEach((n) => {
-        if (matchesSearch([text(n, "tableName"), text(n, "domainId")], items)) marked.add(n.id());
-      });
-      marked.forEach((id) => lit.add(id));
-      cy.edges().forEach((e) => {
-        const ends = [String(e.data("source")), String(e.data("target"))];
-        if (ends.some((id) => marked.has(id))) lit.add(e.id());
-      });
-    } else {
-      cy.edges().forEach((e) => {
-        const ends = [String(e.data("source")), String(e.data("target"))];
-        if (!matchesSearch(ends.map(tableName), items)) return;
-        marked.add(e.id());
-        lit.add(e.id());
-        ends.forEach((id) => lit.add(id));
-      });
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+  const tableName = (id: string): string => nodes.get(id)?.name ?? "";
+  if (page === "tables") {
+    for (const n of graph.nodes)
+      if (matchesSearch([n.name, String(n.data?.domainId ?? "")], items)) marked.add(n.id);
+    marked.forEach((id) => lit.add(id));
+    for (const e of graph.edges)
+      if (marked.has(e.source) || marked.has(e.target)) lit.add(e.id);
+  } else {
+    for (const e of graph.edges) {
+      const ends = [e.source, e.target];
+      if (!matchesSearch(ends.map(tableName), items)) continue;
+      marked.add(e.id);
+      lit.add(e.id);
+      ends.forEach((id) => lit.add(id));
     }
-    cy.nodes(".erd-table").forEach((n) => {
-      const parent = n.data("parent");
-      if (lit.has(n.id()) && typeof parent === "string") lit.add(parent);
-    });
   }
-  cy.batch(() => {
-    cy.elements().removeClass(DIM).removeClass(MATCH);
-    if (items.length === 0) return;
-    cy.elements().forEach((el) => {
-      if (!lit.has(el.id())) el.addClass(DIM);
-      if (marked.has(el.id())) el.addClass(MATCH);
-    });
-  });
-  return [...marked];
+  for (const n of graph.nodes) if (lit.has(n.id) && n.parent !== undefined) lit.add(n.parent);
+  return { marked: [...marked], lit: [...lit] };
 }
