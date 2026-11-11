@@ -85664,7 +85664,12 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     date. An operator who needs a hard end on some access makes a narrower role for it, which no offer grants.
     Revoking a grant removes what it alone added; it does not bring an extended date back. Before a bid,
     an offer''s summary states any extension accepting it would make ("extends your viewer role from 31
-    Dec to no end date").'
+    Dec to no end date"). (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:) Maintainer 2026-11-11. An
+    expiry is more data on the request: a requested duration or end date travels in the request hook''s
+    payload with the rest of what is asked, and is applied with the grant wherever the grant is made. The
+    expiring-soon and expired events (one setting, one run) are sent to the same outbound hook, so whatever
+    decides requests also hears what is about to end or has ended and can renew it, by a new request, or
+    let it go.'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -91865,7 +91870,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
     profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
     PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
-    no profile shows a value its viewer could not read.'
+    no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
+    Maintainer 2026-11-11. An expiry is more data on the request: a requested duration or end date travels
+    in the request hook''s payload with the rest of what is asked, and is applied with the grant wherever
+    the grant is made. The expiring-soon and expired events (one setting, one run) are sent to the same
+    outbound hook, so whatever decides requests also hears what is about to end or has ended and can renew
+    it, by a new request, or let it go.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94226,7 +94236,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     that granted it, and no expiry is later than any date. An operator who needs a hard end on some access
     makes a narrower role for it, which no offer grants. Revoking a grant removes what it alone added; it
     does not bring an extended date back. Before a bid, an offer''s summary states any extension accepting
-    it would make ("extends your viewer role from 31 Dec to no end date").'
+    it would make ("extends your viewer role from 31 Dec to no end date"). (Amended 2026-11-11, EXPIRIES
+    GO TO THE SAME HOOK:) Maintainer 2026-11-11. An expiry is more data on the request: a requested duration
+    or end date travels in the request hook''s payload with the rest of what is asked, and is applied with
+    the grant wherever the grant is made. The expiring-soon and expired events (one setting, one run) are
+    sent to the same outbound hook, so whatever decides requests also hears what is about to end or has
+    ended and can renew it, by a new request, or let it go.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
