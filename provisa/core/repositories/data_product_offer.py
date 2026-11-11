@@ -592,3 +592,35 @@ async def withdraw(conn: "Connection", product_id: str, bid_id: int, *, by: str)
 async def record(conn: "Connection", values: dict) -> int:
     """Insert a bid row as given (an open offer's, accepted at once); returns its id."""
     return await conn.insert_returning(data_product_bids, values, "id")
+
+
+async def row_rule_words(
+    conn: "Connection", chain: Iterable[str], table_id: int, domain_id: str
+) -> list[str]:
+    """The row rules the roles of ``chain`` read ``table_id`` under, each in words: its stated
+    description (REQ-2081). A rule on the table, on its domain, or on a tag the table carries."""
+    from sqlalchemy import and_, or_
+
+    from provisa.core.schema_org import rls_rules, tag_assignments
+
+    tagged = select(tag_assignments.c.tag_id).where(
+        tag_assignments.c.table_id == table_id, tag_assignments.c.column_name.is_(None)
+    )
+    rows = await conn.execute_core(
+        select(rls_rules.c.description, rls_rules.c.rights)
+        .where(rls_rules.c.role_id.in_(list(chain)))
+        .where(rls_rules.c.action_name.is_(None))
+        .where(
+            or_(
+                rls_rules.c.table_id == table_id,
+                and_(
+                    rls_rules.c.table_id.is_(None),
+                    rls_rules.c.tag_id.is_(None),
+                    rls_rules.c.domain_id == domain_id,
+                ),
+                rls_rules.c.tag_id.in_(tagged),
+            )
+        )
+        .order_by(rls_rules.c.id)
+    )
+    return [r.description for r in rows.fetchall() if "R" in r.rights]
