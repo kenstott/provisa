@@ -63,6 +63,7 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "reference_library",  # REQ-2185: the library's retrieval setting, passage or graph
         "names",  # REQ-194: how the names table settles a name clash (refuse or disambiguate)
         "requests",  # REQ-2216: how the org is told of requests: email, events only, or both
+        "offer_hook",  # REQ-2180: where the org's access requests go, and the secret they are signed with
         "sampling",  # REQ-1327
         "hot_tables",  # REQ-1327
         "replication",  # REQ-1327

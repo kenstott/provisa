@@ -17,10 +17,15 @@
   other is refused by name.
 * Each offer's contracts are derived when it is saved: one per dataset, the offer's terms applied
   to it, as the offer's role reads it (provisa.core.offer_contracts).
-* A signed-in requester bids for an offer, stating why. The product's owner role accepts or
-  declines the bid as bid; accepting checks again that the one accepting may grant the offer's
-  role. An open offer is accepted at once against the right of the owner who published it; while
-  that right is gone the bid stays pending and the offer is listed for review.
+* A signed-in requester bids for an offer, stating why, and the bid fires the outbound request
+  hook (provisa.core.offer_hooks); so does their cancel of it. Whatever receives the request
+  decides, and the decision returns through the one inbound decision hook (``POST
+  /decisions``). With no hook configured the request lands in the product's own queue, and its
+  accept and decline here are that queue's client of the decision hook: the product's owner role
+  decides, and must still be able to grant the offer's role.
+* An offer may be open only when its data is already public (provisa.core.offer_public): an open
+  offer is no request at all, and the API reports ``query_now`` for it. When its data stops being
+  public, it is listed for review.
 """
 
 # Requirements: REQ-2180, REQ-2219, REQ-2188
@@ -29,7 +34,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -40,7 +45,7 @@ from provisa.api.admin.capabilities import (
     require_right_in_domains_request,
 )
 from provisa.api.errors import ApiError
-from provisa.core import offer_contracts, offer_grant
+from provisa.core import offer_contracts, offer_grant, offer_hooks, offer_public
 from provisa.core.models import DataProductOffer, OfferContract
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
@@ -54,7 +59,6 @@ _ANONYMOUS = "anonymous"
 #: The rights that let a person grant a role, within the roles their ``roles`` list reaches.
 GRANTING = frozenset({Capability.ASSIGN_ENTITLEMENTS.value, Capability.USER_MANAGEMENT.value})
 #: Why an offer is listed for review.
-REVIEW_RIGHT_GONE = "the owner who published this open offer may no longer grant its role"
 REVIEW_PROFILER_GONE = "a dataset of this synthetic offer has no profiler"
 
 
@@ -63,6 +67,10 @@ class BidBody(BaseModel):
 
 
 class DeclineBody(BaseModel):
+    reason: str
+
+
+class CancelBody(BaseModel):
     reason: str
 
 
@@ -114,21 +122,18 @@ def may_grant(request: Request, state: Any, role_id: str) -> str | None:
     return _role_grant_refusal(state, role_id, granter_capabilities(request))
 
 
-async def _publisher_refusal(
-    conn: Any, state: Any, publisher: str | None, role_id: str
-) -> str | None:
-    """Why the owner who published an open offer may no longer grant its role, or None: the
-    same rule as :func:`may_grant`, asked of them as they hold their roles now."""
+async def principal_refusal(conn: Any, state: Any, principal: str, role_id: str) -> str | None:
+    """Why ``principal`` may not grant ``role_id``, or None: the rule of :func:`may_grant`, asked
+    of them as they hold their roles now -- for a decider who is not the caller (the inbound
+    decision hook's external caller)."""
     from provisa.entitlements import roles as held_roles
     from provisa.security.rights import capabilities_for_claims
 
-    if publisher is None:
-        return REVIEW_RIGHT_GONE
-    idp = state.idp_entitlements.get(publisher, {})
-    held = await held_roles.held_roles(conn, publisher, idp, state.auth_config or {}, state.roles)
+    idp = state.idp_entitlements.get(principal, {})
+    held = await held_roles.held_roles(conn, principal, idp, state.auth_config or {}, state.roles)
     acting = [r.role_id for r in held]
     identity = SimpleNamespace(
-        user_id=publisher,
+        user_id=principal,
         raw_claims={
             "entitlements": {r: {k: list(v) for k, v in ks.items()} for r, ks in idp.items()}
         },
@@ -246,11 +251,49 @@ async def derive(
     return derived
 
 
+async def _not_public(conn: Any, state: Any, product_id: str, role_id: str) -> list[str]:
+    """What keeps the product's data, read through ``role_id``, from being public; empty when
+    it is public (provisa.core.offer_public)."""
+    datasets = await offers.dataset_ids(conn, product_id)
+    names = await offers.sql_names(conn, datasets)
+    built = {t["id"]: t for t in state.tables}
+    unread = [
+        names[d]
+        for d in datasets
+        if d not in built or not any(c.read for c in _seen_columns(state, role_id, built[d]))
+    ]
+    role = state.roles.get(role_id)
+    return offer_public.not_public(
+        role_id=role_id,
+        role_chains=state.role_chains,
+        roles=state.roles,
+        role_defaults={} if role is None else role_defaults(role),
+        held=state.held_entitlements,
+        idp=state.idp_entitlements,
+        datasets=[names[d] for d in datasets],
+        unread=unread,
+    )
+
+
+async def _query_now(conn: Any, state: Any, offer_row: dict) -> bool:
+    """Whether the offer is open and its data still public; an open offer whose data stopped
+    being public is listed for review."""
+    if not offer_row["open"]:
+        return False
+    if await _not_public(conn, state, offer_row["product_id"], offer_row["role_id"]):
+        if offer_row.get("review") != offer_public.REVIEW_NOT_PUBLIC:
+            await offers.set_review(conn, offer_row["id"], offer_public.REVIEW_NOT_PUBLIC)
+            offer_row["review"] = offer_public.REVIEW_NOT_PUBLIC
+        return False
+    return offer_row.get("review") is None
+
+
 async def _offer_view(
     conn: Any, request: Request, offer_row: dict, *, now: datetime
 ) -> dict[str, Any]:
-    """An offer as listed: its terms, its contracts (one per dataset), and the extension accepting
-    it would make for the caller."""
+    """An offer as listed: its terms, its contracts (one per dataset), the extension accepting it
+    would make for the caller, and whether it is open public data to query now."""
+    query_now = await _query_now(conn, _state(), offer_row)
     contracts = await offers.contracts(conn, offer_row["id"])
     names = await offers.table_names(conn, contracts)
     caller = _caller(request)
@@ -270,6 +313,7 @@ async def _offer_view(
             for table_id, contract in sorted(contracts.items())
         ],
         "summary": {"extension": None if extension is None else extension.statement()},
+        "query_now": query_now,
     }
 
 
@@ -313,6 +357,16 @@ async def _save(
         refusal = may_grant(request, state, body.role_id)
         if refusal is not None:
             raise ApiError(403, "data_product.offer.role_not_grantable", refusal, role=body.role_id)
+        if body.open:
+            found = await _not_public(conn, state, product_id, body.role_id)
+            if found:
+                raise ApiError(
+                    422,
+                    "data_product.offer.not_public",
+                    "an offer can be open only when its data is already public: "
+                    + "; ".join(found),
+                    reasons="; ".join(found),
+                )
         try:
             async with conn.transaction():
                 row = await offers.save(
@@ -369,85 +423,119 @@ def _requester(request: Request) -> str:
     return caller
 
 
-async def _accept(
-    conn: Any, state: Any, product: dict, held: dict, offer_row: dict, *, by: str | None
-) -> dict:
-    """Grant what the bid's offer gives and record the bid accepted. The caller holds the
-    transaction and has checked who may accept."""
-    offer = offers.as_offer(offer_row)
-    now = datetime.now(UTC)
-    identifiers = await offer_grant.entries(conn, product["id"], offer)
-    granted = await offer_grant.grant(
-        conn,
-        principal=held["requester"],
-        offer=offer,
-        domain_id=product["domain_id"],
-        identifiers=identifiers,
-        role_defaults=role_defaults(state.roles[offer.role_id]),
-        set_by=by or _ANONYMOUS,
-        reason=f"accepted bid {held['id']} for offer {offer.name!r} of data product "
-        f"{product['id']!r}: {held['reason']}",
-        now=now,
-    )
-    await offers.mark_accepted(conn, held["id"], by=by, granted=granted)
-    stored = await offers.get_bid(conn, held["id"])
-    assert stored is not None
-    return stored
+async def _hook_target(state: Any) -> offer_hooks.HookTarget | None:
+    """The org's outbound request hook, or None when it configures none."""
+    from provisa.core.org_settings import resolve_org_config
+
+    try:
+        return offer_hooks.target_of(await resolve_org_config(state.model_db))
+    except ValueError as exc:
+        raise ApiError(409, "data_product.offer.hook_misconfigured", str(exc)) from exc
+
+
+async def _destination(state: Any) -> tuple[str, offer_hooks.HookTarget | None]:
+    """Where a request goes, and the hook it is posted to (None: the local queue)."""
+    target = await _hook_target(state)
+    return offer_hooks.destination(target, state.auth_config or {}), target
+
+
+async def _fire(target: offer_hooks.HookTarget | None, body: dict) -> None:
+    """Post the request to the org's hook; the local queue holds it already."""
+    if target is None:
+        return
+    try:
+        await offer_hooks.deliver(target, body)
+    except offer_hooks.HookFailed as failed:
+        raise ApiError(502, "data_product.offer.hook_failed", str(failed)) from failed
 
 
 async def _reload_held(conn: Any, state: Any) -> None:
-    """What the runtime holds of the entitlement store, after a grant wrote to it."""
+    """What the runtime holds of the entitlement store, after a grant or removal wrote to it."""
     from provisa.entitlements import store
 
     state.held_entitlements = await store.load_held(conn)
 
 
-async def _review(conn: Any, offer_row: dict, why: str) -> None:
-    if offer_row.get("review") != why:
-        await offers.set_review(conn, offer_row["id"], why)
-
-
 @router.post("/{product_id}/offers/{offer_id}/bids")
 async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -> dict:
-    """Bid for the product's offer, stating why. An open offer is accepted at once, against the
-    right of the owner who published it; while that right is gone the bid stays pending and the
-    offer is listed for review."""
+    """Bid for the product's offer, stating why: the bid fires the outbound request hook and
+    waits for its decision. An open offer is no request at all: query it now."""
     require_capability_request(request, "data_product_read")
     requester = _requester(request)
     state = _state()
     async with state.model_db.acquire() as conn:
-        product = await _product(conn, product_id)
+        await _product(conn, product_id)
         try:
             offer_row = await offers.require_offer(conn, product_id, offer_id)
-            held = await offers.bid(
-                conn, product_id, offer_id, requester=requester, reason=body.reason
+            if offer_row["open"]:
+                raise OfferRefused(
+                    "open_no_request",
+                    f"offer {offer_row['name']!r} is open: its data is public, so there is "
+                    "nothing to request; query it now",
+                    status=409,
+                    query_now=True,
+                )
+            hook, target = await _destination(state)
+            request_id = offer_hooks.new_request_id()
+            payload = await offer_hooks.payload(
+                conn,
+                request_id=request_id,
+                requester=requester,
+                product_id=product_id,
+                offer_row=offer_row,
+                reason=body.reason.strip(),
             )
+            async with conn.transaction():
+                held = await offers.bid(
+                    conn,
+                    product_id,
+                    offer_id,
+                    requester=requester,
+                    reason=body.reason,
+                    request_id=request_id,
+                    hook=hook,
+                    payload=payload,
+                )
+                await _fire(target, payload)
         except OfferRefused as refused:
             raise _refused(refused) from refused
+    return _bid_view(held)
+
+
+async def _cancel(product_id: str, bid_id: int, reason: str, request: Request, status: str) -> dict:
+    """The requester cancels their bid, pending (a withdrawal) or accepted: the cancel fires the
+    outbound request hook, and the local default applies it at once -- withdrawing the bid, or
+    removing what accepting it granted."""
+    requester = _requester(request)
+    state = _state()
+    async with state.model_db.acquire() as conn:
+        await _product(conn, product_id)
         try:
-            if not offer_row["open"]:
-                return _bid_view(held)
-            refusal = await _publisher_refusal(
-                conn, state, offer_row["published_by"], offer_row["role_id"]
+            held = await offers.own_bid(
+                conn, product_id, bid_id, requester=requester, status=status
             )
-            if refusal is not None:
-                await _review(conn, offer_row, REVIEW_RIGHT_GONE)
-                return _bid_view(held)
+            hook, target = await _destination(state)
+            request_id = offer_hooks.new_request_id()
+            payload = offer_hooks.cancel_payload(held, request_id=request_id, reason=reason.strip())
             async with conn.transaction():
-                accepted = await _accept(
-                    conn, state, product, held, offer_row, by=offer_row["published_by"]
+                cancel = await offers.cancel(
+                    conn, held, reason=reason, request_id=request_id, hook=hook, payload=payload
                 )
+                if hook == offer_hooks.LOCAL:
+                    cancel = await offer_hooks.apply_cancel(
+                        conn, cancel, by=requester, at=None, provisa_held=True
+                    )
+                await _fire(target, payload)
         except OfferRefused as refused:
-            if refused.code == "synthetic_needs_profiler":
-                await _review(conn, offer_row, REVIEW_PROFILER_GONE)
             raise _refused(refused) from refused
         await _reload_held(conn, state)
-    return _bid_view(accepted)
+    return _bid_view(cancel)
 
 
 @router.get("/{product_id}/bids")
 async def list_bids(product_id: str, request: Request) -> list[dict]:
-    """The product's bids, newest first: all of them for its owner role, else the caller's own."""
+    """The product's bids and cancels, newest first: all of them for its owner role, else the
+    caller's own."""
     require_capability_request(request, "data_product_read")
     state = _state()
     async with state.model_db.acquire() as conn:
@@ -467,58 +555,258 @@ def _require_owner(request: Request, state: Any, product: dict) -> None:
         )
 
 
-@router.post("/{product_id}/bids/{bid_id}/accept")
-async def accept(product_id: str, bid_id: int, request: Request) -> dict:
-    """Accept the bid as bid: the product's owner role, who must still be able to grant the
-    offer's role."""
+def _grants(state: Any) -> Any:
+    """What applying an accepted bid needs where Provisa holds access; None where an identity
+    provider holds it, and a decision only updates the request's status."""
+    if offer_hooks.held_by_idp(state.auth_config or {}):
+        return None
+
+    async def grants(conn: Any, held: dict) -> offer_hooks.Grants:
+        product = await _product(conn, held["product_id"])
+        role_id = held["terms"]["role_id"]
+        if role_id not in state.roles:
+            raise OfferRefused(
+                "role_not_found", f"role {role_id!r} is not defined", status=409, role=role_id
+            )
+        return offer_hooks.Grants(product["domain_id"], role_defaults(state.roles[role_id]))
+
+    return grants
+
+
+async def _decide(conn: Any, state: Any, decision: offer_hooks.Decision, may: Any) -> dict:
+    """Apply ``decision`` through the decision hook, in one transaction."""
+    try:
+        async with conn.transaction():
+            row = await offer_hooks.decide(conn, decision, may_grant=may, grants=_grants(state))
+    except OfferRefused as refused:
+        if refused.code == "synthetic_needs_profiler":
+            held = await offers.require_request(conn, decision.request_id)
+            if held["offer_id"] is not None:
+                await offers.set_review(conn, held["offer_id"], REVIEW_PROFILER_GONE)
+        raise _refused(refused) from refused
+    await _reload_held(conn, state)
+    return _bid_view(row)
+
+
+async def _decide_locally(
+    product_id: str,
+    bid_id: int,
+    outcome: offer_hooks.Outcome,
+    reason: str | None,
+    request: Request,
+) -> dict:
+    """The local request queue's client of the decision hook: the product's owner role decides
+    a pending bid, as the signed-in caller, now."""
     state = _state()
     async with state.model_db.acquire() as conn:
         product = await _product(conn, product_id)
         _require_owner(request, state, product)
         try:
-            async with conn.transaction():
-                held = await offers.require_pending(conn, product_id, bid_id)
-                offer_row = await offers.offer_as_bid(conn, held)
-                refusal = may_grant(request, state, offer_row["role_id"])
-                if refusal is not None:
-                    raise ApiError(
-                        403,
-                        "data_product.offer.role_not_grantable",
-                        refusal,
-                        role=offer_row["role_id"],
-                    )
-                accepted = await _accept(conn, state, product, held, offer_row, by=_caller(request))
+            held = await offers.require_pending(conn, product_id, bid_id)
         except OfferRefused as refused:
             raise _refused(refused) from refused
-        await _reload_held(conn, state)
-    return _bid_view(accepted)
+
+        async def may(role_id: str) -> str | None:
+            return may_grant(request, state, role_id)
+
+        decision = offer_hooks.Decision(
+            request_id=held["request_id"],
+            outcome=outcome,
+            decider=_caller(request) or _ANONYMOUS,
+            decided_at=datetime.now(UTC),
+            reason=reason,
+        )
+        return await _decide(conn, state, decision, may)
+
+
+@router.post("/{product_id}/bids/{bid_id}/accept")
+async def accept(product_id: str, bid_id: int, request: Request) -> dict:
+    """Accept the bid as bid, through the decision hook: the product's owner role, who must
+    still be able to grant the offer's role."""
+    return await _decide_locally(product_id, bid_id, "accepted", None, request)
 
 
 @router.post("/{product_id}/bids/{bid_id}/decline")
 async def decline(product_id: str, bid_id: int, body: DeclineBody, request: Request) -> dict:
-    """Decline the bid, stating why: the product's owner role."""
-    state = _state()
-    async with state.model_db.acquire() as conn:
-        product = await _product(conn, product_id)
-        _require_owner(request, state, product)
-        try:
-            row = await offers.decline(
-                conn, product_id, bid_id, by=_caller(request), reason=body.reason
-            )
-        except OfferRefused as refused:
-            raise _refused(refused) from refused
-    return _bid_view(row)
+    """Decline the bid, stating why, through the decision hook: the product's owner role."""
+    return await _decide_locally(product_id, bid_id, "declined", body.reason, request)
 
 
 @router.post("/{product_id}/bids/{bid_id}/withdraw")
-async def withdraw(product_id: str, bid_id: int, request: Request) -> dict:
-    """The requester withdraws their pending bid."""
-    requester = _requester(request)
+async def withdraw(product_id: str, bid_id: int, body: CancelBody, request: Request) -> dict:
+    """The requester withdraws their pending bid: a cancel of it."""
+    return await _cancel(product_id, bid_id, body.reason, request, "pending")
+
+
+@router.post("/{product_id}/bids/{bid_id}/cancel")
+async def cancel(product_id: str, bid_id: int, body: CancelBody, request: Request) -> dict:
+    """The requester cancels their accepted bid: the cancel fires the outbound request hook, and
+    the local default applies it as the matching removal."""
+    return await _cancel(product_id, bid_id, body.reason, request, "accepted")
+
+
+# -- the org's request hook ------------------------------------------------------------------------
+
+
+class HookBody(BaseModel):
+    url: str
+    secret: str
+
+
+@router.get("/request-hook")
+async def get_request_hook(request: Request) -> dict:
+    """Where the org's access requests go: its hook (URL and secret reference), or the local
+    request queue (``hook`` None) -- refused where an identity provider holds access, which has
+    no local default."""
+    from provisa.api.admin._platform_guard import require_org_settings
+
+    require_org_settings(request)
+    require_active_org_id(request)
+    target = await _hook_target(_state())
+    return {
+        "hook": None if target is None else {"url": target.url, "secret": target.secret},
+        "local_default": not offer_hooks.held_by_idp(_state().auth_config or {}),
+    }
+
+
+@router.put("/request-hook")
+async def set_request_hook(body: HookBody | None, request: Request) -> dict:
+    """Keep the org's request hook: an http(s) URL, and its secret as a reference (``null``
+    clears it, sending requests to the local queue)."""
+    from provisa.api.admin._platform_guard import require_org_settings
+    from provisa.core.org_settings import write_org_overrides
+
+    require_org_settings(request)
+    require_active_org_id(request)
+    value = None
+    if body is not None:
+        try:
+            target = offer_hooks.checked(offer_hooks.HookTarget(url=body.url, secret=body.secret))
+        except ValueError as exc:
+            raise ApiError(422, "data_product.offer.hook_invalid", str(exc)) from exc
+        value = {"url": target.url, "secret": target.secret}
+    await write_org_overrides(
+        _state().model_db,
+        {offer_hooks.SETTINGS_KEY: value},
+        updated_by=_caller(request) or _ANONYMOUS,
+    )
+    return {"hook": value}
+
+
+# -- the inbound decision hook ---------------------------------------------------------------------
+
+
+class DecisionBody(BaseModel):
+    request_id: str
+    outcome: Literal["accepted", "declined"]
+    decider: str | None = None
+    decided_at: datetime | None = None
+    reason: str | None = None
+
+
+@router.post("/decisions")
+async def decision_hook(request: Request) -> dict:
+    """The inbound decision hook: a request's id, accepted or declined, who decided and when.
+    An external caller signs the body with the org's hook secret (``X-Provisa-Signature``) and
+    names the decider, whose right to grant the offer's role is read from the roles they hold. A
+    signed-in caller decides as themselves, now, as the product's owner role -- as the local
+    queue does."""
+    raw = await request.body()
+    try:
+        body = DecisionBody.model_validate_json(raw)
+    except ValueError as exc:
+        raise ApiError(422, "data_product.decision.invalid", str(exc)) from exc
+    state = _state()
+    signature = request.headers.get(offer_hooks.SIGNATURE_HEADER)
+    if signature is None:
+        async with state.model_db.acquire() as conn:
+            try:
+                held = await offers.require_request(conn, body.request_id)
+            except OfferRefused as refused:
+                raise _refused(refused) from refused
+        caller = _caller(request)
+        if body.decider is not None and caller is not None and body.decider != caller:
+            raise ApiError(
+                403,
+                "data_product.decision.not_the_decider",
+                f"a signed-in caller decides as themselves, not as {body.decider!r}",
+            )
+        return await _decide_locally(
+            held["product_id"], held["id"], body.outcome, body.reason, request
+        )
+    target = await _hook_target(state)
+    if target is None or not offer_hooks.verified(
+        raw, signature, await offer_hooks.resolved_secret(target)
+    ):
+        raise ApiError(
+            401,
+            "data_product.decision.bad_signature",
+            "the decision is not signed with the org's request hook secret",
+        )
+    if body.decider is None or body.decided_at is None:
+        raise ApiError(
+            422,
+            "data_product.decision.incomplete",
+            "an external decision names who decided (decider) and when (decided_at)",
+        )
+    decider = body.decider
+    async with state.model_db.acquire() as conn:
+
+        async def may(role_id: str) -> str | None:
+            return await principal_refusal(conn, state, decider, role_id)
+
+        decision = offer_hooks.Decision(
+            request_id=body.request_id,
+            outcome=body.outcome,
+            decider=decider,
+            decided_at=body.decided_at,
+            reason=body.reason,
+        )
+        return await _decide(conn, state, decision, may)
+
+
+# -- profiles --------------------------------------------------------------------------------------
+
+
+@router.get("/{product_id}/profiles")
+async def product_profiles(product_id: str, request: Request) -> list[dict]:
+    """Each dataset of the product with its latest profile, as the caller's roles see the data
+    (REQ-2180, A PROFILE SHOWN IS SANITIZED): a column they are not served is left out, and a
+    masked or PII-tagged one shows its type, null rate and distinct count and no value. Sanitized
+    here, on the server. ``run`` and ``results`` are the profiler's own shapes (ProfileRun,
+    ProfileRunResults); both None for a dataset with no profiler or no successful run."""
+    require_capability_request(request, "data_product_read")
+    from provisa.core import offer_profiles
+
+    roles = _viewer_roles(request)
     state = _state()
     async with state.model_db.acquire() as conn:
         await _product(conn, product_id)
-        try:
-            row = await offers.withdraw(conn, product_id, bid_id, by=requester)
-        except OfferRefused as refused:
-            raise _refused(refused) from refused
-    return _bid_view(row)
+        datasets = await offers.dataset_ids(conn, product_id)
+        names = await offers.table_names(conn, datasets)
+        out = []
+        for dataset in datasets:
+            latest = await offer_profiles.latest(conn, state, dataset, roles)
+            out.append(
+                {
+                    "table_id": dataset,
+                    "table": names.get(dataset, str(dataset)),
+                    "run": None if latest is None else latest.run,
+                    "results": None if latest is None else latest.results,
+                }
+            )
+    return out
+
+
+def _viewer_roles(request: Request) -> frozenset[str]:
+    """The roles the caller reads as: their acting role, a meta-role's members."""
+    from provisa.security.meta_role import acting_roles
+
+    acting = str(getattr(request.state, "role", "") or "")
+    if not acting:
+        raise ApiError(
+            400,
+            "data_product.profile.role_required",
+            "a profile is shown as its reader's role sees the data; no role is acting",
+        )
+    return frozenset(m for r in acting.split(",") if r.strip() for m in acting_roles(_state(), r))

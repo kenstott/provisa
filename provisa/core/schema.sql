@@ -1888,8 +1888,8 @@ CREATE INDEX IF NOT EXISTS idx_data_product_commands_command ON data_product_com
 -- level of data (the product's datasets, a sample of existing views over them, or synthetic), and
 -- whether it includes the product's data quality results and its profiles, whether it is open
 -- (accepted at once), and how long what it grants lasts (none: no end). ``version`` counts its
--- changes; ``published_by`` is the owner whose right to grant the role an open offer is checked
--- against; ``review`` says why it is listed for review (a right or a profiler gone), NULL when not.
+-- changes; ``published_by`` is the owner who published it; ``review`` says why it is listed for
+-- review (its data no longer public, or a profiler gone), NULL when not.
 CREATE TABLE IF NOT EXISTS data_product_offers (
     id            SERIAL PRIMARY KEY,
     product_id    TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
@@ -1920,19 +1920,29 @@ CREATE TABLE IF NOT EXISTS data_product_offer_contracts (
     PRIMARY KEY (offer_id, table_id)
 );
 
--- REQ-2180: a requester's bid for an offer, and its outcome. ``terms`` is the offer as bid, which
--- the approver accepts or declines and never alters; ``granted`` what accepting granted.
+-- REQ-2180: a requester's bid for an offer, or the cancel of an accepted one, as the request it
+-- fired through the outbound request hook (REQUESTS GO THROUGH HOOKS), and its outcome.
+-- ``request_id`` is the id the hook carries, which makes a repeat harmless and which the decision
+-- names; ``hook`` where the request went ('local': the org's own request queue, else the hook's
+-- URL); ``payload`` the request as fired. ``terms`` is the offer as bid, which the decider accepts
+-- or declines and never alters; ``granted`` what an accepted bid granted, which its cancel removes.
 CREATE TABLE IF NOT EXISTS data_product_bids (
     id             SERIAL PRIMARY KEY,
+    request_id     TEXT NOT NULL UNIQUE,
+    kind           TEXT NOT NULL DEFAULT 'bid'
+                   CONSTRAINT data_product_bids_kind_check CHECK (kind IN ('bid', 'cancel')),
+    cancels        INTEGER REFERENCES data_product_bids(id) ON DELETE CASCADE,
     product_id     TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
     offer_id       INTEGER REFERENCES data_product_offers(id) ON DELETE SET NULL,
     offer_version  INTEGER NOT NULL,
     terms          JSONB NOT NULL,
     requester      TEXT NOT NULL,
     reason         TEXT NOT NULL,
+    hook           TEXT NOT NULL,
+    payload        JSONB NOT NULL,
     status         TEXT NOT NULL DEFAULT 'pending'
                    CONSTRAINT data_product_bids_status_check
-                   CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn')),
+                   CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')),
     decided_by     TEXT,
     decided_at     TIMESTAMPTZ,
     decline_reason TEXT,

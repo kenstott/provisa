@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2180 (amended 2026-11-11, AN OFFER'S ROLE IS ONE ITS OWNER MAY GRANT; OFFERS): who decides a
-bid, who may put a role in an offer, and the columns an offer's contract states, as the offers
-router asks them."""
+"""REQ-2180 (amended 2026-11-11, AN OFFER'S ROLE IS ONE ITS OWNER MAY GRANT; OFFERS; REQUESTS GO
+THROUGH HOOKS): who decides a bid, who may put a role in an offer or decide a request, and the
+columns an offer's contract states, as the offers router asks them."""
 
 from __future__ import annotations
 
@@ -75,9 +75,27 @@ def test_a_signed_in_caller_grants_only_what_their_roles_list_reaches(monkeypatc
     assert refusal == "role 'owner' is outside the roles you may grant"
 
 
-def test_an_open_offer_with_no_publisher_is_listed_for_review():
-    refusal = asyncio.run(router._publisher_refusal(None, _state(), None, "viewer"))
-    assert refusal == router.REVIEW_RIGHT_GONE
+def test_an_external_deciders_right_is_asked_of_the_roles_they_hold(monkeypatch):
+    held_by: dict[str, list[str]] = {"o1": ["owner"], "u9": ["viewer"]}
+
+    async def held_roles(_conn, principal, _idp, _auth, _roles):
+        return [SimpleNamespace(role_id=r) for r in held_by[principal]]
+
+    monkeypatch.setattr("provisa.entitlements.roles.held_roles", held_roles)
+    monkeypatch.setattr(
+        "provisa.security.rights.capabilities_for_claims",
+        lambda acting, _roles: {"assign_entitlements"} if "owner" in acting else set(),
+    )
+    monkeypatch.setattr(
+        router, "reaches_role", lambda _state, _role, caps: "assign_entitlements" in caps
+    )
+    state = _state(idp_entitlements={}, auth_config={})
+    assert asyncio.run(router.principal_refusal(None, state, "o1", "viewer")) is None
+    refusal = asyncio.run(router.principal_refusal(None, state, "u9", "viewer"))
+    assert refusal == "role 'viewer' is outside the roles you may grant"
+    assert "not defined" in (
+        asyncio.run(router.principal_refusal(None, state, "o1", "ghost")) or ""
+    )
 
 
 def test_an_offers_contract_states_the_columns_its_role_reads(monkeypatch):

@@ -1403,25 +1403,32 @@ data_product_offer_contracts = Table(
     PrimaryKeyConstraint("offer_id", "table_id"),
 )
 
-# REQ-2180: a requester's bid for an offer, and its outcome.
+# REQ-2180: a bid, or the cancel of an accepted one, as the request it fired through the outbound
+# request hook, and its outcome (see schema.sql).
 data_product_bids = Table(
     "data_product_bids",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_id", Text, nullable=False, unique=True),
+    Column("kind", Text, nullable=False, server_default="bid"),
+    Column("cancels", Integer, ForeignKey("data_product_bids.id", ondelete="CASCADE")),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
     Column("offer_id", Integer, ForeignKey("data_product_offers.id", ondelete="SET NULL")),
     Column("offer_version", Integer, nullable=False),
     Column("terms", JSON, nullable=False),
     Column("requester", Text, nullable=False),
     Column("reason", Text, nullable=False),
+    Column("hook", Text, nullable=False),
+    Column("payload", JSON, nullable=False),
     Column("status", Text, nullable=False, server_default="pending"),
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True)),
     Column("decline_reason", Text),
     Column("granted", JSON),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
     CheckConstraint(
-        "status IN ('pending', 'accepted', 'declined', 'withdrawn')",
+        "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
         name="data_product_bids_status_check",
     ),
 )

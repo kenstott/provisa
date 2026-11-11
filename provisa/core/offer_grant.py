@@ -23,6 +23,10 @@ expires.
 EXPIRY IS THE LATEST OF ITS GRANTS. A person holds a role once: a role granted again ends at the
 latest of the expiries that granted it, no expiry being later than any date. The entries are added
 through the entitlement store (``store.add_to_list``), whose rules are its own.
+
+A CANCEL IS THE MATCHING REMOVAL. Cancelling an accepted bid removes what its grant alone added:
+the entries it added, with the expiry they were added with, and the role when the grant made it.
+It does not bring an extended date back.
 """
 
 # Requirements: REQ-2180, REQ-2219, REQ-2077
@@ -34,7 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from provisa.core.models import DataProductOffer
 from provisa.core.repositories import data_product_offer as offers
@@ -248,3 +252,44 @@ async def grant(
 
 def _iso(at: datetime | None) -> str | None:
     return None if at is None else at.isoformat()
+
+
+async def revoke(
+    conn: "Connection", *, principal: str, granted: Mapping[str, Any], set_by: str, reason: str
+) -> None:
+    """Remove what one accepted bid granted ``principal`` (``granted``, as :func:`grant` returned
+    it): the entries it added to their tables list for the role, with the expiry they were added
+    with, and the role itself when they did not hold it before. The caller holds the
+    transaction."""
+    role_id = str(granted["role_id"])
+    added = tuple(granted["added"])
+    held = (await store.load_held(conn)).get(principal)
+    if added and held is not None:
+        listed = next(
+            (
+                h.identifiers
+                for h in held.lists
+                if h.role_id == role_id and h.kind == TABLES and h.capability is None
+            ),
+            None,
+        )
+        if listed is not None:
+            kept = [i for i in listed if i not in added]
+            if len(kept) != len(listed):
+                await store.set_list(
+                    conn, principal, role_id, TABLES, kept, set_by=set_by, reason=reason
+                )
+        for rule in held.expiries:
+            if (
+                rule.role_id == role_id
+                and rule.list_kind == TABLES
+                and set().union(*rule.ends.values()) == set(added)
+            ):
+                await store.withdraw_expiry(conn, rule, principal, set_by=set_by, reason=reason)
+    if not granted["role_held"]:
+        await conn.execute_core(
+            delete(user_role_assignments).where(
+                user_role_assignments.c.user_id == principal,
+                user_role_assignments.c.role_id == role_id,
+            )
+        )

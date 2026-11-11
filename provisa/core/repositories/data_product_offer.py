@@ -13,9 +13,10 @@
 Access to a data product is by offers. A product starts with one, the default (viewer, the full
 data, with data quality results, without profiles, not open); any other is its owner's to add. An
 offer always covers every dataset of the product: its member tables and views, a checker table
-(the product's data quality results, REQ-2157) being none. A requester bids for an offer; the
-product's owner role accepts or declines it as bid, never altering it, and an open offer is
-accepted at once.
+(the product's data quality results, REQ-2157) being none. A requester bids for an offer, and the
+bid is a request fired through the outbound request hook (provisa.core.offer_hooks); whatever
+receives it accepts or declines the offer as bid, never altering it. An open offer is no request
+at all.
 
 What is checked here is what the store alone can answer: a sample's views exist, are views and
 read only the product's datasets, together all of them; a synthetic offer's datasets each have a
@@ -48,6 +49,8 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from provisa.core.database import Connection
 
 _OFFER_FIELDS = tuple(DataProductOffer.model_fields)
@@ -472,11 +475,43 @@ async def list_bids(
     return [_bid(r) for r in rows.fetchall()]
 
 
+async def get_request(conn: "Connection", request_id: str) -> dict | None:
+    """The bid or cancel that fired the request ``request_id``, or None."""
+    row = (
+        await conn.execute_core(
+            select(data_product_bids).where(data_product_bids.c.request_id == request_id)
+        )
+    ).fetchone()
+    return None if row is None else _bid(row)
+
+
+async def require_request(conn: "Connection", request_id: str) -> dict:
+    """The bid or cancel of the request ``request_id``, refused by name when there is none."""
+    held = await get_request(conn, request_id)
+    if held is None:
+        raise OfferRefused(
+            "request_not_found",
+            f"no request {request_id!r} was made",
+            status=404,
+            request=request_id,
+        )
+    return held
+
+
 async def bid(
-    conn: "Connection", product_id: str, offer_id: int, *, requester: str, reason: str
+    conn: "Connection",
+    product_id: str,
+    offer_id: int,
+    *,
+    requester: str,
+    reason: str,
+    request_id: str,
+    hook: str,
+    payload: dict,
 ) -> dict:
     """``requester`` bids for the product's offer, stating why: the offer as it stands is what
-    is bid for. One pending bid per requester and offer."""
+    is bid for, and ``payload`` the request fired for it, as ``request_id`` to ``hook``. One
+    pending bid per requester and offer."""
     text = reason.strip()
     if not text:
         raise OfferRefused("reason_required", "a bid states its reason")
@@ -486,6 +521,7 @@ async def bid(
             select(data_product_bids.c.id)
             .where(data_product_bids.c.offer_id == offer_id)
             .where(data_product_bids.c.requester == requester)
+            .where(data_product_bids.c.kind == "bid")
             .where(data_product_bids.c.status == "pending")
         )
     ).fetchone()
@@ -499,12 +535,16 @@ async def bid(
     bid_id = await conn.insert_returning(
         data_product_bids,
         {
+            "request_id": request_id,
+            "kind": "bid",
             "product_id": product_id,
             "offer_id": offer_id,
             "offer_version": offer["version"],
             "terms": as_offer(offer).model_dump(),
             "requester": requester,
             "reason": text,
+            "hook": hook,
+            "payload": payload,
         },
         "id",
     )
@@ -513,21 +553,105 @@ async def bid(
     return stored
 
 
-async def require_pending(conn: "Connection", product_id: str, bid_id: int) -> dict:
-    """The product's pending bid ``bid_id``, refused by name when it is none."""
+async def require_bid(conn: "Connection", product_id: str, bid_id: int) -> dict:
+    """The product's bid ``bid_id``, refused by name when it has none of that id."""
     held = await get_bid(conn, bid_id)
-    if held is None or held["product_id"] != product_id:
+    if held is None or held["product_id"] != product_id or held["kind"] != "bid":
         raise OfferRefused(
             "bid_not_found", f"data product {product_id!r} has no bid {bid_id}", status=404
         )
-    if held["status"] != "pending":
+    return held
+
+
+async def require_pending(conn: "Connection", product_id: str, bid_id: int) -> dict:
+    """The product's pending bid ``bid_id``, refused by name when it is none."""
+    held = await require_bid(conn, product_id, bid_id)
+    _require_status(held, "pending")
+    return held
+
+
+def _require_status(held: dict, status: str) -> None:
+    if held["status"] != status:
         raise OfferRefused(
-            "bid_decided",
-            f"bid {bid_id} is {held['status']}, not pending",
+            "bid_decided" if status == "pending" else f"bid_not_{status}",
+            f"{held['kind']} {held['id']} is {held['status']}, not {status}",
             status=409,
             status_now=held["status"],
         )
+
+
+async def own_bid(
+    conn: "Connection", product_id: str, bid_id: int, *, requester: str, status: str
+) -> dict:
+    """``requester``'s bid ``bid_id`` of the product, in ``status``: refused by name when it is
+    another's, or in another status."""
+    held = await require_bid(conn, product_id, bid_id)
+    if held["requester"] != requester:
+        raise OfferRefused(
+            "not_requester", "only the requester cancels a bid", status=403, bid=bid_id
+        )
+    _require_status(held, status)
     return held
+
+
+async def cancel(
+    conn: "Connection",
+    bid: dict,
+    *,
+    reason: str,
+    request_id: str,
+    hook: str,
+    payload: dict,
+) -> dict:
+    """The requester cancels their bid, pending (a withdrawal) or accepted, stating why: the
+    cancel is a request of its own, ``payload`` fired as ``request_id`` to ``hook``. One pending
+    cancel per bid."""
+    text = reason.strip()
+    if not text:
+        raise OfferRefused("reason_required", "a cancel states its reason")
+    if bid["kind"] != "bid" or bid["status"] not in ("pending", "accepted"):
+        raise OfferRefused(
+            "bid_not_cancellable",
+            f"{bid['kind']} {bid['id']} is {bid['status']}; only a pending or accepted bid is "
+            "cancelled",
+            status=409,
+            status_now=bid["status"],
+        )
+    accepted = bid
+    pending = (
+        await conn.execute_core(
+            select(data_product_bids.c.id)
+            .where(data_product_bids.c.cancels == accepted["id"])
+            .where(data_product_bids.c.status == "pending")
+        )
+    ).fetchone()
+    if pending is not None:
+        raise OfferRefused(
+            "cancel_pending",
+            f"bid {accepted['id']} already has a pending cancel ({pending.id})",
+            status=409,
+            cancel=pending.id,
+        )
+    cancel_id = await conn.insert_returning(
+        data_product_bids,
+        {
+            "request_id": request_id,
+            "kind": "cancel",
+            "cancels": accepted["id"],
+            "product_id": accepted["product_id"],
+            "offer_id": accepted["offer_id"],
+            "offer_version": accepted["offer_version"],
+            "terms": accepted["terms"],
+            "requester": accepted["requester"],
+            "reason": text,
+            "hook": hook,
+            "payload": payload,
+        },
+        "id",
+    )
+    stored = await get_bid(conn, cancel_id)
+    assert stored is not None
+    return stored
 
 
 async def offer_as_bid(conn: "Connection", held: dict) -> dict:
@@ -546,52 +670,33 @@ async def offer_as_bid(conn: "Connection", held: dict) -> dict:
     return offer
 
 
-async def mark_accepted(conn: "Connection", bid_id: int, *, by: str | None, granted: dict) -> None:
-    await conn.execute_core(
-        update(data_product_bids)
-        .where(data_product_bids.c.id == bid_id)
-        .values(status="accepted", decided_by=by, decided_at=func.now(), granted=granted)
-    )
-
-
-async def decline(
-    conn: "Connection", product_id: str, bid_id: int, *, by: str | None, reason: str
+async def decided(
+    conn: "Connection",
+    row_id: int,
+    status: str,
+    *,
+    by: str | None,
+    at: "datetime | None",
+    reason: str | None = None,
+    granted: dict | None = None,
 ) -> dict:
-    """Decline the pending bid, stating why."""
-    text = reason.strip()
-    if not text:
-        raise OfferRefused("reason_required", "declining a bid states its reason")
-    await require_pending(conn, product_id, bid_id)
+    """Record the bid or cancel ``row_id`` as ``status``, decided ``by`` at ``at`` (None: now),
+    with the decline's ``reason`` or what accepting ``granted``. The row as stored."""
+    values: dict[str, Any] = {
+        "status": status,
+        "decided_by": by,
+        "decided_at": func.now() if at is None else at,
+    }
+    if reason is not None:
+        values["decline_reason"] = reason
+    if granted is not None:
+        values["granted"] = granted
     await conn.execute_core(
-        update(data_product_bids)
-        .where(data_product_bids.c.id == bid_id)
-        .values(status="declined", decided_by=by, decided_at=func.now(), decline_reason=text)
+        update(data_product_bids).where(data_product_bids.c.id == row_id).values(**values)
     )
-    stored = await get_bid(conn, bid_id)
+    stored = await get_bid(conn, row_id)
     assert stored is not None
     return stored
-
-
-async def withdraw(conn: "Connection", product_id: str, bid_id: int, *, by: str) -> dict:
-    """The requester withdraws their pending bid."""
-    held = await require_pending(conn, product_id, bid_id)
-    if held["requester"] != by:
-        raise OfferRefused(
-            "not_requester", "only the requester withdraws a bid", status=403, bid=bid_id
-        )
-    await conn.execute_core(
-        update(data_product_bids)
-        .where(data_product_bids.c.id == bid_id)
-        .values(status="withdrawn", decided_by=by, decided_at=func.now())
-    )
-    stored = await get_bid(conn, bid_id)
-    assert stored is not None
-    return stored
-
-
-async def record(conn: "Connection", values: dict) -> int:
-    """Insert a bid row as given (an open offer's, accepted at once); returns its id."""
-    return await conn.insert_returning(data_product_bids, values, "id")
 
 
 async def row_rule_words(
