@@ -287,12 +287,26 @@ const TERM_FIELDS = [
   "identity_gap",
 ];
 
-/** A term's selection at ``level`` hops from the search's matches or the focus. Under a search or
- * a focus the terms a term's edges reach are read with it, a level further, to ``s.depth``: a term
- * at the last level is read with its edges' ends alone, so an edge between two of them is drawn and
- * nothing past them is. With neither every term is read at level 0, its edges' ends by id. */
+/** The hops from a product to its own terms, the root a product's focus reads: its tables (1),
+ * their columns (2) and the terms tied to them (3), as reach() and laneDiagram count them. */
+export const PRODUCT_TERM_HOPS = 3;
+
+/** How many steps across the term links ``s``'s hops take from the terms at its root. A search's
+ * matches and a term's focus are at hop 0, so each hop is a step. A product's own terms are
+ * PRODUCT_TERM_HOPS from it, so only the hops past them step across a link: read further, each
+ * level nested both ways, the query grows some 2.5 times a level for nothing drawn. */
+export function termLevels(s: Pick<QueryScope, "search" | "focus" | "depth">): number {
+  if (s.search.length === 0 && s.focus === null) return 0;
+  return focusProduct(s) === null ? s.depth : Math.max(0, s.depth - PRODUCT_TERM_HOPS);
+}
+
+/** A term's selection at ``level`` steps from the search's matches or the focus's terms. Under a
+ * search or a focus the terms a term's edges reach are read with it, a level further, to
+ * termLevels: a term at the last level is read with its edges' ends alone, so an edge between two
+ * of them is drawn and nothing past them is. With neither every term is read at level 0, its
+ * edges' ends by id. */
 function termSelection(s: QueryScope, level: number): Selection {
-  const depth = s.search.length > 0 || s.focus !== null ? s.depth : 0;
+  const depth = termLevels(s);
   const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
@@ -381,7 +395,7 @@ function termSelection(s: QueryScope, level: number): Selection {
 }
 
 /** The product a focus names, or null for a term's focus or none. */
-function focusProduct(s: QueryScope): string | null {
+function focusProduct(s: Pick<QueryScope, "focus">): string | null {
   return s.focus !== null && s.focus.startsWith("p:") ? s.focus.slice(2) : null;
 }
 
