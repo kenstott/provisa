@@ -233,6 +233,44 @@ def test_release_manifest_includes_all_installer_types():
         )
 
 
+def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checksum():
+    """The Core DMG ships no DuckDB extension (codesign cannot sign them, so Apple rejected the
+    DMG): they are a release asset of their own, named by release-metadata, built by the Core
+    build, and attached with the .sha256 beside it (maintainer decision 2026-11-11)."""
+    metadata = (_ROOT / ".github/actions/release-metadata/action.yml").read_text()
+    assert (
+        'echo "duckdb_extensions_name=provisa-duckdb-extensions-${TAG}-macOS-arm64.tar.gz"'
+        in metadata
+    )
+    name = "${{ needs.metadata.outputs.duckdb_extensions_name }}"
+
+    macos = _load("release-macos.yml")["jobs"]
+    assert "duckdb_extensions_name" in macos["metadata"]["outputs"]
+    core = macos["build-macos-core"]["steps"]
+    build = next(s for s in core if "build-dmg.sh stage" in s.get("run", ""))
+    assert build["env"]["DUCKDB_EXTENSIONS_ASSET"] == name
+    upload = next(
+        s
+        for s in core
+        if s.get("uses", "").startswith("actions/upload-artifact")
+        and s["with"]["name"] == "macos-duckdb-extensions-dist"
+    )
+    assert core.index(build) < core.index(upload)
+    assert upload["with"]["path"].split() == [
+        f"packaging/macos/dist/{name}",
+        f"packaging/macos/dist/{name}.sha256",
+    ]
+    assert upload["with"]["if-no-files-found"] == "error"
+
+    publish = _publish_job()
+    assert "duckdb_extensions_name" in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
+    download = next(s for s in publish["steps"] if s.get("name") == "Download all artifacts")
+    assert download["with"]["pattern"] == "*-dist"
+    files = next(s for s in publish["steps"] if s.get("id") == "assets")["env"]["FILES"].split()
+    assert f"release-assets/{name}" in files
+    assert f"release-assets/{name}.sha256" in files
+
+
 def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
     """pip-audit's lookup of PyPI has a 15 s socket timeout by default; on v0.1.0-alpha.478 it
     timed out and failed the server wheel's job with no finding at all (run 37959190134). Every

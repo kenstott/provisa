@@ -193,8 +193,22 @@ _FAT = b"\xca\xfe\xba\xbe\x00\x00\x00\x02" + b"\x00" * 24
 _JAVA_CLASS = b"\xca\xfe\xba\xbe\x00\x00\x00\x34" + b"\x00" * 24
 
 
-def _payload(tmp_path: Path) -> Path:
-    """A build-dmg.sh beside a native-payload/runtime holding each kind of file it meets."""
+#: Every kind of DuckDB extension file the runtime holds: a core wheel's blob, provisa-duckdb-ext's
+#: blob with its .info, and a named repository's extension with its trust anchor.
+_EXTENSIONS = {
+    "lib/site-packages/duckdb_extension_httpfs/extensions/v2.0.0/httpfs.duckdb_extension": _THIN,
+    "lib/site-packages/provisa_duckdb_ext/_ext/v2.0.0/osx_arm64/mongo.duckdb_extension": _THIN,
+    "lib/site-packages/provisa_duckdb_ext/_ext/v2.0.0/osx_arm64/mongo.duckdb_extension.info": b"i",
+    "lib/site-packages/provisa_duckdb_ext/_ext/v2.0.0/osx_arm64/repositories/query_farm/"
+    "airport.duckdb_extension": _THIN,
+    "lib/site-packages/provisa_duckdb_ext/_ext/v2.0.0/osx_arm64/repositories/query_farm/"
+    "query_farm.duckdb_extension.repo.json": b"{}",
+}
+
+
+def _payload(tmp_path: Path, extensions: bool = False) -> Path:
+    """A build-dmg.sh beside a native-payload/runtime holding each kind of file it meets; with
+    ``extensions``, the DuckDB extension files too (as pip installs them, before the split)."""
     macos = tmp_path / "macos"
     runtime = macos / "native-payload/runtime"
     (macos / "Provisa.app/Contents/MacOS").mkdir(parents=True)
@@ -205,7 +219,7 @@ def _payload(tmp_path: Path) -> Path:
         "lib/site-packages/fat/_fat.abi3.so": _FAT,
         "lib/site-packages/jpype/Foo.class": _JAVA_CLASS,
         "lib/site-packages/zstandard/__init__.py": b"import os\n",
-        "lib/site-packages/duckdb_extension_httpfs/httpfs.duckdb_extension": _THIN,
+        **(_EXTENSIONS if extensions else {}),
     }.items():
         (runtime / rel).parent.mkdir(parents=True, exist_ok=True)
         (runtime / rel).write_bytes(body)
@@ -251,7 +265,7 @@ def _build_dmg(macos: Path, bin_dir: Path, program: str) -> subprocess.Completed
 
 
 def test_macho_files_finds_every_mach_o_by_magic_and_nothing_else(tmp_path):
-    macos = _payload(tmp_path)
+    macos = _payload(tmp_path, extensions=True)
     runtime = macos / "native-payload/runtime"
     result = _build_dmg(macos, _fake_tools(tmp_path), f'macho_files "{runtime}"')
     assert result.returncode == 0, result.stderr
@@ -261,16 +275,17 @@ def test_macho_files_finds_every_mach_o_by_magic_and_nothing_else(tmp_path):
         "lib/libpython3.12.dylib",
         "lib/site-packages/zstandard/backend_c.cpython-312-darwin.so",
         "lib/site-packages/fat/_fat.abi3.so",
-        "lib/site-packages/duckdb_extension_httpfs/httpfs.duckdb_extension",
+        *(rel for rel in _EXTENSIONS if rel.endswith(".duckdb_extension")),
     }
 
 
 def test_the_native_runtime_is_signed_like_the_app_with_executables_last(tmp_path):
-    macos = _payload(tmp_path)
+    macos = _payload(tmp_path, extensions=True)
     result = _build_dmg(
         macos,
         _fake_tools(tmp_path),
-        "APPLE_DEVELOPER_ID='Developer ID Application: X'\nsign_native_payload",
+        "APPLE_DEVELOPER_ID='Developer ID Application: X'\n"
+        "split_duckdb_extensions\nsign_native_payload",
     )
     assert result.returncode == 0, result.stderr
     calls = (tmp_path / "calls").read_text().splitlines()
@@ -279,7 +294,7 @@ def test_the_native_runtime_is_signed_like_the_app_with_executables_last(tmp_pat
     signed = " ".join(calls)
     for rel in ("libpython3.12.dylib", "backend_c.cpython-312-darwin.so", "_fat.abi3.so"):
         assert rel in signed
-    # codesign refuses a DuckDB-signed extension; it is not passed to it.
+    # codesign refuses a DuckDB-signed extension: none is left in the runtime to pass to it.
     assert "duckdb_extension" not in signed
     # The executable is signed after the libraries it loads, with the .app's entitlements.
     assert "python3.12" in calls[-1]
@@ -308,7 +323,20 @@ def test_the_handoff_verify_passes_when_every_mach_o_is_signed(tmp_path):
     assert f"--verify --deep --strict {macos}/Provisa.app" in calls
     assert "-R=anchor apple generic" in calls
     assert "backend_c.cpython-312-darwin.so" in calls
-    assert "Not signable by codesign (DuckDB-signed extension)" in result.stdout
+    # No DuckDB extension is in the runtime, so none is listed apart.
+    assert "duckdb_extension" not in calls + result.stdout + result.stderr
+    assert "Not signable" not in (_REPO / "packaging/macos/build-dmg.sh").read_text()
+
+
+def test_the_handoff_verify_fails_and_names_a_duckdb_extension_left_in_the_runtime(tmp_path):
+    macos = _payload(tmp_path, extensions=True)
+    result = _build_dmg(macos, _fake_tools(tmp_path), "main verify")
+    assert result.returncode == 1
+    for rel in _EXTENSIONS:
+        assert (
+            f"native-payload/runtime/{rel} is a DuckDB extension: it ships in "
+            "provisa-duckdb-extensions-dev-macOS-arm64.tar.gz, not the DMG." in result.stderr
+        )
 
 
 def test_the_handoff_verify_fails_and_names_an_unsigned_runtime_binary(tmp_path):
@@ -475,3 +503,62 @@ def test_the_script_fails_when_the_app_bundle_is_missing(tmp_path):
     )
     assert proc.returncode == 1
     assert "App bundle not found" in proc.stderr
+
+
+# ── The DuckDB extensions leave the Core DMG for a release asset of their own ───────────────────
+# codesign refuses them (DuckDB's signature follows the Mach-O image), and Apple rejected the DMG
+# that held them unsigned: "The signature of the binary is invalid" (maintainer decision 2026-11-11,
+# "Separate release asset").
+
+_ASSET = "provisa-duckdb-extensions-dev-macOS-arm64.tar.gz"
+
+
+def test_the_split_moves_every_duckdb_extension_file_into_a_checksummed_asset(tmp_path):
+    import hashlib
+    import tarfile
+
+    macos = _payload(tmp_path, extensions=True)
+    runtime = macos / "native-payload/runtime"
+    result = _build_dmg(macos, _fake_tools(tmp_path), "split_duckdb_extensions")
+    assert result.returncode == 0, result.stderr
+    # The runtime the DMG carries holds no DuckDB extension file, and keeps everything else.
+    assert not [p for p in runtime.rglob("*") if ".duckdb_extension" in p.name]
+    assert (runtime / "lib/site-packages/zstandard/backend_c.cpython-312-darwin.so").is_file()
+    # The asset holds each at its path under the runtime, with its content.
+    asset = macos / "dist" / _ASSET
+    with tarfile.open(asset) as tar:
+        members = {m.name.removeprefix("./"): tar.extractfile(m).read() for m in tar if m.isfile()}
+    assert members == _EXTENSIONS
+    # Its sha256 is published beside it and pinned in the .app, which is signed after this.
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    assert (macos / "dist" / f"{_ASSET}.sha256").read_text() == f"{digest}  {_ASSET}\n"
+    pin = macos / "Provisa.app/Contents/Resources/duckdb-extensions.sha256"
+    assert pin.read_text() == f"{digest}  {_ASSET}\n"
+
+
+def test_the_split_fails_when_the_runtime_holds_no_duckdb_extension(tmp_path):
+    macos = _payload(tmp_path)
+    result = _build_dmg(macos, _fake_tools(tmp_path), "split_duckdb_extensions")
+    assert result.returncode == 1
+    assert "No DuckDB extension in the native runtime" in result.stderr
+
+
+def test_the_core_dmg_is_not_made_from_a_runtime_holding_a_duckdb_extension(tmp_path):
+    macos = _payload(tmp_path, extensions=True)
+    (macos / "native-payload/runtime/bin/python3.12").chmod(0o755)
+    result = _build_dmg(macos, _fake_tools(tmp_path), "create_dmg")
+    assert result.returncode == 1
+    assert "is a DuckDB extension: it ships in" in result.stderr
+    assert not (macos / "dist/Provisa.dmg").exists()
+
+
+def test_the_core_build_splits_the_extensions_out_before_anything_is_signed():
+    main = (_REPO / "packaging/macos/build-dmg.sh").read_text().split("main() {")[1]
+    order = [
+        "bundle_native_payload",
+        "split_duckdb_extensions",
+        "sign_app",
+        "sign_native_payload",
+        "stage_app",
+    ]
+    assert [main.index(step) for step in order] == sorted(main.index(step) for step in order)
