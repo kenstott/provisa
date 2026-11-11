@@ -2107,9 +2107,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
 def _replacement(form: str, dialect: str, pattern: str) -> exp.Expr:
     """A grid rule's replacement on ``dialect``, as a form here is read: on ClickHouse, with its
     refusals thrown (:func:`_thrown`). The tree is shared: graft copies it."""
-    engine = polyfill.engine_of(dialect)
-    assert engine is not None
-    tree = polyfill_notation.replacement(form, engine, pattern)
+    tree = polyfill_notation.replacement(form, polyfill.written_in(dialect), pattern)
     return tree.transform(_thrown) if dialect == "clickhouse" else tree
 
 
@@ -2133,14 +2131,14 @@ def _polyfilled(
     target: exp.Expr, node: exp.Expr, dialect: str, rewrite: Callable[[exp.Expr], exp.Expr]
 ) -> exp.Expr | None:
     """A call a rule of the polyfill grid matches (REQ-2236), written in the routed engine's form;
-    None where no rule matches. A dialect that is no engine of the grid has no form of it, and the
+    None where no rule matches. A dialect that is no column of the grid has no form of it, and the
     call is refused by name."""
     applied = polyfill.GRID.read(target, dialect)
     if applied is None:
         return None
     called = target.name.lower() if isinstance(target, exp.Anonymous) else applied.feature.name
     form = applied.form
-    if polyfill.engine_of(dialect) is None:
+    if polyfill.column_of(dialect) is None:
         raise FunctionRefused(called, dialect)
     if form is None:
         return target  # the engine's own

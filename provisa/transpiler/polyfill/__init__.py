@@ -20,16 +20,17 @@ from __future__ import annotations
 
 from provisa.transpiler.polyfill import arrays
 from provisa.transpiler.polyfill.grid import (
-    ENGINE_TITLES,
-    ENGINES,
+    DIALECTS,
     Applied,
+    Connector,
     Feature,
     Grid,
     Limitation,
     Rule,
     Side,
     Status,
-    engine_of,
+    column_of,
+    written_in,
 )
 from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
@@ -38,11 +39,11 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 GRID = Grid(arrays.FEATURES)
 
 __all__ = [
-    "ENGINES",
-    "ENGINE_TITLES",
+    "DIALECTS",
     "GRID",
     "Applied",
     "Bindings",
+    "Connector",
     "Feature",
     "Grid",
     "Limitation",
@@ -52,9 +53,10 @@ __all__ = [
     "RuleError",
     "Side",
     "Status",
-    "engine_of",
+    "column_of",
     "graft",
     "hole_name",
     "holes",
     "match",
+    "written_in",
 ]
