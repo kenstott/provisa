@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.sql_literals import sql_literal
 from provisa.core.ir_types import to_ir
+from provisa.core.modeling_tags import RESERVED_TERM_TAG
 
 from provisa.federation.landed_keys import KeyTarget, Parts
 
@@ -72,7 +73,7 @@ _IR_TO_SNOWFLAKE: dict[str, str] = {
 }
 
 TAGS_SCHEMA = "PROVISA_GOVERNANCE"
-TERM_TAG = "TERM"
+TERM_TAG = RESERVED_TERM_TAG.upper()
 _TAG_VALUE_LIMIT = 256  # a Snowflake tag value is at most 256 characters
 PK_TAG = "PRIMARY_KEY"
 FK_TAG = "FOREIGN_KEY"
