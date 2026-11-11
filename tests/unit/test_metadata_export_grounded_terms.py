@@ -256,10 +256,10 @@ def test_the_odps_output_port_carries_its_fields_term_links():
         for d in p.get("authoritativeDefinitions", [])
     }
     port_links = {
-        json.dumps(d, sort_keys=True) for d in ports["orders"]["authoritativeDefinitions"]
+        json.dumps(d, sort_keys=True) for d in ports["orders (default)"]["authoritativeDefinitions"]
     }
     assert port_links == field_links and len(port_links) == 4
-    assert "authoritativeDefinitions" not in ports["customers"]
+    assert "authoritativeDefinitions" not in ports["customers (default)"]
 
 
 def test_the_ossie_ontology_holds_the_terms_the_product_reaches():
