@@ -94827,7 +94827,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Maintainer 2026-11-11. The documentation is rewritten to the term: every page that describes how Provisa
     gives PostgreSQL''s behaviour on an engine that is not PostgreSQL (the conformance pages, the pgwire
     and engine pages, the function and type references) says polyfill, read polyfill and write polyfill,
-    and points to the generated grid for the details instead of restating them.'
+    and points to the generated grid for the details instead of restating them. (Amended 2026-11-11, A PAGE
+    PER ENGINE, EVERY POLYFILL LISTED:) Maintainer 2026-11-11. The generated documentation is one page per
+    engine. A page lists every feature that has a polyfill (read or write) or a limitation on that engine,
+    each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine
+    does natively with no difference is left out. Each page states that rule at its top and counts the features
+    left out as native, and the conformance check is what makes the omission hold: a feature left out that
+    answers otherwise than PostgreSQL fails the run. Beside the pages, a generated summary shows each feature
+    across the engines (native, polyfilled, differs, refused) for choosing an engine. Both come from the
+    one grid in code.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
