@@ -35475,9 +35475,17 @@
   feature: mcp-server-identity
   priority: MUST
   type: behavioral
-  description: Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer
-    tokens to Provisa roles, enabling secure per-caller MCP authentication before exposing MCP off the
-    loopback.
+  description: 'Wire resolve_token_role into the FastMCP Streamable HTTP transport to map remote bearer
+    tokens to Provisa roles, enabling secure per-caller MCP authentication before exposing MCP off the loopback.
+    (Amended 2026-11-11, AN MCP CALL RUNS AS A PRINCIPAL WITH ITS ENTITLEMENTS:) Maintainer 2026-11-11:
+    the MCP server needs more than a role; it needs a principal with entitlements. Every MCP call, on every
+    MCP transport, runs as a principal: the person (or service principal) the call is made for, with the
+    role it acts as and that principal''s entitlements (REQ-2219) narrowing what the role reaches, exactly
+    as the same principal''s queries on any other client are narrowed. A role alone is not enough to run
+    a call. (Amended 2026-11-11, A LOCAL MCP SERVER ACTS FOR A PRINCIPAL ITS OPERATOR NAMES:) Maintainer
+    2026-11-11: over stdio, where no token arrives, the operator''s local MCP configuration names the principal
+    the process acts for, beside the role it pins; that principal''s entitlements apply to every call. A
+    stdio MCP server whose configuration names no principal refuses every call, naming what is missing.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
@@ -90466,7 +90474,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     runs on every engine Provisa supports, not only the default: the protocol, type conversion and catalog
     cases as well as the function replay. The pgwire conformance page gives each engine its own pass rate,
     by-design groups and differences, beside the function results by engine, generated from the CI runs
-    like the rest of the page.'
+    like the rest of the page. (Amended 2026-11-11, DUCKDB ORDERS TEXT BY BYTES:) Maintainer 2026-11-11.
+    On DuckDB, text sorts by its bytes, not by PostgreSQL''s en_US.utf8 collation: ORDER BY text, string_agg
+    and array_agg ordered by text can list values in another order than PostgreSQL (''12,Hello,abc'' where
+    PostgreSQL gives ''12,abc,Hello''). This is a deliberate engine difference, listed as one in the conformance
+    results and the docs, not a wrong answer to fix. min and max over text keep their existing en_US key
+    and refusal.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -94023,7 +94036,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is added per provider, behind one interface, as customers need it. (Amended 2026-11-10, IDENTITY PROVIDER
     ROLES ARE MIRRORED:) Maintainer 2026-11-10: when roles come from the identity provider''s claims, each
     sign-in records the person''s role claims, as the identity provider''s attributes already are, and the
-    roles a person holds are listed with the identity provider as their origin. They are read-only in Provisa.'
+    roles a person holds are listed with the identity provider as their origin. They are read-only in Provisa.
+    (Amended 2026-11-11, EXPIRY RULES END EVERY CAPABILITY THEY NAME:) Maintainer 2026-11-11. An expiry
+    rule ends what it names on its date: data access (read, traverse, execute, consume) and any list-scoped
+    capability, enforced wherever that capability''s reach is checked; a grant-wide rule ends the whole
+    role for that person. A scheduled entitlement expiry run applies the rules and emits an expiring-soon
+    event ahead of each; that event''s own setting is the expiring-soon threshold, and the UI highlights
+    by it. An expiry rule whose end date is already past is refused, as a list''s end date is. Effective
+    access per capability includes the capabilities a role inherits from its parent roles, each shown with
+    the role it comes from.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]

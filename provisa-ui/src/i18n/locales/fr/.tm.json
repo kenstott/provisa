@@ -10047,5 +10047,21 @@
   "fr/yourData.json::yourData.rest": "REST",
   "fr/yourData.json::yourData.mcp": "MCP tool call",
   "fr/yourData.json::yourData.copy": "Copy the {{what}}",
-  "fr/yourData.json::yourData.close": "Close"
+  "fr/yourData.json::yourData.close": "Close",
+  "fr/entitlements.json::entitlements.expiry.capability": "{{capability}}",
+  "fr/entitlements.json::entitlements.expiry.colEnds": "What it ends",
+  "fr/entitlements.json::entitlements.expiry.colEndsOn": "Ends on",
+  "fr/entitlements.json::entitlements.expiry.colReason": "Reason",
+  "fr/entitlements.json::entitlements.expiry.everyCapability": "Every capability",
+  "fr/entitlements.json::entitlements.expiry.everywhere": "{{what}} everywhere",
+  "fr/entitlements.json::entitlements.expiry.extend": "Extend",
+  "fr/entitlements.json::entitlements.expiry.extendPrompt": "Move the end of the {{kind}} list, now {{date}}.",
+  "fr/entitlements.json::entitlements.expiry.heading": "End dates",
+  "fr/entitlements.json::entitlements.expiry.newDateHint": "The list's entries stay as they are.",
+  "fr/entitlements.json::entitlements.expiry.newDateLabel": "New end date",
+  "fr/entitlements.json::entitlements.expiry.noReason": "—",
+  "fr/entitlements.json::entitlements.expiry.none": "No end dates: this grant lasts until it is ended.",
+  "fr/entitlements.json::entitlements.expiry.on": "{{what}} on {{entries}}",
+  "fr/entitlements.json::entitlements.expiry.passed": "Passed",
+  "fr/entitlements.json::entitlements.expiry.wholeGrant": "The whole grant"
 }

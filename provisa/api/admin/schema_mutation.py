@@ -896,6 +896,7 @@ async def _save_role(
         residency_values=input.residency_values,  # REQ-1921
         session_vars=session_vars,  # REQ-1682
         inactivity_days=input.inactivity_days,  # REQ-2077
+        default_entitlements=input.default_entitlements,  # REQ-2219
         # REQ-1919: what the form does not carry is kept as the store holds it.
         **({} if held is None else {name: held[name] for name in role_repo.KEPT_ON_FORM_EDIT}),
     )

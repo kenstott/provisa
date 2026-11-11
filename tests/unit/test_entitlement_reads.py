@@ -41,6 +41,7 @@ from provisa.entitlements.index import (
     matches,
     names_tree,
 )
+from provisa.security.rights import Capability
 from tests.pg_control_plane import ORG
 from tests.unit.test_entitlement_lists import _ctx
 from tests.unit.test_entitlements_api import ASSIGN, _identity, _set, _state
@@ -254,6 +255,21 @@ async def test_each_kind_says_whether_an_expiry_ends_it_and_how_deep_its_tree_go
         "tables": 2,
         "columns": 3,
     }
+
+
+async def test_kinds_names_the_kind_that_scopes_each_capability(api):
+    # REQ-2219, THE ENTITLEMENT MODEL: each capability is unscoped (null) or scoped to one kind.
+    scopes = (await _kinds(api))["capability_scopes"]
+    assert scopes["read"] == "columns"
+    assert scopes["traverse"] == "relationships"
+    assert scopes["execute"] == "commands"
+    assert scopes["consume"] == "data_products"
+    assert scopes[Capability.ASSIGN_ENTITLEMENTS.value] == "roles"
+    assert scopes[Capability.SOURCE_REGISTRATION.value] == "sources"
+    assert scopes[Capability.ENVIRONMENT_MANAGEMENT.value] == "environments"
+    assert scopes[Capability.DATA_PRODUCT_RW.value] == "data_products"
+    assert scopes[Capability.ORG_SETTINGS.value] is None
+    assert {c.value for c in Capability} <= scopes.keys()
 
 
 async def test_the_names_tree_is_the_models_domains_tables_and_columns(api):
