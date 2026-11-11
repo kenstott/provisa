@@ -390,6 +390,34 @@ def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
     ]
 
 
+def test_comment_statements_appends_the_columns_grounded_term_and_its_definition():
+    # REQ-2238: Horizon has no glossary, so the column's comment names its term and definition.
+    from provisa.api.metadata_export.model import GroundedTerm
+
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "name"),
+        name="name",
+        data_type="text",
+        description="Pet name",
+    )
+    table = _table_asset("petstore-api", "public", "pets", columns=[column])
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
+    term = GroundedTerm(
+        term_id=1,
+        name="pet name",
+        definition="What a pet answers to.",
+        status="draft",
+        semantic_uri="provisa://acme/terms/pet%20name",
+        role="property",
+        refs=(column.ref,),
+    )
+    stmts = comment_statements([table], kinds, [], _ADDR, {column.ref.fqn(): term})
+    assert stmts == [
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" MODIFY COLUMN '
+        "\"name\" COMMENT 'Pet name\\n\\n[provisa:term pet name draft] What a pet answers to.';"
+    ]
+
+
 def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
     column = ColumnAsset(
         ref=_column_ref("petstore-api", "public", "pets", "name"),
