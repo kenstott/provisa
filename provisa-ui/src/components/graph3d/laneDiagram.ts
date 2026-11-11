@@ -21,6 +21,7 @@
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
 import { SIZE } from "../provisa-graph/tokens";
+import { placeLanes } from "../provisa-graph/lanes";
 
 export type Lane = "term" | "column" | "table" | "product";
 
@@ -500,18 +501,22 @@ export function stackTerms(
 export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): string[][] {
   const terms = d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => n.id);
   const start = [...terms].sort((p, q) => first(p).y - first(q).y || first(p).x - first(q).x);
-  // Where each node would be drawn, the other lanes at their lane's x, spread over its first height.
+  // Where each node would be drawn, as ProvisaGraph places the lanes from their order
+  // (placeLanes): the terms stacked, every lane spread over the height of the tallest.
+  const termLinks = d.links
+    .filter((k) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term")
+    .map((k) => [k.from, k.to] as [string, string]);
+  const item = (id: string) => ({ id, w: SIZE.nodeWidth, h: SIZE.nodeHeight });
   const placed = (lanes: string[][]) => {
-    const at = stackTerms(d, lanes[0], first);
-    for (const row of lanes.slice(1)) {
-      if (row.length === 0) continue;
-      const ys = row.map((id) => first(id).y);
-      const lo = Math.min(...ys);
-      const hi = Math.max(...ys);
-      row.forEach((id, i) =>
-        at.set(id, { x: first(id).x, y: lo + ((i + 0.5) * (hi - lo)) / row.length }),
-      );
-    }
+    const stacked = stackTerms(d, lanes[0], first, () => SIZE.nodeWidth);
+    const [terms, columns, tables, products] = lanes;
+    const rows: Record<Lane, string[]> = { term: terms, column: columns, table: tables, product: products };
+    const at = placeLanes(
+      LANES.map((l) => ({ id: l, items: rows[l].map(item) })),
+      "term",
+      (id) => stacked.get(id) ?? first(id),
+      termLinks,
+    );
     return (id: string) => at.get(id) as At;
   };
   const score = (order: string[]) => {

@@ -97,6 +97,42 @@ export function nodeLabel(
 export const nodeHeight = (lineCount: number) =>
   lineCount <= 2 ? SIZE.nodeHeight : lineCount * SIZE.line + 14;
 
+/** Where a box's label may run: from past its band and icon to short of its right edge. */
+export const TEXT_LEFT = SIZE.band + 8 + SIZE.icon + 8;
+export const TEXT_RIGHT = 10;
+/** The widest a box grows for its label; past it the label wraps. */
+export const NODE_MAX_WIDTH = 360;
+
+/** A line's width drawn at ``size`` px, as near as can be told without a canvas: a little over the
+ * system sans (or, ``mono``, the monospace) widths, so a node sized by it is wide enough. A label
+ * longer than its node still never runs past its room: it wraps (the stylesheet's
+ * ``text-overflow-wrap``). */
+export function textWidth(line: string, size: number, mono = false): number {
+  if (mono) return line.length * size * 0.62;
+  let em = 0;
+  for (const c of line) {
+    if ("iljtfrI.,:;|!'()[] ".includes(c)) em += 0.34;
+    else if ("mwMW@".includes(c)) em += 0.92;
+    else if (c >= "A" && c <= "Z") em += 0.72;
+    else if (c >= "0" && c <= "9") em += 0.6;
+    else em += 0.6;
+  }
+  return em * size;
+}
+
+/** A box's width and the label's room in it: wide enough for its name and type's lines (from
+ * SIZE.nodeWidth to NODE_MAX_WIDTH); its body's lines wrap inside it. */
+export function boxWidth(head: string[], mono: boolean): { w: number; text: number } {
+  const size = mono ? 10 : SIZE.name;
+  const need = Math.max(...head.map((l) => textWidth(l, size, mono)));
+  const w = Math.min(NODE_MAX_WIDTH, Math.max(SIZE.nodeWidth, Math.ceil(TEXT_LEFT + need + TEXT_RIGHT)));
+  return { w, text: w - TEXT_LEFT - TEXT_RIGHT };
+}
+
+/** How many lines ``lines`` take in ``room`` px, each wrapped where it runs past. */
+const wrappedCount = (lines: string[], room: number, size: number, mono: boolean) =>
+  lines.reduce((n, l) => n + Math.max(1, Math.ceil(textWidth(l, size, mono) / room)), 0);
+
 /** The elements of ``spec``. Group ids, node ids and edge ids are the view's; each element also
  * carries its view data, handed back on a click. */
 export function graphElements(
@@ -125,6 +161,17 @@ export function graphElements(
         ? { label: n.name, lineCount: 1 }
         : // A diamond carries its name and type only; it has no body.
           nodeLabel(n, typeName(n.type), shape === "diamond" ? "none" : detail);
+    const mono = lineCount > 2;
+    const lines = label.split("\n");
+    const box =
+      kind === "node" && shape === "box"
+        ? boxWidth(lines.slice(0, 2), mono)
+        : { w: SIZE.nodeWidth, text: SIZE.nodeWidth - 2 * TEXT_RIGHT };
+    // The lines the label takes in its room, a long name wrapped.
+    const drawnLines =
+      kind === "node" && shape === "box"
+        ? wrappedCount(lines, box.text, mono ? 10 : SIZE.name, mono)
+        : lineCount;
     return {
       group: "nodes",
       data: {
@@ -141,8 +188,9 @@ export function graphElements(
             ? SIZE.diamondHeight
             : kind === "more"
               ? SIZE.nodeHeight - 12
-              : nodeHeight(lineCount),
-        w: shape === "diamond" ? SIZE.diamondWidth : SIZE.nodeWidth,
+              : nodeHeight(drawnLines),
+        w: shape === "diamond" ? SIZE.diamondWidth : box.w,
+        textW: box.text,
         body: lineCount > 2 ? "yes" : "no",
         description: n.description ?? "",
         ...(n.parent !== undefined ? { parent: n.parent } : {}),

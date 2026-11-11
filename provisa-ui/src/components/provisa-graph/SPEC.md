@@ -29,7 +29,6 @@ brand scale (theme.ts).
 | Token | Light | Dark |
 |---|---|---|
 | canvas | `gray-0` | `dark-7` |
-| dot grid | `gray-3` | `dark-5` |
 | node fill | white | `dark-6` |
 | node border | `gray-4` | `dark-4` |
 | node radius | 4px (`radius sm`) | 4px |
@@ -39,8 +38,9 @@ brand scale (theme.ts).
 | edge | `gray-5` | `dark-3` |
 | accent (hover, selection, focus) | brand-6 | brand-4 |
 
-Sizes: a node is 180px wide (an ERD table with columns grows in height, never in width), 44px
-tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
+Sizes: a node is at least 180px wide and as wide as its name and type's line need, up to 360px
+(model.ts `boxWidth`); past that its name wraps and the node grows in height. An ERD table's
+columns wrap inside that width and grow it in height. A node is 44px tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
 and the type's line share it; the type's line is uppercase). Edges are 1px. Group label 10px
 uppercase, weight 700.
 
@@ -51,7 +51,10 @@ uppercase, weight 700.
   shade 6 of the type's hue (`NODE_TYPES`).
 - An icon, the type's (lucide's), drawn as the node's background image at the band's right, in
   the type's colour.
-- A two-line label: the name, then the type's name in uppercase. A node with `lines` lists them
+- A two-line label: the name, then the type's name in uppercase. The label runs from 8px past the
+  icon to 10px short of the right edge (`TEXT_LEFT`, `TEXT_RIGHT`), never over the icon: its
+  room is the node's own (`text-max-width` from the node's width), and a name longer than the room,
+  a dotted name with no space in it included, wraps (`text-overflow-wrap: anywhere`). A node with `lines` lists them
   under a rule, left-aligned, in monospace.
 - A fold node (`kind: "more"`) is the same box, dashed, with no band.
 - **The one exception: a junction is a diamond** (REQ-2239, amended 2026-11-11, A JUNCTION IS A
@@ -87,7 +90,11 @@ titled the same way.
 
 ## Canvas
 
-- A dot grid (CSS on the stage, 16px pitch), in the canvas token.
+- A plain canvas in the canvas token: no dot grid (maintainer, 2026-11-11).
+- A fit is by the diagram's drawn extent, below the legend. It fills the canvas's width, and its
+  height while the zoom stays at 0.8 or more (`READABLE_ZOOM`); a taller diagram is drawn from its
+  top at the readable zoom and scrolls: the wheel scrolls it (at its end the page scrolls), a
+  pinch or the wheel with Ctrl or Cmd held zooms about the pointer.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
   the view gives it. Shown on hover or keyboard focus.
@@ -106,9 +113,14 @@ titled the same way.
 - `layered`: ELK layered, upward, groups laid out with their children; then nodes without edges
   placed in a grid under their group, groups packed to the pane's aspect, related nodes kept
   apart (the ERD's arrangement).
-- `lanes`: ELK layered left to right in fixed lane partitions; one lane may be a compound laid out
-  top-down by its rank edges; a second pass orders each lane by the first's placement; arcs
-  laid over the placed nodes; each lane's title above it.
+- `lanes`: ELK layered left to right in fixed lane partitions places the diagram once; one lane
+  may be a compound laid out top-down by its rank edges. The lanes are layers whose order inside
+  is free: the view orders each lane by the barycentre of its neighbours (terms by their columns,
+  columns by their tables), crossings cut, and the component places the lanes from that order
+  (`placeLanes`): side by side, each as wide as its widest node; every lane spread over the height
+  of the tallest (its first node at the top, its last at the bottom, a lone node at the middle),
+  the stacked lane's rows keeping their shape. Each lane's box bounds its own nodes alone, its
+  title above them, the boxes `LANE_GAP` apart. Arcs are laid over the placed nodes.
 - `force`: fCoSE.
 
 ## Owned by the component

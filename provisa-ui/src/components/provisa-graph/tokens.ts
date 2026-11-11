@@ -24,7 +24,6 @@ const hue = (name: keyof typeof DEFAULT_THEME.colors, shade = 6) =>
 
 export interface GraphTokens {
   canvas: string;
-  grid: string;
   nodeFill: string;
   nodeBorder: string;
   shadow: string;
@@ -41,7 +40,6 @@ export interface GraphTokens {
 
 const LIGHT: GraphTokens = {
   canvas: gray[0],
-  grid: gray[3],
   nodeFill: "#ffffff",
   nodeBorder: gray[4],
   shadow: "#000000",
@@ -56,7 +54,6 @@ const LIGHT: GraphTokens = {
 
 const DARK: GraphTokens = {
   canvas: dark[7],
-  grid: dark[5],
   nodeFill: dark[6],
   nodeBorder: dark[4],
   shadow: "#000000",
@@ -86,7 +83,6 @@ export const SIZE = {
   edge: 1,
   edgeLabel: 9,
   groupLabel: 10,
-  gridPitch: 16,
   /** A diamond (the junction, the one exception to the node shape): wide enough for its name. */
   diamondWidth: 150,
   diamondHeight: 90,

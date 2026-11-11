@@ -56,7 +56,10 @@ import { graphStylesheet } from "./stylesheet";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
 import { tipPlacement, type DrawnGraph } from "./tipPlacement";
 import { graphTokens, type NodeType } from "./tokens";
-import { fitClear } from "./viewport";
+import { fitClear, scrollBy, zoomAbout } from "./viewport";
+
+/** How far a wheel step (or a pinch) zooms, per pixel of its delta. */
+const WHEEL_ZOOM = 0.002;
 import "./provisa-graph.css";
 
 export type LayoutPreset = "layered" | "lanes" | "force";
@@ -341,9 +344,24 @@ export function ProvisaGraph({
       maxZoom: preset === "lanes" ? 1.6 : 4,
       boxSelectionEnabled: false,
       autoungrabify: preset === "lanes",
+      // The wheel scrolls (below); a pinch, or the wheel with Ctrl or Cmd held, zooms.
+      userZoomingEnabled: false,
     } as unknown as Parameters<typeof cytoscape>[0]) as Core;
     cyRef.current = cy;
     const c = cy as unknown as CyInstance;
+    // A diagram taller (or wider) than its canvas scrolls under the wheel, at a zoom its labels
+    // can be read at; at its end the wheel scrolls the page.
+    canvas.container.addEventListener(
+      "wheel",
+      (ev: WheelEvent) => {
+        if (ev.ctrlKey || ev.metaKey) {
+          const r = canvas.container.getBoundingClientRect();
+          zoomAbout(c, Math.exp(-ev.deltaY * WHEEL_ZOOM), { x: ev.clientX - r.left, y: ev.clientY - r.top });
+          ev.preventDefault();
+        } else if (scrollBy(c, ev.deltaX, ev.deltaY)) ev.preventDefault();
+      },
+      { passive: false },
+    );
 
     cy.on("tap", 'node[kind = "node"]', (evt: EventObject) =>
       latest.current.onNodeClick?.(evt.target.id(), (k) => evt.target.data(k)),
@@ -653,7 +671,7 @@ export function ProvisaGraph({
       <div
         ref={stageRef}
         className="pg-stage"
-        style={{ ["--pg-canvas" as string]: tokens.canvas, ["--pg-grid" as string]: tokens.grid }}
+        style={{ ["--pg-canvas" as string]: tokens.canvas }}
         onMouseLeave={() => setHoveredGroup(null)}
       >
         <div ref={setBox} className="pg-canvas" aria-label={ariaLabel} data-scheme={isDark ? "dark" : "light"} />
