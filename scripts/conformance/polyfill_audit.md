@@ -20,7 +20,7 @@ Engines in the grid: DuckDB (`duckdb`), Trino (`trino`, with `presto` and `athen
 
 | Source | Rows / entries | Family | Becomes |
 |---|---:|---|---|
-| `function_macros._ARRAYS` | 12 overloads | arrays (shape, fill, positions, sample, trim) | pattern rules — **moved in this job** |
+| `function_macros._ARRAYS` | 13 overloads | arrays (shape, fill, positions, sample, trim) | pattern rules — **moved in this job** |
 | `function_macros._NUMBERS` (+ `_integer_pairs`, `_float_pairs`, `_numeric_conversions`) | 148 | numbers, casts between integer/float/numeric | pattern rules |
 | `function_macros._EXACT_ROWS` + `_EXACT_OVERLOADS` | 27 rows, 11 overloads | exact numeric aggregates and math (DuckDB UDFs) | pattern rules (replacement calls a `provisa_` UDF) |
 | `function_macros._REGRESSIONS` | 9 | regr_* aggregates | pattern rules |
@@ -119,8 +119,10 @@ Python UDFs registered on DuckDB. They are not rules: a DuckDB replacement calls
 
 ## Moved in this job: arrays
 
-`array_ndims`, `array_dims`, `array_lower`, `array_upper`, `array_fill` (2 and 3 arguments),
+`array_ndims`, `array_dims`, `array_lower`, `array_upper`, `array_length`, `array_fill` (2 and 3
+arguments),
 `array_positions`, `array_replace`, `array_sample`, `array_shuffle`, `trim_array`,
-`generate_subscripts` — 12 read polyfills on DuckDB, Trino and ClickHouse (generate_subscripts on
-DuckDB only), all pattern rules. Next array rows for a later job: `array_cat`, `array_remove`,
+`generate_subscripts` — 13 read rules, all pattern rules: on DuckDB, Trino and ClickHouse, except
+`array_length` (DuckDB only; Trino and ClickHouse take the engine's own, as sqlglot writes it) and
+`generate_subscripts` (DuckDB only; refused on Trino and ClickHouse by its grid row). Next array rows for a later job: `array_cat`, `array_remove`,
 `array_position` (in `_ROWS`, matched by sqlglot's own node classes).

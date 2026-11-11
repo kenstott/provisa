@@ -168,6 +168,11 @@ nav:
       - JSON:API: conformance/jsonapi.md
       - gRPC: conformance/grpc.md
       - MCP: conformance/mcp.md
+      - Polyfills:
+          - Across the engines: conformance/polyfill/index.md
+          - DuckDB: conformance/polyfill/duckdb.md
+          - Trino: conformance/polyfill/trino.md
+          - ClickHouse: conformance/polyfill/clickhouse.md
   - Clients:
       - Python Client: python-client.md
   - Administration:
