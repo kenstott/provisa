@@ -244,6 +244,9 @@ def _db() -> Database:
                 schema_org.data_products,
                 schema_org.data_product_tables,
                 schema_org.data_product_commands,
+                schema_org.data_product_offers,
+                schema_org.data_product_offer_contracts,
+                schema_org.data_product_bids,
                 schema_org.checker_targets,
             ],
         )

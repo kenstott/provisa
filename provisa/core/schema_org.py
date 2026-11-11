@@ -1424,7 +1424,8 @@ data_product_bids = Table(
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True)),
     Column("decline_reason", Text),
-    Column("granted", JSON),
+    # none_as_null: a bid with nothing granted (None) is SQL NULL, never the JSON value null.
+    Column("granted", JSON(none_as_null=True)),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
     CheckConstraint(
