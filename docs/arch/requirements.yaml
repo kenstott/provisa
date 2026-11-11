@@ -35489,7 +35489,11 @@
     (Amended 2026-11-11, FIRST-RUN SETUP NAMES THE LOCAL PRINCIPAL:) Maintainer 2026-11-11. On an install
     whose local MCP connector is always on (the desktop tier), the first-run setup that creates the bootstrap
     admin also sets the local MCP principal (mcp.principal) to that admin, so the connector acts for that
-    person from the start. The operator can change it in Settings like any other setting.'
+    person from the start. The operator can change it in Settings like any other setting. (Amended 2026-11-11,
+    A NO-SIGN-IN INSTALL SEATS A LOCAL ADMIN:) Maintainer 2026-11-11. An install that runs with no sign-in
+    (auth provider none, the desktop demo) has no bootstrap admin from setup, so its setup creates a local
+    admin account that no one can sign in as and names it as the local MCP principal, so the always-on connector
+    works from the start with that account''s entitlements.'
   use_case: Prerequisite for safely exposing MCP to remote callers with proper role-based access control
     and governance.
   scenario: 'Given the MCP Streamable HTTP transport bound off the loopback
@@ -94856,7 +94860,94 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement,
     the row''s rule is that function''s name, the function does the matching and the rewrite on the tree,
     and the documentation prints the name with its one-line purpose. Every row still has a rule; the count
-    of rules that are only a function name is what each engine''s page reports.'
+    of rules that are only a function name is what each engine''s page reports. (Amended 2026-11-11, ENGINES
+    ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database''s
+    limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid
+    covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate
+    an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source
+    with its own semantics, and the documentation says so once; a difference that comes from the source
+    is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific
+    source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source
+    type (and, where it matters, its version or a setting) that either keeps an operation from being pushed
+    to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated
+    documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY
+    CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above.
+    The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source
+    a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector''s
+    dialect has its rows and its page. What the grid does not cover is the second order: an engine reading
+    a source it attaches directly, pushing work into that source with the source''s semantics. That is the
+    combinatorial explosion, and it is handled by hints as bugs are found, as stated above. (Amended 2026-11-11,
+    A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR:) Maintainer 2026-11-11, replacing the description
+    of hints above. The second order is not so much an explosion as outside Provisa''s oversight: an engine
+    decides at run time, by its own planner, how it uses a source it has attached and what it pushes into
+    it, and Provisa does not see that. A statement cannot be switched to a replica, and the engine''s reach
+    is wanted. So a hint is a rewrite of Provisa''s own statement for an engine and source pair: a rule
+    in the same notation, keyed by the engine and the source type, that differs from the engine''s default
+    rule and replaces it wherever the expression reads a column from an attached source of that type. Its
+    replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint
+    comes with the test that reproduced the bug, checking the answer, and the engine''s generated page lists
+    its hints under each source. (Amended 2026-11-11, SQL CONNECTORS ONLY; EVERY ROW NAMES WHAT IT WAS MADE
+    ON:) Maintainer 2026-11-11. A polyfill is only for a connector that executes a variant of SQL -- a serving
+    engine, or a source a statement is sent to DIRECT; a connector that does not run SQL (REST, GraphQL,
+    gRPC, files, code sources) has no polyfill page, its data reaching a statement through Provisa''s reader
+    or the engine, whose rows cover it. The documentation shows the direct polyfills and the engine polyfills.
+    Every row names what it was made and verified on, printed from the configuration of the test that proves
+    it, never written by hand: an engine''s own rows on data the engine holds itself, a direct row on that
+    source alone, a hint on its engine and source pair (with the source''s version or setting where the
+    hint depends on it). Each engine''s page states that when the engine reads a source it attaches directly,
+    it may push work into that source, so a result can depend on the pair, and its hints are the cases known.
+    (Amended 2026-11-11, EACH ENGINE HAS A BASELINE PAIR:) Maintainer 2026-11-11. Each engine''s rows are
+    made and verified on its baseline: the place its data mostly lives. Trino''s baseline is Trino with
+    PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB''s is its own
+    store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric),
+    their own or Iceberg tables. The baseline is printed as the rows'' provenance, and a hint exists only
+    for a pair that differs from it. (Amended 2026-11-11, THE COMPLETE TEST IS A LONG-TERM OBJECTIVE, NOT
+    A RELEASE GATE:) Maintainer 2026-11-11. With the grid defined, a complete test is possible: every row
+    on every SQL connector''s baseline and every hint on its pair, each answer checked against PostgreSQL.
+    It is expensive, so it is a long-term objective and never a release gate; the release gates stay as
+    REQ-1989 states them. Connectors that run in containers can be covered on a schedule; the paid warehouses
+    run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated
+    pages print, for each row, the last run that verified it.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
+- id: REQ-2237
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11, from a comparison with Entropy Data. An ontology made outside Provisa
+    -- an Apache Ossie model, or an RDF/OWL file (Turtle, RDF/XML, N-Triples, JSON-LD), such as an industry
+    standard like FIBO -- can be imported. Importing is an alignment, not an attachment: its classes and
+    properties come in as curated terms with their definitions, and each is aligned with the terms Provisa
+    already derived from the model (synonym, kind of, part of, same entity), so the imported meaning grounds
+    through the model''s own columns and tables. Nothing is linked field by field; a term that aligns
+    with nothing stays a Concept until it does.'
+  use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
+    Provisa already knows.
+- id: REQ-2238
+  status: proposed
+  target: 2027-Q1
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-data-products
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11. With Provisa as the hub, a data product''s ontology is part of the
+    product from the start, so it leaves with the product: every export of a data product (its ODCS contracts,
+    its ODPS description, the metadata export to external catalogs, and an Apache Ossie export of the terms
+    it reaches) names each field''s grounded term, through the standard''s own reference (ODCS authoritativeDefinitions
+    of type semantics), so a consumer outside Provisa receives the provider''s meaning and not only the
+    schema. Only terms an agent may see are named: approved, or defined drafts on an approved path. (Amended
+    2026-11-11, WHAT THIS ADDS TO THE GLOSSARY EXPORT:) Maintainer 2026-11-11. The catalogs with a glossary
+    of their own (Atlan, Atlas, Collibra, DataHub, Dataplex, DataZone, OpenMetadata, Purview) already receive
+    the glossary as native terms (REQ-1387); for them this requirement only holds that each exported column
+    is linked to its grounded term. What it adds: in each exported ODCS contract every field names its grounded
+    term (authoritativeDefinitions of type semantics), and the ODPS export carries the same links; an Apache
+    Ossie export of the terms a product reaches; and Snowflake Horizon and Unity Catalog, which have no
+    glossary to write into, carry each column''s grounded term through their own primitives -- a tag naming
+    the term and the term''s definition in the column comment.'
+  use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.

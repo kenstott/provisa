@@ -97,7 +97,7 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     string literal is of unknown type, which overload resolution fits to the overload: ``literal``
     is what it is read as (None: any type). ``numbers``: a numeric literal has the type it reads
     as; otherwise it is said to fit any overload, as PostgreSQL's implicit casts widen it."""
-    if isinstance(arg, (exp.Neg, exp.Paren)):
+    if isinstance(arg, (exp.Neg, exp.Paren, exp.Order)):  # an aggregate's value ORDER BY ...
         return _arg_type(arg.this, literal, numbers)
     if isinstance(arg, exp.Literal):
         if arg.is_string:

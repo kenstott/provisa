@@ -290,6 +290,17 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["druid"] = make_druid_loader()
     if not engine_attaches(bare_engine, "hive_s3"):  # REQ-1730
         loaders["hive_s3"] = make_hive_s3_loader()
+    # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no gsheets
+    # extension lands a sheet through the Sheets API, and one that cannot attach MotherDuck lands
+    # it through MotherDuck's Postgres endpoint; one that reads either in place keeps doing so.
+    if not engine_attaches(bare_engine, "google_sheets"):
+        from provisa.events.sheets_reader import make_google_sheets_loader
+
+        loaders["google_sheets"] = make_google_sheets_loader()
+    if not engine_attaches(bare_engine, "motherduck"):
+        from provisa.events.motherduck_reader import make_motherduck_loader
+
+        loaders["motherduck"] = make_motherduck_loader()
     allocator = PortAllocator()
     config = getattr(state, "config", None)
     for src in getattr(config, "sources", None) or []:

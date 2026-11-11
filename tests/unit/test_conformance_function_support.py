@@ -2566,6 +2566,19 @@ def test_the_zones_compare_by_the_names_both_lists_hold():
     assert report.ZONE_PACKAGING in compared.rules
 
 
+def test_a_posix_rule_zone_tzdata_made_a_backward_link_is_packaging():
+    """tzdata 2024b made CST6CDT and its kin backward links, which Debian drops; the pinned release
+    compiles each apart from the zone it links to (run 42935119044)."""
+    want = _zones("America/Chicago", "America/New_York", "UTC")
+    got = _zones("America/Chicago", "America/New_York", "CST6CDT", "EST5EDT", "UTC")
+    compared = _compared_zones(want, got)
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING in compared.rules
+    # Its zone not listed by PostgreSQL either: a difference.
+    lone = _compared_zones(_zones("UTC"), _zones("UTC", "PST8PDT"))
+    assert lone.difference is not None and "PST8PDT" in lone.difference
+
+
 def test_the_same_zones_need_no_packaging():
     compared = _compared_zones(_zones("UTC", "Asia/Tokyo"), _zones("Asia/Tokyo", "UTC"))
     assert compared.difference is None

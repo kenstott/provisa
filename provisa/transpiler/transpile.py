@@ -702,9 +702,93 @@ def _duckdb_form(pg_sql: str) -> str:
     # statement's text, and each step that read it again paid for all of them.
     tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
     tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
+    tree = _row_delimited_string_agg(tree)
     tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
+    _posix_zones_for_duckdb(tree)
     # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
     return tree.sql(dialect="duckdb", copy=tree.parent is not None)
+
+
+#: string_agg of a delimiter that is no constant, as PostgreSQL appends one: each row's delimiter
+#: before its value, the first row's dropped, a NULL value's row skipped and a NULL delimiter none.
+#: Of any type both concatenate (text, bytea); DuckDB's own takes a constant delimiter alone.
+_ROW_DELIMITED = (
+    "list_reduce(list_transform(list(struct_pack(v := _v, d := _d)) FILTER (WHERE _v IS NOT NULL), "
+    "(x, i) -> CASE WHEN i = 1 OR x.d IS NULL THEN x.v ELSE x.d || x.v END), (a, b) -> a || b)"
+)
+#: A text order key as en_US.utf8 orders it (provisa_en_us_key, refused by name for a value it
+#: does not read); NULL for a value of any other type, which its own order then decides.
+_EN_US_KEY = (
+    "CASE WHEN typeof(_o) = 'VARCHAR' THEN provisa_en_us_key(CAST(_o AS VARCHAR), 'string_agg') END"
+)
+
+
+def _duckdb_form_of(sql: str, **nodes: exp.Expr) -> exp.Expr:
+    """``sql`` read as DuckDB's, each column named in ``nodes`` that node."""
+    return sqlglot.parse_one(sql, read="duckdb").transform(
+        lambda n: nodes[n.name].copy() if isinstance(n, exp.Column) and n.name in nodes else n
+    )
+
+
+def _row_delimited_string_agg(tree: exp.Expr) -> exp.Expr:  # REQ-2167
+    """Each string_agg whose delimiter is no constant (a column), as PostgreSQL answers it
+    (``_ROW_DELIMITED``), its ORDER BY kept, a text key ordered as en_US.utf8 orders it."""
+
+    def rewrite(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.GroupConcat) or isinstance(node.parent, exp.Filter):
+            return node
+        delimiter = node.args.get("separator")
+        if delimiter is None or delimiter.find(exp.Column) is None:
+            return node
+        value, order = node.this, None
+        if isinstance(value, exp.Order):
+            value, order = value.this, value
+        if isinstance(value, exp.Distinct):
+            return node
+        written = _duckdb_form_of(_ROW_DELIMITED, _v=value, _d=delimiter)
+        if order is not None:
+            listed = written.find(exp.ArrayAgg)  # list(...), as sqlglot reads it
+            assert listed is not None
+            keys: list[exp.Expr] = []
+            for ordered in order.expressions:
+                collated = ordered.copy()
+                collated.set("this", _duckdb_form_of(_EN_US_KEY, _o=ordered.this))
+                keys += [collated, ordered.copy()]
+            listed.set("this", exp.Order(this=listed.this, expressions=keys))
+        return written
+
+    return tree.transform(rewrite, copy=False)
+
+
+#: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number
+#: of arguments, and whether PostgreSQL reads a number in it as POSIX does (west of UTC) or as a
+#: numeric zone (make_timestamptz's, ISO 8601's: east).
+_ZONE_ARGUMENTS = {"timezone": (0, 2, True), "make_timestamptz": (6, 7, False)}
+
+
+def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
+    """In place: each zone a statement writes as a literal that PostgreSQL reads as a fixed
+    offset (``'12'``, ``'+05:30'``) written as the ICU zone of that offset, which DuckDB knows
+    (pg_zones); DuckDB has no zone of PostgreSQL's text."""
+    zones: list[tuple[exp.Expr, bool]] = [
+        (node.args["zone"], True) for node in tree.find_all(exp.AtTimeZone) if node.args.get("zone")
+    ]
+    for call in tree.find_all(exp.Anonymous):
+        at = _ZONE_ARGUMENTS.get(call.name.lower())
+        if at is not None and len(call.expressions) == at[1]:
+            zones.append((call.expressions[at[0]], at[2]))
+    for zone, posix in zones:
+        written = zone
+        while isinstance(written, exp.Cast):
+            written = written.this
+        if isinstance(written, exp.Literal) and written.is_string:
+            # On a zone's text alone: pg_zones reads every pinned zone's abbreviations at import.
+            from provisa.transpiler import pg_zones
+
+            read = pg_zones.icu_fixed_zone if posix else pg_zones.icu_numeric_zone
+            icu = read(written.this)
+            if icu is not None:
+                written.replace(exp.Literal.string(icu))
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -1060,6 +1144,14 @@ def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore
     return None
 
 
+def _json_key(key: exp.Expr) -> exp.Expr:
+    """A key of json_build_object, as PostgreSQL makes one of any type: its text. DuckDB's
+    json_object takes a VARCHAR key alone."""
+    if isinstance(key, exp.Literal) and key.is_string:
+        return key
+    return exp.cast(key, "VARCHAR")
+
+
 def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
     JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
@@ -1111,7 +1203,9 @@ def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
             pairs = [e.transform(_transform) for e in node.expressions]
             return exp.Anonymous(
                 this="json_object",
-                expressions=[json_member(e) if i % 2 else e for i, e in enumerate(pairs)],
+                expressions=[
+                    json_member(e) if i % 2 else _json_key(e) for i, e in enumerate(pairs)
+                ],
             )
         # Each value a statement puts in JSON, as PostgreSQL writes it at any depth. A value is
         # set in place, so transform goes on into it for the JSON it holds.
@@ -1122,7 +1216,12 @@ def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
         elif isinstance(node, exp.JSONArray):
             node.set("expressions", [json_member(e) for e in node.expressions])
         elif isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_GROUP_OBJECT":
-            node.set("expressions", [node.expressions[0], json_member(node.expressions[1])])
+            value = node.expressions[1]
+            if isinstance(value, exp.Order):  # value ORDER BY ...: the member is the value
+                value.set("this", json_member(value.this))
+            else:
+                value = json_member(value)
+            node.set("expressions", [node.expressions[0], value])
         return node
 
     return tree.transform(_transform, copy=False)

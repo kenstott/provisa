@@ -37,7 +37,6 @@ from pathlib import Path
 import duckdb
 
 from provisa.core import engine_memory
-from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine, duckdb_engine_connectors
@@ -300,12 +299,11 @@ def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, .
 
 
 #: The reader that lands a source type's replicas where the engine cannot attach it, decided and
-#: not yet built (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT, maintainer 2026-11-06:
-#: per-type readers; J866). A source of the type names it while the deployment lacks it.
-PENDING_READERS: dict[str, str] = {
-    "motherduck": "MotherDuck's Postgres-endpoint reader",
-    "google_sheets": "the Google Sheets API reader",
-}
+#: not yet built: a source of the type names it while the deployment lacks it. Empty: MotherDuck
+#: and Google Sheets have theirs (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT;
+#: events/motherduck_reader.py, events/sheets_reader.py). An extension that lags a future DuckDB
+#: release gets its own reader decision, named here until its reader exists.
+PENDING_READERS: dict[str, str] = {}
 
 
 def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
@@ -326,20 +324,6 @@ def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
     return (
         f"no reader of {source_type!r} sources in this deployment: {unavailable}, and Provisa "
         "has no other reader to land it"
-    )
-
-
-def motherduck_reader_missing() -> str | None:
-    """What is missing to read a MotherDuck source in this deployment, or None where the engine's
-    DuckDB loads MotherDuck's extension (REQ-1998). Elsewhere a MotherDuck source is a replica
-    landed through MotherDuck's Postgres endpoint (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES
-    ENDPOINT), whose reader this deployment does not have yet: the source names it."""
-    limit = motherduck_extension_limit()
-    if limit is None:
-        return None
-    return (
-        f"needs {PENDING_READERS['motherduck']} to land it, which this deployment does not have "
-        f"yet: {limit}"
     )
 
 

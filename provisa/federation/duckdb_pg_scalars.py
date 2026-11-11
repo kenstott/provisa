@@ -171,36 +171,86 @@ def bytea_overlay(value: bytes, placing: bytes, start: int, length: int | None) 
     return value[: start - 1] + placing + value[start - 1 + skip :]
 
 
-#: PostgreSQL's server encoding names, by the Python codec that reads them.
+#: PostgreSQL's encodings, by the Python codec that reads each.
 _ENCODINGS = {
     "UTF8": "utf-8",
-    "UNICODE": "utf-8",
     "SQL_ASCII": "ascii",
     "LATIN1": "latin-1",
     "LATIN2": "iso8859-2",
+    "LATIN3": "iso8859-3",
+    "LATIN4": "iso8859-4",
     "LATIN5": "iso8859-9",
+    "LATIN6": "iso8859-10",
+    "LATIN7": "iso8859-13",
+    "LATIN8": "iso8859-14",
     "LATIN9": "iso8859-15",
+    "LATIN10": "iso8859-16",
+    "ISO_8859_5": "iso8859-5",
+    "ISO_8859_6": "iso8859-6",
+    "ISO_8859_7": "iso8859-7",
+    "ISO_8859_8": "iso8859-8",
+    "WIN866": "cp866",
+    "WIN874": "cp874",
     "WIN1250": "cp1250",
     "WIN1251": "cp1251",
     "WIN1252": "cp1252",
+    "WIN1253": "cp1253",
+    "WIN1254": "cp1254",
+    "WIN1255": "cp1255",
     "WIN1256": "cp1256",
+    "WIN1257": "cp1257",
+    "WIN1258": "cp1258",
     "EUC_JP": "euc_jp",
+    "EUC_JIS_2004": "euc_jis_2004",
     "EUC_KR": "euc_kr",
     "EUC_CN": "gb2312",
     "GB18030": "gb18030",
     "GBK": "gbk",
     "BIG5": "big5",
     "SJIS": "shift_jis",
+    "SHIFT_JIS_2004": "shift_jis_2004",
+    "UHC": "cp949",
+    "JOHAB": "johab",
     "KOI8R": "koi8_r",
     "KOI8U": "koi8_u",
+}
+#: The names PostgreSQL reads as an encoding's, as encnames.c's pg_encname_tbl lists them: in lower
+#: case with all but letters and digits gone (clean_encoding_name). Each encoding's own name, so
+#: cleaned, reads as itself.
+_ENCODING_NAMES = {
+    **{"".join(c for c in name.lower() if c.isalnum()): name for name in _ENCODINGS},
+    "unicode": "UTF8",
+    "abc": "WIN1258",
+    "tcvn": "WIN1258",
+    "tcvn5712": "WIN1258",
+    "vscii": "WIN1258",
+    "alt": "WIN866",
+    "win": "WIN1251",
+    "koi8": "KOI8R",
+    "iso88591": "LATIN1",
+    "iso88592": "LATIN2",
+    "iso88593": "LATIN3",
+    "iso88594": "LATIN4",
+    "iso88599": "LATIN5",
+    "iso885910": "LATIN6",
+    "iso885913": "LATIN7",
+    "iso885914": "LATIN8",
+    "iso885915": "LATIN9",
+    "iso885916": "LATIN10",
+    "mskanji": "SJIS",
+    "shiftjis": "SJIS",
+    "win932": "SJIS",
+    "win936": "GBK",
+    "win949": "UHC",
+    "win950": "BIG5",
 }
 
 
 def _codec(name: str, role: str) -> str:
-    codec = _ENCODINGS.get(re.sub(r"[^A-Za-z0-9_]", "", name).upper())
-    if codec is None:
+    encoding = _ENCODING_NAMES.get("".join(c for c in name.lower() if c.isalnum()))
+    if encoding is None:
         raise _error("22023", f'invalid {role} encoding name "{name}"')
-    return codec
+    return _ENCODINGS[encoding]
 
 
 def _decoded(value: bytes, encoding: str, codec: str) -> str:
@@ -226,6 +276,11 @@ def convert(value: bytes, source: str, destination: str) -> bytes:
             f"character with byte sequence {_byte_sequence(exc.object[exc.start])} in encoding "
             f'"UTF8" has no equivalent in encoding "{destination.upper()}"',
         ) from exc
+
+
+def bytea_position(value: bytes, sought: bytes) -> int:
+    """position(sought in value) of bytea, byteapos: from 1, 0 where it is not found."""
+    return value.find(sought) + 1
 
 
 def encoded_length(value: bytes, encoding: str) -> int:
@@ -686,7 +741,7 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_bit_count", bit_count, ["BLOB"], "BIGINT"),
     ("provisa_convert", convert, ["BLOB", "VARCHAR", "VARCHAR"], "BLOB"),
     ("provisa_encoded_length", encoded_length, ["BLOB", "VARCHAR"], "INTEGER"),
-    ("provisa_similar_substring", similar_substring, ["VARCHAR"] * 3, "VARCHAR"),
+    ("provisa_bytea_position", bytea_position, ["BLOB", "BLOB"], "INTEGER"),
     ("provisa_regexp_split", regexp_split, ["VARCHAR"] * 3, "VARCHAR[]"),
     ("provisa_regexp_split_table", regexp_split_table, ["VARCHAR"] * 3, "VARCHAR[]"),
     ("provisa_like_escape", like_escape, ["VARCHAR", "VARCHAR"], "VARCHAR"),
@@ -703,7 +758,7 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_numeric_quotient", numeric_quotient, ["VARCHAR"] * 2, "VARCHAR"),
     ("provisa_numeric_of_float", numeric_of_float, ["DOUBLE", "INTEGER"], "VARCHAR"),
     ("provisa_to_number", to_number, ["VARCHAR"] * 2, "VARCHAR"),
-    ("provisa_en_us_key", en_us_key, ["VARCHAR"], "VARCHAR"),
+    ("provisa_en_us_key", en_us_key, ["VARCHAR"] * 2, "VARCHAR"),
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
@@ -714,6 +769,8 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
 #: Strict UDFs that answer NULL themselves.
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
+    # NULL where the pattern does not match the value.
+    ("provisa_similar_substring", similar_substring, ["VARCHAR"] * 3, "VARCHAR"),
     (
         "provisa_numeric_spread",
         numeric_spread,
