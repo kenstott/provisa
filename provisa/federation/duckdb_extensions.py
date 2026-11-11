@@ -77,6 +77,18 @@ _SHORT_NAMES = {"postgres_scanner": "postgres", "sqlite_scanner": "sqlite"}
 LANDS_THROUGH_ITS_EXTENSION = frozenset({"firebird", "airport"})
 
 
+#: The first DuckDB version with no build of an extension, by extension name: DuckDB 2.0 has no
+#: gsheets (its download answers HTTP 404), so on 2.0 a Google Sheets source lands through the
+#: Sheets API (REQ-1998). Known from the version alone, whatever is staged or installed.
+NO_BUILD_FROM: dict[str, tuple[int, int, int]] = {"gsheets": (2, 0, 0)}
+
+
+def unbuilt_extensions() -> frozenset[str]:
+    """The extensions with no build for the running DuckDB version (NO_BUILD_FROM)."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    return frozenset(name for name, first in NO_BUILD_FROM.items() if running >= first)
+
+
 @functools.cache
 def running_version_platform() -> tuple[str, str]:
     """The running DuckDB's version (``v2.0.0``) and platform (``osx_arm64``), as its extension
@@ -293,9 +305,13 @@ def _needs(connector: Connector) -> tuple[str, ...]:
     return tuple(needs)
 
 
-def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
-    """The extensions ``connector`` needs that are not in ``staged``."""
-    return tuple(n for n in _needs(connector) if n not in staged)
+def unstaged_needs(connector: Connector, staged: frozenset[str] | None) -> tuple[str, ...]:
+    """The extensions ``connector`` needs that have no build for the running DuckDB or are not in
+    ``staged`` (``staged`` None: nothing is known to be staged, only the unbuilt count)."""
+    unbuilt = unbuilt_extensions()
+    return tuple(
+        n for n in _needs(connector) if n in unbuilt or (staged is not None and n not in staged)
+    )
 
 
 #: The reader that lands a source type's replicas where the engine cannot attach it, decided and
