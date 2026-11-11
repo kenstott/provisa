@@ -299,6 +299,7 @@
         "roles": "Ruoli",
         "history": "Cronologia delle versioni"
       }
-    }
+    },
+    "detailPanel": "Dettaglio del prodotto dati"
   }
 }

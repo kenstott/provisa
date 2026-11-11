@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "Letztes Profil, Lauf {{time}}",
-    "none": "Noch kein Profillauf."
+    "none": "Noch kein Profillauf.",
+    "viewTable": "Tabelle",
+    "viewTerrain": "Terrain"
   }
 }

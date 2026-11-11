@@ -299,6 +299,7 @@
         "roles": "Funções",
         "history": "Histórico de versões"
       }
-    }
+    },
+    "detailPanel": "Detalhe do produto de dados"
   }
 }

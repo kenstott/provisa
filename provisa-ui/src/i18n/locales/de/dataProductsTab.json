@@ -299,6 +299,7 @@
         "roles": "Rollen",
         "history": "Versionsverlauf"
       }
-    }
+    },
+    "detailPanel": "Details des Datenprodukts"
   }
 }

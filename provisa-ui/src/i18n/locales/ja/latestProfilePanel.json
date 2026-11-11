@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "最新のプロファイル（実行 {{time}}）",
-    "none": "プロファイルの実行はまだありません。"
+    "none": "プロファイルの実行はまだありません。",
+    "viewTable": "表",
+    "viewTerrain": "地形"
   }
 }
