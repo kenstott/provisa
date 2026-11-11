@@ -94,6 +94,7 @@ def env(tmp_path, monkeypatch):
     state = types.SimpleNamespace(
         admin_db=pool,
         multitenancy=False,
+        org_id="root",
         auth_config={"bootstrap_superadmin": True},
     )
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
