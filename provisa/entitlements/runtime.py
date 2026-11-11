@@ -170,6 +170,22 @@ def _compute(
     return compute_mask(role_id, index_of(role_id, context), members, version, now, tuple(findings))
 
 
+def principal_mask(
+    state: Any, principal: str, role_id: str, held: HeldEntitlements, now: datetime
+) -> EntitlementMask | None:
+    """``principal``'s mask over ``role_id``'s schema at ``now``, from the identity provider's
+    lists as the store mirrors them and ``held``: what the admin API reads for a person who need
+    not be the caller. None for a role with no schema. Not cached: ``held`` may be a preview."""
+    if _role_context(state, role_id) is None:
+        return None
+    if state.names_table is None:
+        raise RuntimeError("there is no model yet to expand entitlement lists against")
+    idp = state.idp_entitlements.get(principal, {})
+    request = EntitlementRequest(principal, idp, idp_lists_hash(idp))
+    version = (state.schema_boot_id, state.schema_version)
+    return _compute(state, role_id, request, held, version, now)
+
+
 def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
     """The bound person's mask over ``role_id``'s schema; None when no person is bound, or when
     there is no model yet and they carry no lists. Lists with no names table to expand them

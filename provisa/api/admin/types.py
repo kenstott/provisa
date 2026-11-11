@@ -1008,6 +1008,8 @@ class RoleType:  # REQ-042
     session_vars: list[SessionVarType] | None = strawberry.field(default_factory=list)
     # REQ-2077: a grant of the role unused this many days is removed; null: never, or not shown.
     inactivity_days: int | None = None
+    # REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}; null as capabilities is.
+    default_entitlements: JsonScalar | None = None
 
 
 @strawberry.type
@@ -1756,6 +1758,9 @@ class RoleInput:  # REQ-042
     session_vars: list[SessionVarInput] = strawberry.field(default_factory=list)
     # REQ-2077: remove a grant of the role once unused this many days; null: never.
     inactivity_days: int | None = None
+    # REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}. Left out, a save that
+    # changes domain_access writes it from them, and one that does not keeps what is stored.
+    default_entitlements: JsonScalar | None = None
 
 
 @strawberry.input

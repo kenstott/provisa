@@ -28,7 +28,14 @@ the org is that person's write, and one that matches no one is a pending grant, 
 sign-in token's email matches (``provisa.entitlements.pending``).
 
 Two reads serve the picker, gated as a write: the roles a person holds, with where each came from
-(``/roles``), and the kinds the write accepts with the names it picks from (``/kinds``).
+(``/roles``), and the kinds the write accepts with the names it picks from and the kind that
+scopes each capability (``/kinds``).
+
+The shortcuts and the rule editor: add access appends only what is new (``/lists/add``); a grant's
+expiry rules are added, changed and withdrawn by key (``/expiries``), with a dry run that says what
+a rule would end on its date (``/expiries/preview``), and a rule that would remove nothing is
+refused; the timeline of what was added (``/lists/history``); and effective access per capability
+over the roles a request acts as (``/effective/capabilities``).
 """
 
 # Requirements: REQ-2219
@@ -47,16 +54,24 @@ from provisa.api.admin.capabilities import _resolved_capabilities, require_capab
 from provisa.api.errors import ApiError
 from provisa.core.org_membership import record_admin_action
 from provisa.entitlements import pending, people, roles, store
-from provisa.entitlements.effective import access_view, model_index
+from provisa.entitlements.effective import (
+    ExpiryPreview,
+    access_view,
+    capability_views,
+    model_index,
+    preview_expiry,
+)
 from provisa.entitlements.index import (
     KIND_ORDER,
     KINDS,
     SEMANTIC_LISTS,
     TREE_DEPTH,
+    WILDCARD,
+    capability_scopes,
     names_tree,
 )
-from provisa.entitlements.lists import HeldEntitlements
-from provisa.entitlements.runtime import reaches_role
+from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
+from provisa.entitlements.runtime import reaches_role, role_defaults
 from provisa.security.rights import Capability
 
 router = APIRouter(prefix="/admin/entitlements", tags=["admin"])
@@ -84,6 +99,48 @@ class SetListBody(_ListKey):
 
 class EndListBody(_ListKey):
     pass
+
+
+class AddAccessBody(BaseModel):
+    """Add access: only what is new, appended to the person's list (REQ-2219)."""
+
+    principal: str
+    role_id: str
+    kind: str
+    identifiers: list[str]
+    # The capabilities the until date ends the added identifiers for; None: every one.
+    capabilities: list[str] | None = None
+    until: AwareDatetime | None = None
+    reason: str
+
+
+class _RuleBody(BaseModel):
+    """What an expiry rule says: at ``ends_at``, ``ends`` ends ({capability or *: [identifier]};
+    {} ends the whole grant)."""
+
+    ends_at: AwareDatetime
+    ends: dict[str, list[str]]
+
+
+class ExpiryBody(_RuleBody):
+    principal: str
+    role_id: str
+    reason: str
+
+
+class ChangeExpiryBody(_RuleBody):
+    reason: str
+
+
+class EndExpiryBody(BaseModel):
+    reason: str
+
+
+class PreviewBody(_RuleBody):
+    principal: str
+    role_id: str
+    # The rule being edited, left out of the comparison; None for a new rule.
+    rule_key: str | None = None
 
 
 def _db(state: Any) -> Any:
@@ -155,56 +212,70 @@ async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
 async def _require_write(request: Request, state: Any, body: _ListKey) -> str | None:
     """Gate and check what every write shares, the identity provider's precedence last. Returns
     the principal written, or None for a pending grant to ``body.email``."""
-    require_capability_request(request, _ASSIGN)
-    _require_role(state, body.role_id)
-    if _caller(request) is not None and not reaches_role(state, body.role_id, {_ASSIGN}):
-        raise _refuse_out_of_reach(body.role_id)
+    _require_grant_write(request, state, body.role_id, body.reason)
     principal = await _resolve(request, state, body)
-    if not body.reason.strip():
+    _require_list_write(state, principal, body.role_id, body.kind)
+    return principal
+
+
+def _require_grant_write(request: Request, state: Any, role_id: str, reason: str) -> None:
+    """Gate a write to a person's grant of ``role_id``: the right, the role, its reach, a reason."""
+    require_capability_request(request, _ASSIGN)
+    _require_role(state, role_id)
+    if _caller(request) is not None and not reaches_role(state, role_id, {_ASSIGN}):
+        raise _refuse_out_of_reach(role_id)
+    if not reason.strip():
         raise ApiError(422, "entitlements.reason_required", "A reason is required")
-    if body.kind not in KINDS:
+
+
+def _require_list_write(state: Any, principal: str | None, role_id: str, kind: str) -> None:
+    """Refuse a list write for a kind that is none, or one the identity provider sends."""
+    if kind not in KINDS:
         raise ApiError(
             422,
             "entitlements.unknown_kind",
-            f"{body.kind!r} is not a kind of entitlement list",
-            kind=body.kind,
+            f"{kind!r} is not a kind of entitlement list",
+            kind=kind,
         )
     if principal is not None and store.idp_supersedes(
-        state.idp_entitlements, principal, body.role_id, body.kind
+        state.idp_entitlements, principal, role_id, kind
     ):
         raise ApiError(
             409,
             "entitlements.idp_supersedes",
-            f"The identity provider sends {principal!r}'s {body.kind!r} list for role "
-            f"{body.role_id!r}: that list wins, and it cannot be changed here",
+            f"The identity provider sends {principal!r}'s {kind!r} list for role "
+            f"{role_id!r}: that list wins, and it cannot be changed here",
             principal=principal,
-            role_id=body.role_id,
-            kind=body.kind,
+            role_id=role_id,
+            kind=kind,
         )
-    return principal
 
 
-def _check_set(body: SetListBody) -> None:
-    if any(not identifier.strip() for identifier in body.identifiers):
+def _check_list_expiry(kind: str, identifiers: list[str], expires_at: datetime | None) -> None:
+    if any(not identifier.strip() for identifier in identifiers):
         raise ApiError(422, "entitlements.blank_identifier", "An identifier cannot be blank")
-    if body.expires_at is None:
+    if expires_at is None:
         return
-    if body.expires_at <= datetime.now(UTC):
+    if expires_at <= datetime.now(UTC):
         raise ApiError(
             422,
             "entitlements.expiry_in_past",
             "An expiry must be in the future",
-            expires_at=body.expires_at.isoformat(),
+            expires_at=expires_at.isoformat(),
         )
     # An expiry ends objects in the mask: with no identifiers, or for a kind the mask does not
     # hold, the rule would remove nothing, and saving it would promise an end that never comes.
-    if not body.identifiers or body.kind not in SEMANTIC_LISTS:
+    if not identifiers or kind not in SEMANTIC_LISTS:
         raise ApiError(
             422,
             "entitlements.expiry_removes_nothing",
-            f"An expiry on this {body.kind!r} list would remove nothing",
-            kind=body.kind,
+            f"An expiry on this {kind!r} list would remove nothing",
+            kind=kind,
         )
+
+
+def _check_set(body: SetListBody) -> None:
+    _check_list_expiry(body.kind, body.identifiers, body.expires_at)
 
 
 def _view(state: Any, principal: str, role_id: str) -> dict:
@@ -476,7 +547,7 @@ async def list_kinds(request: Request) -> dict:
     """The kinds of list the write accepts, in the order a client lists them, each with whether an
     expiry can end it and how deep the names tree goes for it; and that tree, of the model's
     domains, tables and columns as the identifiers that select them (null before a model is
-    built). Gated as a write: it is what a list is picked from."""
+    built); and each capability with the kind of list that scopes it. Gated as a write: it is what a list is picked from."""
     from provisa.api.app import state
 
     require_capability_request(request, _ASSIGN)
@@ -488,4 +559,247 @@ async def list_kinds(request: Request) -> dict:
             for kind in KIND_ORDER
         ],
         "names": None if index is None else [_node(n) for n in names_tree(index)],
+        # Each capability and the kind that scopes it; null: unscoped, held wherever the role is.
+        "capability_scopes": capability_scopes(),
     }
+
+
+@router.post("/lists/add")
+async def add_access(body: AddAccessBody, request: Request) -> dict:
+    """Add access: append only what is new to the principal's list for a role grant and kind,
+    without restating the rest; with ``until``, an expiry rule ending what was added, for
+    ``capabilities`` (every one when left out), at that date. Where Provisa holds no list the
+    person has the role's default, and the additions are appended to that."""
+    from provisa.api.app import state
+
+    _require_grant_write(request, state, body.role_id, body.reason)
+    if not body.principal.strip():
+        raise ApiError(422, "entitlements.principal_required", "A principal is required")
+    _require_list_write(state, body.principal, body.role_id, body.kind)
+    _check_list_expiry(body.kind, body.identifiers, body.until)
+    actor = _caller(request) or _ANONYMOUS
+    base = role_defaults(state.roles[body.role_id]).get(body.kind, [WILDCARD])
+    db = _db(state)
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            added = await store.add_to_list(
+                conn,
+                body.principal,
+                body.role_id,
+                body.kind,
+                body.identifiers,
+                base=base,
+                capabilities=body.capabilities,
+                until=body.until,
+                set_by=actor,
+                reason=body.reason,
+            )
+        state.held_entitlements = await store.load_held(conn)
+    await record_admin_action(
+        db,
+        action="entitlements.add",
+        actor_id=actor,
+        subject_id=body.principal,
+        detail={
+            "role_id": body.role_id,
+            "kind": body.kind,
+            "identifiers": list(added),
+            "capabilities": body.capabilities,
+            "reason": body.reason,
+            "until": body.until.isoformat() if body.until else None,
+        },
+    )
+    return _view(state, body.principal, body.role_id)
+
+
+@router.get("/lists/history")
+async def list_history(principal: str, role_id: str, request: Request) -> list[dict]:
+    """What was added to ``principal``'s lists for ``role_id``, oldest first: per change, the kind,
+    the identifiers it added, who set it and why, when, and until when."""
+    from provisa.api.app import state
+
+    _require_role(state, role_id)
+    if not _visible_roles(request, state, principal, {role_id}):
+        raise _refuse_out_of_reach(role_id)
+    async with _db(state).acquire() as conn:
+        history = await store.list_history(conn, principal, role_id)
+    return [asdict(a) for a in history]
+
+
+def _no_model() -> ApiError:
+    return ApiError(
+        409,
+        "entitlements.no_model",
+        "There is no model yet to expand entitlement lists against",
+    )
+
+
+@router.get("/effective/capabilities")
+async def effective_capabilities(principal: str, role_ids: str, request: Request) -> list[dict]:
+    """``principal``'s effective access per capability acting as ``role_ids`` (comma-separated):
+    the union over those roles of where each capability applies. Per capability: the kind that
+    scopes it (null: unscoped), the identifiers it covers (null: unscoped), per role the origin of
+    each list that applied, and the model version the expansion belongs to."""
+    from provisa.api.app import state
+
+    named = list(dict.fromkeys(r for r in (s.strip() for s in role_ids.split(",")) if r))
+    for role_id in named:
+        _require_role(state, role_id)
+    visible = _visible_roles(request, state, principal, set(named))
+    for role_id in named:
+        if role_id not in visible:
+            raise _refuse_out_of_reach(role_id)
+    if state.names_table is None:
+        raise _no_model()
+    held = state.held_entitlements.get(principal, _NOTHING_HELD)
+    return [
+        asdict(view) for view in capability_views(state, principal, named, held, datetime.now(UTC))
+    ]
+
+
+def _preview(
+    state: Any,
+    principal: str,
+    role_id: str,
+    body: _RuleBody,
+    replacing: str | None = None,
+) -> ExpiryPreview:
+    if state.names_table is None:
+        raise _no_model()
+    return preview_expiry(state, principal, role_id, body.ends_at, body.ends, replacing=replacing)
+
+
+def _refuse_removes_nothing(principal: str, role_id: str) -> ApiError:
+    # REQ-2219: a rule that would remove nothing is flagged instead of saved.
+    return ApiError(
+        422,
+        "entitlements.expiry_removes_nothing",
+        f"This rule would remove nothing from {principal!r}'s grant of {role_id!r} on its date",
+        principal=principal,
+        role_id=role_id,
+    )
+
+
+def _rule(state: Any, rule_key: str) -> tuple[str, ExpiryRule]:
+    """The rule ``rule_key`` names and whose grant it is on."""
+    for principal, held in state.held_entitlements.items():
+        for rule in held.expiries:
+            if rule.rule_key == rule_key:
+                return principal, rule
+    raise ApiError(
+        404,
+        "entitlements.expiry_not_found",
+        f"No expiry rule {rule_key!r}",
+        rule_key=rule_key,
+    )
+
+
+@router.post("/expiries/preview")
+async def preview(body: PreviewBody, request: Request) -> dict:
+    """A dry run of an expiry rule: per capability, the identifiers it would end on its date of
+    what the person would reach then, and whether it would remove nothing. ``rule_key`` names the
+    rule being edited, which the comparison leaves out."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    _require_role(state, body.role_id)
+    if _caller(request) is not None and not reaches_role(state, body.role_id, {_ASSIGN}):
+        raise _refuse_out_of_reach(body.role_id)
+    return asdict(_preview(state, body.principal, body.role_id, body, body.rule_key))
+
+
+@router.post("/expiries")
+async def add_expiry(body: ExpiryBody, request: Request) -> dict:
+    """Add an expiry rule to a principal's grant of a role. A rule that would remove nothing on
+    its date is refused by name."""
+    from provisa.api.app import state
+
+    _require_grant_write(request, state, body.role_id, body.reason)
+    if not body.principal.strip():
+        raise ApiError(422, "entitlements.principal_required", "A principal is required")
+    if _preview(state, body.principal, body.role_id, body).removes_nothing:
+        raise _refuse_removes_nothing(body.principal, body.role_id)
+    actor = _caller(request) or _ANONYMOUS
+    db = _db(state)
+    async with db.acquire() as conn:
+        rule_key = await store.add_expiry(
+            conn,
+            body.principal,
+            body.role_id,
+            body.ends_at,
+            body.ends,
+            set_by=actor,
+            reason=body.reason,
+        )
+        state.held_entitlements = await store.load_held(conn)
+    await record_admin_action(
+        db,
+        action="entitlements.expiry_added",
+        actor_id=actor,
+        subject_id=body.principal,
+        detail={
+            "rule_key": rule_key,
+            "role_id": body.role_id,
+            "ends_at": body.ends_at.isoformat(),
+            "ends": body.ends,
+            "reason": body.reason,
+        },
+    )
+    return _view(state, body.principal, body.role_id)
+
+
+@router.put("/expiries/{rule_key}")
+async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request) -> dict:
+    """Change an expiry rule: its date (extend), what it ends, or both. A change that would remove
+    nothing on its date is refused by name."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    principal, rule = _rule(state, rule_key)
+    _require_grant_write(request, state, rule.role_id, body.reason)
+    if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
+        raise _refuse_removes_nothing(principal, rule.role_id)
+    actor = _caller(request) or _ANONYMOUS
+    db = _db(state)
+    async with db.acquire() as conn:
+        await store.change_expiry(
+            conn, rule, principal, body.ends_at, body.ends, set_by=actor, reason=body.reason
+        )
+        state.held_entitlements = await store.load_held(conn)
+    await record_admin_action(
+        db,
+        action="entitlements.expiry_changed",
+        actor_id=actor,
+        subject_id=principal,
+        detail={
+            "rule_key": rule_key,
+            "role_id": rule.role_id,
+            "ends_at": body.ends_at.isoformat(),
+            "ends": body.ends,
+            "reason": body.reason,
+        },
+    )
+    return _view(state, principal, rule.role_id)
+
+
+@router.delete("/expiries/{rule_key}")
+async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) -> dict:
+    """Withdraw an expiry rule from a principal's grant."""
+    from provisa.api.app import state
+
+    require_capability_request(request, _ASSIGN)
+    principal, rule = _rule(state, rule_key)
+    _require_grant_write(request, state, rule.role_id, body.reason)
+    actor = _caller(request) or _ANONYMOUS
+    db = _db(state)
+    async with db.acquire() as conn:
+        await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
+        state.held_entitlements = await store.load_held(conn)
+    await record_admin_action(
+        db,
+        action="entitlements.expiry_withdrawn",
+        actor_id=actor,
+        subject_id=principal,
+        detail={"rule_key": rule_key, "role_id": rule.role_id, "reason": body.reason},
+    )
+    return _view(state, principal, rule.role_id)
