@@ -16,9 +16,12 @@ import { describe, expect, it } from "vitest";
 import cytoscape from "cytoscape";
 import elk from "cytoscape-elk";
 import { buildErdElements, type ColumnDetail } from "../components/erd/erd-model";
-import { buildErdStylesheet } from "../components/erd/sections/erd-stylesheet";
-import { ERD_ELK_LAYOUT } from "../components/erd/erd-layout-options";
-import { arrangeErd, nodesWithEdges } from "../components/erd/sections/erd-layout";
+import { erdGraph } from "../components/erd/erd-graph";
+import { graphElements } from "../components/provisa-graph/model";
+import { graphStylesheet } from "../components/provisa-graph/stylesheet";
+import { graphTokens } from "../components/provisa-graph/tokens";
+import { ERD_ELK_LAYOUT } from "../components/provisa-graph/presets";
+import { arrangeLayered, nodesWithEdges } from "../components/provisa-graph/arrange";
 import type { CyInstance } from "../components/graph/cytoscape-types";
 import type { Domain, ListedTable, Relationship } from "../types/admin";
 
@@ -109,33 +112,35 @@ const DOMAINS = Object.keys(SPEC).map((id) => ({ id, description: `${id} domain`
 
 type BB = { x1: number; x2: number; y1: number; y2: number };
 
-/** The diagram laid out as ErdPanel lays it out: orphans hidden, ELK, then the arrangement. */
+/** The diagram laid out as the ERD's graph (ProvisaGraph's layered preset) lays it out: orphans
+ * hidden, ELK, then the arrangement. */
 async function laidOut(columnDetail: ColumnDetail, gridSnap: number, aspectRatio: number) {
-  const elements = buildErdElements(TABLES, RELS, DOMAINS, new Set(), new Set(), columnDetail);
+  const erd = buildErdElements(TABLES, RELS, DOMAINS, new Set(), new Set(), "all");
+  const elements = graphElements(erdGraph(erd, TABLES), (type) => type, columnDetail);
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,
-    elements: [...elements.nodes, ...elements.edges] as unknown as Parameters<
+    elements: elements as unknown as Parameters<typeof cytoscape>[0]["elements"],
+    style: graphStylesheet(graphTokens(true)) as unknown as Parameters<
       typeof cytoscape
-    >[0]["elements"],
-    style: buildErdStylesheet(true) as unknown as Parameters<typeof cytoscape>[0]["style"],
+    >[0]["style"],
   }) as unknown as CyInstance;
   const connected = nodesWithEdges(cy);
-  cy.nodes(".erd-table").forEach((n) => {
+  cy.nodes(".pg-node").forEach((n) => {
     if (!connected.has((n as { id(): string }).id())) n.style("display", "none");
   });
   const layout = cy.layout(ERD_ELK_LAYOUT);
   const stopped = new Promise<void>((resolve) => layout.one("layoutstop", () => resolve()));
   layout.run();
   await stopped;
-  arrangeErd(cy, { gridSnap, showOrphans: true, aspectRatio });
+  arrangeLayered(cy, { gridSnap, showOrphans: true, aspectRatio });
   return cy;
 }
 
 /** Each pair of tables in one domain whose boxes intersect. */
 function overlaps(cy: CyInstance): string[] {
   const tables: Array<{ name: string; domainId: string; bb: BB }> = [];
-  cy.nodes(".erd-table").forEach((n) => {
+  cy.nodes(".pg-node").forEach((n) => {
     tables.push({
       name: n.data("tableName") as string,
       domainId: n.data("domainId") as string,
@@ -162,7 +167,7 @@ describe("the ERD's automatic layout", () => {
       for (const aspectRatio of [1280 / 900, 1900 / 900]) {
         it(`overlaps no two tables of a domain (${columnDetail} columns, snap ${gridSnap}, pane ${aspectRatio.toFixed(2)})`, async () => {
           const cy = await laidOut(columnDetail, gridSnap, aspectRatio);
-          expect((cy.nodes(".erd-table") as unknown as { length: number }).length).toBe(
+          expect((cy.nodes(".pg-node") as unknown as { length: number }).length).toBe(
             TABLES.length,
           );
           expect(overlaps(cy)).toEqual([]);

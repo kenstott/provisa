@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "संकेत-सूची",
+    "type": {
+      "product": "डेटा उत्पाद",
+      "source": "स्रोत",
+      "domain": "डोमेन",
+      "group": "समूह",
+      "table": "तालिका",
+      "view": "दृश्य",
+      "relation": "बाहरी तालिका",
+      "junction": "जंक्शन",
+      "column": "स्तंभ",
+      "term": "शब्द",
+      "concept": "अवधारणा",
+      "class": "वर्ग",
+      "property": "गुण",
+      "command": "कमांड",
+      "checker": "गुणवत्ता जाँच",
+      "profile": "प्रोफ़ाइल",
+      "tag": "टैग",
+      "more": "और"
+    }
+  }
+}

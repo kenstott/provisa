@@ -97,7 +97,7 @@ const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/graph/Inspector.tsx": 1, // the inspector's colour chip
   "pages/sql/ColumnFilterMenu.tsx": 1, // a result column's filter
   "components/RegexMaskFields.tsx": 1, // a regex mask's common masks (masks-presets.cjs)
-  "components/erd/ErdCanvasBar.tsx": 1, // the ERD's download (the J562 render harness)
+  "components/provisa-graph/GraphControls.tsx": 1, // every 2D graph's download (the J562 render harness)
   "components/erd/ErdLayoutMenu.tsx": 1, // the ERD's Layout menu (erd-saved-layout.test.tsx)
 };
 

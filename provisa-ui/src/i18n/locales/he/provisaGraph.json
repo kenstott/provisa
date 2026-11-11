@@ -1,0 +1,25 @@
+{
+  "provisaGraph": {
+    "legend": "מקרא",
+    "type": {
+      "product": "מוצר נתונים",
+      "source": "מקור",
+      "domain": "תחום",
+      "group": "קבוצה",
+      "table": "טבלה",
+      "view": "תצוגה",
+      "relation": "טבלה חיצונית",
+      "junction": "צומת",
+      "column": "עמודה",
+      "term": "מונח",
+      "concept": "מושג",
+      "class": "מחלקה",
+      "property": "מאפיין",
+      "command": "פקודה",
+      "checker": "בדיקת איכות",
+      "profile": "פרופיל",
+      "tag": "תגית",
+      "more": "עוד"
+    }
+  }
+}
