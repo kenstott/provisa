@@ -91766,7 +91766,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     data quality results and profiles stay its own choices; a synthetic offer has no profiles. (Amended
     2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A product starts with one offer and only one:
     the viewer role, the full data, with data quality results, without profiles, not open. Any other offer
-    is the owner''s to add.'
+    is the owner''s to add. (Amended 2026-11-11, A SYNTHETIC OFFER NEEDS A PROFILER ON EVERY DATASET:) Maintainer
+    2026-11-11. Synthetic data is generated from each dataset''s profile (the Data Profiler, REQ-1934),
+    so an offer of synthetic data can be saved only when every dataset of the product has a profiler; one
+    without is named in the refusal. If a dataset''s profiler is later removed, the offer is not accepted,
+    its owner is told, and the offer is listed for review.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
