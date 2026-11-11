@@ -360,7 +360,7 @@ def _table_asset(
 def test_comment_statements_sets_table_comment_on_a_real_table():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
     ]
@@ -369,7 +369,7 @@ def test_comment_statements_sets_table_comment_on_a_real_table():
 def test_comment_statements_sets_view_comment_via_alter_view():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
     ]
@@ -384,7 +384,7 @@ def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
     ]
@@ -399,7 +399,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
     ]
@@ -407,7 +407,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
 
 def test_comment_statements_skips_tables_missing_from_kinds():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    assert comment_statements([table], {}, [], _ADDR) == []
+    assert comment_statements([table], {}, [], _ADDR, {}) == []
 
 
 def test_comment_statements_skips_columns_and_tables_with_no_description():
@@ -419,7 +419,7 @@ def test_comment_statements_skips_columns_and_tables_with_no_description():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    assert comment_statements([table], kinds, [], _ADDR) == []
+    assert comment_statements([table], kinds, [], _ADDR, {}) == []
 
 
 def test_comment_statements_appends_governance_note_to_table_comment():
@@ -434,7 +434,7 @@ def test_comment_statements_appends_governance_note_to_table_comment():
             exempt_roles=("owner",),
         )
     ]
-    stmts = comment_statements([table], kinds, tags, _ADDR)
+    stmts = comment_statements([table], kinds, tags, _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         # A line break is written as Snowflake's \n escape: the comment Snowflake stores is the
@@ -454,7 +454,7 @@ def test_comment_statements_uses_governance_note_alone_when_no_description():
             rule_id="rule-7",
         )
     ]
-    stmts = comment_statements([table], kinds, tags, _ADDR)
+    stmts = comment_statements([table], kinds, tags, _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         "'[provisa:governance masked rule=rule-7]';"
