@@ -116,3 +116,23 @@ async def test_a_table_the_role_is_not_served_is_refused_by_name(served):
 
     with pytest.raises(ValueError, match="table 8 is not served to role 'analyst'"):
         await table_access(state, "analyst", 8, _endpoints())
+
+
+async def test_an_unauthorized_caller_is_refused_the_access_snippets(served, monkeypatch):
+    from provisa.api.admin import schema_query
+
+    state, asked = served
+
+    def _require(_info, capability, domain_id=None):
+        raise PermissionError(f"Missing capability: {capability!r}")
+
+    monkeypatch.setattr(schema_query, "require_capability", _require)
+    monkeypatch.setattr("provisa.api.app.state", state)
+
+    with pytest.raises(PermissionError, match="Missing capability: 'table_registration'"):
+        await schema_query.Query().table_access(  # pyright: ignore[reportCallIssue]
+            SimpleNamespace(), 7, "analyst"
+        )
+
+    # Refused before the role's schema was read for the table.
+    assert asked == []

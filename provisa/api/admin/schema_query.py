@@ -1604,6 +1604,7 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo, table_id: int, role: str
     ) -> TableAccessType:  # REQ-2234
         """How ``role`` reaches a registered table: each access method, ready to copy."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._table_access import table_access
         from provisa.api.admin.capabilities import require_inspectable_role
         from provisa.api.app import state

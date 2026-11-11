@@ -108,3 +108,27 @@ async def test_the_mutation_registers_the_tables_it_is_given(single_path):
     )
 
     assert [(o.table_name, o.result.success) for o in outcomes] == [("orders", True)]
+
+
+async def test_an_unauthorized_caller_is_refused_before_any_table_is_attempted(monkeypatch):
+    attempted: list[str] = []
+    asked: list[tuple[str, str | None]] = []
+
+    def _require(_info, capability, domain_id=None):
+        asked.append((capability, domain_id))
+        raise PermissionError(f"Missing capability: {capability!r}")
+
+    async def _register(_info, table):
+        attempted.append(table.table_name)
+        return MutationResult(success=True, message="registered")
+
+    monkeypatch.setattr(schema_mutation, "require_capability", _require)
+    monkeypatch.setattr(schema_mutation._ops, "register_table", _register)
+
+    with pytest.raises(PermissionError, match="Missing capability: 'table_registration'"):
+        await schema_mutation.Mutation().register_tables(  # pyright: ignore[reportCallIssue]
+            SimpleNamespace(), [_table("orders"), _table("customers")]
+        )
+
+    assert asked == [("table_registration", None)]
+    assert attempted == []

@@ -4026,6 +4026,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Several tables registered in one action, each by registerTable."""
         from provisa.api.admin._batch_registration import register_tables
 
+        # The right registerTable needs, asked once before any table is attempted; each table's
+        # domain is then checked by registerTable itself.
+        require_capability(info, "table_registration")
         return await register_tables(info, inputs)
 
     @strawberry.mutation
