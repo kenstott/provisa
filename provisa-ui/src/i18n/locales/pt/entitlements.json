@@ -62,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Selecione um tipo",
       "entriesLabel": "Entradas",
-      "entriesHelp": "O que esta pessoa pode alcançar do que a função permite. Um domínio ou tabela escolhido sem nada escolhido abaixo inclui todo o seu conteúdo. Uma lista vazia não alcança nada deste tipo.",
+      "entriesHelp": "O que esta pessoa pode alcançar do que a função permite. Um domínio ou uma tabela escolhidos sem nada escolhido abaixo incluem tudo o que contêm. Uma lista vazia não alcança nada deste tipo.",
       "endsOnLabel": "Termina em",
       "endsOnHint": "Deixe vazio para manter a lista até que seja encerrada.",
       "reasonLabel": "Motivo",
@@ -120,6 +120,24 @@
       "provisa": "Atribuída no Provisa",
       "default_assignment": "Atribuição padrão",
       "idp": "Provedor de identidade"
+    },
+    "expiry": {
+      "heading": "Datas de término",
+      "none": "Sem datas de término: esta atribuição dura até ser encerrada.",
+      "colEndsOn": "Termina em",
+      "colEnds": "O que termina",
+      "colReason": "Motivo",
+      "wholeGrant": "A atribuição inteira",
+      "everyCapability": "Todas as capacidades",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} em todo lugar",
+      "on": "{{what}} em {{entries}}",
+      "passed": "Expirada",
+      "noReason": "—",
+      "extend": "Prorrogar",
+      "extendPrompt": "Mover o fim da lista de {{kind}}, atualmente {{date}}.",
+      "newDateLabel": "Nova data de término",
+      "newDateHint": "As entradas da lista permanecem como estão."
     }
   }
 }

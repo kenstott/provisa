@@ -120,6 +120,24 @@
       "provisa": "Assigned in Provisa",
       "default_assignment": "Default assignment",
       "idp": "Identity provider"
+    },
+    "expiry": {
+      "heading": "End dates",
+      "none": "No end dates: this grant lasts until it is ended.",
+      "colEndsOn": "Ends on",
+      "colEnds": "What it ends",
+      "colReason": "Reason",
+      "wholeGrant": "The whole grant",
+      "everyCapability": "Every capability",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} everywhere",
+      "on": "{{what}} on {{entries}}",
+      "passed": "Passed",
+      "noReason": "—",
+      "extend": "Extend",
+      "extendPrompt": "Move the end of the {{kind}} list, now {{date}}.",
+      "newDateLabel": "New end date",
+      "newDateHint": "The list's entries stay as they are."
     }
   }
 }

@@ -151,6 +151,27 @@ describe("a person's entitlement lists", () => {
     expect(screen.queryByTestId("person-entitlements-read-only")).toBeNull();
   });
 
+  it("explains an ended entry and a superseded list with the shared hint, not a native title", async () => {
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    const ended = await screen.findByTestId("person-list-tables-ended-finance.costs");
+    const superseded = screen.getByTestId("person-list-columns-superseded");
+    expect(ended).not.toHaveAttribute("title");
+    expect(superseded).not.toHaveAttribute("title");
+    await userEvent.hover(ended);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Ended by a passed end date");
+    await userEvent.unhover(ended);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    await userEvent.hover(superseded);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("The list this one replaced");
+  });
+
+  it("lists the grant's end dates beside its lists", async () => {
+    render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
+    const rules = await screen.findByTestId("expiry-rules");
+    expect(within(rules).getByTestId("expiry-rule-r1")).toHaveTextContent("The whole grant");
+    expect(within(rules).getByTestId("expiry-rule-r1-extend")).toBeInTheDocument();
+  });
+
   it("is read-only, and says why, when every list comes from the identity provider", async () => {
     mockEffective.mockResolvedValue(ALL_IDP);
     render(<PersonEntitlements principal="u|1" roleIds={["viewer"]} />);
