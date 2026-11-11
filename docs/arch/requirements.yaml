@@ -94835,7 +94835,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     left out as native, and the conformance check is what makes the omission hold: a feature left out that
     answers otherwise than PostgreSQL fails the run. Beside the pages, a generated summary shows each feature
     across the engines (native, polyfilled, differs, refused) for choosing an engine. Both come from the
-    one grid in code.'
+    one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11.
+    A grid row''s polyfill is written as a rule in a notation the translator itself executes, not described
+    beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray,
+    1)) and, for each engine, a replacement in that engine''s SQL with the same holes (duckdb: len($a);
+    trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot
+    in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts
+    the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling.
+    A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or
+    literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to
+    an array''s depth, choosing by a value''s type, a check that refuses a bad value at run time), the rule''s
+    replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim,
+    with the helper''s name and one-line purpose where one is used, so what the docs show is what runs.
+    Each engine''s page counts its rows that are rules and those that use helpers.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
