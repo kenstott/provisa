@@ -91763,7 +91763,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     datasets, named on the offer -- accepting it builds entitlements on those views alone, never on the
     tables beneath them, so no query can widen the sample past what the views express; or synthetic, the
     product''s shape served by the existing fake-data generator (REQ-1494), with no real records. An offer''s
-    data quality results and profiles stay its own choices; a synthetic offer has no profiles.'
+    data quality results and profiles stay its own choices; a synthetic offer has no profiles. (Amended
+    2026-11-11, ONE DEFAULT OFFER:) Maintainer 2026-11-11. A product starts with one offer and only one:
+    the viewer role, the full data, with data quality results, without profiles, not open. Any other offer
+    is the owner''s to add.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
