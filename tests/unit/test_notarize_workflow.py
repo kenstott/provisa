@@ -140,6 +140,15 @@ def test_core_and_container_notarize_the_app_then_build_the_dmg_from_it_then_not
     assert app["if"] == "${{ matrix.app_edition != '' }}"
     assert "notarize-dmg.sh --app packaging/macos/Provisa.app" in app["run"]
     assert 'tar -xf "dmg/stage-${{ matrix.app_edition }}.tar"' in app["run"]
+    # The handoff is verified right after the untar and before anything is submitted.
+    run = app["run"]
+    assert (
+        run.index("tar -xf")
+        < run.index("codesign --verify --deep --strict")
+        < run.index("notarize-dmg.sh --app")
+    )
+    assert "codesign --verify --deep --strict packaging/macos/Provisa.app" in run
+    assert "does not verify after the handoff" in run
     assert set(app["env"]) == set(_SECRETS)
     build = steps["Build the DMG from the stapled app"]
     assert build["if"] == app["if"]
