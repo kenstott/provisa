@@ -426,6 +426,14 @@ def _names_an_object(node: exp.Expr) -> bool:
     return isinstance(written, exp.Literal) and written.is_string and not written.this.isdigit()
 
 
+def _is_interval(node: exp.Expr) -> bool:
+    """Whether the statement says ``node`` is an interval: a cast to one, or a column of a VALUES
+    list that casts it to one (function_macros.said_type)."""
+    return (
+        _cast_to(node, exp.DataType.Type.INTERVAL) or function_macros.said_type(node) == "interval"
+    )
+
+
 def _mixed_signs(step: exp.Expr) -> bool:
     """Whether ``step`` is an interval the statement writes whose months, days and time are not
     all of one sign (``'-1 year 2 days'``)."""
@@ -519,6 +527,8 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
     """A call of a function named for a type, as the cast it is."""
     if name == "char" and len(args) == 1 and _is_text(args[0]):
         return f'CAST(LEFT({_sql(args[0])}, 1) AS "char")'
+    if name == "char" and len(args) == 1 and _cast_to(args[0], *exp.DataType.INTEGER_TYPES):
+        return _sql(_char_of_integer(args[0]))
     if name == "xid" and len(args) == 1:  # an xid8's low 32 bits
         return f"CAST(({_sql(args[0])}) % 4294967296 AS xid)"
     if name == "age" and len(args) == 1 and _is_kind(args[0], "xid"):
@@ -561,6 +571,37 @@ def _int_said(node: exp.Expr) -> int | None:
     if isinstance(inner, exp.Literal) and inner.is_int:
         return int(inner.this)
     return None
+
+
+def _char_of_integer(value: exp.Expr) -> exp.Expr:
+    """ "char"(integer), i4tochar: the byte the integer is, -128 to 127, as charout writes it: a
+    byte of the high bit as its octal escape, 0 as nothing. Any other integer is PostgreSQL's
+    22003."""
+    n = value.copy()
+    byte = exp.Paren(this=exp.Add(this=n.copy(), expression=_number(256)))
+    octal = exp.Anonymous(this="PRINTF", expressions=[exp.Literal.string("\\%03o"), byte])
+    refused = sqlglot.parse_one(raising("22003", "'\"char\" out of range'"), read="postgres")
+    return exp.Cast(
+        this=exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.Or(
+                        this=exp.LT(this=n.copy(), expression=_number(-128)),
+                        expression=exp.GT(this=n.copy(), expression=_number(127)),
+                    ),
+                    true=refused,
+                ),
+                exp.If(this=exp.LT(this=n.copy(), expression=_number(0)), true=octal),
+                exp.If(
+                    this=exp.EQ(this=n.copy(), expression=_number(0)), true=exp.Literal.string("")
+                ),
+            ],
+            default=exp.Anonymous(this="CHR", expressions=[n]),
+        ),
+        to=exp.DataType(
+            this=exp.DataType.Type.USERDEFINED, kind=exp.to_identifier("char", quoted=True)
+        ),
+    )
 
 
 def _bit_substring(value: exp.Expr, rest: list[exp.Expr]) -> exp.Expr:
@@ -709,6 +750,12 @@ def _bytea_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911
         return f"PROVISA_ENCODED_LENGTH({written[0]}, {written[1]})"
     if name == "string_agg" and len(args) == 2:  # noqa: PLR2004
         return f"UNHEX(STRING_AGG(HEX({written[0]}), HEX({written[1]})))"
+    if name in ("position", "strpos") and len(args) == 2 and _is_bytea(args[1]):  # noqa: PLR2004
+        # DuckDB's strpos takes no BLOB.
+        found = exp.Anonymous(
+            this="PROVISA_BYTEA_POSITION", expressions=[args[0].copy(), args[1].copy()]
+        )
+        return _sql(found)
     return None
 
 
@@ -795,7 +842,7 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             # timetz_izone: a timetz stays a timetz, moved to the zone the interval names
             return f"TIMEZONE({written[0]}, {written[1]})"
         return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
-    if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
+    if name == "sum" and len(args) == 1 and _is_interval(args[0]):
         # Field by field, as interval_accum adds: a day does not become 24 hours.
         value = written[0]
         return (

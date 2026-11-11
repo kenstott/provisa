@@ -118,6 +118,47 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
         ["bc"],
     ),
     ("SELECT pg_catalog.\"substring\"('101'::bit(3), 2::integer) AS v", BIT, ["01"]),
+    # sum of an interval column a VALUES list types: field by field.
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('1 day 02:03:04'::interval), "
+        "('3 mons'::interval), ('-1 year 2 days'::interval)) AS t(c1)",
+        1186,
+        ["-9 mons +3 days 02:03:04"],
+    ),
+    # position of a bytea in a bytea: from 1, 0 where it is not found.
+    (
+        "SELECT pg_catalog.\"position\"('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea) AS v",
+        INT4,
+        ["1"],
+    ),
+    ("SELECT pg_catalog.\"position\"('\\xdeadbeef'::bytea, '\\xbeef'::bytea) AS v", INT4, ["3"]),
+    ("SELECT pg_catalog.\"position\"('\\xdeadbeef'::bytea, '\\x00'::bytea) AS v", INT4, ["0"]),
+    # "char" of an integer: its byte, the high bit's as an octal escape, 0's as nothing.
+    ('SELECT pg_catalog."char"((-7)::integer) AS v', 18, ["\\371"]),
+    ('SELECT pg_catalog."char"(65::integer) AS v', 18, ["A"]),
+    ('SELECT pg_catalog."char"(0::integer) AS v', 18, [""]),
+    # An encoding's name as PostgreSQL reads it: 'abc' is WIN1258's.
+    ("SELECT pg_catalog.\"length\"('\\xdeadbeef'::bytea, 'abc'::name) AS v", INT4, ["4"]),
+    ("SELECT pg_catalog.\"length\"('abc'::bytea, 'SQL-ASCII'::name) AS v", INT4, ["3"]),
+    # uuid_extract_timestamp: version 1 and 7 (RFC 9562's examples), NULL for any other.
+    (
+        "SELECT pg_catalog.\"uuid_extract_timestamp\"('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid) "
+        "AS v",
+        TIMESTAMPTZ,
+        [None],
+    ),
+    (
+        "SELECT pg_catalog.\"uuid_extract_timestamp\"('c232ab00-9414-11ec-b3c8-9f6bdeced846'::uuid) "
+        "AS v",
+        TIMESTAMPTZ,
+        ["2022-02-22 19:22:22+00"],
+    ),
+    (
+        "SELECT pg_catalog.\"uuid_extract_timestamp\"('019535d9-3df7-79fb-b466-fa907fa17f9e'::uuid) "
+        "AS v",
+        TIMESTAMPTZ,
+        ["2025-02-24 02:46:24.503+00"],
+    ),
     # A zone's text PostgreSQL reads as POSIX: '12' is twelve hours WEST of UTC.
     (
         "SELECT pg_catalog.\"date_add\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
@@ -179,6 +220,7 @@ ERRORS: list[tuple[str, str, str]] = [
         "22026",
         "bit string length 1 does not match type bit(3)",
     ),
+    ('SELECT pg_catalog."char"(300::integer) AS v', "22003", '"char" out of range'),
     # Its time negative, whatever its days.
     (
         "SELECT pg_catalog.\"in_range\"('10:00'::time, '11:00'::time, '1 day -00:30'::interval, "

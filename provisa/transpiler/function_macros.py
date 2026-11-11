@@ -289,6 +289,19 @@ _PG_TYPEOF = (
     "repeat('[]', (length(typeof(value)) - length(replace(typeof(value), '[]', ''))) // 2)"
 )
 
+#: uuid_extract_timestamp, as PostgreSQL 17's uuid.c reads it: a version 7 UUID's milliseconds
+#: (DuckDB's own), a version 1 UUID's 100-nanosecond count since 1582-10-15, and NULL for any other
+#: version or a variant that is not RFC 9562's. DuckDB's own refuses all but version 7.
+_UUID_HEX = "replace(CAST(u AS VARCHAR), '-', '')"
+_UUID_TIMESTAMP = (
+    f"CASE WHEN (CAST('0x' || substr({_UUID_HEX}, 17, 1) AS INTEGER) & 12) <> 8 THEN NULL "
+    "WHEN uuid_extract_version(u) = 7 THEN uuid_extract_timestamp(u) "
+    "WHEN uuid_extract_version(u) = 1 THEN TIMESTAMPTZ '1970-01-01 00:00:00+00' + to_microseconds("
+    f"((CAST('0x' || substr({_UUID_HEX}, 14, 3) AS BIGINT) << 48) "
+    f"| (CAST('0x' || substr({_UUID_HEX}, 9, 4) AS BIGINT) << 32) "
+    f"| CAST('0x' || substr({_UUID_HEX}, 1, 8) AS BIGINT)) // 10 - 12219292800000000) END"
+)
+
 #: oid_send: an oid's four bytes, for the send functions of the object identifier types.
 _OID_BYTES = "unhex(printf('%08x', CAST(v AS BIGINT)))"
 _INT8_BYTES = "unhex(printf('%016x', CAST(v AS UBIGINT)))"
@@ -966,6 +979,7 @@ _NUMBERS: tuple[Macro, ...] = (
     _pg("bool_int4", "value", "CASE WHEN value THEN 1 WHEN NOT value THEN 0 END"),
     _pg("float4_avg", "x", "AVG(CAST(x AS DOUBLE PRECISION))"),
     _macro("int2int4_sum", "v", strict("v", "BIGINT", pg_forms.INT2INT4_SUM)),
+    _macro("uuid_extract_timestamp", "u", strict("u", "TIMESTAMPTZ", _UUID_TIMESTAMP)),
     _macro("int2vectorsend", "v", strict("v", "BLOB", pg_forms.INT2VECTOR_SEND)),
     _macro(
         "integer_pl_date",
