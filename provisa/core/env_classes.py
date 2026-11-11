@@ -33,6 +33,9 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1634: a product's members travel with the product and the tables and commands.
         "data_product_tables",
         "data_product_commands",
+        # REQ-2180: a product's offers and the contracts derived from them travel with it.
+        "data_product_offers",
+        "data_product_offer_contracts",
         "naming_rules",
         "registered_tables",
         "table_columns",
@@ -134,6 +137,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "entitlement_expiries",
         # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
         "entitlement_pending",
+        # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
+        # them, as the entitlements are.
+        "data_product_bids",
     }
 )
 
