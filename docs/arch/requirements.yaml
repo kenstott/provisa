@@ -91860,7 +91860,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     same decision hook. An offer can be open only when its data is already public -- readable by every member
     through a role every member holds, which is checked when it is marked open and refused naming what is
     not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
-    the data stops being public the offer is flagged for review.'
+    the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
+    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
+    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
+    PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
+    no profile shows a value its viewer could not read.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
