@@ -49,6 +49,7 @@ from typing import Any
 import httpx
 import pytest
 
+from tests.integration.mcp_pin import principal_env, seat_principal
 from tests.port_lease import lease_ports
 
 pytestmark = [pytest.mark.isolated]
@@ -220,6 +221,8 @@ def instance() -> Iterator[Instance]:
             "PROVISA_MCP_PORT": str(mcp),
             "PROVISA_MCP_HOST": "127.0.0.1",
             "PROVISA_MCP_ROLE": f"{ADMIN},{RESTRICTED}",
+            # REQ-1105: the principal the MCP agent acts for, seated once the backend is up.
+            **principal_env(),
             "PROVISA_BOLT_PORT": str(bolt),
             "PROVISA_AIRPORT_PORT": "0",
             # A real client's route to the service's descriptors on this no-auth demo.
@@ -250,6 +253,7 @@ def instance() -> Iterator[Instance]:
         processes.append(backend)
         running = Instance(api, grpc_port, flight, pgwire, mcp, bolt, ui, log_dir, base)
         _wait_for_health(backend, running.url, log_dir / "backend.log")
+        seat_principal(database_url)
         yield running
     finally:
         for process in processes:

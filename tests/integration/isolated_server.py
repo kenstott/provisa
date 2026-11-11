@@ -27,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.integration.mcp_pin import pinned_roles_of
+from tests.integration.mcp_pin import pinned_roles_of, principal_env, seat_principal
 from tests.pg_control_plane import ControlPlane
 
 _REPO_ROOT = Path(__file__).parents[2]
@@ -318,6 +318,8 @@ class IsolatedServer:
             "PROVISA_TELEMETRY_DIR": tempfile.mkdtemp(prefix="isolated-server-telemetry-"),
             # REQ-2075: the roles this server's MCP agent may act as (tests/integration/mcp_pin).
             "PROVISA_MCP_ROLE": pinned_roles_of(self._cfg_path),
+            # REQ-1105: and the principal it acts for, seated below once the server is up.
+            **principal_env(),
             **self._extra_env,
         }
         if self._materialize_store_url is not None:
@@ -375,6 +377,9 @@ class IsolatedServer:
                         f"isolated server did not become healthy in time:\n{_err[-3000:]}"
                     )
                 time.sleep(1)
+        # REQ-1105: the principal a loopback MCP call acts for is an account in the org, in the
+        # control plane the server created at its start (tests/integration/mcp_pin).
+        seat_principal(env["PLATFORM_DATABASE_URL"])
         if self._await_flight:
             self._await_port(self.flight_port, deadline, "Arrow Flight")
         if self._enable_bolt:
