@@ -228,6 +228,7 @@ scenarios("../features/REQ-945.feature")
 def given_openapi_source_with_registered_endpoint(shared_data):
     """Set up an openapi source with a registered ApiEndpoint and ApiSource."""
     endpoint = SimpleNamespace(
+        source_id="openapi-shop",
         table_name="products",
         default_params={"page": 1, "limit": 100},
         response_root="items",
