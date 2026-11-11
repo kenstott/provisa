@@ -250,6 +250,12 @@
         "help": "Wie viele Tage vor dem Ablauf einer Rollenzuweisung oder ihrer Entfernung wegen Nichtnutzung der Inhaber und die Administratoren der Organisation per E-Mail benachrichtigt werden."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Hinweis vor dem Ablauf von Berechtigungen",
+        "help": "Wie viele Tage vor dem Datum einer Ablaufregel für Berechtigungen das Ereignis „läuft bald ab“ ausgelöst und die Person sowie die Administratoren der Organisation per E-Mail benachrichtigt werden. Die Berechtigungsansichten heben Regeln hervor, deren Datum so nahe ist."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Hostname",

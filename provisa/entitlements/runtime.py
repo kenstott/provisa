@@ -32,14 +32,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from provisa.entitlements.index import Finding, build_index, check_lists, matches
+from provisa.entitlements.index import (
+    WILDCARD,
+    Finding,
+    build_index,
+    check_lists,
+    covers,
+    matches,
+)
 from provisa.entitlements.lists import (
+    IDP,
+    ExpiryRule,
     HeldEntitlements,
     IdpLists,
     effective_lists,
     held_version,
     idp_lists_hash,
     parse_idp_entitlements,
+    rule_ends,
 )
 from provisa.entitlements.mask import EntitlementMask, MemberInput, compute_mask
 from provisa.security.rights import role_ids_from_claims
@@ -220,11 +230,62 @@ def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
     return state.entitlement_masks.get_or_build(key, build, now=now)
 
 
+@dataclass(frozen=True)
+class ListReach:
+    """Where a list-scoped capability reaches through one role grant at a moment: its list, less
+    what the expiry rules passed by then end of it (REQ-2219, EXPIRY RULES END EVERY CAPABILITY
+    THEY NAME). ``ended_all``: a grant-wide rule passed, and the capability reaches nothing."""
+
+    identifiers: tuple[str, ...]
+    ended: tuple[str, ...]
+    ended_all: bool
+
+    def reaches(self, paths: tuple[tuple[str, ...], ...]) -> bool:
+        return (
+            not self.ended_all
+            and any(matches(i, paths) for i in self.identifiers)
+            and not any(matches(e, paths) for e in self.ended)
+        )
+
+    def kept(self) -> tuple[str, ...]:
+        """The listed identifiers no ended one covers whole; nothing when the grant ended."""
+        if self.ended_all:
+            return ()
+        return tuple(i for i in self.identifiers if not any(covers(e, i) for e in self.ended))
+
+
+def list_reach(
+    identifiers: tuple[str, ...] | None,
+    origin: str | None,
+    rules: Collection[ExpiryRule],
+    capability: str,
+    kind: str,
+    at: datetime,
+) -> ListReach:
+    """``capability``'s reach through a role grant whose ``kind`` list is ``identifiers`` (None:
+    no list, every one) from ``origin``, with ``rules`` (that grant's) applied as of ``at``. The
+    identity provider's own expiry counts for its lists: Provisa's rules never touch them."""
+    listed = (WILDCARD,) if identifiers is None else identifiers
+    if origin == IDP:
+        return ListReach(listed, (), False)
+    ended: list[str] = []
+    for rule in rules:
+        if rule.ends_at > at:
+            continue
+        named = rule_ends(rule, capability, kind)
+        if named is None:
+            return ListReach(listed, (), True)
+        ended.extend(named)
+    return ListReach(listed, tuple(dict.fromkeys(ended)), False)
+
+
 def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
     """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
     that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
-    with it as an ancestor; a role with no ``roles`` list reaches every role. Raises when no person
-    is bound: this answers an authorization question, and no person cannot be read as anyone."""
+    with it as an ancestor; a role with no ``roles`` list reaches every role. An expiry rule passed
+    on the grant ends what it names of that reach, and a grant-wide one all of it. Raises when no
+    person is bound: this answers an authorization question, and no person cannot be read as
+    anyone."""
     request = _current.get()
     if request is None:
         raise RuntimeError("no person is bound to this call: who may reach a role cannot be read")
@@ -232,14 +293,25 @@ def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) ->
     paths = tuple((role.lower(),) for role in chain)
     held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
     wanted = set(capabilities)
+    now = datetime.now(UTC)
     for role_id in request.acting_roles:
         for member in _members(role_id):
             role = state.roles.get(member)
-            if role is None or not wanted & set(role.get("capabilities") or ()):
+            if role is None:
                 continue
             listed = effective_lists(member, request.idp, held, role_defaults(role)).get("roles")
-            if listed is None or any(matches(i, paths) for i in listed.identifiers):
-                return True
+            rules = tuple(r for r in held.expiries if r.role_id == member)
+            for capability in wanted & set(role.get("capabilities") or ()):
+                reach = list_reach(
+                    None if listed is None else listed.identifiers,
+                    None if listed is None else listed.origin,
+                    rules,
+                    capability,
+                    "roles",
+                    now,
+                )
+                if reach.reaches(paths):
+                    return True
     return False
 
 

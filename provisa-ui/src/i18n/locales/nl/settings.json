@@ -250,6 +250,12 @@
         "help": "Hoeveel dagen voordat een roltoewijzing verloopt, of wordt verwijderd omdat ze ongebruikt blijft, de houder en de beheerders van de organisatie een e-mail krijgen."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Melding voordat rechten verlopen",
+        "help": "Hoeveel dagen vóór de datum van een vervalregel voor rechten de gebeurtenis 'verloopt binnenkort' wordt verzonden en de persoon en de beheerders van de organisatie worden gemaild. De schermen voor rechten markeren regels die zo dicht bij hun datum liggen."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Hostnaam",
