@@ -28,7 +28,14 @@ the org is that person's write, and one that matches no one is a pending grant, 
 sign-in token's email matches (``provisa.entitlements.pending``).
 
 Two reads serve the picker, gated as a write: the roles a person holds, with where each came from
-(``/roles``), and the kinds the write accepts with the names it picks from (``/kinds``).
+(``/roles``), and the kinds the write accepts with the names it picks from and the kind that
+scopes each capability (``/kinds``).
+
+The shortcuts and the rule editor: add access appends only what is new (``/lists/add``); a grant's
+expiry rules are added, changed and withdrawn by key (``/expiries``), with a dry run that says what
+a rule would end on its date (``/expiries/preview``), and a rule that would remove nothing is
+refused; the timeline of what was added (``/lists/history``); and effective access per capability
+over the roles a request acts as (``/effective/capabilities``).
 """
 
 # Requirements: REQ-2219
