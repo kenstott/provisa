@@ -250,6 +250,12 @@
         "help": "Cuántos días antes de que una asignación de rol caduque, o se elimine por falta de uso, se avisa por correo a su titular y a los administradores de la organización."
       }
     },
+    "entitlements": {
+      "expiring_soon_days": {
+        "label": "Aviso de vencimiento próximo de los derechos de acceso",
+        "help": "Cuántos días antes de la fecha de una regla de vencimiento de derechos de acceso se emite el evento de vencimiento próximo y se envía un correo a la persona y a los administradores de la organización. Las pantallas de derechos de acceso resaltan las reglas tan cercanas a su fecha."
+      }
+    },
     "server": {
       "hostname": {
         "label": "Nombre de host",
@@ -594,6 +600,10 @@
       "role": {
         "label": "Rol local de MCP",
         "help": "El rol con el que se ejecutan las llamadas MCP locales (stdio); hasta que se defina, esas llamadas se rechazan. Requiere confirmación al guardar porque concede el acceso de ese rol a cualquiera que pueda iniciar el cliente local."
+      },
+      "principal": {
+        "label": "Principal local de MCP",
+        "help": "El principal (id de usuario) en cuyo nombre actúan las llamadas MCP locales (stdio), junto al rol local; los derechos de esa persona acotan el rol. Mientras no esté definido, esas llamadas se rechazan. Protegido porque quien pueda iniciar el cliente local actúa con el acceso de esa persona."
       },
       "external_url": {
         "label": "Dirección externa de MCP",

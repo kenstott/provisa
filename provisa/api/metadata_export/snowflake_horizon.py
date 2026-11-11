@@ -60,7 +60,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.api.metadata_export.model import AssetKind, listed
+from provisa.api.metadata_export.model import AssetKind, column_terms, listed, term_note
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         GovernanceTag,
+        GroundedTerm,
         MetadataSnapshot,
         TableAsset,
     )
@@ -167,12 +168,8 @@ def _governance_note(tags: list["GovernanceTag"]) -> str:
     return "\n".join(lines)
 
 
-def _comment_text(description: str, governance_note: str) -> str:
-    if not governance_note:
-        return description
-    if not description:
-        return governance_note
-    return f"{description}\n\n{governance_note}"
+def _comment_text(description: str, *notes: str) -> str:
+    return "\n\n".join(part for part in (description, *notes) if part)
 
 
 def comment_statements(
@@ -180,8 +177,10 @@ def comment_statements(
     kinds: dict[tuple[str, str, str], str],
     governance_tags: list["GovernanceTag"],
     addresses: PublishedAddresses,
+    terms_by_column: Mapping[str, "GroundedTerm"],
 ) -> list[str]:
-    """DDL applying table/column descriptions — appended with any governance facts on that same
+    """DDL applying table/column descriptions — appended with a column's grounded term and its
+    definition (REQ-2238, ``terms_by_column`` by column fqn) and any governance facts on that same
     asset (REQ-1071) — as native Snowflake COMMENTs on each table's published address
     (REQ-1647, ``addresses``) — so a replica-served table's export VIEW (REQ-1637, REQ-1912)
     carries its description alongside its tags, not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
@@ -210,6 +209,7 @@ def comment_statements(
         for column in table.columns:
             column_text = _comment_text(
                 column.description,
+                term_note(terms_by_column.get(column.ref.fqn())),
                 _governance_note(governance_by_fqn.get(column.ref.fqn(), [])),
             )
             if column_text:
@@ -568,7 +568,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             if published:
                 result.published["data_products"] = published
             commented = self._publish_descriptions(
-                runtime, tables, governance_tags, result, addresses
+                runtime,
+                tables,
+                governance_tags,
+                result,
+                addresses,
+                column_terms(getattr(snapshot, "grounded_terms", None) or []),
             )
             if commented:
                 result.published["descriptions"] = commented
@@ -583,9 +588,11 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         governance_tags: list["GovernanceTag"],
         result: PublishResult,
         addresses: PublishedAddresses,
+        terms_by_column: Mapping[str, "GroundedTerm"],
     ) -> int:
-        """Applies table/column descriptions, appended with any governance facts on that same
-        asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
+        """Applies table/column descriptions, appended with each column's grounded term
+        (REQ-2238) and any governance facts on that same asset (REQ-1071), as native Snowflake
+        COMMENTs (REQ-1647), gated on the target already
         existing (:func:`_object_kind`); a missing one is reported, not described."""
         known_fqns = {table.ref.fqn() for table in tables} | {
             column.ref.fqn() for table in tables for column in table.columns
@@ -609,6 +616,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 or any(c.description for c in table.columns)
                 or table.ref.fqn() in governed_fqns
                 or any(c.ref.fqn() in governed_fqns for c in table.columns)
+                or any(c.ref.fqn() in terms_by_column for c in table.columns)
             )
             if not has_content:
                 continue
@@ -630,7 +638,9 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             described.append(table)
         if not described:
             return 0
-        statements = comment_statements(described, kinds, governance_tags, addresses)
+        statements = comment_statements(
+            described, kinds, governance_tags, addresses, terms_by_column
+        )
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:

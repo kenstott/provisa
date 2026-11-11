@@ -11,11 +11,13 @@
 """FastMCP protocol adapter for Provisa (REQ-1008, phase 1).
 
 Binds the pure tool functions in tools.py to the shared FastAPI ``AppState`` and
-exposes them over MCP. Two transports:
-  - local stdio: roles pinned via ``PROVISA_MCP_ROLE`` (development); a call names a role
-    within that pin, or omits it and acts as the pin.
-  - remote Streamable HTTP: OAuth bearer token -> provisa role via the same
-    OIDC path pgwire uses (build_auth_provider + resolve_role).
+exposes them over MCP. Every call runs as a principal, its entitlements (REQ-2219) narrowing the
+role it acts as (REQ-1105). Two transports:
+  - local stdio: roles pinned via ``PROVISA_MCP_ROLE`` and the principal they act for named via
+    ``PROVISA_MCP_PRINCIPAL`` (``local_principal``); a call names a role within that pin, or omits
+    it and acts as the pin. With no principal named, every call is refused.
+  - remote Streamable HTTP: OAuth bearer token -> the token's principal and a provisa role via the
+    same OIDC path pgwire uses (build_auth_provider + resolve_role).
 
 Role rule (CLAUDE.md): a role is REQUIRED on every call and the server NEVER
 defaults to admin. When no role can be resolved the call fails loud.
@@ -61,6 +63,9 @@ _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", d
 # so those admin-gate functions need a request-shaped shim built from these instead of a real Request.
 _request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
 _request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
+# REQ-1105: the principal a local call (stdio, or the loopback with no bearer) acts for, the one
+# the operator named (``local_principal``), resolved by the tool wrapper for each call.
+_local_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_local_identity", default=None)
 # REQ-2076: the MCP session (``Mcp-Session-Id``) a tool call belongs to, and the sessions ended
 # because a call in them named a role the caller does not hold, each with when it ended. A request
 # in an ended session is answered 404, which tells an MCP client its session is over.
@@ -231,11 +236,13 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
 
     Remote HTTP: naming a role in a tool call is the same act as naming one in the role header,
     and follows the same rule — the token's principal must hold it. The role the token itself
-    maps to always qualifies. stdio (and a loopback HTTP call with no bearer) has no principal:
+    maps to always qualifies. stdio (and a loopback HTTP call with no bearer) carries no token:
     the operator pinned the roles the process may act as (PROVISA_MCP_ROLE, a role or a set), and
     a local client names only roles within that pin; any other is refused by name. Within it the
     set is resolved as every unsecured transport resolves one (``unsecured_principal``, REQ-1952):
     a named derived role qualifies the set's meta-role, and its attribute is bound for the call.
+    The call acts for the principal the operator named (``local_principal``), bound as every
+    transport binds its caller, so its entitlements narrow the role (REQ-1105, REQ-2219).
     """
     from provisa.security.meta_role import refuse_named_meta_role, resolve_requested_role
 
@@ -267,14 +274,26 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
             f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})",
         )
         raise refused
-    from provisa.auth.derived_roles import unsecured_principal
+    from provisa.auth.derived_roles import (
+        principal_of,
+        principal_session_vars,
+        unsecured_principal,
+    )
     from provisa.core.request_context import current_acting_role, set_session_vars
+    from provisa.entitlements.runtime import bind_entitlements
 
+    principal = _local_principal()
     # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
     # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
     # Bound in this tool call's own context (its request thread, a copy of the call's).
     role, session_vars = unsecured_principal(state, named)
-    set_session_vars(session_vars)
+    # REQ-1105: the principal's own attributes and entitlement lists, as every transport binds
+    # its caller's (principal_scope); what the pin names is the operator's word over them.
+    attributes, _held = principal_of(state, principal)
+    set_session_vars(
+        principal_session_vars(principal.user_id, {**attributes, **session_vars}, role)
+    )
+    bind_entitlements(principal)
     # REQ-2188: who a write of the model is held to, on the one transport no middleware binds it.
     current_acting_role.set(role)
     return role
@@ -311,22 +330,36 @@ def _pinned_stdio_role() -> str:
     return role.strip()
 
 
+def _local_principal() -> Any:
+    """The principal a local call acts for, as the tool wrapper resolved it. Refused, naming the
+    setting, when the operator named none (REQ-1105)."""
+    from provisa.api.mcp import local_principal
+
+    identity = _local_identity.get()
+    if identity is None:
+        local_principal.configured_principal()  # names what is missing
+        raise RuntimeError("a local MCP call reached its role with no principal resolved")
+    return identity
+
+
+def _call_identity() -> Any:
+    """The identity a tool call runs as: a remote caller's token, or the principal a local call
+    acts for (REQ-1105)."""
+    identity = _request_identity.get()
+    return identity if identity is not None else _local_principal()
+
+
 def _call_principal(state: Any) -> tuple[str, list[str]]:
-    """The graph-session principal of a tool call (REQ-2176): a remote caller's identity, as on
-    every client; a local one (stdio, or the unsecured loopback) is the anonymous principal, the
-    one an unsecured page and Bolt connection share."""
+    """The graph-session principal of a tool call (REQ-2176): the identity it runs as, a remote
+    caller's or the principal a local one acts for, as on every client."""
     from provisa.api import graph_session
 
-    identity = _request_identity.get()
-    if identity is None:
-        return graph_session.ANONYMOUS, []
-    return graph_session.principal(state, identity)
+    return graph_session.principal(state, _call_identity())
 
 
 def _call_actor() -> str | None:
-    """The member a tool call was made by, or None for a call no member signed (stdio, or the
-    unsecured loopback) -- the system author stands in, as for an HTTP request (REQ-1524)."""
-    user_id = getattr(_request_identity.get(), "user_id", None)
+    """The member a tool call was made by: the identity it runs as (REQ-1524)."""
+    user_id = getattr(_request_identity.get() or _local_identity.get(), "user_id", None)
     return None if user_id in (None, "anonymous") else user_id
 
 
@@ -422,6 +455,29 @@ def build_mcp_server(state: Any):
             _end_session(session)
         return PermissionError(role_probe.NOT_PERMITTED if identity is not None else str(refused))
 
+    async def _as_principal(make_coro: Any) -> Any:
+        """Run the call ``make_coro`` makes as the call's principal (REQ-1105). A remote call's was bound by the
+        transport from its token; a local call acts for the principal the operator named, found
+        in the call's org, and is refused by name when there is none."""
+        if _request_identity.get() is not None:
+            return await make_coro()
+        from provisa.api.mcp import local_principal
+        from provisa.audit.context import audit_identity_scope
+
+        from provisa.core import settings_registry
+
+        # The roles the identity holds are the operator's pin; a tool that acts as a role
+        # requires the pin itself (_pinned_stdio_role), and one that acts as none does not.
+        pin = settings_registry.value("mcp.role") or ""
+        pinned = sorted({r.strip() for r in pin.split(",") if r.strip()})
+        identity = await local_principal.resolve(state, require_current_org(), pinned)
+        reset = _local_identity.set(identity)
+        try:
+            with audit_identity_scope(identity.user_id, "mcp"):
+                return await make_coro()
+        finally:
+            _local_identity.reset(reset)
+
     def _tool(fn):
         """Register ``fn`` as an MCP tool whose body runs on its own request thread (REQ-1882).
 
@@ -442,7 +498,8 @@ def build_mcp_server(state: Any):
                     try:
                         result = await run_on_request_thread(
                             lambda: _within_request(
-                                lambda: fn(*args, **kwargs), f"MCP {fn.__name__}"
+                                lambda: _as_principal(lambda: fn(*args, **kwargs)),
+                                f"MCP {fn.__name__}",
                             )
                         )
                     except RoleNotHeld as refused:
@@ -469,8 +526,7 @@ def build_mcp_server(state: Any):
 
     def _proposer(resolved_role: str) -> str:
         """The user a proposal made through this server is recorded as made by: the remote
-        caller's validated identity, or over stdio (no bearer token, no real identity) the same
-        ``mcp-stdio`` principal ``_capability_request`` acts as."""
+        caller's validated identity, or over stdio the principal the call acts for."""
         return _capability_request(resolved_role).state.identity.user_id
 
     def _capability_request(resolved_role: str) -> Any:  # REQ-1857
@@ -483,12 +539,14 @@ def build_mcp_server(state: Any):
         identity = _request_identity.get()
         org_id = _request_org_id.get()
         if identity is None:
-            # stdio: no bearer token, so no real identity — capabilities resolve purely from
-            # the pinned role's own capability list (capabilities_for_claims keys on role id,
-            # not on anything else the identity carries), so a synthetic identity naming just
-            # that one role resolves correctly.
+            # stdio: no bearer token. The call acts for the principal the operator named, and its
+            # capabilities resolve purely from the pinned role's own capability list
+            # (capabilities_for_claims keys on role id, not on anything else the identity
+            # carries), so an identity naming just that one role resolves correctly.
             identity = SimpleNamespace(
-                user_id="mcp-stdio", roles=[resolved_role], acting_roles=[resolved_role]
+                user_id=_local_principal().user_id,
+                roles=[resolved_role],
+                acting_roles=[resolved_role],
             )
             # The loopback request's org, bound by _wrap_role_auth (REQ-1266).
             org_id = require_current_org()
@@ -579,14 +637,16 @@ def build_mcp_server(state: Any):
         with collecting() as found:
             result = await run_on_request_thread(
                 lambda: _within_request(
-                    lambda: tools.run_sql(
-                        state,
-                        _role(role),
-                        sql,
-                        limit=limit,
-                        offset=offset,
-                        redirect=redirect,
-                        redirect_format=redirect_format,
+                    lambda: _as_principal(
+                        lambda: tools.run_sql(
+                            state,
+                            _role(role),
+                            sql,
+                            limit=limit,
+                            offset=offset,
+                            redirect=redirect,
+                            redirect_format=redirect_format,
+                        )
                     ),
                     "MCP run_sql",
                 )
@@ -1246,9 +1306,9 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 await _send_401(send, "bearer token required")
                 return
             # Loopback stdio-style: the pinned role applies, in the deployment's own org -- the
-            # unsecured HTTP path's org (REQ-1266). REQ-074/REQ-1386: no principal, but a
-            # request: its statements are recorded as the anonymous user's, as every transport
-            # records an unauthenticated request. The role each call names is the audit row's.
+            # unsecured HTTP path's org (REQ-1266), acting for the principal the operator named,
+            # which each tool call resolves (REQ-1105) and records its statements as. What is
+            # not a tool call is recorded as the anonymous user's (REQ-074/REQ-1386).
             from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
             loopback_token = set_current_org(state.org_id)

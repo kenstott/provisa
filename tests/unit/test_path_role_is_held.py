@@ -19,6 +19,7 @@ at face value, as it does for the header.
 
 from __future__ import annotations
 
+import contextvars
 import types
 from typing import Any
 
@@ -27,6 +28,7 @@ import pytest
 from provisa.core.request_context import current_acting_role
 
 from tests.role_state import RoleState
+from tests.unit.mcp_local_principal import bound_principal
 
 import provisa.api.app as appmod
 from provisa.api.acting_role import header_role, held_role, named_role
@@ -398,12 +400,22 @@ def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
         server._request_identity.reset(r2)
 
 
+def _local_named_role(named: str, state: Any) -> str:
+    """The MCP server's role resolution for a local call, in a copy of the test's context as the
+    tool wrapper runs it on its request thread: it binds the principal's entitlements (REQ-1105),
+    which must not outlive the call into later tests."""
+    from provisa.api.mcp import server
+
+    return contextvars.copy_context().run(server.named_role, named, state)
+
+
 def test_a_local_stdio_mcp_client_names_a_role_within_its_pin(monkeypatch):
     from provisa.api.mcp import server
 
+    bound_principal(monkeypatch)  # REQ-1105: the principal the operator named
     monkeypatch.setenv("PROVISA_MCP_ROLE", f"{A},{B}")
     assert server._request_identity.get() is None
-    assert server.named_role(B, _MCP_STATE) == B
+    assert _local_named_role(B, _MCP_STATE) == B
 
 
 def test_a_local_stdio_mcp_client_naming_no_role_acts_as_its_pin(monkeypatch):
@@ -411,10 +423,11 @@ def test_a_local_stdio_mcp_client_naming_no_role_acts_as_its_pin(monkeypatch):
     import provisa.security.meta_role as meta_role
 
     monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    bound_principal(monkeypatch)  # REQ-1105: the principal the operator named
     monkeypatch.setenv("PROVISA_MCP_ROLE", A)
-    assert server.named_role(server._pinned_stdio_role(), _MCP_STATE) == A
+    assert _local_named_role(server._pinned_stdio_role(), _MCP_STATE) == A
     monkeypatch.setenv("PROVISA_MCP_ROLE", f"{B},{A}")
-    assert server.named_role(server._pinned_stdio_role(), _MCP_STATE) == meta_role.meta_role_id(
+    assert _local_named_role(server._pinned_stdio_role(), _MCP_STATE) == meta_role.meta_role_id(
         [A, B]
     )
 
@@ -588,7 +601,8 @@ def test_a_local_stdio_mcp_client_names_a_set_within_its_pin(monkeypatch):
     import provisa.security.meta_role as meta_role
 
     monkeypatch.setattr(meta_role, "ensure_meta_role", lambda st, m: meta_role.meta_role_id(m))
+    bound_principal(monkeypatch)  # REQ-1105: the principal the operator named
     monkeypatch.setenv("PROVISA_MCP_ROLE", f"{A},{B},role_c")
-    assert server.named_role(f"{B},{A}", _MCP_STATE) == meta_role.meta_role_id([A, B])
+    assert _local_named_role(f"{B},{A}", _MCP_STATE) == meta_role.meta_role_id([A, B])
     with pytest.raises(PermissionError, match="is not a role"):
         server.named_role(meta_role.meta_role_id([A, B]), None)

@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 
 from provisa.api.metadata_export.governance import build_governance_tags, table_readers
 from provisa.api.metadata_export.model import (
+    AssetRef,
     ColumnAsset,
     DataProductAsset,
     DataQualityAssertion,
@@ -38,6 +39,7 @@ from provisa.api.metadata_export.model import (
     GlossaryAxiom,
     GlossaryTermAsset,
     GlossaryTermEdge,
+    GroundedTerm,
     JunctionRef,
     LineageEdge,
     MetadataSnapshot,
@@ -65,7 +67,7 @@ from provisa.api.metadata_export.refs import (
     term_uri,
 )
 from provisa.core.derived_tags import derived_tags_for_table
-from provisa.core.glossary import term_grounding
+from provisa.core.glossary import agent_paths, agent_view, term_grounding
 from provisa.core.models import SYSTEM_TAG_IDS, SYSTEM_TAGS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
@@ -656,6 +658,49 @@ def _glossary_axioms(
     ]
 
 
+def _published_bindings(
+    glossary: dict, exported: list[Table], published_columns: set[tuple[str, ...]]
+) -> tuple[dict[int, list[AssetRef]], dict[int, list[AssetRef]]]:  # REQ-1387
+    """Each term's published column refs, and the published tables it grounds as a Class.
+
+    A ref publishes only when its column does (data_product + technical filters), so the
+    rootedness judged on these is narrower than the repository's. REQ-1387 (GROUNDED TO A TABLE):
+    a class term is rooted by a table it grounds, when that table publishes -- the same narrowing
+    its column refs get."""
+    by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
+    refs_by_term: dict[int, list[AssetRef]] = {}
+    for ref in glossary.get("refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is None:
+            continue
+        asset_ref = column_ref(table, ref["column_name"])
+        if asset_ref.parts not in published_columns:
+            continue
+        refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
+    tables_by_term: dict[int, list[AssetRef]] = {}
+    for ref in glossary.get("table_refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is not None:
+            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    return refs_by_term, tables_by_term
+
+
+def _roles(glossary: dict) -> dict[int, str]:  # REQ-2141
+    """Each term's ontology role: class, property or concept. It follows the control plane's
+    grounding, not what an export narrows to -- a Class whose tables are all withheld is still a
+    Class."""
+    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
+    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    return {
+        term["id"]: "class"
+        if term["id"] in grounds_tables
+        else "property"
+        if term["id"] in owns_columns
+        else "concept"
+        for term in glossary.get("terms", [])
+    }
+
+
 def _glossary_assets(
     glossary: dict,
     exported: list[Table],
@@ -675,28 +720,9 @@ def _glossary_assets(
     whose derivation lost its last column, does not. ``export_excluded`` withholds a term on top
     of that. Edges publish when both endpoints do.
     """
-    by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
-    refs_by_term: dict[int, list] = {}
-    for ref in glossary.get("refs", []):
-        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
-        if table is None:
-            continue
-        asset_ref = column_ref(table, ref["column_name"])
-        if asset_ref.parts not in published_columns:
-            continue
-        refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
-    # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
-    # table publishes -- the same narrowing its column refs get.
-    tables_by_term: dict[int, list] = {}
-    for ref in glossary.get("table_refs", []):
-        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
-        if table is not None:
-            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    refs_by_term, tables_by_term = _published_bindings(glossary, exported, published_columns)
     classes = set(tables_by_term)
-    # REQ-2141: the role follows the control plane's grounding, not what this export narrows
-    # to -- a Class whose tables are all withheld is still a Class.
-    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
-    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    roles = _roles(glossary)
     domains_by_term: dict[int, list[str]] = {}
     for row in glossary.get("domains", []):
         domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
@@ -715,7 +741,7 @@ def _glossary_assets(
         if not approved or term["export_excluded"]:
             continue
         # The data_product filter: a term bound to data, none of which publishes, goes with it.
-        held = term["id"] in owns_columns or term["id"] in grounds_tables
+        held = roles[term["id"]] != "concept"
         if held and term["id"] not in published_roots:
             continue
         refs = refs_by_term.get(term["id"], [])
@@ -732,13 +758,7 @@ def _glossary_assets(
                 retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
                 tables=tuple(tables_by_term.get(term["id"], [])),
-                role=(
-                    "class"
-                    if term["id"] in grounds_tables
-                    else "property"
-                    if term["id"] in owns_columns
-                    else "concept"
-                ),
+                role=roles[term["id"]],
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
                 domains=tuple(sorted(domains_by_term.get(term["id"], []))),
@@ -755,6 +775,48 @@ def _glossary_assets(
         if e["from_term_id"] in published_ids and e["to_term_id"] in published_ids
     ]
     return terms, edges
+
+
+def _grounded_terms(
+    glossary: dict,
+    exported: list[Table],
+    published_columns: set[tuple[str, ...]],
+    org_id: str | None,
+) -> tuple[list[GroundedTerm], list[GlossaryTermEdge]]:  # REQ-2238
+    """The terms an agent may see (``core.glossary.agent_view``, What an agent sees), judged over
+    what this export publishes: an approved term, or a defined draft on a path holding an approved
+    one, by name; an undefined term on such a path as a hop. ``export_excluded`` withholds a
+    term's name too, so it stays only as a hop. Rooted here means holding a published column or
+    table, the same narrowing ``_glossary_assets`` judges grounding on."""
+    refs_by_term, tables_by_term = _published_bindings(glossary, exported, published_columns)
+    roots = set(refs_by_term) | set(tables_by_term)
+    terms = glossary.get("terms", [])
+    view = agent_view(
+        terms,
+        [(e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in glossary.get("edges", [])],
+        roots,
+    )
+    roles = _roles(glossary)
+    by_id = {term["id"]: term for term in terms}
+    grounded = []
+    for term_id in sorted(view.seen()):
+        term = by_id[term_id]
+        named = term_id in view.named and not term["export_excluded"]
+        grounded.append(
+            GroundedTerm(
+                term_id=term_id,
+                name=term["name"] if named else None,
+                definition=term.get("definition") if named else None,
+                status=view.named[term_id] if named else "hop",
+                semantic_uri=term_uri(org_id, term["name"]) if named else "",
+                role=roles[term_id],
+                refs=tuple(refs_by_term.get(term_id, [])),
+                tables=tuple(tables_by_term.get(term_id, [])),
+                paths=tuple(tuple(path) for path in agent_paths(view, roots, term_id)),
+            )
+        )
+    edges = [GlossaryTermEdge(from_term_id=a, to_term_id=b, rel_type=r) for a, b, r in view.edges]
+    return grounded, edges
 
 
 def build_snapshot(
@@ -846,6 +908,11 @@ def build_snapshot(
         if glossary is not None
         else ([], [])
     )
+    grounded_terms, grounded_edges = (
+        _grounded_terms(glossary, exported, published_columns, uri_org_id)
+        if glossary is not None
+        else ([], [])
+    )
     return MetadataSnapshot(
         org_id=org_id,
         sources=_source_assets(config, uri_org_id, published_source_ids),
@@ -891,6 +958,8 @@ def build_snapshot(
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
         glossary_axioms=_glossary_axioms(glossary, glossary_terms),
+        grounded_terms=grounded_terms,
+        grounded_edges=grounded_edges,
         assertions=_dq_assertions(
             config, keep, published_columns, dq_outcomes or {}, contexts, product_ids
         ),

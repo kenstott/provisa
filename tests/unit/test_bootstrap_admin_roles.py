@@ -16,7 +16,7 @@ to every user with no roles of their own — so that rule would have left a defa
 nobody able to edit deployment settings. The administrator setup CREATES is now recorded with
 both roles; a user added later is not."""
 
-# Requirements: REQ-1913, REQ-1297, REQ-124
+# Requirements: REQ-1913, REQ-1297, REQ-124, REQ-1105
 
 from __future__ import annotations
 
@@ -92,6 +92,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr("provisa.api.app._load_and_build", _noop)
     monkeypatch.delenv("PROVISA_MULTITENANCY", raising=False)
     monkeypatch.delenv("PROVISA_SUPERUSER_USERNAME", raising=False)
+    monkeypatch.delenv("PROVISA_MCP_BRIDGE_COMMAND", raising=False)  # off the desktop tier
     return types.SimpleNamespace(mod=mod, seated=seated, written=written)
 
 
@@ -151,6 +152,65 @@ async def test_the_wizard_in_multi_mode_is_unchanged(wizard):
     await wizard.mod.run_setup(body)
     assert len(wizard.pool.created) == 1
     assert wizard.seated == []
+
+
+# --- the local MCP principal (REQ-1105, FIRST-RUN SETUP NAMES THE LOCAL PRINCIPAL) ---------------
+
+
+@pytest.fixture
+def stored(monkeypatch):
+    """The deployment settings setup stores, by key, as the settings registry would store them."""
+    from provisa.core import settings_registry
+
+    values: dict = {}
+
+    def _store(_db, given: dict, *, updated_by: str) -> None:
+        settings_registry.validate(given)
+        values.update(given)
+        values["_by"] = updated_by
+
+    monkeypatch.setattr(settings_registry, "store", _store)
+    return values
+
+
+@pytest.fixture
+def desktop(monkeypatch):
+    """The desktop tier: the native launcher sets the stdio bridge, so the connector is always on."""
+    monkeypatch.setenv("PROVISA_MCP_BRIDGE_COMMAND", "/home/me/.provisa/runtime/bin/python")
+
+
+async def test_the_wizard_names_its_administrator_the_local_mcp_principal_on_desktop(
+    wizard, stored, desktop
+):
+    body = wizard.mod.SetupRequest(
+        provider="basic", mode="single", admin_username="root", admin_password="pw"
+    )
+    await wizard.mod.run_setup(body)
+    admin_id = wizard.pool.created[0]["id"]
+    assert stored["mcp.principal"] == admin_id
+    assert stored["_by"] == admin_id
+
+
+async def test_the_seeded_admin_is_named_the_local_mcp_principal_on_desktop(setup, stored, desktop):
+    pool = _Pool()
+    await setup.mod._auto_configure_idp("basic", pool)
+    assert stored["mcp.principal"] == pool.created[0]["id"]
+
+
+async def test_no_local_mcp_principal_is_named_off_the_desktop_tier(wizard, stored, monkeypatch):
+    monkeypatch.delenv("PROVISA_MCP_BRIDGE_COMMAND", raising=False)
+    body = wizard.mod.SetupRequest(
+        provider="basic", mode="single", admin_username="root", admin_password="pw"
+    )
+    await wizard.mod.run_setup(body)
+    assert "mcp.principal" not in stored
+
+
+async def test_no_local_mcp_principal_is_named_when_setup_creates_no_administrator(
+    setup, stored, desktop
+):
+    await setup.mod._auto_configure_idp("basic", _Pool(existing_users=3))
+    assert "mcp.principal" not in stored
 
 
 # --- what the two roles mean at the deployment-settings gate -------------------------------------

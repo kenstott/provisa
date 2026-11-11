@@ -154,6 +154,19 @@ def matches(identifier: str, paths: Iterable[tuple[str, ...]]) -> bool:
     )
 
 
+def covers(identifier: str, other: str) -> bool:
+    """Whether ``identifier`` selects everything ``other`` selects."""
+    return matches(identifier, (_segments(other),))
+
+
+def overlaps(identifier: str, other: str) -> bool:
+    """Whether some object could be selected by both ``identifier`` and ``other``."""
+    return all(
+        a == b or WILDCARD in (a, b)
+        for a, b in zip(_segments(identifier), _segments(other), strict=False)
+    )
+
+
 class ObjectIndex:
     """The objects of one role's schema, in bit order."""
 

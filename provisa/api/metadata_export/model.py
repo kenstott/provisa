@@ -19,7 +19,7 @@ share one definition of what Provisa knows (REQ-1069).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -472,12 +472,40 @@ class GlossaryTermAsset:  # REQ-1387
 
     def assigned_to(self) -> tuple[AssetRef, ...]:
         """The published assets a catalog assigns this term to (REQ-1389): a Class its tables,
-        a Property its columns, a Concept nothing."""
+        a Property its columns, a Concept nothing. A Class also holds its tables' key columns
+        (REQ-2141, KEYS ON THE CLASS), and each is linked to it as its grounded term
+        (REQ-2238)."""
         if self.role == "class":
-            return self.tables
+            return (*self.tables, *self.refs)
         if self.role == "property":
             return self.refs
         return ()
+
+
+@dataclass(frozen=True)
+class GroundedTerm:  # REQ-2238
+    """One term an agent may see (``core.glossary.agent_view``), over what this export publishes.
+
+    ``status`` is ``approved``, ``draft`` for a defined draft on a path holding an approved term,
+    or ``hop`` for an undefined term on such a path (or one withheld by ``export_excluded``),
+    which carries no name, definition or URI: it only keeps a route's shape. ``refs`` and
+    ``tables`` are the published columns and tables it holds; ``paths`` its routes down to data,
+    each a run of term ids ending at the first term holding a binding.
+    """
+
+    term_id: int
+    name: str | None
+    definition: str | None
+    status: str  # approved | draft | hop
+    semantic_uri: str
+    role: str  # class | property | concept
+    refs: tuple[AssetRef, ...] = ()
+    tables: tuple[AssetRef, ...] = ()
+    paths: tuple[tuple[int, ...], ...] = ()
+
+    @property
+    def named(self) -> bool:
+        return self.status != "hop"
 
 
 @dataclass
@@ -518,6 +546,23 @@ class ServingEndpoints:  # REQ-2118
     http_paths: Mapping[str, str] = field(default_factory=dict)
 
 
+def term_note(term: GroundedTerm | None) -> str:
+    """A column comment's note naming its grounded term and the term's definition (REQ-2238), a
+    draft marked so -- for a catalog with no glossary to link the column to; empty for a column
+    with none."""
+    if term is None:
+        return ""
+    marker = f"[provisa:term {term.name}{' draft' if term.status == 'draft' else ''}]"
+    return f"{marker} {term.definition}" if term.definition else marker
+
+
+def column_terms(grounded_terms: "Iterable[GroundedTerm]") -> dict[str, GroundedTerm]:
+    """Each published column's grounded term, by the column's fqn (REQ-2238): the term holding
+    it, when an agent may see that term by name. A column whose term is a hop, or out of an
+    agent's sight, names none."""
+    return {ref.fqn(): term for term in grounded_terms if term.named for ref in term.refs}
+
+
 @dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
@@ -538,6 +583,10 @@ class MetadataSnapshot:  # REQ-1070
     glossary_terms: list[GlossaryTermAsset] = field(default_factory=list)  # REQ-1387
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
     glossary_axioms: list[GlossaryAxiom] = field(default_factory=list)  # REQ-2163
+    # REQ-2238: the terms an agent may see, named or as hops, and the edges between them. What a
+    # data product's exports name as each field's grounded term.
+    grounded_terms: list[GroundedTerm] = field(default_factory=list)
+    grounded_edges: list[GlossaryTermEdge] = field(default_factory=list)
     assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
     # REQ-1943, REQ-2118: the ids of the tags whose Sensitive data option is set; a column
     # carrying one is sensitive, its contract classification confidential.
@@ -547,6 +596,35 @@ class MetadataSnapshot:  # REQ-1070
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]
+
+    def column_terms(self) -> dict[str, GroundedTerm]:
+        """Each published column's grounded term, by the column's fqn (REQ-2238)."""
+        return column_terms(self.grounded_terms)
+
+    def terms_reached(
+        self, product: DataProductAsset
+    ) -> tuple[list[GroundedTerm], list[GlossaryTermEdge]]:
+        """The terms ``product`` reaches (REQ-2238): every term, named or hop, on an agent's path
+        down to one of its members' columns or tables, and the edges between them."""
+        members = {member.parts for member in product.members}
+        by_id = {term.term_id: term for term in self.grounded_terms}
+
+        def bound_in_product(term_id: int) -> bool:
+            end = by_id[term_id]
+            return any(ref.parts[:3] in members for ref in (*end.refs, *end.tables))
+
+        reached: set[int] = set()
+        for term in self.grounded_terms:
+            for path in term.paths:
+                if bound_in_product(path[-1]):
+                    reached.update(path)
+        terms = [term for term in self.grounded_terms if term.term_id in reached]
+        edges = [
+            edge
+            for edge in self.grounded_edges
+            if edge.from_term_id in reached and edge.to_term_id in reached
+        ]
+        return terms, edges
 
     def container_sources(self) -> list[SourceAsset]:
         """The sources, and the derived layer a view is read from (REQ-2119).

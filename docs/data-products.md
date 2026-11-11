@@ -51,7 +51,7 @@ tables:
         - {property: availability, value: 99.9, unit: "%"}
 ```
 
-The ODPS export writes each output port with its contract's version and the contract itself, at `/data-products/{id}/contracts/{source.schema.table}.yaml`.
+The ODPS export writes each output port with its contract's version and the contract itself, at `/data-products/{id}/contracts/{source.schema.table}.yaml`. Each field of a contract names its grounded term, and the terms the product reaches are served as an Apache Ossie ontology at `/data-products/{id}/ontology.ossie.yaml` (see [Grounded terms](metadata-export.md#grounded-terms)).
 
 ## Detail panel sections
 

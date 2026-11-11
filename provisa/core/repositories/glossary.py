@@ -629,6 +629,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
                 glossary_terms.c.definition,
                 glossary_terms.c.approved,
                 glossary_terms.c.deprecation_asserted,
+                glossary_terms.c.iri,
             )
         )
     ).fetchall()
@@ -673,6 +674,7 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             "definition": r.definition,
             "approved": bool(r.approved),
             "deprecation_asserted": bool(r.deprecation_asserted),
+            "iri": r.iri,
             "has_expert": r.id in with_experts,
             "tagged": r.id in tagged,
             "ref_count": counts.get(r.id, 0),
@@ -723,9 +725,12 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
     deprecated instead — kept, out of service, and revived by ``_find_or_create_term`` if its
     column comes back. ``retired`` counts too: a curator's withdrawal is itself the work, and so
     does a tag on the term (REQ-2145): sync never re-derives the term's columns away from it.
+    So does an IRI (REQ-2237): a steward aligned the term with an imported concept as the same
+    entity, and that alignment is lost with the row.
     """
     return bool(
         (node["definition"] or "").strip()
+        or node["iri"]
         or node["retired"]
         or node["has_expert"]
         or node["tagged"]
@@ -1069,6 +1074,29 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
     )
     return (result.rowcount or 0) > 0
+
+
+async def set_iri(conn: "Connection", term_id: int, iri: str) -> None:
+    """Give the term the IRI of the imported concept it is (REQ-2237). One concept is one term:
+    an IRI another term carries is refused, naming that term, and so is replacing the term's own."""
+    model_change.name("align", "glossary term", f"{term_id} with {iri}")  # REQ-1524
+    held = (
+        await conn.execute_core(
+            select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.iri).where(
+                (glossary_terms.c.iri == iri) | (glossary_terms.c.id == term_id)
+            )
+        )
+    ).fetchall()
+    for row in held:
+        if row.id != term_id and row.iri == iri:
+            raise ValueError(f"term {row.name!r} already carries the IRI {iri}")
+        if row.id == term_id and row.iri not in (None, iri):
+            raise ValueError(f"term {row.name!r} already carries the IRI {row.iri}")
+    if not any(row.id == term_id for row in held):
+        raise ValueError(f"term {term_id} does not exist")
+    await conn.execute_core(
+        update(glossary_terms).where(glossary_terms.c.id == term_id).values(iri=iri)
+    )
 
 
 # ---------------------------------------------------------------------------

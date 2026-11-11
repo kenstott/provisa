@@ -20,6 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.mcp import server as mcp_server
+from provisa.auth.models import AuthIdentity
 from provisa.core.models import DerivedRole
 from provisa.core.request_context import current_session_vars
 from provisa.security import meta_role
@@ -42,8 +43,15 @@ def loopback(monkeypatch):
         settings_overrides={},
         config=SimpleNamespace(derived_roles=[DerivedRole(attribute="region", description="d")]),
         roles={"analyst": {}},
+        user_attributes={},
     )
-    return state, built
+    # REQ-1105: the principal the operator named, as the tool wrapper resolves it for the call.
+    principal = AuthIdentity(
+        user_id="alice", email=None, display_name=None, roles=["analyst", "region__eu"]
+    )
+    token = mcp_server._local_identity.set(principal)
+    yield state, built
+    mcp_server._local_identity.reset(token)
 
 
 def test_a_named_derived_role_is_a_qualifier_and_binds_its_attribute(loopback):
@@ -58,6 +66,7 @@ def test_a_named_derived_role_is_a_qualifier_and_binds_its_attribute(loopback):
     ((members, qualifiers),) = built
     assert (members, set(qualifiers)) == (["analyst"], {"region", "region__eu"})
     assert bound.get("region") == "eu"
+    assert bound.get("user_id") == "alice"
 
 
 def test_one_named_data_role_is_that_role(loopback):
@@ -72,3 +81,11 @@ def test_a_role_beyond_the_pin_is_still_refused_by_name(loopback):
     state, _ = loopback
     with pytest.raises(PermissionError, match="region__us"):
         mcp_server.named_role("analyst,region__us", state)
+
+
+def test_a_local_call_with_no_principal_named_is_refused_naming_the_setting(loopback):
+    """REQ-1105: a role alone runs nothing; the refusal names what the operator left out."""
+    state, _ = loopback
+    mcp_server._local_identity.set(None)
+    with pytest.raises(PermissionError, match=r"mcp\.principal \(PROVISA_MCP_PRINCIPAL\)"):
+        contextvars.copy_context().run(lambda: mcp_server.named_role("analyst", state))
