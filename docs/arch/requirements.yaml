@@ -94872,7 +94872,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector''s
     dialect has its rows and its page. What the grid does not cover is the second order: an engine reading
     a source it attaches directly, pushing work into that source with the source''s semantics. That is the
-    combinatorial explosion, and it is handled by hints as bugs are found, as stated above.'
+    combinatorial explosion, and it is handled by hints as bugs are found, as stated above. (Amended 2026-11-11,
+    A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR:) Maintainer 2026-11-11, replacing the description
+    of hints above. The second order is not so much an explosion as outside Provisa''s oversight: an engine
+    decides at run time, by its own planner, how it uses a source it has attached and what it pushes into
+    it, and Provisa does not see that. A statement cannot be switched to a replica, and the engine''s reach
+    is wanted. So a hint is a rewrite of Provisa''s own statement for an engine and source pair: a rule
+    in the same notation, keyed by the engine and the source type, that differs from the engine''s default
+    rule and replaces it wherever the expression reads a column from an attached source of that type. Its
+    replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint
+    comes with the test that reproduced the bug, checking the answer, and the engine''s generated page lists
+    its hints under each source.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
