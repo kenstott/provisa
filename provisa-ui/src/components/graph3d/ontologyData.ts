@@ -524,6 +524,19 @@ function memberQuality(s: QueryScope): NonNullable<Selection["rels"]> {
     : {};
 }
 
+/** A member table's columns: read under Columns, and always for a product's own snippet; the
+ * whole Product map reads none until Columns is on (REQ-2174, amended 2026-11-12, THE PRODUCT MAP
+ * OPENS ON PRODUCTS). */
+function memberColumns(s: QueryScope): NonNullable<Selection["rels"]> {
+  const sel = {
+    fields: ["column_name", "column_key", ...COLUMN_FACTS],
+    rels: { glossaryRef: { sel: { fields: ["term_id"] } }, ...TAGS },
+  };
+  return s.focus !== null || s.layers.has("columns")
+    ? { tableColumns: { to: "table_columns", sel } }
+    : {};
+}
+
 function productsField(m: MetaReader, s: QueryScope): string | null {
   const memberDomain = inDomains(s.domains);
   return rootField(
@@ -546,13 +559,7 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
                     ...TABLE_FACTS.rels,
                     ...TAGS,
                     ...memberQuality(s),
-                    tableColumns: {
-                      to: "table_columns",
-                      sel: {
-                        fields: ["column_name", "column_key", ...COLUMN_FACTS],
-                        rels: { glossaryRef: { sel: { fields: ["term_id"] } }, ...TAGS },
-                      },
-                    },
+                    ...memberColumns(s),
                     ...relationships(s),
                   },
                 },
@@ -583,6 +590,14 @@ export function readsProducts(s: QueryScope): boolean {
   );
 }
 
+/** Whether ``s`` reads the terms: always, but for the whole Product map unsearched, which reads
+ * them only under Ontology or Domains (REQ-2174, amended 2026-11-12, THE PRODUCT MAP OPENS ON
+ * PRODUCTS): opened on its products, it reads no term. */
+export function readsTerms(s: QueryScope): boolean {
+  const whole = s.products && s.focus === null && s.search.length === 0;
+  return !whole || s.layers.has("ontology") || s.layers.has("domains");
+}
+
 /** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
  * Ontology layer, what it grounds, and those tables' data products under Data, with the data
  * products readsProducts says; null when the role cannot read the terms. A part the role cannot
@@ -595,10 +610,12 @@ export function ontologyQuery(m: MetaReader, s: QueryScope, terms = true): strin
 
 /** ontologyQuery's root fields; null when the role cannot read the terms. */
 function ontologyFields(m: MetaReader, s: QueryScope, terms: boolean): string[] | null {
-  const termsRead = termsField(m, s);
+  const termsRead = readsTerms(s) ? termsField(m, s) : undefined;
   if (termsRead === null) return null;
   const products = readsProducts(s) ? productsField(m, s) : null;
-  return [terms ? termsRead : null, products].filter((f): f is string => f !== null);
+  return [terms ? termsRead : undefined, products].filter(
+    (f): f is string => typeof f === "string",
+  );
 }
 
 /** The edges the terms were read with, each once: from the term it leaves or the one it reaches. */

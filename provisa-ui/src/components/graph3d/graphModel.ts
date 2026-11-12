@@ -210,6 +210,9 @@ export interface GraphScope {
    * of the given type is drawn, since the read of every layer the controls choose from leaves
    * them out. */
   readWhenOn: Partial<Record<LayerId, NodeType>>;
+  /** Layers off on opening and read -- in what is drawn and in what the controls choose from --
+   * only once the reader turns them on: offered whenever a node of the given type is drawn. */
+  readOnAsking?: Partial<Record<LayerId, NodeType>>;
 }
 
 /** REQ-2130: the Ontology View, an ontology with its grounding (amended 2026-10-29): only what a
@@ -283,6 +286,16 @@ export const PRODUCT_MAP_SCOPE: GraphScope = {
   // A product's lineage is the product lineage endpoint's, one read per product; the relationships
   // of the tables drawn are read once Related tables is on.
   readWhenOn: { lineage: "product", related: "table" },
+};
+
+/** REQ-2174 (amended 2026-11-12, THE PRODUCT MAP OPENS ON PRODUCTS): the whole Product map's
+ * rules -- PRODUCT_MAP_SCOPE's, opened on every product, its member tables and the links between
+ * products. Its terms (Ontology, Domains) and its columns are layers like any other, chosen in
+ * the Layers menu, and read only once on: no whole-ontology read on opening. */
+export const PRODUCT_MAP_WHOLE_SCOPE: GraphScope = {
+  ...PRODUCT_MAP_SCOPE,
+  implicitLayers: [],
+  readOnAsking: { ontology: "product", domains: "product", columns: "table" },
 };
 
 export interface GraphFilters {
@@ -363,7 +376,10 @@ export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId
   const out = new Set<LayerId>();
   for (const e of data.edges) for (const l of edgeLayers(scope, e)) out.add(l);
   for (const n of data.nodes) for (const l of nodeLayers(scope, n)) out.add(l);
-  for (const [l, type] of Object.entries(scope.readWhenOn) as [LayerId, NodeType][])
+  for (const [l, type] of Object.entries({ ...scope.readWhenOn, ...scope.readOnAsking }) as [
+    LayerId,
+    NodeType,
+  ][])
     if (data.nodes.some((n) => n.type === type)) out.add(l);
   return out;
 }

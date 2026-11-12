@@ -24,6 +24,7 @@ import {
   ontologyQuery,
   overviewGraph,
   memberTablesOf,
+  readsTerms,
   termLevels,
   withProductLineage,
   type CountRow,
@@ -47,9 +48,12 @@ export type Loaded =
 export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
   const m = await metaReader(role);
   const query = ontologyQuery(m, scope);
-  const count = ontologyCountQuery(m, scope);
-  if (query === null || count === null) return null;
-  const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
+  // A read of no term (the Product map opened on its products) counts none.
+  const terms = readsTerms(scope);
+  const count = terms ? ontologyCountQuery(m, scope) : null;
+  if (query === null || (terms && count === null)) return null;
+  const counted =
+    count === null ? [] : (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
   // alone. Else a search's or a focus's neighbourhood is read a hop at a time, each term once.
@@ -88,11 +92,12 @@ const EMPTY: GraphData = { nodes: [], edges: [] };
 
 /** Every layer of the preset's rules, no filter: what the view's controls choose from. A layer
  * read only once it is on is offered by the node it hangs off (GraphScope.readWhenOn), so it is
- * not read here. */
-function everything(preset: OntologyPreset): QueryScope {
+ * not read here; nor is a layer read on asking (GraphScope.readOnAsking) until it is in ``on``. */
+function everything(preset: OntologyPreset, on: readonly LayerId[]): QueryScope {
   const scope = scopeOf(preset);
+  const asked = (l: LayerId) => !(l in (scope.readOnAsking ?? {})) || on.includes(l);
   return {
-    layers: new Set<LayerId>(scope.layerOrder.filter((l) => !(l in scope.readWhenOn))),
+    layers: new Set<LayerId>(scope.layerOrder.filter((l) => !(l in scope.readWhenOn) && asked(l))),
     domains: [],
     edgeTypes: [],
     hiddenStatuses: [],
@@ -136,6 +141,12 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   const [scoped, setScoped] = useState<Loaded | null>(null);
   const [changes, setChanges] = useState(0);
   const { focus, depth, products } = preset;
+  // The layers read on asking that the view has on: what the controls choose from grows with them.
+  const asked = scopeOf(preset).readOnAsking ?? {};
+  const askedOn = [...(scope?.layers ?? [])]
+    .filter((l) => l in asked)
+    .sort()
+    .join();
   useEffect(() => {
     const changed = () => setChanges((n) => n + 1);
     window.addEventListener("provisa:glossary-changed", changed);
@@ -144,7 +155,8 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   useEffect(() => {
     if (!enabled || actingRoles === null) return;
     let cancelled = false;
-    loadOntology(actingRoles, everything({ focus, depth, products })).then(
+    const on = (askedOn === "" ? [] : askedOn.split(",")) as LayerId[];
+    loadOntology(actingRoles, everything({ focus, depth, products }, on)).then(
       (all) =>
         !cancelled &&
         setRead({
@@ -161,7 +173,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, actingRoles, said, changes, focus, depth, products]);
+  }, [enabled, actingRoles, said, changes, focus, depth, products, askedOn]);
   useEffect(() => {
     if (!enabled || actingRoles === null || scope === null) return;
     let cancelled = false;
