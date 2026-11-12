@@ -2,6 +2,7 @@
   "provisaGraph": {
     "legend": "Legenda",
     "hint": "Sleep om te verschuiven · scroll om te bewegen · Ctrl/⌘ + scroll om te zoomen",
+    "layingOut": "Indeling maken…",
     "type": {
       "product": "Dataproduct",
       "source": "Bron",

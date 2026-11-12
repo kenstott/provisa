@@ -152,7 +152,8 @@
     "hopsFromMatches": "Sauts depuis les correspondances",
     "relatedTables": "Tables associées",
     "restOfModel": "Afficher le reste du modèle",
-    "lateral": "Arêtes latérales",
+    "lateral": "Associations",
+    "lateralHelp": "Affiche les lignes qui relient des termes sans les hiérarchiser : associé, synonyme, terme préférentiel, traduction et antonyme.",
     "grounding_grounded": "Ancré",
     "grounding_grounded_pending": "Ancré, via un brouillon"
   }

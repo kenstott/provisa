@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Stage3D, type CameraCommand } from "../Stage3D";
+import { Stage3D, type CameraCommand, type ViewControls } from "../Stage3D";
 import { useLazyScene } from "../useLazyScene";
 import { pctText, type TerrainColumn } from "./terrainModel";
 import type { TerrainHover, TerrainOptions, TerrainScene } from "./terrainScene";
@@ -29,6 +29,7 @@ export function TerrainStage({
   onSelect,
   onUserMove,
   exportName,
+  controls,
 }: {
   columns: TerrainColumn[];
   order: string[];
@@ -42,6 +43,7 @@ export function TerrainStage({
   onUserMove: () => void;
   /** What the view's exports are named after. */
   exportName: string;
+  controls: ViewControls;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: TerrainHover; x: number; y: number } | null>(null);
@@ -137,6 +139,7 @@ export function TerrainStage({
       exportable={scene}
       exportName={exportName}
       testId="terrain-stage"
+      controls={controls}
       legend={
         <>
           <span>

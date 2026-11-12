@@ -127,6 +127,7 @@ def test_a_view_another_view_reads_is_deleted_only_after_its_reader(served):
         "kind": "table",
         "id": reader,
         "name": "reader_view",
+        "label": "reader_view",
         "via": ["registered_tables.view_sql"],
     } in refused["params"]["dependents"]
     assert "base_view" in _views(srv)

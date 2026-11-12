@@ -2,6 +2,7 @@
   "provisaGraph": {
     "legend": "Leyenda",
     "hint": "Arrastre para mover · desplácese para recorrer · Ctrl/⌘ + desplazamiento para ampliar",
+    "layingOut": "Organizando el diseño…",
     "type": {
       "product": "Producto de datos",
       "source": "Origen",

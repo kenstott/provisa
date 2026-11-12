@@ -88159,7 +88159,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
     way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
     in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
-    the same list Columns.'
+    the same list Columns. (Amended 2026-11-12, THE TERM PAGE USES THE SHARED SECTIONS AND FIELD LAYOUT:)
+    Maintainer 2026-11-12: a term''s page is laid out as the other detail pages are. Its section showing
+    the term''s own neighbourhood is titled Graph, as a product''s is (Map is kept for an overview of many
+    things, the Product map). Each of its sections (Graph, Grounded in columns, Grounded in tables, Relationships,
+    Experts) collapses with the shared collapsible, its open or closed state remembered; Graph opens by
+    default. Its fields use the one form layout (REQ-1968): Name and Definition take the full width, and
+    the short fields (Domains, Role, Tags, Status, Grounding, Exclude from metadata export) flow in as many
+    columns as the panel allows.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -91241,7 +91248,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
     without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
     with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
-    does is unchanged.'
+    does is unchanged. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) Maintainer 2026-11-12: the hops
+    control counts steps between terms only. Every term drawn brings its grounding with it, whatever the
+    hop count: the columns it is bound to, their tables, and the products that hold them; a column is never
+    drawn without its table. So a term three term-steps from the focus is shown, with its column and table,
+    at three hops, where before the column and the table each took a further hop. A product''s graph follows
+    the same rule: the product''s own tables, columns and the terms grounded on them come with it, and hops
+    count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows
+    the connected part to its end, under the existing limit on how many nodes a graph draws.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -95472,3 +95486,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When a reader without rights to the masked column opens the column
     Then the reader sees the term's definition and calculation method
     And the reader does not see the column's formula
+
+- id: REQ-2244
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip
+    and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing
+    stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse:
+    the thing stays on screen as a summary or as its parent, and its contents open in place (a table''s
+    columns, a section, a tree row, a list row''s detail); collapsed, the summary or parent is still
+    shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the
+    full-screen control); a change of size is never called expand. Fold and unfold are not used. A
+    table''s columns in a graph are therefore expanded and collapsed, as the ERD already says.'
+  scenario: |
+    Given a graph that draws a table with its columns collapsed into it
+    When a reader looks at the table's control
+    Then it reads "Expand columns"
+    And the control that opens the graph in the large view reads "Enlarge"
+    And the control for a layer of the graph reads "Show" or "Hide"

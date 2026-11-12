@@ -152,7 +152,8 @@
     "hopsFromMatches": "דילוגים מההתאמות",
     "relatedTables": "טבלאות קשורות",
     "restOfModel": "הצגת שאר המודל",
-    "lateral": "קשתות רוחביות",
+    "lateral": "שיוכים",
+    "lateralHelp": "הצגת הקווים שמקשרים בין מונחים בלי לדרג אותם: קשור, מילה נרדפת, מונח מועדף, תרגום והפכי.",
     "grounding_grounded": "מעוגן",
     "grounding_grounded_pending": "מעוגן, דרך טיוטה"
   }

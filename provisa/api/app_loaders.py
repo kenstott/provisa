@@ -355,9 +355,17 @@ def _populate_source_catalog_names(
     ``config.sources`` does not already cover.
     """
     from provisa.api.app import state
+    from provisa.core.source_registry import SOURCE_TO_DIALECT
 
     # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
+    # provisa-admin is the control plane, read by its own terminal (REQ-1919): its type is the
+    # store's backend, as startup_seed registers its row, and its dialect is that backend's. The
+    # router judges a read of it by that dialect (REQ-863); without it a meta read was landed as
+    # if its source ran no construct at all.
+    assert state.model_db is not None, "the model store is open before any source state is built"
+    state.source_types["provisa-admin"] = state.model_db.dialect
+    state.source_dialects["provisa-admin"] = SOURCE_TO_DIALECT[state.model_db.dialect]
     # The ops signals are read at otel.signals.<table>: Trino's Iceberg catalog, or the catalog a
     # native engine defines over the traces it lands (EngineBackend.landed_signals). An engine
     # that reads neither has no provisa-otel table registered (startup_seed._seed_ops_pg).

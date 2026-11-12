@@ -109,6 +109,7 @@ async def test_the_deletable_tables_are_deleted_and_each_refused_one_is_named_wi
                     "kind": "table",
                     "id": view,
                     "name": "open_orders",
+                    "label": "open_orders",
                     "via": ["registered_tables.view_sql"],
                 }
             ],

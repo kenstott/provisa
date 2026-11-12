@@ -20,7 +20,6 @@ import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { AttractionSlider } from "../Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../attractionState";
-import { GridToggle } from "../GridToggle";
 import { ResetSettingsButton } from "../ResetSettingsButton";
 import { useGraphSettings } from "../graphSettings";
 import { Stage3D, type CameraCommand } from "../Stage3D";
@@ -66,7 +65,15 @@ const KINDS: readonly EdgeKind[] = ["spearman", "correlation_ratio", "dependence
 
 const edgeValue = (e: RelEdge) => e.value.toFixed(2);
 
-function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | null }) {
+function RelationsStage({
+  s,
+  command,
+  onReset,
+}: {
+  s: Shared;
+  command: CameraCommand | null;
+  onReset: () => void;
+}) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: RelHover; x: number; y: number } | null>(null);
   const latest = useRef(s);
@@ -164,6 +171,12 @@ function RelationsStage({ s, command }: { s: Shared; command: CameraCommand | nu
       exportable={scene}
       exportName={s.exportName}
       testId="relations-stage"
+      controls={{
+        testId: "relations",
+        onReset,
+        rotate: { value: s.rotate, onChange: s.setRotate },
+        grid: { value: s.grid, onChange: s.setGrid },
+      }}
       legend={
         <>
           <span>
@@ -334,23 +347,11 @@ function RelationsView({
           {t("profileRelations.showDependence")}
         </Chip>
         <AttractionSlider value={s.attraction} onChange={s.setAttraction} testId="relations" />
-        <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="relations-rotate">
-          {t("profile3d.rotate")}
-        </Chip>
-        <GridToggle value={s.grid} onChange={s.setGrid} testId="relations" />
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() => move("reset", null)}
-          data-testid="relations-reset"
-        >
-          {t("profile3d.resetView")}
-        </Button>
         <ResetSettingsButton onReset={s.resetSettings} testId="relations" />
         {onExpand && <ExpandButton onClick={onExpand} testId="relations-expand" />}
       </Group>
       <div className="p3d-body">
-        <RelationsStage s={s} command={command} />
+        <RelationsStage s={s} command={command} onReset={() => move("reset", null)} />
         <RelationsDetail
           s={s}
           onFocus={(id) => {
