@@ -10,7 +10,8 @@
 
 import { PageTitle } from "../components/PageTitle";
 import { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Settings } from "lucide-react";
 import {
@@ -244,10 +245,9 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
-  // `?domain=<id>` (a graph's domain link, lib/entityHref): that domain's row is marked, on the
-  // page that holds it, and brought into view.
-  const [searchParams] = useSearchParams();
-  const linkedDomain = searchParams.get("domain");
+  // `?domain=<id>` (a graph's or a refused delete's link, detailHref): that domain's row is
+  // marked, on the page that holds it, and brought into view.
+  const linkedDomain = useDetailParam("domains").id;
   const [seededDomain, setSeededDomain] = useState<string | null>(null);
   if (linkedDomain !== seededDomain && userDomains.length > 0) {
     setSeededDomain(linkedDomain);

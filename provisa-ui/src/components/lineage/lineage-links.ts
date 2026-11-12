@@ -16,6 +16,7 @@ import type { LineageGraphData } from "../../api/lineage";
 import { HIDING_RIGHTS, type CapabilityRequirement } from "../../lib/capabilities";
 import { relationName } from "../../naming";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
+import { commandId, detailHref, tableByNameHref } from "../list/useDetailParam";
 
 export interface LineageLinks {
   /** Where a box's relation is defined. */
@@ -52,16 +53,19 @@ export function lineageLinks(
     const op = e.ops.find((o) => o.kind === "command");
     if (op) commandOf.set(e.target, op.name);
   }
+  // A command a query calls is a function: a webhook is not called from SQL (REQ-2240).
   const command = (name: string) =>
-    can(COMMANDS) ? `/commands?command=${encodeURIComponent(name)}` : null;
+    can(COMMANDS) ? detailHref("commands", commandId("function", name)) : null;
   const relation = (rel: string) => {
     const native = graph.natives?.[rel];
-    if (native) return can(SOURCES) ? `/sources?expanded=${encodeURIComponent(native.source)}` : null;
+    if (native) return can(SOURCES) ? detailHref("sources", native.source) : null;
     const table = byRelation.get(rel);
     if (!table) return null;
-    const open = encodeURIComponent(`${table.sourceId}.${table.tableName}`);
-    if (table.sourceId === DERIVED_SOURCE_ID) return can(VIEWS) ? `/views?open=${open}` : null;
-    return can(TABLES) ? `/tables?open=${open}` : null;
+    const open = `${table.sourceId}.${table.tableName}`;
+    if (table.sourceId === DERIVED_SOURCE_ID) {
+      return can(VIEWS) ? tableByNameHref("views", open) : null;
+    }
+    return can(TABLES) ? tableByNameHref("tables", open) : null;
   };
   return {
     relation,

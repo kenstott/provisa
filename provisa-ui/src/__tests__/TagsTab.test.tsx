@@ -371,7 +371,13 @@ describe("TagsTab", () => {
       params: {
         tag: "finance",
         dependents: [
-          { kind: "row_filter", id: 4, name: "analyst on tag finance", via: ["rls_rules.tag_id"] },
+          {
+            kind: "row_filter",
+            id: 4,
+            name: "analyst on tag finance",
+            label: "analyst on tag finance",
+            via: ["rls_rules.tag_id"],
+          },
         ],
       },
     } as never);

@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from "react";
 import { useRememberedChoice } from "../../hooks/useRememberedChoice";
-import { useSearchParams } from "react-router-dom";
+import { useDetailParam } from "../list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -98,10 +98,9 @@ export function TagsTab() {
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // `?tag=<id>` (a graph's tag link, lib/entityHref): the list shows that tag, under a scope it
-  // applies to, its row marked.
-  const [searchParams] = useSearchParams();
-  const linkedTag = searchParams.get("tag");
+  // `?tag=<id>` (a graph's or a refused delete's link, detailHref): the list shows that tag,
+  // under a scope it applies to, its row marked.
+  const linkedTag = useDetailParam("tags").id;
   const [seededTag, setSeededTag] = useState<string | null>(null);
   const linked = tags.find((g) => g.id === linkedTag);
   if (linked && linkedTag !== seededTag) {
