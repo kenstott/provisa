@@ -45,12 +45,26 @@ function element(text: string, start: number, name: string): string {
   return text.slice(start);
 }
 
+/** The element's own props: the opening tag at `start`, without what its `{...}` props hold. */
+function ownProps(text: string, start: number): string {
+  let depth = 0;
+  let own = "";
+  for (let i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === "{") depth += 1;
+    else if (c === "}") depth -= 1;
+    else if (depth === 0 && c === ">") return own;
+    if (depth === 0) own += c;
+  }
+  return own;
+}
+
 /** Each Button or ActionIcon in `jsx` that sets its own variant or size, as it opens. */
 export function ownStyled(jsx: string): string[] {
   const found: string[] = [];
   for (const tag of jsx.matchAll(/<(Button|ActionIcon)\b/g)) {
-    const opening = element(jsx, tag.index, tag[1]).split(">")[0];
-    const own = opening.match(/\b(variant|size)=/g);
+    // An icon in a prop (leftSection={<Upload size={14} />}) has a size of its own, not the button's.
+    const own = ownProps(jsx, tag.index).match(/\b(variant|size)=/g);
     if (own) found.push(`<${tag[1]} ${[...new Set(own)].join(" ")}…>`);
   }
   return found;
@@ -94,6 +108,19 @@ describe("the rule itself", () => {
     expect(
       headParts(`<FormFooter onSave={save} action={<Button variant="light">Run</Button>} />`),
     ).toEqual([]);
+  });
+
+  it("reads the button's own props, not those of an icon in one of them", () => {
+    expect(
+      ownStyled(
+        `<PanelActions><Button leftSection={<Upload size={14} />}>Apply</Button></PanelActions>`,
+      ),
+    ).toEqual([]);
+    expect(
+      ownStyled(
+        `<PanelActions><Button leftSection={<Upload size={14} />} size="xs">Apply</Button></PanelActions>`,
+      ),
+    ).toEqual(["<Button size=…>"]);
   });
 
   it("does not mistake a size on something that is not a button", () => {

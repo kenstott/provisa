@@ -137,11 +137,14 @@ export function TermGroundingChip({
 
 export function TermRoleBadge({
   term,
+  role: given,
   dangling = false,
   testId,
   iconOnly = false,
 }: {
-  term: { table_count: number; ref_count: number };
+  /** The term, its role read from what grounds it; or the role itself, where the server gave it. */
+  term?: { table_count: number; ref_count: number };
+  role?: TermRole;
   /** The role as its icon alone; the word is its name and tip (the term list). */
   iconOnly?: boolean;
   /** A concept connected to no term that names data: said in red. */
@@ -149,7 +152,8 @@ export function TermRoleBadge({
   testId?: string;
 }) {
   const { t } = useTranslation();
-  const role = termRole(term);
+  const role = given ?? (term ? termRole(term) : null);
+  if (role === null) throw new Error("TermRoleBadge: a term or a role is given");
   if (iconOnly)
     return (
       <IconChip

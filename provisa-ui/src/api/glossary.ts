@@ -111,6 +111,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   tags: { tag_id: string; reason: string | null }[];
   // REQ-1387: for a grounded_pending term, the drafts whose approval alone grounds it.
   pending_on: { term_id: number; name: string }[];
+  // REQ-2237: the IRI of an imported concept the term is, set when an ontology import is applied.
+  iri: string | null;
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
