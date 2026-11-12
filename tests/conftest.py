@@ -1600,6 +1600,10 @@ async def live_client(provisa_server):
         yield client
 
 
+#: The live server's own org: no in-process boot of the session serves it (provisa_server).
+_LIVE_SERVER_ORG = "liveserver"
+
+
 @pytest.fixture(scope="session")
 def provisa_server(_reserve_flight_port):
     """Start the Provisa server subprocess if not already running.
@@ -1655,13 +1659,20 @@ def provisa_server(_reserve_flight_port):
     mint_master_key()
     # REQ-1919: the live server's boot is its deployment's first start, as every in-process boot's
     # is (tests.boot_seeds_its_own_deployment): it seeds its org's store from its own file.
+    # The org is its own. It used to be the configuration's (`default`), the org every in-process
+    # boot of the session also serves, and each module's in-process boot empties and reseeds its
+    # org from its own file. The live server, booted once per session, then served whatever the
+    # last module seeded and not sample_config.yaml: after test_schema_query_api seeded
+    # config/provisa.yaml, a live-server MATCH (n) spanned graphql-demo's tables, a source no
+    # integration lane runs, and answered 503 data.source_unavailable.
     import asyncio
 
     from tests.boot_seeds_its_own_deployment import prepare_first_start
 
-    asyncio.run(prepare_first_start(_live_cfg, "live-server"))
+    asyncio.run(prepare_first_start(_live_cfg, "live-server", org_id=_LIVE_SERVER_ORG))
     server_env = {
         **os.environ,
+        "ORG_ID": _LIVE_SERVER_ORG,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
