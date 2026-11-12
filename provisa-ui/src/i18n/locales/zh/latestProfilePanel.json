@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "最新画像，运行于 {{time}}",
-    "none": "尚无画像运行。"
+    "none": "尚无画像运行。",
+    "viewTable": "表格",
+    "viewTerrain": "地形"
   }
 }

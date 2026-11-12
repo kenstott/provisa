@@ -9,10 +9,12 @@
 // permission from the copyright holder.
 
 // A data product's panel hydrates itself from the meta domain: one read of the product
-// (productCore.loadProductCore) is every card's content. That is the test of how well the meta
-// schema is defined. The decided exceptions are named below, never hidden: lineage, Input Ports and
-// Data Quality (the product lineage endpoint, REQ-2156 and REQ-2157) and the owner and team roles'
-// people (resolveOwners), and each contract's ODCS document (the contracts endpoint, REQ-2158).
+// (productCore.loadProductCore) is its header's and its Related tab's content. That is the test of
+// how well the meta schema is defined. The decided exceptions are named below, never hidden:
+// lineage, Input Ports and Data Quality (the product lineage endpoint, REQ-2156 and REQ-2157), the
+// owner and team roles' people (resolveOwners), and, since REQ-2180 OFFERS, the offers endpoint
+// (each offer with its contracts), the product's sanitized profiles, its bids and who reads each
+// dataset -- each read by the tab that shows it, when it is opened.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,6 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { lifecycleProps } from "./lifecycleProps";
+import { openTab } from "./panelTabs";
 import type { ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -51,28 +54,26 @@ const NOT_DATA = [
  * its findings, read by the page for the list's own To review. */
 const LIFECYCLE = ["products", "members", "findings"];
 /** Decided: the lineage DAG, Input Ports and Data Quality read the product lineage endpoint. */
-const LINEAGE = [
-  "lineageLoading",
-  "lineageError",
-  "lineageGraph",
-  "lineageMembers",
-  "describeColumn",
-  "relationLabel",
-];
-/** Decided (REQ-2158, amended 2026-10-29): each contract row reads its own ODCS contract, declared
- * and derived by the export (REQ-2118), when it opens; the page says only when to read it again. */
+const LINEAGE = ["lineageLoading", "lineageError", "lineageGraph", "relationLabel"];
+/** The page's own reads the panel's parts are composed from (REQ-2239): the tables a dataset is
+ *  previewed through, the products sharing its datasets, the model's relationships (each dataset's
+ *  associations), the role it reads as, and the edit form that takes the header's place. */
+const PAGE = ["tables", "sharing", "relationships", "actingRole", "editForm"];
+/** Decided (REQ-2180): the offers and their contracts are read by the Offers tab; the page says only
+ * when to read them again. */
 const CONTRACTS = ["contractsVersion"];
 /** Read inside the panel's own parts, not through its inputs. */
 const INSIDE: Record<string, string> = {
   "../../components/OwnerResolution":
     "the admin API's resolveOwners: the people who hold the owner and team roles (the decided exception)",
-  "./DqRulesModal": "lists the rules it is given",
-  "../../components/graph3d/OntologyGraph":
-    "the ontology, in a read of its own (useOntology): the graph card, focused on the product",
-  "../../components/graph3d/ontologyPresets": "names the product's focus: it reads nothing",
-  "../../components/lineage/LineageDag": "draws the lineage it is given (the decided exception)",
-  "./ProductContracts":
-    "the product's contracts endpoint, one output port's contract as its row opens (REQ-2158)",
+  "./offers/OffersTab":
+    "REQ-2180 OFFERS: the offers endpoint, each offer with its contracts; the roles its owner may grant; each contract's ODCS document, from its offer's contract route, as it opens",
+  "./tabs/QualityTab":
+    "the checks bar's profile checks, read when the owner opens it (REQ-1934); a checker's rules",
+  "./tabs/ProfileTab": "REQ-2180: the product's profiles, sanitized on the server for the reader",
+  "./tabs/RelatedTab":
+    "the ontology in a read of its own (useOntology), focused on the product; the tag chip; each dataset's glossary terms and class term",
+  "./tabs/RequestsTab": "REQ-2180: the product's bids, and who reads each dataset (REQ-2162)",
 };
 
 const PRODUCT = {
@@ -168,7 +169,6 @@ function panelFromMetaAlone() {
       owner
       seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}
@@ -181,28 +181,29 @@ function panelFromMetaAlone() {
 const part = (id: string) => screen.getByTestId(`${id}-pet_health`);
 
 describe("a data product's panel hydrates from the meta query", () => {
-  it("shows every card's content from the one meta read, nothing else given", () => {
+  it("shows every value of the header and the Related tab from the one meta read", () => {
     panelFromMetaAlone();
     expect(part("data-product-read")).toHaveTextContent("Pet Health");
     expect(part("data-product-read")).toHaveTextContent("2.1.0");
     expect(part("data-product-detail-custom-properties")).toHaveTextContent("tier");
-    expect(part("data-product-detail-tags")).toHaveTextContent("pii");
-    const outputs = part("data-product-detail-tables");
+    // Its tables' ways in, in the header; the checker table is no dataset of it.
+    const outputs = part("data-product-detail-graphql-queries");
     expect(outputs).toHaveTextContent("pet-store.pets");
     expect(outputs).toHaveTextContent("pet-store.vets");
     expect(within(outputs).queryByText(/pets_quality/)).toBeNull();
-    expect(part("data-product-detail-commands")).toHaveTextContent("add_pet");
-    // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, no card.
+    // The relationships between members' Cypher click-through, from the core too.
+    expect(outputs).toHaveTextContent("BELONGS_TO_VET");
+    // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, nothing listed.
+    openTab("quality", "pet_health");
     expect(screen.queryByTestId("data-product-card-dataQuality-pet_health")).toBeNull();
-    expect(part("data-product-detail-profiles")).toHaveTextContent("pets");
+    openTab("related", "pet_health");
+    expect(part("data-product-detail-tags")).toHaveTextContent("pii");
+    expect(part("data-product-detail-commands")).toHaveTextContent("add_pet");
     expect(part("data-product-detail-related-terms")).toHaveTextContent("Customer");
     expect(part("data-product-detail-related-tables")).toHaveTextContent("pet-store.owners");
-    expect(part("data-product-detail-graphql-queries")).toHaveTextContent("pet-store.pets");
-    // The relationships between members, and their Cypher click-through, from the core too.
     const rels = part("data-product-detail-relationships");
     expect(rels).toHaveTextContent("BELONGS_TO_VET");
     expect(rels).toHaveTextContent("pets.vet_id → vets.id (many-to-one)");
-    expect(part("data-product-detail-graphql-queries")).toHaveTextContent("BELONGS_TO_VET");
   });
 
   it("takes no input but the meta read and the decided lineage exception", () => {
@@ -212,16 +213,17 @@ describe("a data product's panel hydrates from the meta query", () => {
       source.indexOf("\n}\n", source.indexOf("interface DataProductDetailPanelProps")),
     );
     const names = [...props.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]).sort();
-    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...CONTRACTS].sort());
+    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...PAGE, ...CONTRACTS].sort());
   });
 
   it("reads inside its own parts only where named", () => {
     const source = readFileSync(resolve(__dirname, "../DataProductDetailPanel.tsx"), "utf8");
-    // A type import reads nothing.
+    // A type import reads nothing; nor do the tab list and the Lineage tab, which draws the
+    // lineage it is given.
     const readers = [...source.matchAll(/^import (?!type ).* from "([^"]+)";$/gm)]
       .map((m) => m[1])
       .filter((from) =>
-        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|ProductContracts|api\/|hooks\//.test(
+        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|ProductContracts|offers\/|tabs\/(?!productTabs|LineageTab)|api\/|hooks\//.test(
           from,
         ),
       )

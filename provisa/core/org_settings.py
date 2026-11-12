@@ -60,7 +60,6 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "redaction",  # REQ-2087: the org's own redaction rules
         "classification",  # REQ-2147: the profiler's classification kinds the org disabled
         "federation",  # REQ-259: the org's subgraph and the role it serves as
-        "reference_library",  # REQ-2185: the library's retrieval setting, passage or graph
         "names",  # REQ-194: how the names table settles a name clash (refuse or disambiguate)
         "requests",  # REQ-2216: how the org is told of requests: email, events only, or both
         "offer_hook",  # REQ-2180: where the org's access requests go, and the secret they are signed with

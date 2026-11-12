@@ -13,7 +13,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import type { ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
+import type { MutationResult } from "../types/admin";
 import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
@@ -21,7 +21,6 @@ import {
   UpdateDataProduct,
   DeleteDataProduct,
   SetDataProductMembers,
-  SaveDataContract,
   PublishDataProduct,
   DeprecateDataProduct,
   RetireDataProduct,
@@ -104,30 +103,6 @@ export function useDeleteDataProduct() {
     deleteDataProduct: async (id: string) => {
       const result = await deleteDataProduct({ variables: { id } });
       return (result.data?.deleteDataProduct ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-// REQ-2158: mirrors the DataContractInput GraphQL input type field-for-field.
-export interface DataContractInput {
-  version: string;
-  status: string;
-  description: string | null;
-  terms: ContractTerms;
-  sla: ContractSlaProperty[];
-}
-
-export function useSaveDataContract() {
-  // REQ-2158: a member's contract is saved on its own; a break at the same version is refused.
-  const [saveDataContract, { loading }] = useMutation<{ saveDataContract: MutationResult }>(
-    SaveDataContract,
-    { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
-  );
-  return {
-    saveDataContract: async (tableId: number, contract: DataContractInput) => {
-      const result = await saveDataContract({ variables: { tableId, contract } });
-      return (result.data?.saveDataContract ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };

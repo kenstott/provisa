@@ -797,6 +797,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
+  // One rule for the preview: it is a mode of the panel body, left as soon as what the body shows
+  // changes -- another table, its section or column (a head action's or a link's), the edit form,
+  // the view-definition editor, or a profile starting. The eye toggles it and "Back to details"
+  // closes it; neither is a change of this kind, so neither is handled here.
+  const profileInView = expanded === null ? undefined : tableProfiles[expanded];
+  useEffect(() => {
+    setPreviewTable(null);
+  }, [expanded, section, linkedColumnTab, columnParam, editingTable?.id, editingViewDef, profileInView]);
   // Only full-page block on the INITIAL load (no cached tables yet). Background refetches
   // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
@@ -996,7 +1004,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             startEditing={startEditing}
             handleDelete={handleDelete}
             handleProfile={handleProfile}
-            onPreview={setPreviewTable}
+            onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             onSetDraft={handleSetDraft}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}

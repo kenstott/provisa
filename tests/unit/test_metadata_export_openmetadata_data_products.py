@@ -8,26 +8,28 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1634: DataProductAsset publishes to OpenMetadata's native /api/v1/dataProducts."""
+"""REQ-1634: DataProductAsset publishes to OpenMetadata's native /api/v1/dataProducts; REQ-2180: a
+member's contract published is the one its product's default offer gives."""
 
-# Requirements: REQ-1634
+# Requirements: REQ-1634, REQ-2180
 
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 import pytest
 
-from provisa.api.metadata_export import build_snapshot
-from provisa.api.metadata_export.model import AssetRef
+from provisa.api.metadata_export import build_snapshot as _build_snapshot
+from provisa.api.metadata_export.model import AssetRef, OfferExport
 from provisa.api.metadata_export.openmetadata import (
     OpenMetadataExport,
     _for_openmetadata,
     to_entities,
 )
-from provisa.core import data_contracts
+from provisa.core import offer_contracts
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -55,8 +57,6 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 schema_name="public",
                 table_name="orders",
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
-                # REQ-2158: the draft contract the member's first save gives it
-                contract=data_contracts.draft(),
             )
         ],
         data_products=[
@@ -71,6 +71,66 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
         ],
         roles=[],
     )
+
+
+def _offer(
+    snapshot,
+    name: str,
+    role_id: str,
+    *,
+    masks: dict[str, str] | None = None,
+    row_rules: tuple[str, ...] = (),
+) -> OfferExport:
+    """An offer of the one product, its contract on each member reading every column: each
+    column ``masks`` names masked by that kind, and ``row_rules`` the role's rules in words."""
+    from provisa.core.models import DataProductOffer
+
+    (product,) = snapshot.data_products
+    offer = DataProductOffer(name=name, role_id=role_id)
+    tables = {t.ref.fqn(): t for t in snapshot.tables}
+    contracts = {
+        m.fqn(): offer_contracts.recorded(
+            None,
+            offer_contracts.terms(
+                offer,
+                [
+                    offer_contracts.SeenColumn(c.name, c.data_type, mask=(masks or {}).get(c.name))
+                    for c in tables[m.fqn()].columns
+                ],
+                row_rules=list(row_rules),
+                sample_views=[],
+                checks=[],
+                profiles=[],
+            ),
+            at=datetime(2026, 11, 11, tzinfo=UTC),
+        )
+        for m in product.members
+    }
+    return OfferExport(
+        name=name,
+        role_id=role_id,
+        data_level="full",
+        dq_results=True,
+        profiles=False,
+        open=False,
+        duration_days=None,
+        contracts=contracts,
+    )
+
+
+def build_snapshot(config: ProvisaConfig, **kw: Any):
+    """The snapshot a publish is given (REQ-2180): its product's default offer, and one more,
+    with their contracts."""
+    snapshot = _build_snapshot(config, **kw)
+    if snapshot.data_products:
+        (product,) = snapshot.data_products
+        snapshot.offers = {
+            product.id: (
+                _offer(snapshot, "default", "viewer"),
+                _offer(snapshot, "analysts", "analyst"),
+            )
+        }
+    return snapshot
 
 
 def _export_config() -> MetadataExportTarget:
@@ -189,7 +249,9 @@ async def test_data_product_reports_error_when_member_table_upsert_failed(monkey
 @pytest.mark.asyncio
 async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     """REQ-2118: the member's ODCS contract goes through OpenMetadata's ODCS import, attached to
-    the table by the id its own upsert returned, replacing whatever contract was there."""
+    the table by the id its own upsert returned, replacing whatever contract was there. REQ-2180:
+    OpenMetadata holds one contract per table, so it is the one the product's default offer gives;
+    the product's other offers are published by none."""
     snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     contracts: list[tuple[str, dict, dict]] = []
     puts = _mock_transport(monkeypatch)
@@ -209,10 +271,20 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     assert params == {"entityId": "table-uuid-1", "entityType": "table", "mode": "replace"}
     assert body["apiVersion"] == "v3.1.0"
     assert body["schema"][0]["name"] == "orders"
+    assert body["id"].endswith("/offers/default")
     # The owner role's holders are not read here, so the team has no member to send.
     assert "team" not in body
     assert result.published["data_contract"] == 1
     assert puts  # the tables went first
+
+
+def test_a_product_with_no_default_offer_publishes_no_contract():  # REQ-2180
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    snapshot.offers = {product.id: snapshot.offers[product.id][1:]}  # the analysts offer alone
+    assert _data_contract_entities(snapshot) == []
 
 
 def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
@@ -234,6 +306,34 @@ def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
         {"username": "alice@example.com", "role": "owner"},
         {"username": "ana@example.com", "role": "team"},
     ]
+
+
+def test_a_contracts_custom_properties_go_to_openmetadata_in_the_shapes_it_reads():  # REQ-2180
+    """OpenMetadata's ODCS model reads a schema element's customProperties as an object of
+    name to value, where ODCS 3.1 writes a list of {property, value}: a masked column's mask goes
+    as that object. The contract's own list stays a list, each value a string as OpenMetadata's
+    model types it, so a list value (the offer's row rules) goes as its JSON. The ODCS document
+    Provisa serves keeps ODCS's list."""
+    import json
+
+    from provisa.api.metadata_export.odps import offer_contract
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    snapshot = _build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    default = _offer(
+        snapshot, "default", "viewer", masks={"id": "regex"}, row_rules=("Only EU orders",)
+    )
+    snapshot.offers = {product.id: (default,)}
+    (contract,) = _data_contract_entities(snapshot)
+    (column,) = contract.body["schema"][0]["properties"]
+    assert column["customProperties"] == {"masked": "regex"}
+    assert {"property": "rowRules", "value": json.dumps(["Only EU orders"])} in contract.body[
+        "customProperties"
+    ]
+    (table,) = snapshot.tables
+    (served,) = offer_contract(snapshot, product, table, default)["schema"][0]["properties"]
+    assert served["customProperties"] == [{"property": "masked", "value": "regex"}]
 
 
 @pytest.mark.parametrize(

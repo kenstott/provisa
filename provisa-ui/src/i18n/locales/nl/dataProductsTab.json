@@ -210,7 +210,15 @@
         "check_removed": "Kwaliteitscontrole {{subject}} verwijderd",
         "check_changed": "Kwaliteitscontrole {{subject}} gewijzigd",
         "description_changed": "Beschrijving gewijzigd",
-        "terms_changed": "Voorwaarden gewijzigd: {{subject}}"
+        "terms_changed": "Voorwaarden gewijzigd: {{subject}}",
+        "field_masked": "Veld {{subject}} gemaskeerd ({{after}})",
+        "field_unmasked": "Veld {{subject}} niet meer gemaskeerd",
+        "row_rule_added": "Rijregel toegevoegd: {{subject}}",
+        "row_rule_removed": "Rijregel verwijderd: {{subject}}",
+        "data_level_changed": "Dataniveau gewijzigd van {{before}} naar {{after}}",
+        "dq_results_changed": "Kwaliteitsresultaten gewijzigd van {{before}} naar {{after}}",
+        "profiles_changed": "Profielen gewijzigd van {{before}} naar {{after}}",
+        "duration_changed": "Duur gewijzigd van {{before}} naar {{after}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "Rollen",
         "history": "Versiegeschiedenis"
       }
-    }
+    },
+    "detailPanel": "Detail van het dataproduct"
   }
 }

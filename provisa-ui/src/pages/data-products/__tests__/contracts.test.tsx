@@ -8,30 +8,78 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2158: each member's contract, its output port, read with the product's panel core: the panel
-// shows it, and the form edits it with the same fields. Only a changed contract is saved.
+// REQ-2158: a contract's ODCS document, as the panel shows it: each section a card, every element
+// declared, derived or not declared. REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: the contracts
+// are each offer's on each dataset, read from the offer's contract route when opened; none is
+// written by hand, so there is no contract editor.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useState } from "react";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
-import { coreContracts, type ProductCore } from "../productCore";
-import { ContractEditor } from "../ContractEditor";
-import { contractChanged, contractDraft } from "../contractDraft";
+import type { ProductCore } from "../productCore";
 import { lifecycleProps } from "./lifecycleProps";
 import type { DataProduct } from "../../../types/admin";
-import type { DataContractInput } from "../../../hooks/useDataProductMutations";
 import type { OdcsContract } from "../../../api/dataProductContracts";
+import type { Offer } from "../../../api/dataProductOffers";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/OntologyGraph", () => ({
   OntologySnippet: () => null,
 }));
-// REQ-2158: a contract row reads its port's contract when it opens.
-const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
+vi.mock("../../tables/ColumnGlossaryHover", () => ({
+  ColumnGlossaryHover: ({ children }: { children: unknown }) => children,
+}));
+// REQ-2180: a contract's document is read from its offer's route when it opens.
+const fetchProductContract =
+  vi.fn<(id: string, offer: string, member: string) => Promise<OdcsContract>>();
 vi.mock("../../../api/dataProductContracts", () => ({
-  fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchProductContract: (id: string, offer: string, member: string) =>
+    fetchProductContract(id, offer, member),
   fetchContractVersions: () => Promise.resolve([]),
+}));
+// The product's one offer, giving a contract on the daily revenue and none on the checker.
+const OFFER = {
+  id: 1,
+  product_id: "revenue",
+  name: "default",
+  role_id: "viewer",
+  data_level: "full",
+  sample_views: [],
+  dq_results: true,
+  profiles: false,
+  open: false,
+  duration_days: null,
+  version: 1,
+  published_by: null,
+  review: null,
+  created_at: "2026-10-01T00:00:00Z",
+  updated_at: "2026-10-01T00:00:00Z",
+  summary: { extension: null },
+  query_now: false,
+  contracts: [
+    {
+      table_id: 7,
+      table: "sales.daily_revenue",
+      contract: {
+        version: "2.0.0",
+        created_at: "2026-10-01T00:00:00Z",
+        versions: [],
+        terms: {
+          fields: [{ name: "day", type: "date", description: null, masked: null }],
+          row_rules: [],
+          data_level: "full",
+          sample_views: [],
+          checks: [],
+          dq_results: true,
+          profiles: [],
+          duration_days: null,
+        },
+      },
+    },
+  ],
+} as Offer;
+vi.mock("../../../api/dataProductOffers", () => ({
+  fetchOffers: () => Promise.resolve([OFFER]),
 }));
 
 const PRODUCT = {
@@ -44,15 +92,7 @@ const PRODUCT = {
   customProperties: {},
 } as unknown as DataProduct;
 
-const STORED = {
-  version: "2.0.0",
-  status: "active",
-  description: "Revenue by day",
-  terms: { usage: "Join on day", limitations: null, notice_period: "P3M" },
-  sla: [{ property: "availability", value: 99.9, unit: "%", description: null }],
-};
-
-function core(contract: unknown): ProductCore {
+function core(): ProductCore {
   return {
     product: PRODUCT,
     queries: { graphql: "", sql: "", jsonapi: "" },
@@ -65,7 +105,6 @@ function core(contract: unknown): ProductCore {
         tableName: "daily_revenue",
         description: null,
         dqContract: null,
-        contract,
       },
       // A checker the product owns: no contract, no output port.
       {
@@ -76,28 +115,15 @@ function core(contract: unknown): ProductCore {
         tableName: "revenue_checks",
         description: null,
         dqContract: "checks: []",
-        contract: null,
       },
     ],
   } as unknown as ProductCore;
 }
 
 describe("a product's contracts", () => {
-  it("are read from each member that has one, stored JSON or text", () => {
-    for (const stored of [STORED, JSON.stringify(STORED)]) {
-      const [c, ...rest] = coreContracts(core(stored));
-      expect(rest).toEqual([]);
-      expect(c.contractId).toBe("revenue/public.daily_revenue");
-      expect([c.version, c.status, c.terms.noticePeriod]).toEqual(["2.0.0", "active", "P3M"]);
-      // REQ-2158: a contract's schema is its member's columns; it selects none of its own.
-      expect(c).not.toHaveProperty("columns");
-    }
-  });
-
   it("open to the product's card panels, each section a card of its own", async () => {
     await opened(ODCS);
-    expect(screen.getByTestId("data-contract-version-7")).toHaveTextContent("v2.0.0");
-    expect(screen.getByTestId("data-contract-status-7")).toHaveTextContent("Active");
+    expect(screen.getByTestId("offer-1-contract-7-version")).toHaveTextContent("v2.0.0");
     const cards = ["details", "fields", "sla", "quality", "versions"];
     for (const card of [...cards, "support", "howToUse", "pricing", "custom"]) {
       expect(screen.getByTestId(`data-contract-7-${card}`)).toBeInTheDocument();
@@ -125,7 +151,7 @@ describe("a product's contracts", () => {
     );
     expect(screen.getByTestId("data-contract-7-custom")).toHaveTextContent("tagsfinance");
     // The checker has no contract, so no row.
-    expect(screen.queryByTestId("data-contract-item-8")).toBeNull();
+    expect(screen.queryByTestId("offer-1-contract-8-toggle")).toBeNull();
     expect(screen.queryByTestId("data-contract-8")).toBeNull();
     // The Columns card is one row per property; the SLA card each service level.
     expect(screen.getByTestId("data-contract-7-fields")).toHaveTextContent(
@@ -169,8 +195,7 @@ describe("a product's contracts", () => {
 
   it("say why one could not be read, in its row", async () => {
     fetchProductContract.mockRejectedValue(new Error("no such product"));
-    panel();
-    fireEvent.click(screen.getByTestId("data-contract-item-7-toggle"));
+    await openDocument();
     expect(await screen.findByTestId("data-contract-error-7")).toHaveTextContent("no such product");
   });
 });
@@ -235,20 +260,31 @@ const rowTexts = (testId: string) =>
     Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent),
   );
 
-/** The panel with its contract row opened, the contract served as ``odcs``. */
+/** The panel with its offer's contract on the daily revenue opened to its document. */
+async function openDocument() {
+  panel();
+  fireEvent.click(await screen.findByTestId("offer-card-1-toggle"));
+  fireEvent.click(await screen.findByTestId("offer-1-contract-7-toggle"));
+  fireEvent.click(await screen.findByTestId("offer-1-contract-7-document-toggle"));
+}
+
+/** The same, the contract served as ``odcs``. */
 async function opened(odcs: OdcsContract) {
   fetchProductContract.mockResolvedValue(odcs);
-  panel();
-  fireEvent.click(screen.getByTestId("data-contract-item-7-toggle"));
+  await openDocument();
   await screen.findByTestId("data-contract-7");
-  expect(fetchProductContract).toHaveBeenCalledWith("revenue", "wh.public.daily_revenue");
+  expect(fetchProductContract).toHaveBeenCalledWith(
+    "revenue",
+    "default",
+    "wh.public.daily_revenue",
+  );
 }
 
 function panel() {
   render(
     <DataProductDetailPanel
       p={PRODUCT}
-      core={core(STORED)}
+      core={core()}
       coreError={null}
       reader={null}
       canEdit={false}
@@ -258,55 +294,9 @@ function panel() {
       lineageLoading={false}
       lineageError=""
       lineageGraph={null}
-      contractsVersion={0}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
     />,
   );
 }
-
-function Editing({ onDraft }: { onDraft: (d: DataContractInput) => void }) {
-  const [contract] = coreContracts(core(STORED));
-  const [draft, setDraft] = useState(contractDraft(contract));
-  return (
-    <ContractEditor
-      contract={contract}
-      draft={draft}
-      onChange={(d) => {
-        setDraft(d);
-        onDraft(d);
-      }}
-    />
-  );
-}
-
-describe("a contract's editor", () => {
-  it("leaves an unedited contract unchanged, so it is not saved", () => {
-    const [contract] = coreContracts(core(STORED));
-    expect(contractChanged(contract, contractDraft(contract))).toBe(false);
-    expect(contractChanged(contract, { ...contractDraft(contract), version: "3.0.0" })).toBe(true);
-  });
-
-  it("edits the version and offers no column selection", () => {
-    const drafts: DataContractInput[] = [];
-    render(<Editing onDraft={(d) => drafts.push(d)} />);
-    fireEvent.change(screen.getByTestId("data-contract-version-input-7"), {
-      target: { value: "3.0.0" },
-    });
-    const last = drafts[drafts.length - 1];
-    expect(last.version).toBe("3.0.0");
-    expect(last).not.toHaveProperty("columns");
-    expect(screen.queryByTestId("data-contract-columns-input-7")).toBeNull();
-    expect(screen.queryByTestId("data-contract-required-input-7")).toBeNull();
-  });
-
-  it("adds and removes a service level", () => {
-    const drafts: DataContractInput[] = [];
-    render(<Editing onDraft={(d) => drafts.push(d)} />);
-    fireEvent.click(screen.getByTestId("data-contract-sla-add-7"));
-    expect(drafts[drafts.length - 1].sla).toHaveLength(2);
-    fireEvent.click(screen.getByTestId("data-contract-sla-remove-7-0"));
-    expect(drafts[drafts.length - 1].sla.map((s) => s.property)).toEqual([""]);
-  });
-});

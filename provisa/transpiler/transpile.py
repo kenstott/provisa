@@ -779,8 +779,9 @@ def _row_delimited_string_agg(tree: exp.Expr) -> exp.Expr:  # REQ-2167
 
 #: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number
 #: of arguments, and whether PostgreSQL reads a number in it as POSIX does (west of UTC) or as a
-#: numeric zone (make_timestamptz's, ISO 8601's: east).
-_ZONE_ARGUMENTS = {"timezone": (0, 2, True), "make_timestamptz": (6, 7, False)}
+#: numeric zone (make_timestamptz's, ISO 8601's: east). timezone()'s zone is the polyfill grid's
+#: row (provisa.transpiler.polyfill.zones).
+_ZONE_ARGUMENTS = {"make_timestamptz": (6, 7, False)}
 
 
 def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167

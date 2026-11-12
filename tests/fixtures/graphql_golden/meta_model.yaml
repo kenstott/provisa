@@ -10213,10 +10213,6 @@ tables:
     data_type: timestamp
     visible_to:
     - viewer
-  - name: contract
-    data_type: text
-    visible_to:
-    - viewer
   - name: description
     data_type: text
     visible_to:

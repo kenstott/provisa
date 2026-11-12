@@ -26,6 +26,11 @@ export function lifecycleProps() {
     onStatusFailed: vi.fn(),
     openProduct: vi.fn(),
     onTagsChanged: vi.fn(),
-    statusActions: { publish: vi.fn(ok), deprecate: vi.fn(ok), retire: vi.fn(ok), restore: vi.fn(ok) },
+    statusActions: {
+      publish: vi.fn(ok),
+      deprecate: vi.fn(ok),
+      retire: vi.fn(ok),
+      restore: vi.fn(ok),
+    },
   };
 }

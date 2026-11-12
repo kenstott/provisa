@@ -197,6 +197,33 @@ class _RelJoinMixin:  # mixin for _Translator
         if rel_var and rm.via is not None:
             self._rel_var_via[rel_var] = (via_alias_for(rm, rel_var), rm.via)
 
+    def _type_mappings(
+        self, rel: "RelPattern", rel_type: str, src_named: "str | None", tgt_named: "str | None"
+    ) -> "list[RelationshipMapping]":
+        """The mappings of ``rel_type`` the hop ``rel`` may read between ends naming the tables
+        ``src_named`` / ``tgt_named`` (None for a free end), read the way the pattern runs
+        (REQ-2135): an end lands on a parameterized table only where it names it (end_reads)."""
+        mappings = self._lm.aliases.get(rel_type) or [
+            m for m in (self._lm.relationships.get(rel_type),) if m is not None
+        ]
+        ways = (False, True) if rel.direction == "none" else (rel.direction == "left",)
+        return [
+            m
+            for m in mappings
+            if any(
+                self._lm.end_reads(first, src_named) and self._lm.end_reads(last, tgt_named)
+                for first, last in (
+                    (m.target_label, m.source_label) if back else (m.source_label, m.target_label)
+                    for back in ways
+                )
+            )
+        ]
+
+    def _end_named(self, node: "NodePattern | None") -> "str | None":
+        """The table a pattern's end names, by its label or its binding; None for a free end."""
+        nm = self._named_type(node) if node is not None else None
+        return nm.type_name if nm is not None else None
+
     def _resolve_early_rel_mapping(
         self,
         rel: "RelPattern",
@@ -204,13 +231,15 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_node: "NodePattern | None" = None,
     ) -> "RelationshipMapping | None":
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
-        if not rel.types:
-            return None
-        _rt_early = rel.types[0]
-        _early_matches = self._lm.aliases.get(_rt_early, [])
-        if not _early_matches:
-            _rm_early = self._lm.relationships.get(_rt_early)
-            _early_matches = [_rm_early] if _rm_early else []
+        src_named, tgt_named = self._end_named(src_node), self._end_named(tgt_node)
+        _early_matches = next(
+            (
+                found
+                for rel_type in rel.types
+                if (found := self._type_mappings(rel, rel_type, src_named, tgt_named))
+            ),
+            [],
+        )
         if any(m.directed for m in _early_matches):
             # REQ-2176: a stored edge is read along its direction, so the end it infers is the
             # one across from a node the pattern names (_is_bwd_for_candidate); an undirected
@@ -232,7 +261,12 @@ class _RelJoinMixin:  # mixin for _Translator
         # read backward; undirected, either.
         forward = (src_nm is not None) == (rel.direction != "left")
         ways = (True, False) if rel.direction == "none" else (forward,)
-        mappings = self._lm.aliases.get(rel.types[0], [])
+        mappings = self._type_mappings(
+            rel,
+            rel.types[0],
+            src_nm.type_name if src_nm is not None else None,
+            tgt_nm.type_name if tgt_nm is not None else None,
+        )
         far = {
             (m.target_label if way else m.source_label)
             for m in mappings
@@ -253,7 +287,7 @@ class _RelJoinMixin:  # mixin for _Translator
         for node in (src_node, tgt_node):
             if node.variable and self._var_table.get(node.variable, (None, None))[1] is not None:
                 return False
-        mappings = self._lm.aliases.get(rel.types[0], [])
+        mappings = self._type_mappings(rel, rel.types[0], None, None)
         return any(m.directed for m in mappings)
 
     def _either_end_of_unnamed_ends(
@@ -272,10 +306,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 or self._domain_nodes.get(node.variable, "__all__") != "__all__"
             ):
                 return False
-        rel_type = rel.types[0]
-        mappings = self._lm.aliases.get(rel_type) or [
-            m for m in (self._lm.relationships.get(rel_type),) if m is not None
-        ]
+        mappings = self._type_mappings(rel, rel.types[0], None, None)
         return any(m.source_label != m.target_label for m in mappings)
 
     def _directed_from(
@@ -429,11 +460,12 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_nm_explicit: bool,
     ) -> "list[tuple]":
         """Resolve relationship candidates for a typed relationship."""
-        rel_type = rel.types[0]
-        alias_matches = self._lm.aliases.get(rel_type, [])
-        if not alias_matches:
-            rm = self._lm.relationships.get(rel_type)
-            alias_matches = [rm] if rm else []
+        alias_matches = self._type_mappings(
+            rel,
+            rel.types[0],
+            src_nm.type_name if src_nm is not None and src_nm_explicit else None,
+            tgt_nm.type_name if tgt_nm is not None and tgt_nm_explicit else None,
+        )
         # Filter to exact src/tgt match when multiple aliases share the same rel type
         if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
             fwd_exact = [
@@ -911,13 +943,16 @@ class _RelJoinMixin:  # mixin for _Translator
                 from_expr = every_rel_hop(explicit_src, explicit_tgt)
             elif rel_mapping is None:
                 # An endpoint's own label holds: (n:Inquiries)-[r]->(m) reads only the
-                # relationships from Inquiries, never every relationship of the model.
+                # relationships from Inquiries, never every relationship of the model. A type
+                # none of whose mappings an end may read (only on parameterized tables no label
+                # names, REQ-2135) holds too: the hop matches nothing.
                 from_expr = self._handle_unlabeled_rel_pattern(
                     src_var,
                     rel.variable,
                     tgt_var,
                     src_type=explicit_src.type_name if explicit_src is not None else None,
                     tgt_type=explicit_tgt.type_name if explicit_tgt is not None else None,
+                    rel_type=rel.types[0] if rel.types else None,
                     direction=rel.direction,
                 )
             return from_expr, joins, True
@@ -1310,7 +1345,7 @@ class _RelJoinMixin:  # mixin for _Translator
                 if did_continue:
                     continue
                 # Capture rel_mapping and tgt_nm for path var registration below
-                rel_mapping = self._resolve_early_rel_mapping(rel)
+                rel_mapping = self._resolve_early_rel_mapping(rel, nodes[i], nodes[i + 1])
                 tgt_var = nodes[i + 1].variable
                 tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
 

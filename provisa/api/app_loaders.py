@@ -538,6 +538,12 @@ async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-1
     await _build_source_pools_and_enums(config)
     await _resolve_pk_from_sources()
     await _rebuild_schemas()
+    # REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): the glossary terms the configuration declared,
+    # approved, retired or redefined are embedded in the background.
+    from provisa.api.admin.glossary_router import embed_terms
+    from provisa.core.request_context import require_current_org
+
+    await embed_terms(require_current_org())
 
 
 async def _load_openapi_specs() -> None:
