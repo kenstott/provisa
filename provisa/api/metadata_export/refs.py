@@ -211,7 +211,9 @@ class TableIndex:
     neither, and the build refuses rather than picking one.
     """
 
-    def __init__(self, tables: list[Table]) -> None:
+    def __init__(self, tables: list[Table], seeded: frozenset[str] = frozenset()) -> None:
+        # REQ-1634: the names of the seeded tables the store holds and ``tables`` leaves out.
+        self._seeded = seeded
         self._by_bare: dict[str, list[Table]] = {}
         self._by_qualified: dict[str, Table] = {}
         for table in tables:
@@ -233,3 +235,11 @@ class TableIndex:
                 name, [".".join(table_ref(t).parts) for t in matches], context
             )
         return matches[0]
+
+    def resolve_published(self, name: str, context: str) -> Table | None:
+        """``resolve``, except a name that identifies a seeded table answers None: a seeded table
+        stays out of the export model and publishes nowhere (REQ-1634), so what names it has
+        nothing to anchor to. Any other name no table answers is refused, as ``resolve`` does."""
+        if name in self._seeded and name not in self._by_qualified and name not in self._by_bare:
+            return None
+        return self.resolve(name, context)

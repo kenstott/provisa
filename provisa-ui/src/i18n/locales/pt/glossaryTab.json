@@ -10,6 +10,8 @@
     "newTermHint": "Um conceito é uma ideia de negócio que ainda não nomeia nenhuma coluna ou tabela. Ligue-o a outros termos com relações.",
     "nameLabel": "Nome",
     "definitionLabel": "Definição",
+    "calculationMethodLabel": "Método de cálculo",
+    "calculationMethodPlaceholder": "Como é calculado, em termos de negócio",
     "domainsLabel": "Domínios",
     "domainsHint": "Um conceito não tem colunas das quais derivar seus domínios, então nomeie-os aqui. Quem alcançar qualquer um deles pode ler e curar o termo.",
     "rename": "Renomear",

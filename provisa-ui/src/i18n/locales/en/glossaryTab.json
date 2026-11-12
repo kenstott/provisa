@@ -10,6 +10,8 @@
     "newTermHint": "A concept is a business idea that names no column or table yet. Link it to other terms with relationships.",
     "nameLabel": "Name",
     "definitionLabel": "Definition",
+    "calculationMethodLabel": "Calculation method",
+    "calculationMethodPlaceholder": "How it is computed, in business terms",
     "domainsLabel": "Domains",
     "domainsHint": "A concept has no columns to derive its domains from, so name them here. Whoever reaches any one of them may read and curate the term.",
     "rename": "Rename",

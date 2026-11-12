@@ -323,9 +323,19 @@ def _relationship_edges(
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
         context = f"relationship {rel.id!r}"
-        source = index.resolve(rel.source_table_id, context)
+        source = index.resolve_published(rel.source_table_id, context)
         # A computed (function-target) relationship has no target table by design (REQ-019).
-        target = index.resolve(rel.target_table_id, context) if rel.target_table_id else None
+        target = (
+            index.resolve_published(rel.target_table_id, context) if rel.target_table_id else None
+        )
+        via = index.resolve_published(rel.via_table, context) if rel.via_table else None
+        # REQ-1634: an edge with a seeded table at either end, or through one, is not published.
+        if (
+            source is None
+            or (rel.target_table_id and target is None)
+            or (rel.via_table and via is None)
+        ):
+            continue
         edges.append(
             RelationshipEdge(
                 id=rel.id,
@@ -346,13 +356,13 @@ def _relationship_edges(
                 kind=rel.kind,
                 via=(
                     JunctionRef(
-                        table=table_ref(index.resolve(rel.via_table, context)),
+                        table=table_ref(via),
                         source_column=rel.via_source_column,
                         target_column=rel.via_target_column,
                         type_column=rel.via_type_column,
                         type_value=rel.via_type_value,
                     )
-                    if rel.via_table
+                    if via is not None
                     else None
                 ),
             )
@@ -412,10 +422,12 @@ def _lineage_edges(
             for upstream_node, transforms in _upstream_sources(graph, output_id):
                 if upstream_node.relation is None:
                     raise UnqualifiedLineageError(table.table_name, output.column, upstream_node.id)
-                upstream_table = index.resolve(
+                upstream_table = index.resolve_published(
                     upstream_node.relation,
                     f"view {table.table_name!r} column {output.column!r}",
                 )
+                if upstream_table is None:  # REQ-1634: a seeded table publishes nowhere
+                    continue
                 edges.append(
                     LineageEdge(
                         upstream=column_ref(upstream_table, upstream_node.column),
@@ -817,6 +829,7 @@ def _grounded_terms(
                 paths=tuple(tuple(path) for path in agent_paths(view, roots, term_id)),
                 iri=term.get("iri") if named else None,
                 statements=kept.get(term_id, ()) if named else (),
+                calculation_method=term["calculation_method"] if named else None,  # REQ-2243
             )
         )
     edges = [GlossaryTermEdge(from_term_id=a, to_term_id=b, rel_type=r) for a, b, r in view.edges]
@@ -873,7 +886,7 @@ def build_snapshot(
         uri_org_id = org_id
     # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
     # across the full config stays refused, whether or not both candidates publish.
-    index = TableIndex(config.tables)
+    index = TableIndex(config.tables, config.seeded_table_names)
     # The Data Product checkbox is the export filter: only marked tables publish, and every
     # edge or tag touching an unmarked table is withheld with it — a dangling edge would hand
     # the catalog a reference to an asset it was never sent, and name the table the admin

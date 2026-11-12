@@ -10,7 +10,7 @@
 
 import { Gauge } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -24,7 +24,16 @@ import {
   TextInput,
 } from "@mantine/core";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
-import { useMetrics, useTables, useUpsertMetric, useDeleteMetric } from "../hooks/useAdminQueries";
+import {
+  useMetrics,
+  useTables,
+  useUpsertMetric,
+  useDeleteMetric,
+  useDeleteMetrics,
+} from "../hooks/useAdminQueries";
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
+
 import type { Metric, ListedTable } from "../types/admin";
 import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
@@ -35,6 +44,7 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
+import { listGlossaryTerms } from "../api/glossary";
 
 interface MetricForm {
   name: string;
@@ -42,6 +52,8 @@ interface MetricForm {
   datatype: string;
   description: string;
   aiContext: string;
+  /** REQ-2243: the glossary term the metric names. */
+  term: string | null;
 }
 
 const EMPTY_FORM: MetricForm = {
@@ -50,6 +62,7 @@ const EMPTY_FORM: MetricForm = {
   datatype: "",
   description: "",
   aiContext: "",
+  term: null,
 };
 
 // The expression-builder shape: AGG(fact.column). A hand-edited expression that
@@ -81,6 +94,8 @@ interface MetricFormCardProps {
   builder: BuilderState;
   applyBuilder: (next: BuilderState) => void;
   factTables: ListedTable[];
+  /** REQ-2243: the glossary terms a metric may name. */
+  termNames: string[];
   saving: boolean;
   msg: string;
   onSave: () => void;
@@ -96,6 +111,7 @@ function MetricFormCard({
   builder,
   applyBuilder,
   factTables,
+  termNames,
   saving,
   msg,
   onSave,
@@ -206,6 +222,18 @@ function MetricFormCard({
               data-testid="metric-ai-context-input"
             />
           </FormField>
+          {/* REQ-2243: the term whose definition and calculation method the metric carries. */}
+          <FormField size="medium" hint={t("metricsPage.fieldTermHint")}>
+            <Select
+              label={t("metricsPage.fieldTerm")}
+              value={form.term}
+              onChange={(term) => setForm((f) => ({ ...f, term }))}
+              data={termNames}
+              clearable
+              searchable
+              data-testid="metric-term-input"
+            />
+          </FormField>
         </>
       )}
       <FormFooter
@@ -244,6 +272,18 @@ export function MetricsPage() {
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
+  // REQ-2243: the glossary terms a metric may name, for the editor's term picker.
+  const [termNames, setTermNames] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    listGlossaryTerms("", false).then(
+      (terms) => live && setTermNames(terms.map((term) => term.name)),
+      (e: Error) => live && setMsg(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // REQ-1320: facts are the metric sources — the builder's source picker.
   const factTables = tables.filter((tbl) => tbl.modelingRole === "fact");
@@ -271,6 +311,7 @@ export function MetricsPage() {
       datatype: m.datatype ?? "",
       description: m.description ?? "",
       aiContext: m.aiContext ?? "",
+      term: m.term,
     });
     const match = BUILDER_EXPR_RE.exec(m.expression);
     setBuilder(
@@ -311,6 +352,7 @@ export function MetricsPage() {
         datatype: form.datatype.trim() || null,
         description: form.description.trim() || null,
         aiContext: form.aiContext.trim() || null,
+        term: form.term,
       },
       // The new-metric form creates; a metric's own detail updates it.
       creating,
@@ -345,6 +387,7 @@ export function MetricsPage() {
       builder={builder}
       applyBuilder={applyBuilder}
       factTables={factTables}
+      termNames={termNames}
       saving={saving}
       msg={msg}
       onSave={handleSave}
@@ -377,6 +420,10 @@ export function MetricsPage() {
     [t],
   );
   const sortGroup = useListSortGroup(metrics, metricColumns, "metrics");
+  // REQ-2240: metrics selected and deleted together.
+  const shownMetricNames = useMemo(() => metrics.map((m) => m.name), [metrics]);
+  const selection = useListSelection(shownMetricNames);
+  const deleteMetrics = useDeleteMetrics();
 
   // The right-hand panel: the form that creates a metric while it is open, otherwise the selected
   // metric -- its detail, or the form that edits it. Nothing selected: no panel.
@@ -466,82 +513,90 @@ export function MetricsPage() {
             backToList: t("tablesPage.backToList"),
           }}
           list={
-            <ListTable testId="metrics-table">
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  { col: "name" },
-                  { col: "expression" },
-                  { col: "datatype" },
-                  { col: "description" },
-                  { col: "aiContext" },
-                ]}
+            <>
+              <ListBulkBar
+                selection={selection}
+                nameOf={(name) => name}
+                onDelete={deleteMetrics}
+                testId="metrics-bulk"
               />
-              <Table.Tbody>
-                {metrics.length === 0 && (
-                  <ListEmpty colSpan={5} testId="metrics-empty">
-                    {t("metricsPage.empty")}
-                  </ListEmpty>
-                )}
-                <ListItems
-                  state={sortGroup}
-                  colSpan={5}
-                  rowKey={(m) => m.name}
-                  render={(m) => {
-                    const isExpanded = expanded === m.name;
-                    return (
-                      <React.Fragment key={m.name}>
-                        <ListRow
-                          testId={`metrics-row-${m.name}`}
-                          // The row whose detail the right-hand panel is showing.
-                          selected={isExpanded}
-                          onClick={() => {
-                            // The row opens its detail in the panel, swaps it, or closes it.
-                            setExpanded(isExpanded ? null : m.name);
-                            closeForm();
-                          }}
-                        >
-                          <Table.Td>
-                            <Group gap="0.35rem" wrap="nowrap">
-                              <Text size="sm" fw={600} ff="monospace">
-                                {m.name}
-                              </Text>
-                              {m.fromFact && (
-                                <Badge
-                                  size="xs"
-                                  variant="light"
-                                  data-testid={`metrics-from-fact-${m.name}`}
-                                >
-                                  {t("metricsPage.fromFact")}
-                                </Badge>
-                              )}
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" ff="monospace" style={{ whiteSpace: "pre-wrap" }}>
-                              {m.expression}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" ff="monospace">
-                              {m.datatype ?? ""}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs">{m.description ?? ""}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" c="var(--text-muted)">
-                              {m.aiContext ?? ""}
-                            </Text>
-                          </Table.Td>
-                        </ListRow>
-                      </React.Fragment>
-                    );
-                  }}
+              <ListTable testId="metrics-table" selection={selection}>
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    { col: "name" },
+                    { col: "expression" },
+                    { col: "datatype" },
+                    { col: "description" },
+                    { col: "aiContext" },
+                  ]}
                 />
-              </Table.Tbody>
-            </ListTable>
+                <Table.Tbody>
+                  {metrics.length === 0 && (
+                    <ListEmpty colSpan={5} testId="metrics-empty">
+                      {t("metricsPage.empty")}
+                    </ListEmpty>
+                  )}
+                  <ListItems
+                    state={sortGroup}
+                    colSpan={5}
+                    rowKey={(m) => m.name}
+                    render={(m) => {
+                      const isExpanded = expanded === m.name;
+                      return (
+                        <React.Fragment key={m.name}>
+                          <ListRow
+                            testId={`metrics-row-${m.name}`}
+                            // The row whose detail the right-hand panel is showing.
+                            selected={isExpanded}
+                            onClick={() => {
+                              // The row opens its detail in the panel, swaps it, or closes it.
+                              setExpanded(isExpanded ? null : m.name);
+                              closeForm();
+                            }}
+                          >
+                            <Table.Td>
+                              <Group gap="0.35rem" wrap="nowrap">
+                                <Text size="sm" fw={600} ff="monospace">
+                                  {m.name}
+                                </Text>
+                                {m.fromFact && (
+                                  <Badge
+                                    size="xs"
+                                    variant="light"
+                                    data-testid={`metrics-from-fact-${m.name}`}
+                                  >
+                                    {t("metricsPage.fromFact")}
+                                  </Badge>
+                                )}
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" ff="monospace" style={{ whiteSpace: "pre-wrap" }}>
+                                {m.expression}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" ff="monospace">
+                                {m.datatype ?? ""}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs">{m.description ?? ""}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" c="var(--text-muted)">
+                                {m.aiContext ?? ""}
+                              </Text>
+                            </Table.Td>
+                          </ListRow>
+                        </React.Fragment>
+                      );
+                    }}
+                  />
+                </Table.Tbody>
+              </ListTable>
+            </>
           }
         >
           {panelBody}

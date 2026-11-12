@@ -27,7 +27,9 @@ import {
   RetireDataProduct,
   RestoreDataProduct,
   DataProductFindingsQuery,
+  DeleteDataProducts,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 
 // REQ-1660: mirrors the DataProductInput GraphQL input type field-for-field.
 export interface DataProductInput {
@@ -188,4 +190,12 @@ export function useDataProductFindings() {
     [data],
   );
   return { findings, refetch, error };
+}
+
+/** REQ-2240: several data products deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDataProducts() {
+  return useBulkDelete(DeleteDataProducts, "deleteDataProducts", "ids", [
+    { query: DATA_PRODUCTS_QUERY },
+  ]);
 }

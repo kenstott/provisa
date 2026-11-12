@@ -1028,6 +1028,22 @@ main {
   background-color: var(--border);
   background-image: none;
 }
+/* REQ-2240: a list's selection column (ListTable `selection`): as narrow as its box. A press in
+ * the cell around the box is the box's, never the row's. */
+.data-table .list-select {
+  width: 1%;
+  white-space: nowrap;
+  padding-inline-end: 0;
+  cursor: default;
+}
+/* REQ-2240: the bar shown once rows are selected: the count, Delete and Clear. */
+.list-bulk-bar {
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
 /* REQ-1940: expanded-row content for lists whose detail is simple fields. */
 .list-detail {
   padding: 0.75rem 1rem;

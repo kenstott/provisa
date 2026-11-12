@@ -26,7 +26,7 @@ from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 # The base tables the glossary and tag views read, with exactly the columns they select.
 _BASE_DDL = """
 CREATE TABLE glossary_terms (
-    id TEXT PRIMARY KEY, name TEXT, definition TEXT, is_abstract BOOLEAN,
+    id TEXT PRIMARY KEY, name TEXT, definition TEXT, calculation_method TEXT, is_abstract BOOLEAN,
     deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN,
     approved BOOLEAN NOT NULL DEFAULT 0,
     deprecation_asserted BOOLEAN NOT NULL DEFAULT 0, status_reason TEXT, retire_on TEXT,

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
@@ -37,6 +37,7 @@ import {
   useRoles,
   useCreateDomain,
   useDeleteDomain,
+  useDeleteDomains,
 } from "../hooks/useAdminQueries";
 import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
@@ -87,6 +88,8 @@ import { useListSortGroup, pageItems, type ListColumn } from "../components/list
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { assignableDomainIds } from "../lib/internalDomains";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
   "/admin/overview": "Dashboard",
@@ -245,6 +248,10 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
+  // REQ-2240: domains selected and deleted together.
+  const shownDomainIds = useMemo(() => userDomains.map((d) => d.id), [userDomains]);
+  const selection = useListSelection(shownDomainIds);
+  const deleteDomains = useDeleteDomains();
   // `?domain=<id>` (a graph's or a refused delete's link, detailHref): that domain's row is
   // marked, on the page that holds it, and brought into view.
   const linkedDomain = useDetailParam("domains").id;
@@ -467,7 +474,13 @@ export function AdminPage() {
                 const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
                 return (
                   <Stack gap="sm">
-                    <ListTable minWidth={480} testId="domains-list">
+                    <ListBulkBar
+                      selection={selection}
+                      nameOf={(id) => id}
+                      onDelete={deleteDomains}
+                      testId="domains-bulk"
+                    />
+                    <ListTable minWidth={480} testId="domains-list" selection={selection}>
                       <ListHead
                         sortGroup={domainSortGroup}
                         columns={[

@@ -21,6 +21,7 @@ import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useDeleteDataProducts,
   useSetDataProductMembers,
   useSaveDataContract,
   type DataContractInput,
@@ -67,6 +68,8 @@ import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
 // REQ-2146: the list narrowed to the products with findings, remembered.
 const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
@@ -463,6 +466,10 @@ export function DataProductsPage() {
     [t],
   );
   const sortGroup = useListSortGroup(filteredProducts, productColumns, "data-products");
+  // REQ-2240: data products selected and deleted together.
+  const shownProductIds = useMemo(() => filteredProducts.map((p) => p.id), [filteredProducts]);
+  const selection = useListSelection(shownProductIds);
+  const deleteDataProducts = useDeleteDataProducts();
 
   return (
     <div
@@ -539,7 +546,13 @@ export function DataProductsPage() {
         }
         return (
           <DeletingRows host={productDeleting}>
-            <ListTable testId="data-products-table">
+            <ListBulkBar
+              selection={selection}
+              nameOf={(id) => id}
+              onDelete={deleteDataProducts}
+              testId="data-products-bulk"
+            />
+            <ListTable testId="data-products-table" selection={selection}>
               <ListHead
                 sortGroup={sortGroup}
                 columns={[

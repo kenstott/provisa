@@ -88155,7 +88155,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
     Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
     Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
-    managed, so a term is made a Class or a Property in one place.'
+    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-12, THE TERM PAGE SAYS
+    GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
+    way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
+    in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
+    the same list Columns.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -88991,22 +88995,45 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: >-
-    The Ontology View reads, on the server, the graph it draws, and the query it reads is the one
-    Open as query exports. The page's search is the query's root filter: the terms whose name or
-    definition holds any of its items (a quoted phrase is one item), whatever the case, the items'
-    own wildcards taken literally. Each match is read with its neighbourhood, the same rule the view
-    draws by: what lies within two hops of a match along any edge drawn, both ways, a product or a
-    domain drawn where it is reached and never passed through, and a table passed through only when
-    entered as a product's member. The neighbourhood is one stated rule that the view's drawing and
-    the query share; the query reads each hop as a nested level of the terms an edge reaches, the
-    last level with its edges' ends alone, so it reads nothing past the neighbourhood. A search
-    therefore never stops a graph being opened as a query. Before it reads the graph the view counts
-    the terms its query would read at its root, by id; past a budget of 500 the graph is not read.
-    With no search and no domain chosen the view then draws its overview, each domain with the
-    number of terms in it, and picking a domain narrows the view to it; a search or a domain still
-    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn.
-    The product graph and lineage follow the same pattern later.
+  description: 'The Ontology View reads, on the server, the graph it draws, and the query it reads is the
+    one Open as query exports. The page''s search is the query''s root filter: the terms whose name or definition
+    holds any of its items (a quoted phrase is one item), whatever the case, the items'' own wildcards taken
+    literally. Each match is read with its neighbourhood, the same rule the view draws by: what lies within
+    two hops of a match along any edge drawn, both ways, a product or a domain drawn where it is reached
+    and never passed through, and a table passed through only when entered as a product''s member. The neighbourhood
+    is one stated rule that the view''s drawing and the query share; the query reads each hop as a nested
+    level of the terms an edge reaches, the last level with its edges'' ends alone, so it reads nothing
+    past the neighbourhood. A search therefore never stops a graph being opened as a query. Before it reads
+    the graph the view counts the terms its query would read at its root, by id; past a budget of 500 the
+    graph is not read. With no search and no domain chosen the view then draws its overview, each domain
+    with the number of terms in it, and picking a domain narrows the view to it; a search or a domain still
+    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn. The product
+    graph and lineage follow the same pattern later. [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE WEB-SEARCH
+    SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there is no + mark.
+    Kept here for history; do not implement against it.] (Amended 2026-11-12, A PLUS MARKS A REQUIRED ITEM:)
+    Maintainer 2026-11-12: in every page search (the one rule the page filters, the term list and the Ontology
+    View share), an item written with a leading + is required, and an item without one is one of the at-least-one-of
+    items: a row is kept when it holds every + item and, if there are items without a +, at least one of
+    them. So red +blue green keeps what holds blue and either red or green; +red +blue keeps what holds
+    both; red green keeps what holds either, as before. A + goes before a word or before a quoted phrase.
+    The search field''s hint says so. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE
+    WEB-SEARCH SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there
+    is no + mark. Kept here for history; do not implement against it.] (Amended 2026-11-12, A MINUS MARKS
+    AN ITEM THAT MUST NOT MATCH:) Maintainer 2026-11-12: beside +, an item written with a leading - must
+    not be found: a row is kept when it holds every + item, holds no - item, and, if there are items with
+    neither mark, holds at least one of them. So +red -blue green keeps what holds red, does not hold blue,
+    and holds green. A mark counts only at the start of an item, before a word or a quoted phrase: the hyphen
+    inside pet-store is part of the word. Text that itself begins with + or - is searched by putting it
+    in quotes. [END SUPERSEDED BLOCK] (Amended 2026-11-12, PAGE SEARCH USES THE WEB-SEARCH SYNTAX:) Maintainer
+    2026-11-12: every page search (the one rule the page filters, the term list and the Ontology View share)
+    reads the syntax people type into a web search, the same one the data search takes (REQ-2213): items
+    separated by spaces are all required; the word or between two items means either; an item with a leading
+    - must not be found; a phrase in double quotes is one item. or binds tighter than a space: blue red
+    or green keeps what holds blue and either red or green. So red blue keeps what holds both, where before
+    it kept what held either; red or blue keeps either; red green -blue keeps what holds red and green and
+    not blue. A - counts only at the start of an item (the hyphen in pet-store is part of the word); the
+    word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
+    search field''s hint says so.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -91130,79 +91157,91 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     BLOCK] The separate term graph and product graph implementations are replaced by these presets. (Amended
     2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
     1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
-    page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
-    with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
-    one graph has optional layers for a product''s commands, its quality checks, links to other products
-    and product lineage, off by default in snippets and available in the full view. (Amended 2026-10-28,
-    EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows term edges (the term page''s term graph,
-    the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding
-    under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term''s
-    binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and
-    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.
-    (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING LABELS HIDE:) Maintainer 2026-10-29 (labels too
-    small; the 3D graph not round): a label never shrinks below a readable size (11.5px) and grows with
-    zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
-    in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
-    layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
-    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
-    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
-    between 9px and 10px, replacing 11.5px and 20px. (Amended 2026-10-29, A VIEW OPENS IN FORCE:) Maintainer
-    2026-10-31: a view opens in force, unless its preset names its own layout or the reader has saved a
-    choice. Taxonomy keeps its top-down tree (REQ-2130). Layered stays disabled where a cycle makes it impossible.
-    This replaces opening layered when the drawn edges are of one class and form no cycle. (Amended 2026-11-05,
-    ONE GRAPH, RULES PER PRESET:) The one ontology graph is one component whose presets carry their own
-    rules. The Ontology preset, and the Ontology page, follow REQ-2130 (amended 2026-10-29): only what a
-    shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is
-    drawn. The Product map preset and the product panels'' snippets keep the product layers (commands, quality,
-    product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables
-    relationship layer is not offered in the Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:)
-    The graph''s columns are Products, Tables, Columns and Terms, and a hop is one step across them, counted
-    from the focus item alone (a product''s count no longer also starts from its member tables). The hop
-    control is labelled with its focus, ''Hops from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their
-    columns, 3 the terms those columns are tied to, 4 other columns tied to the same terms. A ''Related
-    tables'' checkbox draws the tables directly related to the drawn tables by relationships, named on the
-    link, and the products those tables belong to; it follows one step only, never a related table''s own
-    columns, terms or relationships. The Terms, Domains and Tags filters stay; the filter of term-to-term
-    link types is named ''Term relationships''. A product''s panel opens at 1 hop with Related tables on,
-    matching its Related Tables card; the full graph opens at 2 hops with Related tables off. A table''s
-    columns not tied to a term shown fold into one node labelled ''N columns with no term in this view''.
-    Reset view folds every table back as well as resetting the camera. The 2D view is the simple one: Product,
-    its tables, their columns and the terms those columns are tied to, left to right, with the links between
-    terms (filtered by Term relationships), and nothing else -- no related tables and no lineage. Its hop
-    control, ''Hops from <product>'', counts along that path: 1 the product''s tables, 2 their columns,
-    3 the terms those columns are tied to, and each hop beyond 3 one more step through term-to-term links;
-    a table''s columns not tied to a term fold into one node. Hops, Related tables, Term relationships and
-    every other layer belong to the 3D view, where table relationships and term relationships are told apart
-    by more than colour (a table link solid and named by the relationship, a term link dashed and named
-    by its type). The graph''s Lineage layer is named ''Inputs'' and shows where the product comes from,
-    never who consumes it: the graph is read by a consumer or prospective consumer. Each input links to
-    the member table that reads it (not to the product), an input that is another product''s member stands
-    for that product, and column lineage stays on unfolded tables. A product page''s Lineage panel is titled
-    ''Column lineage: where this product comes from'', its lanes named Inputs and This product''s tables
-    (Upstream hop n beyond the inputs), with no downstream lanes; its hint states what it draws (each published
-    column and the input column it comes from), and the Input Ports card links to it. A product''s Consumers
-    card is shown only to those who own the product: a session acting as the product''s owner_role, or holding
-    data_product_rw with entitlements (REQ-2219) that reach that product, which its creator holds from creation;
-    no one else sees it (maintainer 2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE
-    IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
-    is not drawn as its own box: the input''s column links straight to the table''s column, and the link
-    names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
-    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
-    2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
-    on that product alone, its member tables, their columns and the terms grounded on them, with a control
-    that shows the rest of the model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding
-    a term opens on that term alone, as a product does. Kept here for history; do not implement against
-    it.] Expanding a term still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK]
-    (Amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s
-    term lane, sibling terms (Dog and Cat under Pet) are not drawn side by side, where their edges leave
-    from different positions and cross regardless of order; each term takes its own row, and the rank lines
-    that join a term to its parent run beside the lane, not through its rows, so each lane can be ordered
-    freely to minimise crossings. On the Pet Health graph the diagram has fewer crossings than before the
-    lanes were spread (42). (Amended 2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding
-    a term''s graph opens on that term alone, as a product''s does on the product: the term, its ancestors
-    and descendants, and the columns, tables and products it reaches, at full hops, with the same control
-    that shows the rest of the model. The rest of the ontology is not read or drawn until that control asks
-    for it. No expanded snippet opens on the whole ontology; only the Ontology page''s own graph does.'
+    page. Lateral edges are drawn by default, their toggle shown in 3D. [SUPERSEDED by REQ-2174 THE PRODUCT
+    MAP OPENS ON PRODUCTS, 2026-11-12 -- the Product map opens on products, their tables and the links between
+    products, not on the whole ontology. Kept here for history; do not implement against it.] The Product
+    map is the whole ontology with the Data layer on and its own remembered settings. [END SUPERSEDED BLOCK]
+    Nothing the product graph showed is lost: the one graph has optional layers for a product''s commands,
+    its quality checks, links to other products and product lineage, off by default in snippets and available
+    in the full view. (Amended 2026-10-28, EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows
+    term edges (the term page''s term graph, the one ontology graph in 2D and 3D, the lane view and their
+    snippets), an edge that conducts grounding under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from
+    broader to narrower, SYNONYM_OF, and a term''s binding to a column) is drawn solid, and an edge that
+    does not (RELATED_TO and every other type, and a retired edge) is drawn dotted. The legend says so,
+    and hovering a dotted edge says it does not ground. (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING
+    LABELS HIDE:) Maintainer 2026-10-29 (labels too small; the 3D graph not round): a label never shrinks
+    below a readable size (11.5px) and grows with zoom up to 20px; where labels would overlap, the lower-ranked
+    one is hidden (its node''s full name stays in the hover card) instead of every label being scaled down.
+    Crowded nodes may still shrink. In 3D the layout is drawn as built: no pair is moved apart in the view''s
+    plane, so a force layout keeps its shape; the 2D views may still move a crowded pair apart. (Amended
+    2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:) Maintainer 2026-10-30: the labels are readable but too
+    large, half their drawn size. A label is drawn between 9px and 10px, replacing 11.5px and 20px. (Amended
+    2026-10-29, A VIEW OPENS IN FORCE:) Maintainer 2026-10-31: a view opens in force, unless its preset
+    names its own layout or the reader has saved a choice. Taxonomy keeps its top-down tree (REQ-2130).
+    Layered stays disabled where a cycle makes it impossible. This replaces opening layered when the drawn
+    edges are of one class and form no cycle. (Amended 2026-11-05, ONE GRAPH, RULES PER PRESET:) The one
+    ontology graph is one component whose presets carry their own rules. The Ontology preset, and the Ontology
+    page, follow REQ-2130 (amended 2026-10-29): only what a shown term reaches is drawn, and no relationship,
+    join or lineage edge between tables or columns is drawn. The Product map preset and the product panels''
+    snippets keep the product layers (commands, quality, product links, lineage) and the member tables,
+    so nothing the product graph showed is lost. The owner-tables relationship layer is not offered in the
+    Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) The graph''s columns are Products, Tables,
+    Columns and Terms, and a hop is one step across them, counted from the focus item alone (a product''s
+    count no longer also starts from its member tables). The hop control is labelled with its focus, ''Hops
+    from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their columns, 3 the terms those columns are tied
+    to, 4 other columns tied to the same terms. A ''Related tables'' checkbox draws the tables directly
+    related to the drawn tables by relationships, named on the link, and the products those tables belong
+    to; it follows one step only, never a related table''s own columns, terms or relationships. The Terms,
+    Domains and Tags filters stay; the filter of term-to-term link types is named ''Term relationships''.
+    A product''s panel opens at 1 hop with Related tables on, matching its Related Tables card; the full
+    graph opens at 2 hops with Related tables off. A table''s columns not tied to a term shown fold into
+    one node labelled ''N columns with no term in this view''. Reset view folds every table back as well
+    as resetting the camera. The 2D view is the simple one: Product, its tables, their columns and the terms
+    those columns are tied to, left to right, with the links between terms (filtered by Term relationships),
+    and nothing else -- no related tables and no lineage. Its hop control, ''Hops from <product>'', counts
+    along that path: 1 the product''s tables, 2 their columns, 3 the terms those columns are tied to, and
+    each hop beyond 3 one more step through term-to-term links; a table''s columns not tied to a term fold
+    into one node. Hops, Related tables, Term relationships and every other layer belong to the 3D view,
+    where table relationships and term relationships are told apart by more than colour (a table link solid
+    and named by the relationship, a term link dashed and named by its type). The graph''s Lineage layer
+    is named ''Inputs'' and shows where the product comes from, never who consumes it: the graph is read
+    by a consumer or prospective consumer. Each input links to the member table that reads it (not to the
+    product), an input that is another product''s member stands for that product, and column lineage stays
+    on unfolded tables. A product page''s Lineage panel is titled ''Column lineage: where this product comes
+    from'', its lanes named Inputs and This product''s tables (Upstream hop n beyond the inputs), with no
+    downstream lanes; its hint states what it draws (each published column and the input column it comes
+    from), and the Input Ports card links to it. A product''s Consumers card is shown only to those who
+    own the product: a session acting as the product''s owner_role, or holding data_product_rw with entitlements
+    (REQ-2219) that reach that product, which its creator holds from creation; no one else sees it (maintainer
+    2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE IS ON THE EDGE:) On a product
+    page''s column lineage, a view between an input and the product''s table is not drawn as its own box:
+    the input''s column links straight to the table''s column, and the link names the views it reads through
+    (for example ''via sales.v_customers''). The panel''s lanes stay Inputs and This product''s tables,
+    with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended 2026-11-09, A PRODUCT OPENS
+    ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens on that product alone, its
+    member tables, their columns and the terms grounded on them, with a control that shows the rest of the
+    model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding a term opens on that
+    term alone, as a product does. Kept here for history; do not implement against it.] Expanding a term
+    still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK] (Amended 2026-11-11, EACH
+    SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s term lane, sibling terms
+    (Dog and Cat under Pet) are not drawn side by side, where their edges leave from different positions
+    and cross regardless of order; each term takes its own row, and the rank lines that join a term to its
+    parent run beside the lane, not through its rows, so each lane can be ordered freely to minimise crossings.
+    On the Pet Health graph the diagram has fewer crossings than before the lanes were spread (42). (Amended
+    2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding a term''s graph opens on that
+    term alone, as a product''s does on the product: the term, its ancestors and descendants, and the columns,
+    tables and products it reaches, at full hops, with the same control that shows the rest of the model.
+    The rest of the ontology is not read or drawn until that control asks for it. No expanded snippet opens
+    on the whole ontology; only the Ontology page''s own graph does. (Amended 2026-11-12, THE PRODUCT MAP
+    OPENS ON PRODUCTS:) Maintainer 2026-11-12: opened whole, the Product map was the Ontology page''s graph
+    with product boxes beside it. It opens instead on what its name says: every product, its member tables,
+    and the links between products, with columns and terms folded away until the reader asks for them (the
+    same show-the-rest control and layer choices the graph already has). It is still the one graph and keeps
+    its own remembered settings; a reader who has saved other settings for it opens on those. (Amended 2026-11-12,
+    THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
+    without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
+    with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
+    does is unchanged.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -92190,50 +92229,52 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
     model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
     which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
-    Maintainer 2026-11-04: the reference library has a retrieval setting, passage or graph, shown and changed
-    on the Admin Reference library page. Passage retrieval is today''s: the passages nearest the question.
-    Graph retrieval also follows the glossary: it finds the in-service glossary terms the question names,
-    walks their relationships out from those terms, and offers the passages the reached terms cite as further
-    candidates, so an answer can draw on a rule whose wording does not resemble the question (the aggregation
-    rule behind a currency transaction report). A candidate''s priority is the weight of the relationship
-    types on its path, multiplied over the path, so it falls with each hop from the initial terms: SYNONYM_OF
-    and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF 0.8; DERIVED_FROM and REPLACES
-    0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The walk stops where the priority
-    falls below 0.25. The passages nearest the question come first; graph candidates fill the rest of the
-    same passage budget in priority order, at most two per reached term, so graph retrieval never displaces
-    what passage retrieval found. Each graph candidate reaches the assistant labelled with its path (from
-    which term, over which relationships), and the assistant cites only the passages it used, so an irrelevant
-    candidate never reaches the answer. Only terms, relationships and documents the role may read are walked
-    or offered. Acceptance: in the bank secrecy demo, asked which cash deposits need a currency transaction
-    report, Polly''s answer with graph retrieval cites the aggregation rule (31 CFR 1010.313), and with
-    passage retrieval the answer is recorded for comparison. (Amended 2026-11-04, THE LIBRARY''S STORE AND
-    RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and egress rules, its document
-    extraction and the org''s embedding model, and keeps its documents and passages in the org''s control
-    plane, each passage with its section, page, position in its document and embedding in a pgvector column
-    under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries pgvector, and the
-    library refuses to start without it (no unindexed search). Retrieval for a question, within the role''s
-    readable documents, in this order of priority within one passage budget: (1) the passages nearest the
-    question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded by the in-service
-    terms the question names, the terms whose embedding (name and definition) is nearest the question, and
-    the terms citing the passages of (1); the reached terms'' definitions are returned as context beside
-    the passages they cite; (3) neighbours of the passages of (1) and (2): the passages just before and
-    after each in its document, and the passages nearest each by embedding. Every item reaches the assistant
-    labelled with how it was reached; the assistant cites only what it used. Glossary terms are the graph''s
-    entities and ontology relationships its relations; Provisa runs no separate entity extraction over the
-    library beyond Find terms. A passage that is repeatedly used in answers but cited by no glossary term
-    is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S BUILD KEEPS ITS SCANNED
-    DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true, and the demo''s build
-    then keeps that document through the same keep a steward uses, so the published bundle carries it kept
-    and an assistant in every sandbox of that demo finds its passages without a visitor keeping it. Without
-    keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05, THE ACCEPTANCE IS THE
-    WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval is accepted on
-    a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
-    graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
-    recorded for comparison, does not. The aggregation question (1010.313), which passage search already
-    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
-    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
-    its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
-    as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
+    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-12 -- retrieval is
+    always what graph retrieval was; there is no setting to choose. Kept here for history; do not implement
+    against it.] the reference library has a retrieval setting, passage or graph, shown and changed on the
+    Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the passages nearest
+    the question. Graph retrieval also follows the glossary: it finds the in-service glossary terms the
+    question names, walks their relationships out from those terms, and offers the passages the reached
+    terms cite as further candidates, so an answer can draw on a rule whose wording does not resemble the
+    question (the aggregation rule behind a currency transaction report). A candidate''s priority is the
+    weight of the relationship types on its path, multiplied over the path, so it falls with each hop from
+    the initial terms: SYNONYM_OF and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF
+    0.8; DERIVED_FROM and REPLACES 0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The
+    walk stops where the priority falls below 0.25. The passages nearest the question come first; graph
+    candidates fill the rest of the same passage budget in priority order, at most two per reached term,
+    so graph retrieval never displaces what passage retrieval found. Each graph candidate reaches the assistant
+    labelled with its path (from which term, over which relationships), and the assistant cites only the
+    passages it used, so an irrelevant candidate never reaches the answer. Only terms, relationships and
+    documents the role may read are walked or offered. Acceptance: in the bank secrecy demo, asked which
+    cash deposits need a currency transaction report, Polly''s answer with graph retrieval cites the aggregation
+    rule (31 CFR 1010.313), and with passage retrieval the answer is recorded for comparison. (Amended 2026-11-04,
+    THE LIBRARY''S STORE AND RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and
+    egress rules, its document extraction and the org''s embedding model, and keeps its documents and passages
+    in the org''s control plane, each passage with its section, page, position in its document and embedding
+    in a pgvector column under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries
+    pgvector, and the library refuses to start without it (no unindexed search). Retrieval for a question,
+    within the role''s readable documents, in this order of priority within one passage budget: (1) the
+    passages nearest the question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded
+    by the in-service terms the question names, the terms whose embedding (name and definition) is nearest
+    the question, and the terms citing the passages of (1); the reached terms'' definitions are returned
+    as context beside the passages they cite; (3) neighbours of the passages of (1) and (2): the passages
+    just before and after each in its document, and the passages nearest each by embedding. Every item reaches
+    the assistant labelled with how it was reached; the assistant cites only what it used. Glossary terms
+    are the graph''s entities and ontology relationships its relations; Provisa runs no separate entity
+    extraction over the library beyond Find terms. A passage that is repeatedly used in answers but cited
+    by no glossary term is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S
+    BUILD KEEPS ITS SCANNED DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true,
+    and the demo''s build then keeps that document through the same keep a steward uses, so the published
+    bundle carries it kept and an assistant in every sandbox of that demo finds its passages without a visitor
+    keeping it. Without keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05,
+    THE ACCEPTANCE IS THE WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval
+    is accepted on a question passage search cannot answer: for a customer who keeps depositing cash just
+    under $10,000, graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage
+    retrieval, recorded for comparison, does not. The aggregation question (1010.313), which passage search
+    already finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads
+    Excel workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed
+    by its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is
+    read as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
     A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
     own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
     is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
@@ -92249,7 +92290,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
     term finding run in a background job; its index status is a property (indexing with progress where known,
     ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07).'
+    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-12, TERMS ARE EMBEDDED AS
+    THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
+    and when its name or definition changes, and its embedding is removed when it leaves service, whatever
+    the library''s retrieval setting, as a document''s passages are embedded when the document is added.
+    The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
+    nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
+    embedding. An org with no vector model embeds nothing. (Amended 2026-11-12, ONE RETRIEVAL, NO SETTING:)
+    Maintainer 2026-11-12: graph retrieval already returns the passages nearest the question first, undisplaced,
+    and only adds the passages the glossary reaches before the neighbours; when the glossary reaches nothing
+    it returns what passage retrieval returns. So there is nothing for a person to choose: the library has
+    one retrieval, the one that was called graph, and the passage-or-graph setting and its control on the
+    Library page are removed. No reranking model is added: the passages nearest the question stay first
+    and each passage still says how it was reached.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
@@ -95293,7 +95346,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
     columns); a group of terms with a common parent is placed where its members'' lines are flattest in
     total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
-    are reported, not the score.'
+    are reported, not the score. (Amended 2026-11-12, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
+    2026-11-12: the controls that change how a graph is looked at sit in one hover stack inside the canvas,
+    the same on every 2D graph and every 3D view (the ontology graph and the table profile views: terrain,
+    joint cloud, drift strata, relations): reset view (fit, in 2D), full screen and download everywhere;
+    rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
+    tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
+    force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
+    longer toolbar buttons. (Amended 2026-11-12, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
+    while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
+    at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
+    places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
+    and on Reset view when it lays out again.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4

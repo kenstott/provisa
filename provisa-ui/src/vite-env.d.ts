@@ -36,6 +36,7 @@ declare module "*.graphql" {
   export const CreateMetric: DocumentNode;
   export const UpdateMetric: DocumentNode;
   export const DeleteMetric: DocumentNode;
+  export const TableMetricsQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -80,6 +81,15 @@ declare module "*.graphql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const DeleteTables: DocumentNode;
+  export const DeleteRelationships: DocumentNode;
+  export const DeleteMetrics: DocumentNode;
+  export const DeleteSources: DocumentNode;
+  export const DeleteRoles: DocumentNode;
+  export const DeleteDomains: DocumentNode;
+  export const DeleteDataProducts: DocumentNode;
+  export const DeleteTags: DocumentNode;
+  export const DeleteScheduledTasks: DocumentNode;
   export const Calendars: DocumentNode;
   export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;
@@ -179,6 +189,7 @@ declare module "*.gql" {
   export const CreateMetric: DocumentNode;
   export const UpdateMetric: DocumentNode;
   export const DeleteMetric: DocumentNode;
+  export const TableMetricsQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -222,6 +233,15 @@ declare module "*.gql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const DeleteTables: DocumentNode;
+  export const DeleteRelationships: DocumentNode;
+  export const DeleteMetrics: DocumentNode;
+  export const DeleteSources: DocumentNode;
+  export const DeleteRoles: DocumentNode;
+  export const DeleteDomains: DocumentNode;
+  export const DeleteDataProducts: DocumentNode;
+  export const DeleteTags: DocumentNode;
+  export const DeleteScheduledTasks: DocumentNode;
   export const Calendars: DocumentNode;
   export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;

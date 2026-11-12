@@ -23,7 +23,7 @@ const DEFAULT_ENDPOINT = "outside-to-node";
 // A point expressed the way `curve-style: segments` wants it: `weight` along the line from the
 // source endpoint to the target endpoint, `distance` across it (positive to the line's left,
 // as cytoscape's (-dy, dx) normal has it).
-function segmentCoords(p: Pt, s: Pt, t: Pt): { weight: number; distance: number } {
+export function segmentCoords(p: Pt, s: Pt, t: Pt): { weight: number; distance: number } {
   const vx = t.x - s.x;
   const vy = t.y - s.y;
   const len2 = vx * vx + vy * vy;

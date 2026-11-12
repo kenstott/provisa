@@ -179,11 +179,6 @@ export function graphStylesheet(t: GraphTokens) {
       },
     },
     {
-      // A compound the layout needs but the reader does not see (the stacked lane).
-      selector: 'node[kind = "frame"]',
-      style: { "background-opacity": 0, "border-width": 0, padding: "8px", events: "no" },
-    },
-    {
       selector: "edge",
       style: {
         width: SIZE.edge,

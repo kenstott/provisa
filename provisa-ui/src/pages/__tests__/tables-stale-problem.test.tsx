@@ -196,7 +196,7 @@ describe("TablesPage — a problem stays with the action that met it", () => {
   it("does not carry a table's refused save into the Register Table form", async () => {
     render(<TablesPage />);
     const row = (await screen.findByText("orders")).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
     await userEvent.click(await screen.findByTestId("table-edit-save"));
     // The save's own form says why it failed.
