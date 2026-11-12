@@ -52,6 +52,14 @@ async def _notify(org_id: str, reason: str) -> None:
     await notify_model_changed(org_id, reason=reason)
 
 
+async def embed_terms(org_id: str) -> None:
+    """After a save that changed a term's service state, name or definition: its embedding is
+    brought up to date in the background (REQ-2185, TERMS ARE EMBEDDED AS THEY CHANGE)."""
+    from provisa.api.admin.reference_library_router import embed_terms as embed
+
+    await embed(org_id)
+
+
 def _refuse_status_fields(body: dict) -> None:
     """REQ-2144: a term's status changes only through deprecate, retire and restore, each with
     what it requires (a reason, and a date or a successor)."""
@@ -386,6 +394,7 @@ async def create_abstract_term(request: Request) -> dict:
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     await _notify(org_id, "ontology term created")
+    await embed_terms(org_id)
     return {"id": term_id}
 
 
@@ -448,6 +457,8 @@ async def update_term(request: Request, term_id: int) -> dict:
     if not found:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
     await _notify(org_id, "ontology term updated")
+    if "name" in body or "definition" in body:
+        await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -476,6 +487,7 @@ async def delete_term(request: Request, term_id: int) -> dict:
     if not deleted:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
     await _notify(org_id, "ontology term deleted")
+    await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -1275,6 +1287,7 @@ async def _status_route(request: Request, term_id: int, action: str) -> dict:
         changes = await change_status(_conn, term_id, action, body, request)
         status = (await glossary_repo.term_statuses(_conn))[term_id]
     await _notify(org_id, f"ontology term {_DONE[action]}")
+    await embed_terms(org_id)
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
@@ -1325,6 +1338,7 @@ async def bulk_approve(request: Request) -> dict:
         except glossary_repo.StatusRefused as exc:
             raise _status_refused(exc) from exc
     await _notify(org_id, "ontology terms approved")
+    await embed_terms(org_id)
     return {"ok": True, "approved": approved}
 
 

@@ -31,8 +31,6 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
-  fetchRetrieval: vi.fn(),
-  saveRetrieval: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -87,8 +85,6 @@ beforeEach(() => {
   rights.canEdit = true;
   api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0 });
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
-  api.fetchRetrieval.mockResolvedValue("passage");
-  api.saveRetrieval.mockImplementation(async (r: string) => r);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
     passage_list: [
@@ -158,7 +154,6 @@ describe("LibraryPage", () => {
     for (const control of ["reflib-add", "reflib-retrieval", "reflib-refresh", "reflib-remove"]) {
       expect(screen.queryByTestId(control)).toBeNull();
     }
-    expect(api.fetchRetrieval).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("reflib-tab-readers"));
     expect(await screen.findByTestId("reflib-readers-3")).toHaveTextContent("sales");
     expect(screen.queryByTestId("reflib-domains")).toBeNull();
@@ -326,31 +321,23 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("reflib-index-9")).toHaveTextContent("Indexing");
   });
 
-  it("shows the library's retrieval setting and saves a change to it", async () => {
+  it("offers no choice of retrieval: the library has one", async () => {
     render(<LibraryPage />);
-    const setting = await screen.findByTestId("reflib-retrieval");
-    expect(setting).toHaveTextContent("Retrieval");
-    const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
-    await waitFor(() => expect(passage.checked).toBe(true));
-    fireEvent.click(within(setting).getByText("Graph"));
-    await waitFor(() => expect(api.saveRetrieval).toHaveBeenCalledWith("graph"));
-    await waitFor(() =>
-      expect((within(setting).getByLabelText("Graph") as HTMLInputElement).checked).toBe(true),
-    );
+    await screen.findByTestId("reflib-row-3");
+    expect(screen.queryByTestId("reflib-retrieval")).toBeNull();
+    expect(screen.queryByText("Retrieval")).toBeNull();
   });
 
-  it("puts the setting back and says why when it is refused", async () => {
-    api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
+  it("heads the page as the other list pages do: the filter beside the title, then + Document", async () => {
     render(<LibraryPage />);
-    const setting = await screen.findByTestId("reflib-retrieval");
-    await waitFor(() =>
-      expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
-    );
-    fireEvent.click(within(setting).getByText("Graph"));
-    expect(await screen.findByTestId("reflib-error")).toHaveTextContent(
-      "the org has no vector model",
-    );
-    expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
+    await screen.findByTestId("reflib-row-3");
+    const filter = screen.getByTestId("reflib-filter");
+    const header = filter.closest(".page-header");
+    expect(header).not.toBeNull();
+    expect(filter.closest("[data-toolbar], .page-actions")).toBeNull();
+    const add = screen.getByTestId("reflib-add");
+    expect(add).toHaveTextContent(/^\+ Document$/);
+    expect(add.closest(".page-actions")?.parentElement).toBe(header);
   });
 
   it("lists each document with its source, index status and readers, marking a proposed one", async () => {

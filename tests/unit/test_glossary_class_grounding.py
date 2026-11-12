@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import glossary_router
+from provisa.api.admin import reference_library_router as library_api
 from provisa.api.errors import ApiError
 from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
 from provisa.core.env_merge import requirements
@@ -92,6 +93,10 @@ def _tbl(name: str, *, keyed: bool) -> Table:
     )
 
 
+async def _embed_terms(org_id: str) -> None:
+    return None
+
+
 @asynccontextmanager
 async def _surface(control_plane, monkeypatch, *, authority=None):
     """Three tables in ``sales`` -- two keyed, one not -- and two abstract terms."""
@@ -110,6 +115,8 @@ async def _surface(control_plane, monkeypatch, *, authority=None):
 
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background (test_reference_library_terms_embedded).
+    monkeypatch.setattr(library_api, "embed_terms", _embed_terms)
     # Which right each endpoint names is asserted below from the router's own source; here the
     # capability half must simply not block the handler. The domain half is the case's own.
     monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)

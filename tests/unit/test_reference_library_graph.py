@@ -10,8 +10,8 @@
 
 """REQ-2185 (GRAPH RETRIEVAL): governed retrieval that follows the glossary -- the walk's weights,
 decay and cutoff, the passages each reached term offers, their place in the passage budget, what a
-role may read, the terms' embeddings kept current, the Admin setting, and the bank secrecy demo's
-questions: one both retrievals answer with the aggregation rule, and one only the walk answers,
+role may read, the terms' embeddings kept current, the assistant's tool, and the bank secrecy demo's
+questions: one nearness alone answers with the aggregation rule, and one only the walk answers,
 with the suspicious activity report a customer's deposits just under $10,000 call for."""
 
 # Requirements: REQ-2185
@@ -23,7 +23,7 @@ import math
 import re
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pytest
 import sqlalchemy as sa
@@ -31,7 +31,6 @@ import yaml
 from sqlalchemy import insert, select, update
 
 from provisa.api.admin import reference_library_router as router
-from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import (
     domains,
@@ -42,8 +41,6 @@ from provisa.core.schema_org import (
 )
 from provisa.reference_library import graph, library, retrieve, store, terms
 
-if TYPE_CHECKING:
-    from fastapi import Request
 
 SCHEMA = "org_default"
 ROOT = Path(__file__).resolve().parents[2]
@@ -276,6 +273,17 @@ def _keys(found: list[retrieve.Citation]) -> list[tuple[int, int]]:
     return [(c.document_id, c.ordinal) for c in found]
 
 
+async def _by_nearness(
+    conn, question: str, allowed, embedder, *, k: int = 5, budget: int | None = None
+) -> list[retrieve.Citation]:
+    """What passage retrieval gave, before the library had one retrieval: the ``k`` passages
+    nearest the question, then their neighbours, within ``budget`` (default ``2 * k``)."""
+    documents = await retrieve._readable_documents(conn, allowed, embedder)
+    hits = await retrieve.retrieve(conn, question, allowed, embedder, k=k)
+    neighbours = retrieve._neighbours(conn, hits, documents)
+    return await retrieve._fill(2 * k if budget is None else budget, hits, neighbours)
+
+
 # A client policy and a payments standard: the glossary relates "client" to "account" (PART_OF)
 # and "account" to "payment" (RELATED_TO).
 POLICY = b"""# Client policy
@@ -335,7 +343,7 @@ async def test_a_reached_term_offers_at_most_two_of_its_passages_nearest_the_que
         ids = await _library(conn)
         question = "What does the client policy say about a person's account closing?"
         found = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=6, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=6
         )
         via_account = [c for c in found if c.term == "account"]
         assert len(via_account) == retrieve.PASSAGES_PER_TERM == 2
@@ -363,7 +371,7 @@ async def test_graph_candidates_come_after_the_question_s_passages_and_before_ne
         assert _keys(hits) == [(ids["policy"], 0)]
 
         found = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=8, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=8
         )
         assert found[0] == hits[0]
         kinds = [
@@ -388,27 +396,30 @@ async def test_graph_candidates_come_after_the_question_s_passages_and_before_ne
 
         # the same budget cuts: the walk never displaces the question's passages
         short = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=2, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=2
         )
         assert _keys(short) == _keys(found)[:2]
         same = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=1, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=1
         )
         assert same == hits
 
 
-async def test_passage_retrieval_does_not_walk_the_glossary(db):
+async def test_a_question_the_glossary_reaches_nothing_for_is_answered_by_nearness_alone(db):
+    """ONE RETRIEVAL, NO SETTING: with in-service terms that the question does not name and that
+    cite none of its passages, the walk offers nothing, and what is given is what passage
+    retrieval gave: the passages nearest the question, then their neighbours."""
     async with db.acquire() as conn:
-        await _library(conn)
+        await _add(conn, "policy.md", POLICY, ["*"])
+        await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        await _term(conn, "ledger", "The books.", {"sales"})
+        question = "Who is a client?"
         found = await retrieve.retrieve_with_neighbours(
-            conn, "Who is a client?", None, EMBEDDER, k=1, budget=8
+            conn, question, None, EMBEDDER, k=1, budget=8
         )
+        assert found == await _by_nearness(conn, question, None, EMBEDDER, k=1, budget=8)
         assert not any(c.reached.startswith("via ") for c in found)
         assert all(c.term is None and c.term_definition is None for c in found)
-        with pytest.raises(ValueError, match="retrieval must be one of"):
-            await retrieve.retrieve_with_neighbours(
-                conn, "Who is a client?", None, EMBEDDER, retrieval="both"
-            )
 
 
 async def test_the_terms_citing_the_question_s_passages_seed_the_walk(db, monkeypatch):
@@ -421,7 +432,7 @@ async def test_the_terms_citing_the_question_s_passages_seed_the_walk(db, monkey
         (hit,) = await retrieve.retrieve(conn, question, None, EMBEDDER, k=1)
         assert (hit.document_id, hit.ordinal) == (ids["rules"], 2)
         found = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=10, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=10
         )
         labels = [c.reached for c in found if c.reached.startswith("via ")]
         assert labels[:2] == ["via account", "via account"]
@@ -436,7 +447,7 @@ async def test_the_term_nearest_the_question_seeds_the_walk(db, named_only):
         question = "Which books?"
         assert retrieve.named_terms(question, await terms.in_service(conn)) == []
         found = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=10, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=10
         )
         # the question's passage is the policy's statements, which ledger cites: not given again
         assert (found[0].document_id, found[0].ordinal) == (ids["policy"], 2)
@@ -452,7 +463,7 @@ async def test_a_citation_of_a_passage_no_longer_held_is_not_offered(db):
         # a new version of the account rules left no passage 9; the draft still names it
         await _cite(conn, ids["client"], ids["rules"], [9])
         found = await retrieve.retrieve_with_neighbours(
-            conn, "Who is a client?", None, EMBEDDER, k=1, budget=20, retrieval=retrieve.GRAPH
+            conn, "Who is a client?", None, EMBEDDER, k=1, budget=20
         )
         assert (ids["rules"], 9) not in _keys(found)
         assert any(c.term == "account" for c in found)
@@ -482,7 +493,7 @@ async def test_a_role_walks_only_the_terms_relationships_and_documents_it_may_re
         question = "Who is a client?"
 
         everyone = await retrieve.retrieve_with_neighbours(
-            conn, question, None, EMBEDDER, k=1, budget=20, retrieval=retrieve.GRAPH
+            conn, question, None, EMBEDDER, k=1, budget=20
         )
         # unscoped, the finance term conducts: ledger is reached through it at 1.0
         assert any(c.term == "vault" for c in everyone)
@@ -492,7 +503,7 @@ async def test_a_role_walks_only_the_terms_relationships_and_documents_it_may_re
         assert secret in {c.document_id for c in everyone}
 
         sales = await retrieve.retrieve_with_neighbours(
-            conn, question, frozenset({"sales"}), EMBEDDER, k=1, budget=20, retrieval=retrieve.GRAPH
+            conn, question, frozenset({"sales"}), EMBEDDER, k=1, budget=20
         )
         assert sales
         # the finance term is neither a seed, nor reached, nor walked through
@@ -510,7 +521,6 @@ async def test_a_role_walks_only_the_terms_relationships_and_documents_it_may_re
             EMBEDDER,
             k=1,
             budget=20,
-            retrieval=retrieve.GRAPH,
         )
         # the sales terms are out of reach for finance: only its own and the whole org's
         assert {c.term for c in finance if c.term} <= {"vault"}
@@ -608,29 +618,15 @@ async def test_every_term_is_embedded_again_when_the_model_changes(db):
 async def test_graph_retrieval_refreshes_the_terms_before_it_seeds_from_them(db):
     async with db.acquire() as conn:
         ids = await _library(conn)
-        await retrieve.retrieve_with_neighbours(
-            conn, "Who is a client?", None, EMBEDDER, k=1, retrieval=retrieve.GRAPH
-        )
+        await retrieve.retrieve_with_neighbours(conn, "Who is a client?", None, EMBEDDER, k=1)
         assert set(await _held_vectors(conn)) == {ids["client"], ids["account"], ids["ledger"]}
         await glossary_repo.set_definition(conn, ids["ledger"], "The bank's books of account.")
         calls.clear()
-        await retrieve.retrieve_with_neighbours(
-            conn, "Who is a client?", None, EMBEDDER, k=1, retrieval=retrieve.GRAPH
-        )
+        await retrieve.retrieve_with_neighbours(conn, "Who is a client?", None, EMBEDDER, k=1)
         assert ["ledger\nThe bank's books of account."] in calls
 
 
-# -- the Admin setting --------------------------------------------------------------------------
-
-
-def _request() -> Request:
-    fake = types.SimpleNamespace(
-        state=types.SimpleNamespace(
-            identity=types.SimpleNamespace(user_id="alice", roles=[], acting_roles=[]),
-            active_org_id="default",
-        )
-    )
-    return cast("Request", fake)
+# -- the assistant's tool -----------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -645,29 +641,7 @@ def api(db, monkeypatch):
     return db
 
 
-async def test_the_admin_api_shows_and_changes_the_retrieval_setting(api):
-    assert await router.get_settings(_request()) == {"retrieval": "passage"}
-    async with api.acquire() as conn:
-        term = await _term(conn, "client", "A party.", {"sales"})
-    assert await router.put_settings({"retrieval": "graph"}, _request()) == {"retrieval": "graph"}
-    assert await router.get_settings(_request()) == {"retrieval": "graph"}
-    # choosing graph embeds the glossary's terms there and then
-    async with api.acquire() as conn:
-        assert set(await _held_vectors(conn)) == {term}
-    assert await router.put_settings({"retrieval": "passage"}, _request()) == {
-        "retrieval": "passage"
-    }
-    assert await retrieve.retrieval_setting(api) == "passage"
-    for bad, says in (
-        ({"retrieval": "both"}, "retrieval must be one of passage, graph"),
-        ({"retrieval": "graph", "k": 3}, "'k' is not a library setting"),
-    ):
-        with pytest.raises(ApiError) as refused:
-            await router.put_settings(bad, _request())
-        assert refused.value.status_code == 400 and says in str(refused.value)
-
-
-async def test_the_assistant_s_tool_retrieves_as_the_org_s_setting_says(api, monkeypatch):
+async def test_the_assistant_s_tool_walks_the_glossary(api, monkeypatch):
     from provisa.api.mcp import tools
 
     async def embedder(state):
@@ -682,9 +656,6 @@ async def test_the_assistant_s_tool_retrieves_as_the_org_s_setting_says(api, mon
     async with api.acquire() as conn:
         await _library(conn)
     question = "Who is a client?"
-    passage = await tools.search_reference_library(cast(Any, state), "analyst", question, k=1)
-    assert not any(f["reached"].startswith("via ") for f in passage)
-    await router.put_settings({"retrieval": "graph"}, _request())
     found = await tools.search_reference_library(cast(Any, state), "analyst", question, k=2)
     via = [f for f in found if f["reached"].startswith("via ")]
     assert via and via[0]["term"] == "account"
@@ -801,11 +772,10 @@ async def _demo_library(conn) -> dict[str, tuple[int, int]]:
 
 
 async def _both(conn, question: str) -> tuple[list[retrieve.Citation], list[retrieve.Citation]]:
-    """What passage retrieval and graph retrieval give an assistant for ``question``, k=5."""
-    by_passage = await retrieve.retrieve_with_neighbours(conn, question, ROLE, DEMO_MODEL)
-    by_graph = await retrieve.retrieve_with_neighbours(
-        conn, question, ROLE, DEMO_MODEL, retrieval=retrieve.GRAPH
-    )
+    """What nearness alone (passage retrieval, recorded for comparison) and the library's one
+    retrieval give an assistant for ``question``, k=5."""
+    by_passage = await _by_nearness(conn, question, ROLE, DEMO_MODEL)
+    by_graph = await retrieve.retrieve_with_neighbours(conn, question, ROLE, DEMO_MODEL)
     record = {
         mode: [f"{c.document_title} [{c.ordinal}] {c.reached}" for c in found]
         for mode, found in (("passage", by_passage), ("graph", by_graph))
