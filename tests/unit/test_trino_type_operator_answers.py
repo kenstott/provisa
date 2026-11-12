@@ -21,6 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.server import _sql_type_to_bvtype
+from provisa.transpiler.function_macros import RowRefused
 from buenavista.core import BVType
 from buenavista.postgres import BVTYPE_TO_OID
 from provisa.transpiler.transpile import transpile
@@ -72,13 +73,12 @@ def test_a_null_send_is_a_null_of_varbinary_on_trino(pg_sql):
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_a_null_of_a_type_the_engine_does_not_hold_is_refused_by_name(pg_sql, function, dialect):
     """PostgreSQL answers a NULL of interval, jsonb or xid8: the engine's NULL would be described as
-    text. It is refused by the message the call of a value gets, not answered as text."""
-    tree = sqlglot.parse_one(transpile(pg_sql, dialect), read=dialect)
-    said = {s.this for s in tree.find_all(exp.Literal) if s.is_string}
-    assert any(f"{function} does not read this value" in s for s in said), said
-    assert not [
-        c for c in tree.find_all(exp.Cast) if isinstance(c.this, exp.Null) and c.to.is_type("text")
-    ]
+    text. It is refused by the message the call of a value gets, not answered as text: the
+    translator raises it from the grid's row (provisa.transpiler.polyfill.type_io)."""
+    with pytest.raises(RowRefused) as refused:
+        transpile(pg_sql, dialect)
+    assert str(refused.value) == f"{function} does not read this value"
+    assert refused.value.sqlstate == "0A000"
 
 
 @pytest.mark.parametrize(
