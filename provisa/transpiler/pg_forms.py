@@ -319,9 +319,12 @@ MONEY_TEXT = (
     f"format('{{:,}}', abs({_WIDE_CENTS}) // 100) || '.' || "
     f"printf('%02d', CAST(abs({_WIDE_CENTS}) % 100 AS INTEGER))"
 )
+#: Trino's: format writes a NULL as Java does, null, cut to the two digits asked for ('$nu'), so a
+#: NULL is answered before it is formatted, as the strict cash_out answers it.
 TRINO_MONEY_TEXT = (
-    "CASE WHEN value < 0 THEN '-' ELSE '' END || "
-    "format('$%,.2f', abs(CAST(value AS DECIMAL(19,2))))"
+    "CASE WHEN value IS NULL THEN CAST(NULL AS VARCHAR) "
+    "ELSE CASE WHEN value < 0 THEN '-' ELSE '' END || "
+    "format('$%,.2f', abs(CAST(value AS DECIMAL(19,2)))) END"
 )
 MONEY_BYTES = f"unhex(printf('%016x', {_CENTS}))"
 TRINO_MONEY_BYTES = f"to_big_endian_64({_CENTS})"

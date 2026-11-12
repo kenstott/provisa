@@ -133,6 +133,8 @@ class _Ordered:
     picks: bool = False
     shown: str | None = None
     ne: str = "ne"
+    #: The comparisons the polyfill grid holds (provisa.transpiler.polyfill), not this table.
+    in_the_grid: tuple[str, ...] = ()
 
     def forms(self) -> list[Form]:
         a, b = _reads(self.read, "a", "b")
@@ -140,6 +142,7 @@ class _Ordered:
         forms = [
             Form(f"{self.stem}{self.ne if name == 'ne' else name}", "a, b", f"{a} {op} {b}")
             for name, op in _ORDER.items()
+            if name not in self.in_the_grid
         ]
         if self.cmp:
             forms.append(Form(f"{self.stem}cmp", "a, b", _compare(a, b)))
@@ -235,8 +238,8 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
     _Ordered("array_", "{}", picks=True),
-    _Ordered("record_", "({})"),
-    _Ordered("record_image_", "({})"),
+    _Ordered("record_", "({})", in_the_grid=("eq", "ne")),
+    _Ordered("record_image_", "({})", in_the_grid=("eq", "ne")),
 )
 
 

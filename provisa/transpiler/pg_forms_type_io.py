@@ -1351,17 +1351,25 @@ def _is_null(value: exp.Expr) -> bool:
 
 
 #: The results a NULL is of only on DuckDB (``None``: the engine a statement with no table goes
-#: to), where pgwire describes it as that type; another engine's NULL of one is its text.
+#: to), where pgwire describes it as that type. Another engine's NULL of one would be described as
+#: its text, an answer that differs, so a call answered by it is refused by name (:func:`_unheld`).
 _DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
+
+
+def _unheld(name: str, dialect: str | None) -> exp.Expr | None:
+    """The refusal of a NULL call of ``name`` whose PostgreSQL type ``dialect`` holds no NULL of:
+    the message the call of a value of that function gets. None where ``dialect`` holds it."""
+    if dialect in (None, "duckdb", "postgres") or RESULTS[name] not in _DUCKDB_RESULTS:
+        return None
+    return sqlglot.parse_one(
+        refused("0A000", _quoted(f"{name} {REFUSED}"), "TEXT"), read="postgres"
+    )
 
 
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
-    toTime64OrNull, which ClickHouse 24 does not have. Only DuckDB and PostgreSQL hold jsonb,
-    interval and xid8."""
+    toTime64OrNull, which ClickHouse 24 does not have."""
     if dialect == "clickhouse" and result == "time without time zone":
-        result = "text"
-    if dialect not in (None, "duckdb", "postgres") and result in _DUCKDB_RESULTS:
         result = "text"
     # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
     to = exp.DataType.build(result, dialect="postgres", udt=True)
@@ -1672,7 +1680,7 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
         in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
         unset = name == "domain_in" and _is_null(arguments[1])
         if unset or (name not in _NOT_STRICT and any(_is_null(a) for a in arguments)):
-            written = _null_of(RESULTS[name], dialect)
+            written = _unheld(name, dialect) or _null_of(RESULTS[name], dialect)
             return exp.alias_(written, name) if in_select else written
         if name == "int8_sum":
             return node
