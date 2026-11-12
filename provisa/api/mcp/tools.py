@@ -554,7 +554,12 @@ async def create_glossary_term(
     (add_glossary_term_edge) and bindings. If the deployment is multi-domain, at least one domain
     is required."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
+    from provisa.api.admin.glossary_router import (
+        _declared_domains,
+        _notify,
+        _require_glossary_rw,
+        embed_terms,
+    )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
 
@@ -571,6 +576,7 @@ async def create_glossary_term(
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
     await _notify(org_id, "ontology term created")
+    await embed_terms(org_id)
     return {"id": term_id}
 
 
@@ -590,6 +596,7 @@ async def update_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -613,6 +620,8 @@ async def update_glossary_term(
     if not found:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term updated")
+    if name is not None or definition is not None:
+        await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -623,7 +632,12 @@ async def change_glossary_term_status(
     too."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
-    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        change_status,
+        embed_terms,
+    )
     from provisa.api.errors import ApiError
     from provisa.core.repositories import glossary as glossary_repo
 
@@ -642,6 +656,7 @@ async def change_glossary_term_status(
     from provisa.api.admin.glossary_router import _DONE
 
     await _notify(org_id, f"ontology term {_DONE[action]}")
+    await embed_terms(org_id)
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
@@ -674,6 +689,7 @@ async def delete_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -691,6 +707,7 @@ async def delete_glossary_term(
     if not deleted:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term deleted")
+    await embed_terms(org_id)
     return {"ok": True}
 
 

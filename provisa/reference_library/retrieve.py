@@ -21,9 +21,9 @@ assistant is given, adds their neighbours within one passage budget, each passag
 how it was reached (``reached``) so the assistant can weigh it and cite only what it used. Where
 the passages are held and how the nearest and the neighbours are found is store.py's.
 
-Under graph retrieval (GRAPH RETRIEVAL, the org's ``reference_library.retrieval`` setting), the
-glossary walk's candidates come between the passages nearest the question and the neighbours: the
-walk (graph.py) starts from the in-service terms the question names, the terms nearest it by
+The library has one retrieval (ONE RETRIEVAL, NO SETTING): the glossary walk's candidates (GRAPH
+RETRIEVAL) come between the passages nearest the question and the neighbours, so when the walk
+reaches nothing the result is the passages nearest the question and their neighbours. The walk (graph.py) starts from the in-service terms the question names, the terms nearest it by
 embedding (terms.py) and the terms citing the passages nearest it, and each term it reaches offers
 the passages it cites, labelled with its path and given its definition as context.
 """
@@ -56,14 +56,6 @@ NEAREST_QUESTION = "nearest the question"
 #: The passages nearest a passage by embedding that it brings as neighbours, besides the passage
 #: just before and the one just after it.
 NEAR_PER_PASSAGE = 2
-
-#: The library's retrieval settings (REQ-2185, GRAPH RETRIEVAL): the passages nearest the question
-#: (and their neighbours), or those and the glossary walk's candidates. Passage is the default.
-PASSAGE = "passage"
-GRAPH = "graph"
-RETRIEVALS = (PASSAGE, GRAPH)
-#: The org setting (provisa.core.org_settings) holding the library's retrieval setting.
-SETTING = "reference_library"
 
 #: The terms nearest the question by embedding that seed the glossary walk.
 NEAREST_TERMS = 3
@@ -128,22 +120,17 @@ async def retrieve_with_neighbours(
     *,
     k: int = 5,
     budget: int | None = None,
-    retrieval: str = PASSAGE,
 ) -> list[Citation]:
-    """The ``k`` passages nearest ``question`` (:func:`retrieve`), then their neighbours, within
-    ``budget`` passages (default ``2 * k``). The passages nearest the question come first and are
-    never displaced; neighbours fill the rest of the budget in this order: for each passage
-    nearest the question, nearest first, the passage just after it in its document, the one just
-    before, and the :data:`NEAR_PER_PASSAGE` passages nearest it by embedding. A passage already
-    given is not given again. Only the documents the role may read are drawn on, neighbours'
-    included.
-
-    Under :data:`GRAPH` retrieval the glossary walk's candidates (:func:`_graph_candidates`) come
-    after the passages nearest the question, in priority order, and before the neighbours, which
-    are then of both: the question's passages first, then the walk's."""
+    """The ``k`` passages nearest ``question`` (:func:`retrieve`), then the glossary walk's
+    candidates (:func:`_graph_candidates`) in priority order, then the neighbours of both -- the
+    question's passages first, then the walk's -- within ``budget`` passages (default ``2 * k``).
+    The passages nearest the question come first and are never displaced; neighbours fill the
+    rest of the budget in this order: for each passage, the passage just after it in its document,
+    the one just before, and the :data:`NEAR_PER_PASSAGE` passages nearest it by embedding. A
+    passage already given is not given again. Only the documents the role may read are drawn on,
+    neighbours' included. When the walk offers nothing, the result is the passages nearest the
+    question and their neighbours."""
     _check(question, k)
-    if retrieval not in RETRIEVALS:
-        raise ValueError(f"retrieval must be one of {RETRIEVALS}, not {retrieval!r}")
     if budget is None:
         budget = 2 * k
     if budget < k:
@@ -153,11 +140,8 @@ async def retrieve_with_neighbours(
         return []
     query = await _embed_question(question, embedder)
     hits = await _nearest(conn, query, documents, k)
-    if retrieval == GRAPH:
-        found = await _graph_candidates(conn, question, query, hits, documents, allowed, embedder)
-        first = await _fill(budget, hits, _each(found))
-    else:
-        first = hits
+    found = await _graph_candidates(conn, question, query, hits, documents, allowed, embedder)
+    first = await _fill(budget, hits, _each(found))
     return await _fill(budget, first, _neighbours(conn, first, documents))
 
 
@@ -390,30 +374,15 @@ def role_domains(state: Any, role: str) -> frozenset[str] | None:
     return domains_within(sorted(domain_access_for_claims([role], state.roles)))
 
 
-async def retrieval_setting(pool: Any) -> str:
-    """The org's library retrieval setting: :data:`PASSAGE` unless it chose :data:`GRAPH`."""
-    from provisa.core.org_settings import read_org_overrides
-
-    chosen = (await read_org_overrides(pool)).get(SETTING) or {}
-    retrieval = chosen.get("retrieval", PASSAGE)
-    if retrieval not in RETRIEVALS:
-        raise ValueError(
-            f"the org's reference library retrieval setting is {retrieval!r}, not one of "
-            f"{RETRIEVALS}"
-        )
-    return retrieval
-
-
 async def search_for_role(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
     """:func:`retrieve_with_neighbours` for ``role`` in the bound org, as an assistant's tool
-    answers, under the org's retrieval setting: the ``k`` passages nearest the question, and up
-    to as many again of the glossary walk's candidates (graph retrieval) and neighbours."""
+    answers: the ``k`` passages nearest the question, and up to as many again of the glossary
+    walk's candidates and neighbours."""
     embedder = await org_embedder(state)
     pool = state.model_db
     assert pool is not None
-    retrieval = await retrieval_setting(pool)
     async with pool.acquire() as conn:
         found = await retrieve_with_neighbours(
-            conn, question, role_domains(state, role), embedder, k=k, retrieval=retrieval
+            conn, question, role_domains(state, role), embedder, k=k
         )
     return [c.as_dict() for c in found]

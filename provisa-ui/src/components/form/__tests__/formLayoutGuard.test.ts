@@ -43,7 +43,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
     "the data address switch in the page header, with a typed address in its menu",
   "components/entitlements/EntitlementPicker.tsx":
     "one reusable control (the entries of an entitlement list), placed by the form that uses it",
-  "components/entitlements/PeoplePicker.tsx": "one reusable control, placed by the form that uses it",
+  "components/entitlements/PeoplePicker.tsx":
+    "one reusable control, placed by the form that uses it",
   "components/GrantPicker.tsx":
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":
@@ -108,7 +109,8 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
   "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
-  "components/ColumnPiiForm.tsx": "pii on a column, in TagControl's popover: on its term or on the column alone",
+  "components/ColumnPiiForm.tsx":
+    "pii on a column, in TagControl's popover: on its term or on the column alone",
   "components/admin/GlossaryGroundedTables.tsx":
     "a term's tables grounded and let go each as it is picked, in the term's detail",
   "pages/tables/ProfileConstraintsModal.tsx":
@@ -175,6 +177,12 @@ const STRETCHED_BUTTONS: Readonly<Record<string, { marker: string; reason: strin
  * rules are not read against it. Its own behaviour is held by FormLayout.test.tsx.
  */
 const THE_SHARED_LAYOUT = "components/form/FormLayout.tsx";
+
+/**
+ * Permanent: the file that IS the one Cancel (CancelButton), which the footer and every other
+ * Cancel draw. Its own rule is held by cancelGuard.test.ts.
+ */
+const THE_CANCEL = "components/form/CancelButton.tsx";
 
 /**
  * Shrinking: files that do not follow the rules yet. A file leaves this list in the commit that
@@ -509,15 +517,18 @@ describe("the shared layout's CSS", () => {
 });
 
 describe("a surface that edits in place", () => {
-  const compact = `<Group><Button size="compact-xs">Apply</Button><Button size="compact-xs" variant="default">Cancel</Button></Group>`;
-  it("may keep its compact Apply and Cancel, and its controls outside a form", () => {
+  const compact = `<Group><Button size="compact-xs">Apply</Button><Button size="compact-xs">Save</Button><CancelButton onClick={close} /></Group>`;
+  it("may keep its compact Apply and Save beside the one Cancel, and its controls outside a form", () => {
     expect(rules(compact, { inPlaceEdit: true })).toEqual([]);
     expect(rules(`<TextInput size="xs" label="Reason" />`, { inPlaceEdit: true })).toEqual([]);
   });
-  it("is held to the shared footer for a full-size Cancel, and anywhere else for a compact one", () => {
-    expect(rules(`<Button variant="default">Cancel</Button>`, { inPlaceEdit: true })).toContain(
-      "save-cancel-not-shared",
-    );
+  it("is held to the one Cancel even there, compact or full size, and to the footer's Save elsewhere", () => {
+    for (const own of [
+      `<Button variant="default">Cancel</Button>`,
+      `<Button size="compact-xs" variant="default">Cancel</Button>`,
+    ]) {
+      expect(rules(own, { inPlaceEdit: true })).toContain("save-cancel-not-shared");
+    }
     expect(rules(compact)).toContain("save-cancel-not-shared");
   });
 });
@@ -543,19 +554,25 @@ describe("every component follows the form rules", () => {
     expect(pending.size).toBe(NOT_YET_CONVERTED.length);
   });
 
+  it("still has the one Cancel where the rules expect it", () => {
+    expect(files).toContain(THE_CANCEL);
+    expect(violationsOf(THE_CANCEL).map((v) => v.rule)).toContain("save-cancel-not-shared");
+  });
+
   it("still has the shared layout where the rules expect it", () => {
     expect(files).toContain(THE_SHARED_LAYOUT);
     // Were it to stop defining the footer, it would be an ordinary file and must be read again.
     expect(violationsOf(THE_SHARED_LAYOUT).map((v) => v.rule)).toContain("save-cancel-not-shared");
   });
 
-  it.each(files.filter((f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SHARED_LAYOUT))(
-    "%s",
-    (file) => {
-      const violations = violationsOf(file);
-      expect(violations, describeViolations(file, violations)).toEqual([]);
-    },
-  );
+  it.each(
+    files.filter(
+      (f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SHARED_LAYOUT && f !== THE_CANCEL,
+    ),
+  )("%s", (file) => {
+    const violations = violationsOf(file);
+    expect(violations, describeViolations(file, violations)).toEqual([]);
+  });
 
   it.each([...NOT_YET_CONVERTED])(
     "%s is still to convert: once it passes it leaves the list",

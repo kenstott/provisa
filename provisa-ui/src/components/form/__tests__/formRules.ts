@@ -43,7 +43,8 @@ export interface FormRuleOptions {
   notAForm?: boolean;
   /**
    * The file edits something in place in a small surface (a popover, a row of a list): its
-   * controls are not a form, and its compact Save/Apply and Cancel need not be the shared footer's.
+   * controls are not a form, and its compact Save/Apply need not be the shared footer's. Its
+   * Cancel is still the one Cancel (CancelButton): one look everywhere (maintainer, 2026-11-12).
    */
   inPlaceEdit?: boolean;
   /** Buttons that may fill their container: each is matched by a substring of its own JSX. */
@@ -347,11 +348,14 @@ export function checkFormRules(
   const checkButton = (n: JsxEl) => {
     const word = buttonWord(n);
     const compact = /^compact-/.test(attr(n, "size") ?? "");
-    if ((word === "Save" || word === "Cancel") && !(options.inPlaceEdit && compact)) {
+    if (word === "Save" && !(options.inPlaceEdit && compact)) {
+      report("save-cancel-not-shared", n, `a "Save" button outside <FormFooter onSave onCancel>`);
+    }
+    if (word === "Cancel") {
       report(
         "save-cancel-not-shared",
         n,
-        `a "${word}" button outside <FormFooter onSave onCancel>`,
+        `a "Cancel" button of its own: <FormFooter onCancel> or <CancelButton>`,
       );
     }
     if (isExceptedButton(n)) return;

@@ -5149,7 +5149,7 @@
   "es/redactionTab.json::redactionTab.saved": "Saved. The rules apply from now on.",
   "es/redactionTab.json::redactionTab.unresolved": "These reference rules do not resolve and redact nothing: {{names}}",
   "es/redactionTab.json::redactionTab.value": "Pattern or reference",
-  "es/referenceLibrary.json::referenceLibrary.add": "Add document",
+  "es/referenceLibrary.json::referenceLibrary.add": "+ Document",
   "es/referenceLibrary.json::referenceLibrary.addTitle": "Add a document",
   "es/referenceLibrary.json::referenceLibrary.byFile": "File",
   "es/referenceLibrary.json::referenceLibrary.byUrl": "URL",
@@ -5217,10 +5217,6 @@
   "es/referenceLibrary.json::referenceLibrary.remove": "Remove",
   "es/referenceLibrary.json::referenceLibrary.removeConsequence": "No assistant draws on \"{{title}}\" from now on. Terms and definitions that cite it keep their citations.",
   "es/referenceLibrary.json::referenceLibrary.removeTitle": "Remove this document?",
-  "es/referenceLibrary.json::referenceLibrary.retrieval": "Retrieval",
-  "es/referenceLibrary.json::referenceLibrary.retrievalGraph": "Graph",
-  "es/referenceLibrary.json::referenceLibrary.retrievalHelp": "How an assistant's question is answered from the library. Passage: the passages nearest the question, and the passages around them. Graph: also follows the glossary from the terms the question names, over their relationships, to the passages the terms reached cite, so an answer can draw on a rule whose wording does not resemble the question.",
-  "es/referenceLibrary.json::referenceLibrary.retrievalPassage": "Passage",
   "es/referenceLibrary.json::referenceLibrary.retry": "Retry",
   "es/referenceLibrary.json::referenceLibrary.statusKept": "Kept",
   "es/referenceLibrary.json::referenceLibrary.statusProposed": "Proposed",
@@ -10239,5 +10235,7 @@
   "es/filterInput.json::filterInput.syntaxHint": "Uses Google search syntax: every word must match; put or between alternatives; -word excludes; \"quotes\" keep a phrase together.",
   "es/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
   "es/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
-  "es/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
+  "es/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",
+  "es/graph3d.json::graph3d.hopsAll": "All",
+  "es/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops"
 }

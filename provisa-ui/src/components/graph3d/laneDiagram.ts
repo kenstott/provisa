@@ -14,9 +14,8 @@
 // already applied) and nothing else: no related table, no lineage. Inside the term lane the rank
 // edges set the levels, top-down; every other term link is an arc laid over them that moves no
 // node. A table's columns not tied to a term drawn are one node until the table is expanded. A
-// product's focus counts hops along that path (lanePath): 1 its tables, 2 their columns, 3 the
-// terms tied to them, each hop past 3 one step across the term links. Pure data: LaneStage draws
-// what this decides.
+// focus's hops are counted before the lanes (graphModel's reach: each hop a step between terms,
+// amended 2026-11-12), in 2D as in 3D. Pure data: LaneStage draws what this decides.
 
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
@@ -62,22 +61,13 @@ export interface LaneDiagram {
 
 export const moreId = (table: string) => `more:${table}`;
 
-/** The hops of a product's focus, counted along the lane path. */
-export interface LanePath {
-  /** The product's node id. */
-  focus: string;
-  depth: number;
-}
-
-/** The lane diagram of ``shown`` (the graph the view's layers and filters keep). Columns are
- * read from ``data``, since a table's columns fold into it there; ``expanded`` holds the tables
- * whose columns are drawn one by one. With ``path`` (a product's focus) ``shown`` is the graph
- * unpruned by the focus and the hops are counted here, along the lanes. */
+/** The lane diagram of ``shown`` (the graph the view's layers, filters and focus keep). Columns
+ * are read from ``data``, since a table's columns fold into it there; ``expanded`` holds the
+ * tables whose columns are drawn one by one. */
 export function laneDiagram(
   shown: GraphData,
   data: GraphData,
   expanded: ReadonlySet<string>,
-  path: LanePath | null = null,
 ): LaneDiagram {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
   const node = (id: string): GraphNode => {
@@ -100,47 +90,14 @@ export function laneDiagram(
     lane.set(id, "term");
     terms.push(node(id));
   };
-  // Whether columns are drawn at all: a product's first hop is its tables alone.
-  const columnsDrawn = path === null || path.depth >= 2;
-
-  if (path !== null) {
-    // 1: the product's tables.
-    if (path.depth >= 1)
-      for (const e of shown.edges)
-        if (e.kind === "member" && e.a === path.focus && node(e.b).type === "table") addTable(e.b);
-    // 3: the terms drawn tied to their columns (read from ``data``, where a column is itself);
-    // past 3, a step across the term links each hop.
-    if (path.depth >= 3) {
-      for (const e of data.edges) {
-        if (e.kind !== "term_binding" || !drawn.has(e.a) || node(e.a).type !== "term") continue;
-        const parent = node(e.b).parent;
-        if (node(e.b).type === "column" && parent && lane.get(parent) === "table") addTerm(e.a);
-      }
-      let frontier = terms.map((n) => n.id);
-      for (let hop = 4; hop <= path.depth && frontier.length > 0; hop++) {
-        const at = new Set(frontier);
-        frontier = [];
-        for (const e of termLinks)
-          for (const [from, to] of [
-            [e.a, e.b],
-            [e.b, e.a],
-          ])
-            if (at.has(from) && !lane.has(to)) {
-              addTerm(to);
-              frontier.push(to);
-            }
-      }
-    }
-  } else {
-    for (const n of shown.nodes) if (n.type === "term") addTerm(n.id);
-    // The tables drawn, and those of the columns a drawn term binds (a preset without tables draws
-    // the columns alone); a column drawn only as lineage's end brings no table.
-    for (const n of shown.nodes) if (n.type === "table") addTable(n.id);
-    for (const e of shown.edges) {
-      if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
-      const parent = node(e.b).parent;
-      if (node(e.b).type === "column" && parent) addTable(parent);
-    }
+  for (const n of shown.nodes) if (n.type === "term") addTerm(n.id);
+  // The tables drawn, and those of the columns a drawn term binds (a preset without tables draws
+  // the columns alone); a column drawn only as lineage's end brings no table.
+  for (const n of shown.nodes) if (n.type === "table") addTable(n.id);
+  for (const e of shown.edges) {
+    if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
+    const parent = node(e.b).parent;
+    if (node(e.b).type === "column" && parent) addTable(parent);
   }
 
   const edges: GraphEdge[] = [];
@@ -178,7 +135,6 @@ export function laneDiagram(
     if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
     const end = node(e.b);
     if (end.type === "column") {
-      if (!columnsDrawn) continue;
       if (!drawn.has(end.id) && !(end.parent && lane.get(end.parent) === "table")) continue;
       bound.add(end.id);
     } else if (lane.get(end.id) !== "table") continue;
@@ -189,10 +145,9 @@ export function laneDiagram(
   const columns: GraphNode[] = [];
   const more: MoreNode[] = [];
   const ofTable = new Map<string, GraphNode[]>();
-  if (columnsDrawn)
-    for (const n of data.nodes)
-      if (n.type === "column" && n.parent && lane.get(n.parent) === "table")
-        ofTable.set(n.parent, [...(ofTable.get(n.parent) ?? []), n]);
+  for (const n of data.nodes)
+    if (n.type === "column" && n.parent && lane.get(n.parent) === "table")
+      ofTable.set(n.parent, [...(ofTable.get(n.parent) ?? []), n]);
   for (const t of tables) {
     const cols = ofTable.get(t) ?? [];
     const unbound = cols.filter((c) => !bound.has(c.id));
@@ -209,23 +164,15 @@ export function laneDiagram(
     if (c.parent) add({ a: c.parent, b: c.id, kind: "has_column" }, c.id, c.parent);
   for (const m of more) links.push({ id: `${m.id}>${m.table}`, from: m.id, to: m.table });
 
-  // A product's focus draws that product alone; otherwise every product the tables belong to,
-  // read from the graph whatever its layers draw (the glossary's Data layer off), and a graph of
-  // products alone draws those drawn.
+  // Every product the tables belong to, read from the graph whatever its layers draw (the
+  // glossary's Data layer off); a graph of products alone draws those drawn.
   const members = data.edges.filter(
-    (e) =>
-      e.kind === "member" &&
-      node(e.a).type === "product" &&
-      lane.get(e.b) === "table" &&
-      (path === null || e.a === path.focus),
+    (e) => e.kind === "member" && node(e.a).type === "product" && lane.get(e.b) === "table",
   );
-  const alone = path === null && terms.length === 0 && tables.length === 0;
-  const products =
-    path !== null
-      ? [node(path.focus)]
-      : alone
-        ? shown.nodes.filter((n) => n.type === "product")
-        : [...new Set(members.map((e) => e.a))].map(node);
+  const alone = terms.length === 0 && tables.length === 0;
+  const products = alone
+    ? shown.nodes.filter((n) => n.type === "product")
+    : [...new Set(members.map((e) => e.a))].map(node);
   for (const p of products) lane.set(p.id, "product");
   for (const e of members) add({ a: e.a, b: e.b, kind: "member" }, e.b, e.a);
 
