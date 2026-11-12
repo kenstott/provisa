@@ -102,6 +102,12 @@ async def _run(
                 AsyncMock(return_value=[]),
             )
         )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product_offer.list_offers",
+                AsyncMock(return_value=[]),
+            )
+        )
         # REQ-1919: every other section the store holds — none, unless a test gives some.
         stack.enter_context(
             patch(
