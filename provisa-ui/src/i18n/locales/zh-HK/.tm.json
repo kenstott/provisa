@@ -10232,5 +10232,6 @@
   "zh-HK/ontologyImport.json::ontologyImport.useDefinitionHelp": "The term takes the imported definition in place of its own. A term with no definition takes it anyway.",
   "zh-HK/ontologyImport.json::ontologyImport.withItem": "With another item",
   "zh-HK/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
-  "zh-HK/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom"
+  "zh-HK/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
+  "zh-HK/filterInput.json::filterInput.syntaxHint": "Uses Google search syntax: every word must match; put or between alternatives; -word excludes; \"quotes\" keep a phrase together."
 }
