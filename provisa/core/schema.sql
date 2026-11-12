@@ -931,6 +931,9 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
+    -- REQ-2243: how the measure or derived value the term names is computed, in business
+    -- language. Curator work governed with the definition: read by everyone who reads the term.
+    calculation_method TEXT,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
     -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
@@ -960,6 +963,7 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     UNIQUE (name)
 );
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1130,6 +1134,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
     from_fact   TEXT
 );
+-- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
+-- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
 
 -- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
 -- metric goes with the metric.

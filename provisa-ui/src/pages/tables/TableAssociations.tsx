@@ -19,11 +19,12 @@ import { detailHref } from "../../components/list/useDetailParam";
 import { TagControl } from "../../components/TagControl";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { TableClassTerm } from "./TableClassTerm";
+import { TableMetrics } from "./TableMetrics";
 
 /**
  * What a table is associated with besides its data product, the same in its read view and its
- * edit form: its tags, the glossary terms that name its columns, and the relationships it takes
- * part in. The two lists are read-only; a relationship is changed on the Relationships page, a
+ * edit form: its tags, the glossary terms that name its columns, the relationships it takes
+ * part in, and the governed metrics it uses. The two lists are read-only; a relationship is changed on the Relationships page, a
  * term in the glossary.
  */
 export function TableAssociations({
@@ -109,6 +110,12 @@ export function TableAssociations({
                 ))}
               </Stack>
             ),
+        },
+        {
+          // REQ-2243: the governed metrics the table uses, with the terms they name.
+          label: t("tableSections.metrics"),
+          testId: "table-associations-metrics",
+          value: <TableMetrics tableId={table.id} />,
         },
       ]}
     />

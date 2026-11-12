@@ -115,3 +115,61 @@ async def regenerate_metric_views(conn: "Connection", metric_name: str) -> list[
         )
         regenerated.append(row["table_name"])
     return regenerated
+
+
+async def dataset_metrics(conn: "Connection", table_id: int) -> list[dict[str, Any]]:  # REQ-2243
+    """The governed metrics a dataset uses, by name, each with the glossary term it names (its
+    definition and calculation method), unfiltered by who reads them: a view declared from metrics
+    (REQ-1318) uses the metrics it closes; a table or view uses each metric whose expression
+    references it by its virtual name (alias, else table name), found by the same reference
+    extraction the GraphQL metrics block uses. An unknown ``table_id`` uses none."""
+    from provisa.compiler.metric_expand import metric_reference_tables
+    from provisa.core.repositories import metric as metric_repo
+    from provisa.core.schema_org import glossary_terms
+
+    table = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.table_name,
+                registered_tables.c.alias,
+                registered_tables.c.view_metrics,
+            ).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    if table is None:
+        return []
+    name = table.alias or table.table_name
+    declared = set(table.view_metrics["metrics"]) if table.view_metrics else set()
+    used = [
+        m
+        for m in await metric_repo.list_all(conn)
+        if m["name"] in declared or name in metric_reference_tables(m["name"], m["expression"])
+    ]
+    term_ids = {m["term_id"] for m in used if m["term_id"] is not None}
+    terms = {
+        r.id: r
+        for r in (
+            await conn.execute_core(
+                select(
+                    glossary_terms.c.id,
+                    glossary_terms.c.definition,
+                    glossary_terms.c.calculation_method,
+                ).where(glossary_terms.c.id.in_(term_ids))
+            )
+        ).fetchall()
+    }
+    out: list[dict[str, Any]] = []
+    for m in used:
+        term = None if m["term_id"] is None else terms[m["term_id"]]
+        out.append(
+            {
+                "name": m["name"],
+                "description": m["description"],
+                "ai_context": m["ai_context"],
+                "visible_to": list(m["visible_to"]),
+                "term": m["term"],
+                "term_definition": None if term is None else term.definition,
+                "term_calculation_method": None if term is None else term.calculation_method,
+            }
+        )
+    return out

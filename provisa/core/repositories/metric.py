@@ -27,7 +27,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.models import Metric
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import metrics
+from provisa.core.schema_org import glossary_terms, metrics
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -51,6 +51,7 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
     """Upsert a metric by name. The expression is validated on every write (hard error)."""
     model_change.name("upsert", "metric", metric.name)  # REQ-1524
     validate_expression(metric.expression)
+    term_id = await _term_id(conn, metric) if metric.term is not None else None
     vals = {
         "name": metric.name,
         "expression": metric.expression,
@@ -59,6 +60,7 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
         "ai_context": metric.ai_context,  # REQ-1319
         "visible_to": list(metric.visible_to),
         "from_fact": metric.from_fact,  # REQ-1320
+        "term_id": term_id,  # REQ-2243
     }
     await conn.upsert(
         metrics,
@@ -71,18 +73,40 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
             "ai_context",
             "visible_to",
             "from_fact",
+            "term_id",
         ],
     )
 
 
+async def _term_id(conn: "Connection", metric: Metric) -> int:  # REQ-2243
+    """The id of the glossary term ``metric`` names; a name no term holds is refused."""
+    row = (
+        await conn.execute_core(
+            select(glossary_terms.c.id).where(glossary_terms.c.name == metric.term)
+        )
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"metric {metric.name!r} names the glossary term {metric.term!r}, which does not exist"
+        )
+    return row.id
+
+
+def _with_term():
+    """Each metric with the name of the glossary term it names (REQ-2243), None when none."""
+    return select(metrics, glossary_terms.c.name.label("term")).outerjoin(
+        glossary_terms, glossary_terms.c.id == metrics.c.term_id
+    )
+
+
 async def get(conn: "Connection", name: str) -> dict | None:  # REQ-1317
-    result = await conn.execute_core(select(metrics).where(metrics.c.name == name))
+    result = await conn.execute_core(_with_term().where(metrics.c.name == name))
     row = result.fetchone()
     return dict(row._mapping) if row is not None else None
 
 
 async def list_all(conn: "Connection") -> list[dict]:  # REQ-1317
-    result = await conn.execute_core(select(metrics).order_by(metrics.c.name))
+    result = await conn.execute_core(_with_term().order_by(metrics.c.name))
     return [dict(r._mapping) for r in result.fetchall()]
 
 

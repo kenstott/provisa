@@ -116,6 +116,9 @@ class Item:
     labels: list[str] = field(default_factory=list)
     #: What the ontology states about it that a term does not model (provisa.ontology_import.kept).
     statements: list[dict[str, Any]] = field(default_factory=list)
+    #: REQ-2243: how the measure it names is computed (``provisa:calculationMethod``, or an Ossie
+    #: document's ``ai_context.calculation_methods``).
+    calculation_method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -227,6 +230,7 @@ class _Collector:
         iri: str | None,
         labels: Iterable[str] = (),
         statements: Iterable[dict[str, Any]] = (),
+        calculation_method: str | None = None,
     ) -> None:
         if not name:
             self.leave_out("no name")
@@ -242,6 +246,7 @@ class _Collector:
             item.definition = item.definition or definition
             item.iri = item.iri or iri
         item = self.items[self._by_name[name]]
+        item.calculation_method = item.calculation_method or calculation_method
         for label in labels:
             if label != name and label not in item.labels:
                 item.labels.append(label)
@@ -295,6 +300,33 @@ def _expand(iri: Any, prefixes: Mapping[str, Any], where: str) -> str | None:
 #: Where an Ossie document a Provisa export wrote keeps its terms' statements: Ossie's concepts
 #: and relationships take no key of a vendor's, and its ``ai_context`` takes any.
 KEPT_STATEMENTS = "kept_statements"
+#: REQ-2243: where it keeps its terms' calculation methods, each ``{concept, iri, method}``.
+CALCULATION_METHODS = "calculation_methods"
+#: REQ-2243: the predicate a term's calculation method is written and read as, a plain literal.
+#: No other vocabulary's annotation is read as a method.
+PROVISA = "https://provisa.dev/ns#"
+CALCULATION_METHOD = f"{PROVISA}calculationMethod"
+
+
+def _methods(doc: Mapping[str, Any]) -> dict[str, str]:
+    """The calculation method a Provisa export wrote for each concept of an Ossie document, under
+    ``ai_context.calculation_methods`` (REQ-2243)."""
+    context = doc.get("ai_context")
+    entries = context.get(CALCULATION_METHODS) if isinstance(context, dict) else None
+    if entries is None:
+        return {}
+    shape = "ai_context.calculation_methods is a list of a concept and its method"
+    if not isinstance(entries, list):
+        raise ImportRefused(shape)
+    out: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ImportRefused(shape)
+        concept, method = entry.get("concept"), entry.get("method")
+        if not isinstance(concept, str) or not isinstance(method, str) or not method.strip():
+            raise ImportRefused(shape)
+        out[concept] = method.strip()
+    return out
 
 
 def _kept(doc: Mapping[str, Any]) -> dict[str, tuple[str | None, list[dict[str, Any]]]]:
@@ -346,6 +378,7 @@ def _ossie(text: str, file_name: str) -> Parsed:
     if not isinstance(prefixes, dict):
         raise ImportRefused("an Ossie ontology's prefixes are a map of prefix to IRI")
     kept_by = _kept(doc)
+    methods = _methods(doc)
     found = _Collector()
     for entry in doc["ontology"]:
         if not isinstance(entry, dict) or "concept" not in entry:
@@ -372,6 +405,7 @@ def _ossie(text: str, file_name: str) -> Parsed:
             _description(fields.get("description")),
             iri,
             statements=statements,
+            calculation_method=methods.get(concept),
         )
         for parent in fields.get("extends") or []:
             if isinstance(parent, str) and parent not in OSSIE_BUILT_INS:
@@ -624,13 +658,30 @@ def _read(graph: Any, fmt: str, file_name: str, left_out: dict[str, int]) -> Par
 
         return skip
 
+    method_predicate = URIRef(CALCULATION_METHOD)
+
+    def method_or_modeled(iri: str) -> Any:
+        """What :func:`modeled` skips, and the calculation method, which the term models
+        (REQ-2243) and so is not kept as a statement too."""
+        edge = modeled(iri)
+        return lambda predicate, value: predicate == method_predicate or edge(predicate, value)
+
     for iri in sorted(declared):
         name, definition = described(iri)
         subject = URIRef(iri)
         labels = sorted(
             {phrase(str(a)) for a in graph.objects(subject, SKOS.altLabel) if str(a).strip()}
         )
-        found.add(iri, name, declared[iri], definition, iri, labels, keep(subject, modeled(iri)))
+        found.add(
+            iri,
+            name,
+            declared[iri],
+            definition,
+            iri,
+            labels,
+            keep(subject, method_or_modeled(iri)),
+            calculation_method=text_of(subject, method_predicate),
+        )
     for individual in sorted(classes_of):
         subject = URIRef(individual)
         classes = classes_of[individual]

@@ -676,6 +676,19 @@ query MetricsQuery {
     aiContext
     visibleTo
     fromFact
+    term
+  }
+}
+
+# REQ-2243: the governed metrics a dataset uses, with the glossary term each names.
+query TableMetricsQuery($tableId: Int!) {
+  tableMetrics(tableId: $tableId) {
+    name
+    description
+    aiContext
+    term
+    termDefinition
+    termCalculationMethod
   }
 }
 

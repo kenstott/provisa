@@ -23,6 +23,7 @@ const revenue: Metric = {
   aiContext: "Excludes refunds",
   visibleTo: ["analyst", "finance"],
   fromFact: "orders",
+  term: null,
 };
 
 function fields(name: string): [string, string][] {
@@ -45,6 +46,7 @@ describe("a metric's read view", () => {
       ["Datatype", "decimal"],
       ["Description", "Booked revenue"],
       ["AI Context", "Excludes refunds"],
+      ["Glossary term", "—"],
       ["Tags", ""],
       ["Source fact", "orders"],
       ["Visible to", "analyst, finance"],
