@@ -367,4 +367,41 @@ describe("TablesPage — the detail panel", () => {
     await userEvent.click(within(panel).getByTestId("table-preview-back"));
     expect(await within(panel).findByTestId("table-read-view-edit")).toBeInTheDocument();
   });
+
+  describe("an action that shows something in the panel leaves the preview first", () => {
+    const openPreview = async () => {
+      render(<TablesPage />);
+      await select("orders");
+      await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+      await screen.findByTestId("table-preview-modal");
+    };
+
+    it("Edit closes the preview and shows the edit form", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-edit"));
+      await screen.findByTestId("table-draft-checkbox");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
+
+    it("Profile closes the preview, the profile being read on Quality", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-profile"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+    });
+
+    it("the eye closes the preview", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-preview"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+      expect(screen.getByTestId("table-read-view-edit")).toBeInTheDocument();
+    });
+
+    it("selecting another row shows that table, and the first is not in preview when reselected", async () => {
+      await openPreview();
+      await select("staging");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+      await select("orders");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
+  });
 });
