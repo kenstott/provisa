@@ -75,6 +75,10 @@ def _matches(pattern: exp.Expr, node: exp.Expr, bindings: Bindings) -> bool:
     name = hole_name(pattern)
     if name is not None:
         return _bound(name, node, bindings)
+    if isinstance(pattern, exp.Null):
+        # A NULL a pattern says no type of is a NULL of any type: a strict function's NULL of a
+        # pseudo-type (cstring) that no typed NULL of a pattern can name.
+        return _is_null(node)
     if isinstance(pattern, exp.Cast) and isinstance(pattern.this, exp.Null):
         said = function_types.argument_type(pattern)
         if said is None:
