@@ -95315,13 +95315,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     order value less refunds and discounts, on the order date, in the order''s currency). It is governed
     like the definition (approved, versioned, exported with the term, written back on ontology export),
     and an ontology import maps a term''s calculation annotation onto it. Everyone who can read the term
-    reads its method. A computed column grounded in the term shows the method with its definition; the column''s
-    own formula (its expression) is the implementation and is shown only to a reader who can read every
-    input it uses (REQ-2152). (Amended 2026-11-11, A VIEW''S FORMULA IS ITS SEMANTIC SQL:) Maintainer 2026-11-11:
-    for a computed column of a view or a materialized view, the formula shown is the column''s expression
-    in the view''s semantic SQL definition (over semantic names, as the modeller wrote it), never the physical
-    SQL the view compiles to or the MV''s stored table; the inputs whose read rights decide who sees it
-    are that expression''s semantic columns.'
+    reads its method. [SUPERSEDED by REQ-2243, 2026-11-11 -- a dataset shows the governed metrics it uses
+    with their definitions, not column formulas (A DATASET SHOWS ITS METRICS). Kept here for history; do
+    not implement against it.] A computed column grounded in the term shows the method with its definition;
+    the column''s own formula (its expression) is the implementation and is shown only to a reader who can
+    read every input it uses (REQ-2152). [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2243, 2026-11-11 -- a
+    dataset shows the governed metrics it uses with their definitions, not column formulas (A DATASET SHOWS
+    ITS METRICS). Kept here for history; do not implement against it.] (Amended 2026-11-11, A VIEW''S FORMULA
+    IS ITS SEMANTIC SQL:) Maintainer 2026-11-11: for a computed column of a view or a materialized view,
+    the formula shown is the column''s expression in the view''s semantic SQL definition (over semantic
+    names, as the modeller wrote it), never the physical SQL the view compiles to or the MV''s stored table;
+    the inputs whose read rights decide who sees it are that expression''s semantic columns. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, A DATASET SHOWS ITS METRICS:) Maintainer 2026-11-11, correcting the earlier
+    reading of another product: what is shown for a dataset is not a column''s formula but the governed
+    metrics (REQ-1317, REQ-1319) it uses, each with its name, description and AI definition. A view declared
+    from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
+    references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
+    A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
+    are listed as the reader''s role may see them (visible_to).'
   scenario: |
     Given a glossary term "net revenue" with a calculation method
     And a computed column grounded in that term whose formula reads a masked column
