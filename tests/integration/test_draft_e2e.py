@@ -124,9 +124,11 @@ def _refused_as_draft(srv) -> None:
     assert graphql.status_code == 409, graphql.text
     assert graphql.json()["code"] == "data.table_is_draft", graphql.text
     assert graphql.json()["params"] == {"table": "orders"}, graphql.text
-    sql = _sql(srv, "SELECT id FROM orders")
-    assert sql.status_code != 200, sql.text
-    assert "'orders' is a draft" in sql.text, sql.text
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: the role here is org_admin, whose statement
+    # naming the draft reads it as a served table is (admin/table_read.plan_reading_drafts).
+    sql = _sql(srv, "SELECT id FROM orders ORDER BY id")
+    assert sql.status_code == 200, sql.text
+    assert [r["id"] for r in sql.json()["data"]["sql"]] == [i for i, _ in _ID_AMOUNT], sql.text
     fields = _graphql(srv, "{ __schema { queryType { fields { name } } } }")
     assert fields.status_code == 200, fields.text
     offered = {f["name"] for f in fields.json()["data"]["__schema"]["queryType"]["fields"]}
