@@ -31,7 +31,7 @@ import {
   type Selection,
   type Where,
 } from "../../api/metaGraph";
-import type { MaskEntry } from "../../lib/masks";
+import { COLUMN_FACTS, columnFacts, facts, type ColumnFacts } from "./columnFacts";
 import { searchWhere } from "./ontologySearch";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
@@ -46,6 +46,8 @@ import type {
   TermStatus,
 } from "./graphModel";
 
+export { COLUMN_FACTS, columnFacts, facts };
+
 /** A product's node id. */
 export const productNode = (id: string) => `p:${id}`;
 
@@ -59,9 +61,6 @@ export const TERM_FACTS: Selection = {
   rels: { experts: { sel: { fields: ["user_id", "kind"] } } },
 };
 
-/** A column's facts: its type, description and masks (its sensitivity is read beside them). */
-export const COLUMN_FACTS = ["data_type", "description", "masks"];
-
 /** A table's facts: its source and description, and its checkers' latest scans (its quality). */
 export const TABLE_FACTS: Selection = {
   fields: ["source_id", "description"],
@@ -73,18 +72,17 @@ export const TABLE_FACTS: Selection = {
 /** A product's facts: its status and owner (its members are counted from the graph). */
 export const PRODUCT_FACTS = ["status", "owner_role"];
 
+/** A table's columns by their keys alone: how many the role reads, so a term's graph offers to
+ * expand a table only when it has columns beyond those its terms reach (a product's graph reads
+ * its member tables' columns whole). */
+const COLUMN_COUNT: NonNullable<Selection["rels"]> = {
+  tableColumns: { to: "table_columns", sel: { fields: ["column_key"] } },
+};
+
 /** A column's or a table's tags, which the Product map's tag filter judges. */
 const TAGS: NonNullable<Selection["rels"]> = {
   tags: { sel: { fields: ["tag_id"] } },
 };
-
-/** A column's facts as COLUMN_FACTS reads them. */
-interface ColumnFacts {
-  dataType?: string | null;
-  description?: string | null;
-  // table_columns.masks: the ordered mask list (REQ-2059), as JSON.
-  masks?: unknown;
-}
 
 /** A table's facts as TABLE_FACTS reads them. */
 interface TableFacts {
@@ -95,29 +93,6 @@ interface TableFacts {
 
 interface Tagged {
   tags?: { tagId: string }[] | null;
-}
-
-/** ``info`` on a node, its facts not read left out; nothing when none was read. */
-export function facts(info: NodeInfo): { info?: NodeInfo } {
-  const kept = Object.fromEntries(
-    Object.entries(info).filter(([, v]) => v !== undefined && v !== null && v !== ""),
-  ) as NodeInfo;
-  return Object.keys(kept).length === 0 ? {} : { info: kept };
-}
-
-/** A column's facts, as COLUMN_FACTS reads them. */
-export function columnFacts(c: ColumnFacts): NodeInfo {
-  // A JSON column comes back as its text or as its value, as the role's schema types it
-  // (asProduct reads custom_properties the same way).
-  const masks = (typeof c.masks === "string" ? JSON.parse(c.masks) : c.masks) as
-    | MaskEntry[]
-    | null
-    | undefined;
-  return {
-    dataType: c.dataType ?? undefined,
-    description: c.description ?? undefined,
-    masked: masks == null ? undefined : masks.some((m) => m.mask !== null),
-  };
 }
 
 /** A table's facts, as TABLE_FACTS reads them: its quality is its checkers' worst latest scan. */
@@ -361,6 +336,7 @@ function termSelection(s: QueryScope): Selection {
                 ...(s.products ? TAGS : {}),
                 ...productOf(s),
                 ...relationships(s),
+                ...(s.products ? {} : COLUMN_COUNT),
               },
             },
           },
@@ -709,6 +685,8 @@ export interface TermRow {
                 dataProductTables?: Memberships;
                 // Under the Product map's Tables (with Columns).
                 sourceRelationships?: RelationshipRow[] | null;
+                // By the Ontology preset's rules: its columns' keys, which count them.
+                tableColumns?: { columnKey: string }[] | null;
               })
           | null;
       }[]
@@ -791,6 +769,7 @@ function builder() {
       if (n.inProduct) seen.inProduct = true;
       // Met first where its facts were not read (a class term's table): they are read here.
       if (n.info && !seen.info) seen.info = n.info;
+      if (n.columns !== undefined && seen.columns === undefined) seen.columns = n.columns;
     }
   };
   const edge = (
@@ -924,6 +903,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
         stored: true,
         layers: [],
         ...(r.registeredTable ? facts(tableFacts(r.registeredTable)) : {}),
+        ...columnCount(r.registeredTable?.tableColumns),
       });
       // Its sensitivity: its row in sensitive_coverage when sensitive; absent when not read.
       const sensitivity = r.column ? rowsOf(r.column.sensitivity) : undefined;
@@ -953,6 +933,12 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
   }
   termEdgesDrawn(b, edges);
   return b.graph();
+}
+
+/** How many columns a table has, from its columns' keys as read; nothing when they were not. */
+function columnCount(keys: { columnKey: string }[] | null | undefined): { columns?: number } {
+  const rows = rowsOf(keys);
+  return rows === undefined ? {} : { columns: rows.length };
 }
 
 /** The graph the ontology's query answer draws, under the rules ``s`` reads it by: each term once

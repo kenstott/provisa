@@ -12,11 +12,11 @@
 // schema as the user (ontologyData.ts): every layer unfiltered, for the view's controls, and what
 // the view's controls keep, read afresh as they change.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import type { GraphData, LayerId, QueryScope } from "./graphModel";
-import { dataGraphql, metaReader } from "../../api/metaGraph";
+import { dataGraphql, metaReader, type MetaReader } from "../../api/metaGraph";
 import { fetchProductLineage } from "../../api/lineage";
 import {
   ontologyCountQuery,
@@ -30,6 +30,12 @@ import {
   type CountRow,
   type OntologyRows,
 } from "./ontologyData";
+import {
+  tableColumnsField,
+  tableColumnsQuery,
+  withTableColumns,
+  type TableColumnsRow,
+} from "./tableColumns";
 import { readOntology } from "./ontologyRead";
 import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
@@ -140,6 +146,15 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   const [scope, setScope] = useState<QueryScope | null>(null);
   const [scoped, setScoped] = useState<Loaded | null>(null);
   const [changes, setChanges] = useState(0);
+  // The tables the view has expanded, and the columns read of each beyond those its graph read
+  // (a term's graph reads only the columns its terms reach): read once on asking, kept while the
+  // ontology is unchanged, drawn while the table is expanded.
+  const [expandedTables, setExpandedTables] = useState<ReadonlySet<string>>(new Set());
+  const [tableColumns, setTableColumns] = useState<ReadonlyMap<string, TableColumnsRow[]>>(
+    new Map(),
+  );
+  const asking = useRef(new Set<string>());
+  const [columnsReader, setColumnsReader] = useState<MetaReader | null>(null);
   const { focus, depth, products } = preset;
   // The layers read on asking that the view has on: what the controls choose from grows with them.
   const asked = scopeOf(preset).readOnAsking ?? {};
@@ -148,7 +163,11 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     .sort()
     .join();
   useEffect(() => {
-    const changed = () => setChanges((n) => n + 1);
+    const changed = () => {
+      setChanges((n) => n + 1);
+      setTableColumns(new Map());
+      asking.current.clear();
+    };
     window.addEventListener("provisa:glossary-changed", changed);
     return () => window.removeEventListener("provisa:glossary-changed", changed);
   }, []);
@@ -186,6 +205,34 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
       cancelled = true;
     };
   }, [enabled, actingRoles, scope, changes]);
+  // A table expanded with more columns than were read is read for them: that table alone.
+  const readData = scoped !== null && scoped.over === undefined ? scoped.data : null;
+  useEffect(() => {
+    if (!enabled || actingRoles === null || readData === null) return;
+    for (const table of expandedTables) {
+      if (tableColumns.has(table) || asking.current.has(table)) continue;
+      const node = readData.nodes.find((n) => n.id === table);
+      if (node?.columns === undefined) continue;
+      const had = readData.nodes.filter((n) => n.type === "column" && n.parent === table).length;
+      if (node.columns <= had) continue;
+      asking.current.add(table);
+      metaReader(actingRoles)
+        .then(async (m) => {
+          const q = tableColumnsQuery(m, table);
+          if (q === null) throw new Error(`the role cannot read ${table}'s columns`);
+          const rows = (
+            await dataGraphql<{ registered_tables: TableColumnsRow[] }>(q, {}, actingRoles)
+          ).registered_tables;
+          setColumnsReader(m);
+          setTableColumns((prev) => new Map(prev).set(table, rows));
+        })
+        .catch((e: unknown) =>
+          setRead((r) => ({ ...r, error: e instanceof Error ? e.message : String(e) })),
+        )
+        .finally(() => asking.current.delete(table));
+    }
+  }, [enabled, actingRoles, readData, expandedTables, tableColumns]);
+  const onExpanded = useCallback((tables: ReadonlySet<string>) => setExpandedTables(tables), []);
   // The view's controls say what to read; the preset says by which rules.
   const onScope = useCallback((s: QueryScope) => setScope({ ...s, products }), [products]);
   // REQ-2143: past the budget, the whole ontology unsearched is its overview -- each domain with
@@ -196,14 +243,40 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     scope.search.length === 0 &&
     scope.focus === null &&
     scope.domains.length === 0;
+  // The columns read on asking are drawn while their table is expanded, and read with the rest.
+  const shownKey = [...expandedTables]
+    .filter((t) => tableColumns.has(t))
+    .sort()
+    .join();
+  const shownTables = useMemo(() => (shownKey === "" ? [] : shownKey.split(",")), [shownKey]);
+  const withColumns = useMemo(
+    () =>
+      readData === null || shownTables.length === 0
+        ? readData
+        : withTableColumns(
+            readData,
+            shownTables.flatMap((t) => tableColumns.get(t) ?? []),
+          ),
+    [readData, shownTables, tableColumns],
+  );
   const drawn: GraphData =
     scoped === null
       ? EMPTY
-      : scoped.over === undefined
-        ? scoped.data
-        : overview
+      : withColumns !== null
+        ? withColumns
+        : overview && scoped.over !== undefined
           ? overviewGraph(scoped.rows, said)
           : EMPTY;
+  const columnsField =
+    shownTables.length === 0 || columnsReader === null
+      ? null
+      : tableColumnsField(columnsReader, shownTables);
+  const text =
+    scoped?.query === undefined
+      ? null
+      : columnsField === null
+        ? scoped.query
+        : scoped.query.replace(/\n}$/, `\n  ${columnsField}\n}`);
   const notice =
     scoped?.over !== undefined && !overview
       ? t(scoped.hops ? "graph3d.overBudgetHops" : "graph3d.overBudget", { count: scoped.over })
@@ -211,7 +284,8 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   const query = (all: GraphData) => ({
     all,
     onScope,
-    text: scoped?.query ?? null,
+    onExpanded,
+    text,
     notice,
     overview,
     ...(focus === null ? {} : { own: focus }),

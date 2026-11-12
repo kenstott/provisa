@@ -119,6 +119,10 @@ export interface GraphNode {
   /** REQ-2174 (amended 2026-10-28, EVERY LANE NODE INFORMS AND LINKS): what helps a reader of
    * the node, as its hover card and the detail panel say it (nodeFacts). Never drawn. */
   info?: NodeInfo;
+  /** How many columns a table has that the role reads, where the graph read them apart from the
+   * columns it draws (a term's graph reads only those its terms reach): its columns are offered
+   * on asking when there are more than are drawn. */
+  columns?: number;
   /** REQ-2174 (amended 2026-11-07): a table's columns tied to no term drawn, folded into this one
    * node (foldUnbound): their ids. */
   folded?: string[];

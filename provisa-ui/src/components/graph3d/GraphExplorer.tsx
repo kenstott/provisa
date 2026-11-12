@@ -165,6 +165,8 @@ export function GraphExplorer({
     /** REQ-2143: ``data`` is the overview -- the domains with their counts -- and picking a domain
      * narrows the graph to it. */
     overview?: boolean;
+    /** Told the tables expanded: the page reads a table's columns beyond those it read. */
+    onExpanded?: (tables: ReadonlySet<string>) => void;
   };
   /** REQ-1723: the navbar's checked domains (useViewDomains), null for no narrowing. The graph
    * holds only what is in them; its own domain filter chooses among them, narrowing further and
@@ -319,6 +321,8 @@ export function GraphExplorer({
       if (!next.delete(id)) next.add(id);
       return next;
     });
+  const onExpanded = query?.onExpanded;
+  useEffect(() => onExpanded?.(expanded), [onExpanded, expanded]);
   const [frame, setFrame] = useState(0);
   // A product's graph shows the rest of the model whenever its focus is anything but the product.
   const showsRest = home !== null && !(focus.length === 1 && focus[0] === home);
@@ -910,13 +914,18 @@ function GraphDetail({
   const node = graph.nodes.find((n) => n.id === selected);
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.label ?? id;
   const links = node ? edgesOf(graph, node.id) : [];
-  // A table whose columns fold into it, or whose columns tied to no term are one node (REQ-2174,
-  // amended 2026-11-07), shows them on asking.
-  const hasColumns =
-    node?.type === "table" &&
-    (folds
-      ? data.nodes.some((n) => n.type === "column" && n.parent === node.id)
-      : expanded.has(node.id) || graph.nodes.some((n) => n.folded && n.parent === node.id));
+  // A table expands to its other columns, offered only when it has columns beyond those drawn:
+  // those its graph read (folded into it, or one node of those tied to no term; REQ-2174, amended
+  // 2026-11-07), or those its read counted (a term's graph reads only the columns its terms
+  // reach). Expanded, it collapses them.
+  const hasColumns = node?.type === "table" && (expanded.has(node.id) || hasMore(node));
+  function hasMore(table: GraphNode): boolean {
+    const of = (g: GraphData) => g.nodes.filter((n) => n.parent === table.id && !n.folded);
+    if (graph.nodes.some((n) => n.folded && n.parent === table.id)) return true;
+    const drawnColumns = of(graph).filter((n) => n.type === "column").length;
+    const read = folds ? of(data).filter((n) => n.type === "column").length : 0;
+    return Math.max(read, table.columns ?? 0) > drawnColumns;
+  }
   // Each kind drawn, named as its look shows it, with how many.
   const counts = useMemo(() => {
     const by = new Map<string, { key: string; type: string; count: number }>();
