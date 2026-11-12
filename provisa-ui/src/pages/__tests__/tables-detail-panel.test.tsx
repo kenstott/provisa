@@ -229,7 +229,7 @@ async function select(name: string) {
   // The name is in the list and, once selected, in the panel's title: take the list's.
   const list = await screen.findByTestId("tables-list");
   const row = (await within(list).findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   return row;
 }
 
