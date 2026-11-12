@@ -19612,7 +19612,10 @@
   type: behavioral
   description: 'Shared boolean expression-to-SQL converter for Hasura filter expressions. Supports `_eq`,
     `_neq`, `_gt`, `_gte`, `_lt`, `_lte`, `_in`, `_nin`, `_like`, `_ilike`, `_regex`, `_is_null`, `_and`,
-    `_or`, `_not`. Session variable mapping: `X-Hasura-<Name>` -> `current_setting(''provisa.<name>'')`.'
+    `_or`, `_not`. Session variable mapping: `X-Hasura-<Name>` -> `current_setting(''provisa.<name>'')`.
+    (Amended 2026-11-12, _not IS PART OF EVERY GOVERNED WHERE:) Maintainer 2026-11-12, chosen over adding
+    _nlike and _nilike: a where object takes _not: <where> beside _and and _or, on every table of the governed
+    GraphQL schema, with plain SQL NOT semantics; it composes with governance as _and and _or do.'
   use_case: 'Hasura v2 parity: a shared filter converter makes RLS rules from Hasura boolean expressions work correctly.'
   code:
   - provisa/hasura_v2/
@@ -61946,13 +61949,16 @@
   feature: explorers-graph
   priority: MUST
   type: ui
-  description: THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MOUNT. The
-    `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but Cytoscape
-    reads its own canvas pixel dimensions once when the instance is created and never again on its own.
-    Without something to tell it otherwise, the rendered graph keeps whatever size it was born with as
-    the browser window resizes or the surrounding panel reflows, clipping or floating in dead space. A
-    `ResizeObserver` on the canvas container calls `cy.resize()` on every size change, the same pattern
-    the lineage DAG (REQ-1401 area) already used and the Graph/Cypher explorer never had.
+  description: 'THE GRAPH EXPLORER''S CANVAS TRACKS ITS CONTAINER''S SIZE, NOT JUST ITS SIZE AT MOUNT. The
+    `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but Cytoscape reads
+    its own canvas pixel dimensions once when the instance is created and never again on its own. Without
+    something to tell it otherwise, the rendered graph keeps whatever size it was born with as the browser
+    window resizes or the surrounding panel reflows, clipping or floating in dead space. A `ResizeObserver`
+    on the canvas container calls `cy.resize()` on every size change, the same pattern the lineage DAG (REQ-1401
+    area) already used and the Graph/Cypher explorer never had. (Amended 2026-11-12, THE CYPHER EXPLORER
+    LISTS NODES AND PARAMETERIZED NODES APART:) Maintainer 2026-11-12: the Cypher explorer''s node list
+    is two groups, Nodes and Parameterized nodes. A parameterized node (a table that takes arguments) is
+    never offered to a matcher that names no node.'
   code:
   - provisa-ui/src/components/graph/GraphCanvas.tsx
   - provisa-ui/src/components/graph/cytoscape-types.ts
@@ -80790,7 +80796,35 @@
   feature: admin-console-design
   priority: SHOULD
   type: behavioral
-  description: 'Every form in the UI is laid out by one shared form layout, and a field is as wide as what it holds, not as wide as the form. A field declares a size class (short for numbers, ports, durations, switches and short choices; medium for names and hosts; long for addresses, paths and one-line descriptions; full for multi-line text and editors only), and each class has a minimum and a maximum width, so a field neither stretches across the form nor collapses. Fields flow into as many columns as the screen allows and wrap on a narrower one, with no form carrying its own breakpoints; fields that belong together (host and port, precision and scale) are declared as a group and wrap as one. A single-line field is never full width; full width is for multi-line text, editors and tables. Identifier fields, where a form has them, are not in the flow: they sit at the top of the form in a section of their own. A form''s action buttons are at the bottom, aligned to the start of the line (left in a left-to-right language, right in a right-to-left one), primary action first. Reading order and keyboard order are the same after any reflow. Minimum widths hold each field''s label in every shipped locale. Creating an object follows one pattern on every page: a button at the top of the page named for the object ("+ Table", "+ Source") opens the form, and the form ends in Save and Cancel. Save creates the object, Cancel closes the form with nothing created; the form''s own button never repeats the opening button''s label, and an edit form ends in the same two actions in the same order. A button is as wide as its label, with one shared minimum width, and never grows to fill its container: it is not a direct child of a stretching stack or grid cell but sits in an action row at its natural width. A full-width button is allowed only where it is named as an exception: the single call to action of a narrow card (sign-in, an onboarding step), a row of a menu or list that is itself the action, and a phone-width screen. The rule is held by a guard test: a form that lays its fields out outside the shared layout, a single-line field stretched to full width, action buttons aligned elsewhere, a button stretched by its container, and a full-width button outside the named exceptions each fail it. Nothing is rendered between a field label and its control: a brief explanation (one short sentence) sits below the field, and a longer explanation is reached from a help icon immediately to the right of the label. Controls in one row share a baseline. A form takes its natural height; it never scrolls inside a box that hides its first or last row.'
+  description: 'Every form in the UI is laid out by one shared form layout, and a field is as wide as what
+    it holds, not as wide as the form. A field declares a size class (short for numbers, ports, durations,
+    switches and short choices; medium for names and hosts; long for addresses, paths and one-line descriptions;
+    full for multi-line text and editors only), and each class has a minimum and a maximum width, so a field
+    neither stretches across the form nor collapses. Fields flow into as many columns as the screen allows
+    and wrap on a narrower one, with no form carrying its own breakpoints; fields that belong together (host
+    and port, precision and scale) are declared as a group and wrap as one. A single-line field is never
+    full width; full width is for multi-line text, editors and tables. Identifier fields, where a form has
+    them, are not in the flow: they sit at the top of the form in a section of their own. A form''s action
+    buttons are at the bottom, aligned to the start of the line (left in a left-to-right language, right
+    in a right-to-left one), primary action first. Reading order and keyboard order are the same after any
+    reflow. Minimum widths hold each field''s label in every shipped locale. Creating an object follows
+    one pattern on every page: a button at the top of the page named for the object ("+ Table", "+ Source")
+    opens the form, and the form ends in Save and Cancel. Save creates the object, Cancel closes the form
+    with nothing created; the form''s own button never repeats the opening button''s label, and an edit
+    form ends in the same two actions in the same order. A button is as wide as its label, with one shared
+    minimum width, and never grows to fill its container: it is not a direct child of a stretching stack
+    or grid cell but sits in an action row at its natural width. A full-width button is allowed only where
+    it is named as an exception: the single call to action of a narrow card (sign-in, an onboarding step),
+    a row of a menu or list that is itself the action, and a phone-width screen. The rule is held by a guard
+    test: a form that lays its fields out outside the shared layout, a single-line field stretched to full
+    width, action buttons aligned elsewhere, a button stretched by its container, and a full-width button
+    outside the named exceptions each fail it. Nothing is rendered between a field label and its control:
+    a brief explanation (one short sentence) sits below the field, and a longer explanation is reached from
+    a help icon immediately to the right of the label. Controls in one row share a baseline. A form takes
+    its natural height; it never scrolls inside a box that hides its first or last row. (Amended 2026-11-12,
+    ONE SAVE AND CANCEL PAIR, IN A HEAD AS IN A FOOT:) Maintainer 2026-11-12: a detail panel''s head in
+    edit mode shows the same pair a form''s foot shows: the filled Save and the bordered Cancel, the same
+    size. Save is drawn the same in every position.'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
@@ -88166,7 +88200,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Experts) collapses with the shared collapsible, its open or closed state remembered; Graph opens by
     default. Its fields use the one form layout (REQ-1968): Name and Definition take the full width, and
     the short fields (Domains, Role, Tags, Status, Grounding, Exclude from metadata export) flow in as many
-    columns as the panel allows.'
+    columns as the panel allows. (Amended 2026-11-12, A TERM''S STATE HINTS SIT BESIDE THEIR VALUES:) Maintainer
+    2026-11-12: the two advisories at the top of a term''s page (the term is a draft; the term reaches no
+    physical column) are not banners. Each sentence is helper text beside the value it explains (Status,
+    Grounding). A state advisory is never a banner to dismiss.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -89040,7 +89077,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     it kept what held either; red or blue keeps either; red green -blue keeps what holds red and green and
     not blue. A - counts only at the start of an item (the hyphen in pet-store is part of the word); the
     word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
-    search field''s hint says so.'
+    search field''s hint says so. (Amended 2026-11-12, AN EXCLUSION IS WRITTEN WITH _not:) Maintainer 2026-11-12:
+    where the Ontology View''s query excludes items, it does so with _not (REQ-184), so a term that has
+    no definition is kept by a search that excludes a word.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -90738,14 +90777,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: source-registration-introspection
   priority: MUST
   type: behavioral
-  description: 'Discovery records the keys a source declares: its primary key, unique (alternate) keys
-    and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys
-    as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres
-    and DuckDB and then each other connector that can. Today keys are marked only as a side effect of
-    registering a relationship, so a key the source declares is unknown until some relationship happens
-    to point at it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary
-    key, cardinality, row identity) reads the source''s own declaration instead. A source that declares
-    no keys records none, and nothing is guessed.'
+  description: 'Discovery records the keys a source declares: its primary key, unique (alternate) keys and
+    foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys as
+    relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres
+    and DuckDB and then each other connector that can. Today keys are marked only as a side effect of registering
+    a relationship, so a key the source declares is unknown until some relationship happens to point at
+    it; every key-dependent feature (relationship candidates, REQ-1385''s introspected primary key, cardinality,
+    row identity) reads the source''s own declaration instead. A source that declares no keys records none,
+    and nothing is guessed. (Amended 2026-11-12, A RELATIONSHIP FROM A FOREIGN KEY SAYS SO:) Maintainer
+    2026-11-12: a relationship created from a foreign key the source declares shows a From FK badge by its
+    name, with the tooltip Created from a foreign key in the source, and only when that is true. It is a
+    fact, not a field: the Yes/No row named Auto-tracked and the word itself are gone.'
   code:
   - provisa/discovery/declared_keys.py
   - provisa/api/admin/_declared_keys.py
@@ -95329,13 +95371,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     LANES:) Maintainer 2026-11-11, from the ontology term graph: the canvas is plain, with no background
     grid. A lane''s group box bounds only its own nodes, with a gap between lanes, so boxes never overlap.
     A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
-    is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
-    over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
-    and zooming is an explicit gesture. (Amended 2026-11-11, EACH LANE IS SORTED BY THE LANE ON ITS LEFT:)
-    Maintainer 2026-11-11 (Pet Health graph, lines still crossing): the lane diagram is ordered left to
-    right, one lane at a time. The first lane keeps its order; every lane after it is sorted by what its
-    nodes join in the lane on its left: tables in the order of their products, the columns of a table together
-    and in the order of their tables, [SUPERSEDED by REQ-2239 TERMS SIT LEVEL WITH THEIR COLUMNS, 2026-11-11
+    is ordered to minimise edge crossings (each by the positions of its neighbours), and [SUPERSEDED by
+    REQ-2239, 2026-11-12 -- tables and products align to their columns (amendment of 2026-11-12). Kept here
+    for history; do not implement against it.] every lane spreads over the tallest lane''s height. [END
+    SUPERSEDED BLOCK] A diagram is fitted only down to a readable zoom; beyond that it scrolls, and zooming
+    is an explicit gesture. (Amended 2026-11-11, EACH LANE IS SORTED BY THE LANE ON ITS LEFT:) Maintainer
+    2026-11-11 (Pet Health graph, lines still crossing): the lane diagram is ordered left to right, one
+    lane at a time. The first lane keeps its order; every lane after it is sorted by what its nodes join
+    in the lane on its left: tables in the order of their products, the columns of a table together and
+    in the order of their tables, [SUPERSEDED by REQ-2239 TERMS SIT LEVEL WITH THEIR COLUMNS, 2026-11-11
     -- the pure sort raised crossings (Pet Health 45 to 68, pet-store 20 to 66); only the term lane is placed
     to cut crossings. Kept here for history; do not implement against it.] a term by the place of the columns
     it binds (the mean when it binds several) [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-2239 TERMS SIT
@@ -95371,7 +95415,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
     at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
     places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
-    and on Reset view when it lays out again.'
+    and on Reset view when it lays out again. (Amended 2026-11-12, COLUMNS ARE FIXED; TABLES, PRODUCTS AND
+    TERMS ALIGN TO THEM:) Maintainer 2026-11-12: in the lanes preset the column lane is placed first and
+    is fixed: packed, in its sorted order, a table''s columns one contiguous run. Each table sits at the
+    midpoint between its top and bottom column; a folded table sits level with its one more-columns node.
+    Each data product sits at the midpoint between the top and bottom column of its tables. Nodes of one
+    lane whose midpoints fall closer than the node gap keep their order and move apart by the least amount.
+    Terms then align to the columns by the lowest-angle score, as stated. There is no setting.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
@@ -95496,13 +95546,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: MUST
   type: ui
   description: 'Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip
-    and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing
-    stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse:
-    the thing stays on screen as a summary or as its parent, and its contents open in place (a table''s
-    columns, a section, a tree row, a list row''s detail); collapsed, the summary or parent is still
-    shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the
-    full-screen control); a change of size is never called expand. Fold and unfold are not used. A
-    table''s columns in a graph are therefore expanded and collapsed, as the ERD already says.'
+    and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing stands
+    in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse: the thing
+    stays on screen as a summary or as its parent, and its contents open in place (a table''s columns, a
+    section, a tree row, a list row''s detail); collapsed, the summary or parent is still shown. Enlarge
+    and Full screen: the size of a view (opening a graph in the large view, the full-screen control); a
+    change of size is never called expand. Fold and unfold are not used. A table''s columns in a graph are
+    therefore expanded and collapsed, as the ERD already says. (Amended 2026-11-12, STOP, AND THE GROUP
+    NAMED DERIVED:) Maintainer 2026-11-12: a button that stops an operation in progress says Stop, not Cancel;
+    Cancel is kept for leaving a form or dialog with nothing changed. The top navigation group holding Views,
+    Metrics, Commands and Lineage is named Derived, not Model: model keeps its two other meanings, the whole
+    declared model and an entity or fact added with + Model.'
   scenario: |
     Given a graph that draws a table with its columns collapsed into it
     When a reader looks at the table's control
