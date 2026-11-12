@@ -91188,7 +91188,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
     2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
     on that product alone, its member tables, their columns and the terms grounded on them, with a control
-    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.'
+    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.
+    (Amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s
+    term lane, sibling terms (Dog and Cat under Pet) are not drawn side by side, where their edges leave
+    from different positions and cross regardless of order; each term takes its own row, and the rank lines
+    that join a term to its parent run beside the lane, not through its rows, so each lane can be ordered
+    freely to minimise crossings. On the Pet Health graph the diagram has fewer crossings than before the
+    lanes were spread (42).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
