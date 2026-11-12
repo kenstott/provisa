@@ -237,7 +237,7 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
-    _Ordered("array_", "{}", picks=True),
+    _Ordered("array_", "{}", picks=True, in_the_grid=("eq", "ne")),
     _Ordered("record_", "({})", in_the_grid=("eq", "ne")),
     _Ordered("record_image_", "({})", in_the_grid=("eq", "ne")),
 )

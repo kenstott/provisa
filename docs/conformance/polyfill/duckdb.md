@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 24, of which 2 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 55, of which 2 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-5 of the grid's 25 features are native on DuckDB and left out.
+7 of the grid's 31 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -35,6 +35,12 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp
 CASE WHEN $dims IS NULL THEN error(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27;) WHEN len($dims) = 1 THEN list_transform(range($dims[1]), _i -&gt; $v) ELSE error(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27;) END</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN error(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27;) WHEN len($dims) = 1 AND list_filter($lower_bounds, _b -&gt; _b &lt;&gt; 1) = [] THEN list_transform(range($dims[1]), _i -&gt; $v) ELSE error(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27;) END</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CAST(list_filter(range(1, len($a) + 1), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS INTEGER[])</code></pre></td><td></td><td></td><td></td></tr>
@@ -81,4 +87,64 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

@@ -72,6 +72,7 @@ from provisa.transpiler import (
 )
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
+from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
 
@@ -2147,7 +2148,24 @@ def _polyfilled(
 ) -> exp.Expr | None:
     """A call a rule of the polyfill grid matches (REQ-2236), written in the routed engine's form;
     None where no rule matches. A dialect that is no column of the grid has no form of it, and the
-    call is refused by name."""
+    call is refused by name. A rewrite function's refusal of a value is raised as the row's."""
+    try:
+        return _polyfilled_by_rule(target, node, dialect, rewrite)
+    except polyfill_notation.Refused as refused:
+        called = target.name.lower() if isinstance(target, exp.Anonymous) else _feature_of(target)
+        raise RowRefused(called, dialect, refused.refusal) from refused
+
+
+def _feature_of(target: exp.Expr) -> str:
+    """The name of the grid's feature a typed node's rule is of."""
+    names = type(target).sql_names() if isinstance(target, exp.Func) else ()
+    return names[0].lower() if names else type(target).__name__.lower()
+
+
+def _polyfilled_by_rule(
+    target: exp.Expr, node: exp.Expr, dialect: str, rewrite: Callable[[exp.Expr], exp.Expr]
+) -> exp.Expr | None:
+    """:func:`_polyfilled`, a rewrite function's refusal raised as it is."""
     applied = polyfill.GRID.read(target, dialect)
     if applied is None:
         return None
@@ -2755,64 +2773,6 @@ def _array_as_text(value: exp.Expr) -> exp.Expr:
 _KEPT_BY_NAME = frozenset(name for name, _ in MACROS) | {"char"}
 
 
-def _said_text_read(value: exp.Expr) -> exp.Expr:
-    """A string literal cast to text as the literal, which is what sqlglot reads a format from."""
-    if isinstance(value, exp.Cast) and value.to.is_type("text") and value.this.is_string:
-        return value.this
-    return value
-
-
-#: Marks a regexp_replace with no 'g' flag, for a dialect whose own replaces every match
-#: (transpile._every_match_unflagged).
-FIRST_MATCH = "provisa_first_match"
-_BACKREFERENCE = re.compile(r"\\\d")
-#: What a pattern's text can be: an escape, a bracket expression, or a group it captures by.
-_PATTERN_PART = re.compile(r"\\.|\[\^?\]?(?:\\.|\[:\w+:\]|[^\]])*\]|\((?!\?)", re.DOTALL)
-#: What a replacement says other than its literal text: \\, \N, or a $.
-_REPLACEMENT_PART = re.compile(r"\\(\\|\d)|\$")
-
-
-def _past_the_text_before(replacement: str, pattern: str, dialect: str) -> str:
-    """``replacement`` for the form _first_match writes, where the text before the match is group
-    1: PostgreSQL's \\N is the engine's $N+1, nothing for a group the pattern lacks, and a $ is
-    literal."""
-    groups = sum(part.group() == "(" for part in _PATTERN_PART.finditer(pattern))
-
-    def written(part: re.Match[str]) -> str:
-        said = part.group(1)
-        if said is None:
-            return "\\$"
-        if said == "\\":
-            return part.group()
-        if said == "0":
-            raise FunctionRefused("regexp_replace", dialect)
-        return f"${int(said) + 1}" if int(said) <= groups else ""
-
-    return _REPLACEMENT_PART.sub(written, replacement)
-
-
-def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
-    """regexp_replace of the first match, or a refusal of what neither engine's can write."""
-    value = node.this
-    pattern, replacement = (
-        _said_text_read(node.expression),
-        _said_text_read(node.args["replacement"]),
-    )
-    node.set("modifiers", None)
-    if not (isinstance(pattern, exp.Literal) and isinstance(replacement, exp.Literal)):
-        raise FunctionRefused("regexp_replace", dialect)
-    if dialect == "clickhouse":
-        return exp.Anonymous(this="replaceRegexpOne", expressions=[value, pattern, replacement])
-    if _BACKREFERENCE.search(pattern.this):  # its group numbers move with the text before
-        raise FunctionRefused("regexp_replace", dialect)
-    written = _past_the_text_before(replacement.this, pattern.this, dialect)
-    return exp.RegexpReplace(
-        this=value,
-        expression=exp.Literal.string(f"(?s)^(?<before>.*?)(?:{pattern.this})(?<after>.*)$"),
-        replacement=exp.Literal.string(f"${{before}}{written}${{after}}"),
-    )
-
-
 #: PostgreSQL's reading of a position before the value, or a negative length, which these engines
 #: read from its end.
 _FROM_THE_END = frozenset({"trino", "presto", "athena", "clickhouse"})
@@ -2898,7 +2858,7 @@ def _unqualified(tree: exp.Expr) -> exp.Expr:
         if isinstance(call, exp.Anonymous) and call.name.lower() in _KEPT_BY_NAME:
             call = exp.Anonymous(this=call.name.lower(), expressions=call.expressions)
         elif isinstance(call, exp.Anonymous):
-            args = [_said_text_read(a) for a in call.expressions]
+            args = [said_text(a) for a in call.expressions]
             call = exp.func(call.name, *args, dialect="postgres")
         if isinstance(call, (exp.Func, exp.Binary)):  # mod is a binary as sqlglot reads it
             replaced = dot.replace(call)
@@ -2966,9 +2926,6 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             parts = (node.this, node.expression, node.args["replacement"])
             if any(_is_null(part) for part in parts):
                 return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
-            flagged = node.args.get("modifiers")
-            if isinstance(flagged, exp.Literal) and flagged.this == FIRST_MATCH:
-                return _first_match(node, dialect)
         if (
             isinstance(node, exp.Anonymous)
             and node.name.lower() in ("date_part", "extract")
