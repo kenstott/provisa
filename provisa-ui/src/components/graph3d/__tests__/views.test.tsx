@@ -88,7 +88,7 @@ const reads = vi.hoisted(() => ({
   scopes: [] as QueryScope[],
   data: null as unknown,
   // Where a test has a read answer by its scope, as the server does.
-  dataOf: null as ((s: { focus: string | null }) => unknown) | null,
+  dataOf: null as ((s: { focus: string | null; layers: Set<string> }) => unknown) | null,
 }));
 vi.mock("../ontologyData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyData")>()),
@@ -96,7 +96,8 @@ vi.mock("../ontologyData", async (importOriginal) => ({
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: (_rows: unknown, s: { focus: string | null }) => reads.dataOf?.(s) ?? reads.data,
+  ontologyGraph: (_rows: unknown, s: { focus: string | null; layers: Set<string> }) =>
+    reads.dataOf?.(s) ?? reads.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -608,8 +609,17 @@ describe("Reset view", () => {
 });
 
 describe("the Product map entry point", () => {
-  /** Opens the Product map and waits for its scene. */
+  /** Opens the Product map and waits for its scene. Its reads are answered as the server does:
+   * a column only once Columns is read, a term only once Ontology is. */
   const openMap = async () => {
+    reads.dataOf = (s) => {
+      const kept = (n: GraphData["nodes"][number]) =>
+        (n.type !== "column" || s.layers.has("columns")) &&
+        (n.type !== "term" || s.layers.has("ontology"));
+      const nodes = FACTS.nodes.filter(kept);
+      const ids = new Set(nodes.map((n) => n.id));
+      return { nodes, edges: FACTS.edges.filter((e) => ids.has(e.a) && ids.has(e.b)) };
+    };
     render(<ProductMapButton />);
     expect(reads.scopes).toEqual([]);
     fireEvent.click(screen.getByTestId("product-map-open"));
