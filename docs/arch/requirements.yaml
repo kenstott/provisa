@@ -95302,14 +95302,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   unit_test: true
   description: 'Maintainer 2026-11-11: Provisa never changes sqlglot''s own classes at runtime. Every change
     to how a dialect tokenizes, parses or generates (today five assignments in provisa/transpiler: DuckDB''s
-    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types) is
-    made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses and
-    expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa does
-    not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc), whose
-    classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives
-    byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the
-    plain build stays, and the measurement is recorded.'
-
+    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types)
+    is made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses
+    and expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa
+    does not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc),
+    whose classes cannot be patched, can run under the transpiler. The compiled build is adopted when it
+    gives byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise
+    the plain build stays, and the measurement is recorded. (Amended 2026-11-11, DEFERRED: THE COMPILED
+    BUILD FORBIDS SUBCLASSES:) Maintainer 2026-11-11, on job J1210''s findings. sqlglot[c] 30.23.0 (sqlglotc)
+    compiles Parser and Generator without allowing interpreted subclasses: a Provisa subclass of either
+    raises ''interpreted classes cannot inherit from compiled''; Tokenizer subclasses work; entries added
+    to the FUNCTIONS, FUNCTION_PARSERS, TRANSFORMS and FUNC_TOKENS tables take effect, but a method assigned
+    on a compiled class is ignored by compiled callers. So neither runtime patches nor Provisa dialect subclasses
+    run on the compiled build, and moving the patches into subclasses would not let it run. The rule is
+    deferred: today''s patches stay, and this is rechecked when sqlglot allows interpreted subclasses of
+    Parser and Generator. Measured on the 325 golden semantic statements (parse as postgres; generate postgres,
+    duckdb, trino; stock dialects): compiled 1.70-1.72 s median against 3.76-4.84 s interpreted, identical
+    output; wheels exist for cp312 on macOS universal2, manylinux x86_64 and aarch64, and win_amd64. The
+    patched dialects reach past the five first listed: postgres, duckdb, trino, presto, spark, bigquery
+    and clickhouse directly, and redshift, materialize, risingwave, athena, dune and databricks by inheritance.'
 - id: REQ-2243
   status: proposed
   target: 2026-Q4
