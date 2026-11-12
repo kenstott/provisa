@@ -334,10 +334,11 @@ describe("the ontology graph's Associations chip", () => {
   it("says in its tooltip which links it shows", async () => {
     render(explorer.draw());
     await waitFor(() => expect(made.scenes.some((s) => s.kind === "graph")).toBe(true));
-    // The Tip's target is the element its handlers land on (the chip's input).
+    // The Tip's target is a span round the chip, where the pointer is (the chip's input is hidden).
     const target = screen
       .getByRole("checkbox", { name: "Associations" })
       .closest("[data-tip-target]") as HTMLElement;
+    expect(target.tagName).toBe("SPAN");
     fireEvent.mouseEnter(target);
     const tip = await screen.findByText(/without ranking them/);
     for (const kind of ["related", "synonym", "preferred term", "translation", "antonym"])

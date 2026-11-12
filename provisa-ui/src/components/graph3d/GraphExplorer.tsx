@@ -678,16 +678,20 @@ export function GraphExplorer({
               onChange={(l) => save("layout", l)}
               testId={testId}
             />
-            {/* REQ-2174 (THE TOGGLE IS CALLED ASSOCIATIONS): the term links that rank nothing. */}
+            {/* REQ-2174 (THE TOGGLE IS CALLED ASSOCIATIONS): the term links that rank nothing.
+                The hint is on a span round the chip: the chip's own input is hidden, so the
+                pointer never enters it. */}
             <Tip text={t("graph3d.lateralHelp")}>
-              <Chip
-                size="xs"
-                checked={lateral}
-                onChange={(on) => save("lateral", on)}
-                data-testid={`${testId}-lateral`}
-              >
-                {t("graph3d.lateral")}
-              </Chip>
+              <span>
+                <Chip
+                  size="xs"
+                  checked={lateral}
+                  onChange={(on) => save("lateral", on)}
+                  data-testid={`${testId}-lateral`}
+                >
+                  {t("graph3d.lateral")}
+                </Chip>
+              </span>
             </Tip>
           </>
         )}
