@@ -240,7 +240,6 @@ export function DataProductDetailPanel({
       {canEdit && (
         <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
           <ActionIcon
-            variant="subtle"
             aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
             data-testid={`data-product-detail-edit-${p.id}`}
             onClick={(e) => {
