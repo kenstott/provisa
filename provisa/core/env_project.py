@@ -510,6 +510,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         (org.roles, "id", "owner_role_id"),
     ):
         for row in await _rows(conn, table, schema):
+            if table is org.metrics:
+                # REQ-2243: the term the metric names, written as the term's path -- the serial
+                # means nothing in another environment (as a table's class term).
+                named_term = row.pop("term_id")
+                if named_term is not None:
+                    row["term"] = term_paths[named_term]
             tree[kind_path(KIND_DIRS[table.name], row[key])] = entity(
                 table.name,
                 row,

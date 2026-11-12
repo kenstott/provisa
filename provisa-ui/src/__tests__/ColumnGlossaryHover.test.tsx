@@ -32,6 +32,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   export_excluded: false,

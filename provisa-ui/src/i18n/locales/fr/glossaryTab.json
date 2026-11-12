@@ -10,6 +10,8 @@
     "newTermHint": "Un concept est une idée métier qui ne nomme encore aucune colonne ni table. Reliez-le à d’autres termes par des relations.",
     "nameLabel": "Nom",
     "definitionLabel": "Définition",
+    "calculationMethodLabel": "Méthode de calcul",
+    "calculationMethodPlaceholder": "Comment la valeur est calculée, en termes métier",
     "domainsLabel": "Domaines",
     "domainsHint": "Un concept n’a pas de colonnes dont dériver ses domaines : nommez-les ici. Quiconque atteint l’un d’eux peut lire et gérer le terme.",
     "rename": "Renommer",

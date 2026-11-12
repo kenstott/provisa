@@ -10,6 +10,8 @@
     "newTermHint": "Un concetto è un’idea di business che non nomina ancora colonne né tabelle. Collegalo ad altri termini con le relazioni.",
     "nameLabel": "Nome",
     "definitionLabel": "Definizione",
+    "calculationMethodLabel": "Metodo di calcolo",
+    "calculationMethodPlaceholder": "Come viene calcolato, in termini di business",
     "domainsLabel": "Domini",
     "domainsHint": "Un concetto non ha colonne da cui derivare i domini, quindi indicali qui. Chi raggiunge uno di essi può leggere e curare il termine.",
     "rename": "Rinomina",

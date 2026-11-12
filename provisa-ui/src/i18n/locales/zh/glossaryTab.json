@@ -10,6 +10,8 @@
     "newTermHint": "概念是尚未指代任何列或表的业务概念。通过关系将其与其他术语关联。",
     "nameLabel": "名称",
     "definitionLabel": "定义",
+    "calculationMethodLabel": "计算方法",
+    "calculationMethodPlaceholder": "用业务语言说明其计算方式",
     "domainsLabel": "域",
     "domainsHint": "概念没有可推导其域的列，因此请在此指定。能访问其中任一域的人都可以阅读和维护该术语。",
     "rename": "重命名",

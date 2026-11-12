@@ -614,6 +614,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
         "definition": "What the term means; a term without one is a draft, never live",
+        # REQ-2243
+        "calculation_method": "How the measure or derived value the term names is computed, in "
+        "business language",
         "is_abstract": "True when the term is a Concept: it grounds no column and no table "
         "(derived from its grounding)",
         "deprecated": "True when the derivation lost its last column but the row was kept",

@@ -1043,6 +1043,7 @@ async def upsert_declared_term(
     name: str,
     *,
     definition: str | None = None,
+    calculation_method: str | None = None,
     domains: "set[str]",
 ) -> int:
     """Upsert a config-declared glossary term by name (REQ-1641).
@@ -1067,11 +1068,12 @@ async def upsert_declared_term(
         {
             "name": name,
             "definition": definition,
+            "calculation_method": calculation_method,  # REQ-2243
             "deprecated": False,
         },
         index_elements=["name"],
         returning="id",
-        update_columns=["definition"],
+        update_columns=["definition", "calculation_method"],
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id
@@ -1120,6 +1122,16 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
     await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2145
     result = await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
+    )
+    return (result.rowcount or 0) > 0
+
+
+async def set_calculation_method(conn: "Connection", term_id: int, method: str | None) -> bool:
+    """Set the term's calculation method (REQ-2243), written and versioned as its definition is."""
+    result = await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(calculation_method=method)
     )
     return (result.rowcount or 0) > 0
 

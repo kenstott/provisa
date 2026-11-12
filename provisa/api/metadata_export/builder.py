@@ -817,6 +817,7 @@ def _grounded_terms(
                 paths=tuple(tuple(path) for path in agent_paths(view, roots, term_id)),
                 iri=term.get("iri") if named else None,
                 statements=kept.get(term_id, ()) if named else (),
+                calculation_method=term["calculation_method"] if named else None,  # REQ-2243
             )
         )
     edges = [GlossaryTermEdge(from_term_id=a, to_term_id=b, rel_type=r) for a, b, r in view.edges]
