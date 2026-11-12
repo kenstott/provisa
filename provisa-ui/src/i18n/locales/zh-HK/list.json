@@ -5,6 +5,18 @@
     "sortNone": "未排序",
     "groupBy": "按 {{label}} 分組",
     "ungroupLevel": "取消分組（第 {{level}} 層）",
-    "moreValues": "另有 {{count}} 項"
+    "moreValues": "另有 {{count}} 項",
+    "selectAll": "選取所有顯示的列",
+    "selectRow": "選取列",
+    "selectedCount_one": "已選取 {{count}} 項",
+    "selectedCount_other": "已選取 {{count}} 項",
+    "bulkDelete": "刪除",
+    "clearSelection": "清除選取",
+    "bulkDeleteTitle_one": "刪除 {{count}} 列？",
+    "bulkDeleteTitle_other": "刪除 {{count}} 列？",
+    "bulkDeleteConsequence": "將會刪除：{{names}}。仍被其他物件引用的項目會保留，並說明原因。",
+    "bulkRefused_one": "{{count}} 項未刪除：",
+    "bulkRefused_other": "{{count}} 項未刪除：",
+    "dismiss": "關閉"
   }
 }

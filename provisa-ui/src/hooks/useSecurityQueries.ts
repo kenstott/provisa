@@ -24,7 +24,9 @@ import {
   DeleteRole,
   RevokeRoleFromTable,
   RevokeRoleFromObject,
+  DeleteRoles,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./useAdminQueries";
 
 const NO_RLS_RULES: RLSRule[] = [];
@@ -179,4 +181,10 @@ export function useRevokeRoleGrants() {
       return answer;
     },
   };
+}
+
+/** REQ-2240: several roles deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteRoles() {
+  return useBulkDelete(DeleteRoles, "deleteRoles", "ids", [{ query: ROLES_QUERY }]);
 }

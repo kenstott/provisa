@@ -2080,6 +2080,24 @@ class TableRegistrationOutcome:  # REQ-2234
     result: MutationResult
 
 
+@strawberry.type
+class BulkDeleteRefusal:  # REQ-2240
+    """One row of a bulk delete its single delete refused: its name, why, and what still refers
+    to it (none where the refusal was not over dependents)."""
+
+    name: str
+    reason: str
+    dependents: list[JsonScalar]
+
+
+@strawberry.type
+class BulkDeleteResult:  # REQ-2240
+    """A bulk delete's answer: the names of the rows deleted, and each row refused."""
+
+    deleted: list[str]
+    refused: list[BulkDeleteRefusal]
+
+
 # --- Compile / Submit types ---
 
 

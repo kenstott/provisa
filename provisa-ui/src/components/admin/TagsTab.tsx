@@ -33,6 +33,7 @@ import {
   useTagAssignments,
   useSaveTag,
   useDeleteTag,
+  useDeleteTags,
   useUpsertTagParamValue,
   useDeleteTagParamValue,
 } from "../../hooks/useTagQueries";
@@ -42,6 +43,8 @@ import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
+import { useListSelection } from "../list/listSelection";
+import { ListBulkBar } from "../list/ListBulkBar";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
@@ -146,6 +149,9 @@ export function TagsTab() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const [grouped, setGrouped] = useState(false);
+  // REQ-2240: tags selected and deleted together; a system tag is refused by its own delete.
+  const selection = useListSelection(filtered.map((tag) => tag.id));
+  const deleteTags = useDeleteTags();
 
   const resetForm = () => {
     setEditingId(null);
@@ -361,7 +367,14 @@ export function TagsTab() {
         </FormLayout>
       )}
 
+      <ListBulkBar
+        selection={selection}
+        nameOf={(id) => id}
+        onDelete={deleteTags}
+        testId="tags-bulk"
+      />
       <SortGroupTable
+        selection={selection}
         testPrefix="tags"
         minWidth={640}
         rows={filtered}

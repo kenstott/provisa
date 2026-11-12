@@ -14,6 +14,7 @@ import type { ErrorLike } from "@apollo/client";
 import type { ListedTable, MutationResult, RegisteredTable, TableRow } from "../types/admin";
 import {
   DeleteTable,
+  DeleteTables,
   RegisterEntity,
   RegisterFact,
   RegisterTable,
@@ -25,6 +26,7 @@ import {
   TablesQuery as TABLES_QUERY,
 } from "./admin.graphql";
 import { firstLoad } from "./firstLoad";
+import { useBulkDelete } from "./useBulkDelete";
 
 const NO_TABLES: RegisteredTable[] = [];
 const NO_LISTED_TABLES: ListedTable[] = [];
@@ -202,6 +204,12 @@ export function useUpdateTable() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several tables deleted in one call; what went and each one refused. */
+export function useDeleteTables() {
+  const refetchTables = useShownTableQueries();
+  return useBulkDelete<number>(DeleteTables, "deleteTables", "ids", refetchTables);
 }
 
 export function useDeleteTable() {

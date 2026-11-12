@@ -39,6 +39,7 @@ import {
   useCreateScheduledTask,
   useUpdateScheduledTask,
   useDeleteScheduledTask,
+  useDeleteScheduledTasks,
   type CreateScheduledTaskInput,
 } from "../../hooks/useAdminOpsQueries";
 import { useRoles, useTables } from "../../hooks/useAdminQueries";
@@ -50,6 +51,8 @@ import { PanelActions, SplitPane } from "../list/SplitPane";
 import { pageItems, useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 
+import { useListSelection } from "../list/listSelection";
+import { ListBulkBar } from "../list/ListBulkBar";
 const PAGE_SIZE = 50;
 
 type Kind = ScheduledTask["kind"];
@@ -238,6 +241,10 @@ export function ScheduledTasks() {
     { key: "nextRun", label: t("scheduledTasks.colNextRun"), sortValue: (k) => k.nextRunAt ?? "" },
   ];
   const sortGroup = useListSortGroup(tasks, columns, "scheduled-tasks");
+  // REQ-2240: scheduled tasks selected and deleted together, each named by its name.
+  const shownTaskIds = useMemo(() => tasks.map((task) => task.id), [tasks]);
+  const selection = useListSelection(shownTaskIds);
+  const deleteScheduledTasks = useDeleteScheduledTasks();
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE));
 
   // A trigger's toggle or delete: the server's refusal, or the error it raised, is said above the list.
@@ -281,9 +288,11 @@ export function ScheduledTasks() {
 
   const refusal = (f: TriggerForm): string | null => {
     if (!f.id.trim() || !f.name.trim()) return t("scheduledTasks.validationRequired");
-    if (f.firesOn === "schedule" && !f.cron.trim()) return t("scheduledTasks.validationCronRequired");
+    if (f.firesOn === "schedule" && !f.cron.trim())
+      return t("scheduledTasks.validationCronRequired");
     if (f.firesOn !== "schedule" && !f.onTable) return t("scheduledTasks.validationTableRequired");
-    if (f.kind === "webhook" && !f.webhookName) return t("scheduledTasks.validationWebhookRequired");
+    if (f.kind === "webhook" && !f.webhookName)
+      return t("scheduledTasks.validationWebhookRequired");
     if (f.kind === "sql" && !f.sql.trim()) return t("scheduledTasks.validationSqlRequired");
     if (f.kind === "command" && !f.command) return t("scheduledTasks.validationCommandRequired");
     if (f.kind !== "webhook" && !f.role) return t("scheduledTasks.validationRoleRequired");
@@ -525,7 +534,9 @@ export function ScheduledTasks() {
         </Text>
       ) : null,
     },
-    ...(task.kind !== "webhook" ? [{ label: t("scheduledTasks.roleLabel"), value: task.role }] : []),
+    ...(task.kind !== "webhook"
+      ? [{ label: t("scheduledTasks.roleLabel"), value: task.role }]
+      : []),
     {
       label: t("scheduledTasks.colEnabled"),
       value: task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled"),
@@ -579,9 +590,7 @@ export function ScheduledTasks() {
                 }
                 disabled={busy === selected.id}
                 onClick={() =>
-                  listAction(selected.id, () =>
-                    toggleScheduledTask(selected.id, !selected.enabled),
-                  )
+                  listAction(selected.id, () => toggleScheduledTask(selected.id, !selected.enabled))
                 }
                 data-testid="scheduled-task-toggle"
               >
@@ -658,7 +667,17 @@ export function ScheduledTasks() {
         }}
         list={
           <>
-            <ListTable minWidth={720}>
+            <ListBulkBar
+              selection={selection}
+              nameOf={(id) => {
+                const found = tasks.find((task) => task.id === id);
+                if (!found) throw new Error(`task ${id} is not listed`);
+                return found.name;
+              }}
+              onDelete={deleteScheduledTasks}
+              testId="scheduled-tasks-bulk"
+            />
+            <ListTable minWidth={720} selection={selection}>
               <ListHead
                 sortGroup={sortGroup}
                 columns={[
@@ -672,7 +691,9 @@ export function ScheduledTasks() {
                 ]}
               />
               <Table.Tbody>
-                {tasks.length === 0 && <ListEmpty colSpan={7}>{t("scheduledTasks.empty")}</ListEmpty>}
+                {tasks.length === 0 && (
+                  <ListEmpty colSpan={7}>{t("scheduledTasks.empty")}</ListEmpty>
+                )}
                 <ListItems
                   state={sortGroup}
                   items={pageItems(sortGroup, page - 1, PAGE_SIZE)}
@@ -705,7 +726,9 @@ export function ScheduledTasks() {
                       <Table.Td>{task.role ?? t("scheduledTasks.noTarget")}</Table.Td>
                       <Table.Td>
                         <Badge color={task.enabled ? "green" : "gray"} variant="light">
-                          {task.enabled ? t("scheduledTasks.enabled") : t("scheduledTasks.disabled")}
+                          {task.enabled
+                            ? t("scheduledTasks.enabled")
+                            : t("scheduledTasks.disabled")}
                         </Badge>
                       </Table.Td>
                       <Table.Td>

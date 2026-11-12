@@ -100,13 +100,19 @@ import {
   UpdateSourceAllowedDomains,
   SuggestTableAlias,
   ResolveOwners,
+  DeleteMetrics,
+  DeleteDomains,
+  DeleteRelationships,
+  DeleteSources,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./firstLoad";
 import { useShownTableQueries } from "./useTableQueries";
 
 export { firstLoad } from "./firstLoad";
 export {
   useDeleteTable,
+  useDeleteTables,
   useReadTableDetails,
   useRegisterEntity,
   useRegisterFact,
@@ -1075,4 +1081,30 @@ export function useDeployViewToDb() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several metrics deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteMetrics() {
+  return useBulkDelete(DeleteMetrics, "deleteMetrics", "names", [{ query: METRICS_QUERY }]);
+}
+
+/** REQ-2240: several domains deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDomains() {
+  return useBulkDelete(DeleteDomains, "deleteDomains", "ids", [{ query: DOMAINS_QUERY }]);
+}
+
+/** REQ-2240: several relationships deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteRelationships() {
+  return useBulkDelete(DeleteRelationships, "deleteRelationships", "ids", [
+    { query: RELATIONSHIPS_QUERY },
+  ]);
+}
+
+/** REQ-2240: several sources deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteSources() {
+  return useBulkDelete(DeleteSources, "deleteSources", "ids");
 }
