@@ -88155,7 +88155,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
     Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
     Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
-    managed, so a term is made a Class or a Property in one place.'
+    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-11, THE TERM PAGE SAYS
+    GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
+    way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
+    in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
+    the same list Columns.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
