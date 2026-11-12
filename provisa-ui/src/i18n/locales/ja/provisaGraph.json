@@ -2,6 +2,7 @@
   "provisaGraph": {
     "legend": "凡例",
     "hint": "ドラッグで移動 · スクロールで送る · Ctrl/⌘ + スクロールでズーム",
+    "layingOut": "レイアウト中…",
     "type": {
       "product": "データプロダクト",
       "source": "ソース",

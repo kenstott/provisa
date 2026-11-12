@@ -10236,5 +10236,6 @@
   "it/ontologyImport.json::ontologyImport.useDefinitionHelp": "The term takes the imported definition in place of its own. A term with no definition takes it anyway.",
   "it/ontologyImport.json::ontologyImport.withItem": "With another item",
   "it/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
-  "it/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom"
+  "it/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
+  "it/provisaGraph.json::provisaGraph.layingOut": "Laying out…"
 }

@@ -2,6 +2,7 @@
   "provisaGraph": {
     "legend": "圖例",
     "hint": "拖曳以平移 · 捲動以移動 · Ctrl/⌘ + 捲動以縮放",
+    "layingOut": "正在佈局…",
     "type": {
       "product": "數據產品",
       "source": "來源",

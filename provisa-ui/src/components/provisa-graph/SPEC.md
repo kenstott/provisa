@@ -100,6 +100,15 @@ titled the same way.
   wheel with Ctrl or Cmd held zooms about the pointer.
 - The fit control fits the entire image, below the legend, however small that makes it
   (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
+- A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the
+  moment a layout starts (on open, and on any change of what is drawn or how: preset, filter,
+  depth, saved places, Reset view's relayout) until every node has its place and the opening fit
+  has run, the core's div is held hidden, so the frame of unplaced nodes stacked at one point is
+  never painted, and the canvas shows the graph views' loader (ReadState's `Loader`) with
+  `provisaGraph.layingOut`. The layout starts once that frame has been painted, so a placement
+  that runs as one long task (a large lane diagram's) is seen to be under way. The controls and legend stay; the controls, downloads, the camera and
+  a save act only on a placed drawing. A layout that throws as it starts, or whose placement throws
+  once it answers, ends the laying out and is thrown to the page's error boundary.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
