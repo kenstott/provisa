@@ -145,9 +145,18 @@ titled the same way.
   sort, not a search (`sortLanes`): the first lane keeps its order; each lane after it by the mean
   place of what its nodes join on their left, nodes tied on that key (the tables of one product, or
   of none) next to the one reaching the most of the same nodes two lanes on (tables sharing terms),
-  ties in the order given. Those lanes stand side by side, each as wide as its widest node, each
-  spread over the height of the tallest of them (its first node at the top, its last at the
-  bottom, a lone node at the middle; `placeLanes`). The term lane is placed, not sorted
+  ties in the order given (the sort reads those lanes spread evenly over the tallest one's height).
+  Those lanes stand side by side, each as wide as its widest node (`placeLanes`). (Amended
+  2026-11-12, COLUMNS ARE FIXED; TABLES, PRODUCTS AND TERMS ALIGN TO THEM.) The lane just left of the
+  term lane (the columns) is placed first and is fixed: packed in its sorted order from the top,
+  `NODE_GAP` between rows, a table's columns one contiguous run. Every other lane is aligned to it, as
+  a rule of the preset and not of named lanes: a node sits at the midpoint of the top and bottom
+  node it reaches in the fixed lane through the lanes between (a table its columns, a folded table
+  its one more-columns node, a product its tables' columns). Nodes of one lane whose midpoints fall
+  closer than the node gap keep their order and move apart by the least (the summed square of the
+  moves). A node reaching nothing in the fixed lane pulls on nothing: it keeps its place in its
+  lane's order, a node gap below the node before it (above the node after it when it is first); a
+  lane where nothing reaches the fixed lane is packed from the top. The term lane is placed, not sorted
   (`placeRows`), scored by the angle of its lines to the columns (the lanes a fixed distance apart,
   the summed vertical run): a term bound to one column sits level with it; a term bound to several
   sits level with the median of them (two tied: fewer crossings, then the higher); the children of

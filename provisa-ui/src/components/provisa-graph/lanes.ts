@@ -9,20 +9,26 @@
 // permission from the copyright holder.
 
 // REQ-2174, REQ-2239 (amended 2026-11-11, TERMS SIT LEVEL WITH THEIR COLUMNS; THE SCORE IS THE ANGLE
-// OF THE LINES; EACH SIBLING TERM ON ITS OWN ROW): the lanes preset. Every lane but the last (the
-// ``beside`` lane, the terms) is sorted left to right, one lane at a time, by a sort and not a search
-// (sortLanes): the first lane keeps the order it is given; each lane after it is sorted by the places
-// of what its nodes join in the lanes to their left (the mean when a node joins several), nodes tied
-// on that key next to those reaching the same nodes two lanes on (tables sharing terms), then in the
-// order given. Those lanes are spread over the height of the tallest (placeLanes). The beside lane is
-// placed, not sorted (placeRows), scored by how far its lines to the lane on its left are from
-// horizontal: a node joining one node there sits level with it, one joining several level with the
-// one leaving its lines flattest in total (fewer crossings, then the higher, on a tie), the children of
-// one parent (and a parent joining nothing on its left, with them) a block on adjacent rows placed
-// where its lines are flattest in total; a block never takes a row another has taken. Each node has its
-// own row. The lines between two nodes of the beside lane run beside it, on its right, never through
-// its rows (besideRoutes). Each lane is boxed round its own nodes and those lines, titled as a group
-// is, the boxes a gap apart.
+// OF THE LINES; EACH SIBLING TERM ON ITS OWN ROW; amended 2026-11-12, COLUMNS ARE FIXED; TABLES,
+// PRODUCTS AND TERMS ALIGN TO THEM): the lanes preset. Every lane but the last (the ``beside`` lane,
+// the terms) is sorted left to right, one lane at a time, by a sort and not a search (sortLanes): the
+// first lane keeps the order it is given; each lane after it is sorted by the places of what its nodes
+// join in the lanes to their left (the mean when a node joins several; those lanes spread evenly over
+// the tallest lane's height for the sort), nodes tied on that key next to those reaching the same
+// nodes two lanes on (tables sharing terms), then in the order given. The lane just left of the beside
+// lane (the columns) is then fixed: packed, in its sorted order, from the top (alignedRows). Every
+// other lane is aligned to it: a node at the midpoint of the top and bottom nodes it reaches there
+// through the lanes between (a table its columns, a folded table its more-columns node, a product its
+// tables' columns); nodes of one lane whose midpoints fall closer than the node gap keep their order
+// and move apart by the least; a node reaching nothing sits a node gap below the one before it. The
+// beside lane is placed, not sorted (placeRows), scored by how far its lines to the lane on its left
+// are from horizontal: a node joining one node there sits level with it, one joining several level
+// with the one leaving its lines flattest in total (fewer crossings, then the higher, on a tie), the
+// children of one parent (and a parent joining nothing on its left, with them) a block on adjacent
+// rows placed where its lines are flattest in total; a block never takes a row another has taken.
+// Each node has its own row. The lines between two nodes of the beside lane run beside it, on its
+// right, never through its rows (besideRoutes). Each lane is boxed round its own nodes and those
+// lines, titled as a group is, the boxes a gap apart.
 
 import type { CyInstance, CyLayoutOptions } from "../graph/cytoscape-types";
 import type { CyCanvas } from "./cyCanvas";
@@ -86,10 +92,10 @@ const same = (p: number, q: number) =>
     Math.abs(p - q) <= 1e-14 * Math.max(Math.abs(p), Math.abs(q)));
 
 /** ``lanes`` (left to right) each in its drawn order. The first keeps its order, and so does the
- * ``beside`` lane (placeRows places it). Each other lane is sorted, once, by the places (as placeLanes
- * draws them) of what its nodes join in the lanes to their left: a node by the mean height of those;
- * a node joining nothing to its left by the nodes of its own lane it joins that are sorted (the mean
- * of theirs), and one joining neither after the rest. Nodes tied on that key (the tables of one
+ * ``beside`` lane (placeRows places it). Each other lane is sorted, once, by the places (each lane but
+ * the beside lane spread evenly, spreadRows) of what its nodes join in the lanes to their left: a
+ * node by the mean height of those; a node joining nothing to its left by the nodes of its own lane it
+ * joins that are sorted (the mean of theirs), and one joining neither after the rest. Nodes tied on that key (the tables of one
  * product) stand next to those reaching the most of the same nodes two or more lanes on (the terms
  * their columns bind): each after the first is the one sharing most with the one before it, ties and
  * none shared in the order given. Placing a lane moves no lane to its left, so each lane is sorted on
@@ -130,7 +136,7 @@ export function sortLanes(
   const out = lanes.map((l) => ({ id: l.id, items: [...l.items] }));
   for (let i = 1; i < out.length; i++) {
     if (out[i].id === beside) continue;
-    const at = placeLanes(out, lines, beside, gap, overlay);
+    const at = placeAcross(out, lines, beside, gap, overlay, spreadRows(out, beside));
     const y = (id: string) => (at.get(id) as At).y;
     const mean = (ys: number[]) => ys.reduce((s, v) => s + v, 0) / ys.length;
     const key = new Map<string, number>();
@@ -230,10 +236,9 @@ function besideTracks(order: string[], lines: LaneLine[]): Map<string, number> {
 /** Where each node of ``lanes`` (left to right, each in its order top to bottom) is drawn. Each node
  * has its own row; each lane is as wide as its widest node, its nodes centred in it, and as wide again
  * as the tracks of the lines beside it (the ``beside`` lane, its ``lines`` inside it); the lanes' boxes
- * stand ``gap`` apart. Every lane but the beside lane is spread over the height of the tallest of
- * them packed: its first node at the top, its last at the bottom, the space between shared evenly; a
- * lane of one node sits at the middle. Spreading keeps each lane's order. The beside lane's rows are
- * placed by placeRows on the places of the lanes to its left; its ``overlay`` lines place nothing. */
+ * stand ``gap`` apart. The heights are alignedRows' (the fixed lane packed, the others aligned to it);
+ * the beside lane's rows are placed by placeRows on the places of the lanes to its left; its
+ * ``overlay`` lines place nothing. */
 export function placeLanes(
   lanes: { id: string; items: LaneItem[] }[],
   lines: LaneLine[] = [],
@@ -241,26 +246,26 @@ export function placeLanes(
   gap: number = LANE_GAP,
   overlay: ReadonlySet<string> = new Set(),
 ): Map<string, At> {
-  const packed = (items: LaneItem[]) =>
-    items.reduce((sum, n) => sum + n.h, 0) + NODE_GAP * Math.max(0, items.length - 1);
-  const height = Math.max(0, ...lanes.filter((l) => l.id !== beside).map((l) => packed(l.items)));
+  return placeAcross(lanes, lines, beside, gap, overlay, alignedRows(lanes, lines, beside));
+}
+
+/** The lanes placed as placeLanes places them, with ``rows`` the height of each node of every lane
+ * but the beside lane. */
+function placeAcross(
+  lanes: { id: string; items: LaneItem[] }[],
+  lines: LaneLine[],
+  beside: string | undefined,
+  gap: number,
+  overlay: ReadonlySet<string>,
+  rows: Map<string, number>,
+): Map<string, At> {
   const out = new Map<string, At>();
   let left = 0;
   for (const { id, items } of lanes) {
     if (items.length === 0) continue;
     const width = Math.max(...items.map((n) => n.w));
-    if (id === beside) {
-      const rows = placeRows(items, lines, overlay, (m) => out.get(m)?.y);
-      for (const n of items) out.set(n.id, { x: left + width / 2, y: rows.get(n.id) as number });
-    } else {
-      const free = height - items.reduce((sum, n) => sum + n.h, 0);
-      const step = items.length > 1 ? free / (items.length - 1) : 0;
-      let top = items.length > 1 ? 0 : (height - items[0].h) / 2;
-      for (const n of items) {
-        out.set(n.id, { x: left + width / 2, y: top + n.h / 2 });
-        top += n.h + step;
-      }
-    }
+    const ys = id === beside ? placeRows(items, lines, overlay, (m) => out.get(m)?.y) : rows;
+    for (const n of items) out.set(n.id, { x: left + width / 2, y: ys.get(n.id) as number });
     let room = 0;
     if (id === beside) {
       const placed = items.map((n) => ({ ...n, ...(out.get(n.id) as At) }));
@@ -272,6 +277,128 @@ export function placeLanes(
     left += width + room + 2 * (LANE_PAD + LANE_EDGE) + gap;
   }
   return out;
+}
+
+/** The heights sortLanes keys on: every lane but the ``beside`` lane spread over the height of the
+ * tallest of them packed, its first node at the top, its last at the bottom, the space between
+ * shared evenly (a lone node at the middle). The sort reads a lane's order from these, so a lane's
+ * key does not wait on the lanes it orders. */
+function spreadRows(
+  lanes: { id: string; items: LaneItem[] }[],
+  beside: string | undefined,
+): Map<string, number> {
+  const packed = (items: LaneItem[]) =>
+    items.reduce((sum, n) => sum + n.h, 0) + NODE_GAP * Math.max(0, items.length - 1);
+  const height = Math.max(0, ...lanes.filter((l) => l.id !== beside).map((l) => packed(l.items)));
+  const out = new Map<string, number>();
+  for (const { id, items } of lanes) {
+    if (id === beside || items.length === 0) continue;
+    const free = height - items.reduce((sum, n) => sum + n.h, 0);
+    const step = items.length > 1 ? free / (items.length - 1) : 0;
+    let top = items.length > 1 ? 0 : (height - items[0].h) / 2;
+    for (const n of items) {
+      out.set(n.id, top + n.h / 2);
+      top += n.h + step;
+    }
+  }
+  return out;
+}
+
+/** The height of each node of every lane but the ``beside`` lane (REQ-2239, amended 2026-11-12,
+ * COLUMNS ARE FIXED; TABLES, PRODUCTS AND TERMS ALIGN TO THEM). The fixed lane, the one just left of
+ * the beside lane (the last lane when there is none), is packed in its order from the top, a node gap
+ * between rows. Every other lane is aligned to it: a node wants the midpoint of the top and bottom
+ * nodes it reaches in the fixed lane along ``lines``, each step a lane nearer the fixed lane (a table
+ * its columns, or its one more-columns node; a product its tables' columns). A lane keeps its order;
+ * where two wanted places fall closer than the node gap, the nodes move apart by the least (the
+ * summed square of the moves). A node reaching nothing in the fixed lane wants nothing: it keeps its
+ * place in the order, a node gap below the node before it (above the node after it when none is
+ * before it); a lane where no node reaches the fixed lane is packed from the top. */
+function alignedRows(
+  lanes: { id: string; items: LaneItem[] }[],
+  lines: LaneLine[],
+  beside: string | undefined,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const at = lanes.findIndex((l) => l.id === beside);
+  const fixed = at >= 0 ? at - 1 : lanes.length - 1;
+  if (fixed >= 0) stack(lanes[fixed].items, new Map(), out);
+  const laneOf = new Map<string, number>();
+  lanes.forEach((l, i) => l.items.forEach((n) => laneOf.set(n.id, i)));
+  const near = new Map<string, string[]>();
+  const join = (a: string, b: string) => near.set(a, [...(near.get(a) ?? []), b]);
+  for (const k of lines) {
+    if (!laneOf.has(k.source) || !laneOf.has(k.target)) continue;
+    join(k.source, k.target);
+    join(k.target, k.source);
+  }
+  /** The heights of the fixed lane's nodes ``id`` reaches, each step a lane nearer it. */
+  const reached = (id: string): number[] => {
+    const toward = (a: number, b: number) =>
+      Math.sign(b - a) === Math.sign(fixed - a) && Math.abs(fixed - b) < Math.abs(fixed - a);
+    const ys: number[] = [];
+    const seen = new Set([id]);
+    const todo = [id];
+    while (todo.length > 0) {
+      const from = todo.pop() as string;
+      for (const m of near.get(from) ?? []) {
+        if (seen.has(m) || !toward(laneOf.get(from) as number, laneOf.get(m) as number)) continue;
+        seen.add(m);
+        if (laneOf.get(m) === fixed) ys.push(out.get(m) as number);
+        else todo.push(m);
+      }
+    }
+    return ys;
+  };
+  lanes.forEach(({ id, items }, i) => {
+    if (i === fixed || id === beside) return;
+    const want = new Map<string, number>();
+    for (const n of items) {
+      const ys = reached(n.id);
+      if (ys.length > 0) want.set(n.id, (Math.min(...ys) + Math.max(...ys)) / 2);
+    }
+    stack(items, want, out);
+  });
+  return out;
+}
+
+/** ``items`` (one lane, in order) each at the height it ``want``s, moved apart by the least (the
+ * summed square of the moves) so that each two keep their order a node gap apart; one wanting no
+ * place sits a node gap below the one before it (above the one after it when none is before it), and
+ * a lane wanting none is packed from the top. Into ``out``. */
+function stack(items: LaneItem[], want: Map<string, number>, out: Map<string, number>): void {
+  if (items.length === 0) return;
+  // The packed offset of each node from the first: the least distance the order allows.
+  const off: number[] = [0];
+  for (let i = 1; i < items.length; i++)
+    off.push(off[i - 1] + items[i - 1].h / 2 + NODE_GAP + items[i].h / 2);
+  const wanting = items.flatMap((n, i) => (want.has(n.id) ? [i] : []));
+  const y: (number | undefined)[] = items.map(() => undefined);
+  if (wanting.length === 0) items.forEach((_, i) => (y[i] = items[0].h / 2 + off[i]));
+  else {
+    // Less its offset, each wanted place must not fall: pool adjacent violators to their mean.
+    const pools: { sum: number; n: number; from: number }[] = [];
+    for (const [k, i] of wanting.entries()) {
+      pools.push({ sum: (want.get(items[i].id) as number) - off[i], n: 1, from: k });
+      while (pools.length > 1) {
+        const q = pools[pools.length - 1];
+        const p = pools[pools.length - 2];
+        if (p.sum / p.n <= q.sum / q.n) break;
+        p.sum += q.sum;
+        p.n += q.n;
+        pools.pop();
+      }
+    }
+    pools.forEach((p, j) => {
+      const to = j + 1 < pools.length ? pools[j + 1].from : wanting.length;
+      for (let k = p.from; k < to; k++) y[wanting[k]] = p.sum / p.n + off[wanting[k]];
+    });
+    const first = wanting[0];
+    for (let i = first - 1; i >= 0; i--) y[i] = (y[first] as number) - (off[first] - off[i]);
+    for (let i = first + 1; i < items.length; i++)
+      if (y[i] === undefined) y[i] = (y[i - 1] as number) + (off[i] - off[i - 1]);
+  }
+  items.forEach((n, i) => out.set(n.id, y[i] as number));
 }
 
 /** ``x <= y`` within the float tolerance. */
