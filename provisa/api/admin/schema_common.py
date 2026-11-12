@@ -518,6 +518,33 @@ def excel_hints_refusal(input: SourceInput) -> Optional[MutationResult]:
     return None
 
 
+def files_source_glob_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-788
+    """Why a files source's path cannot be saved, naming its glob, or None: a path that is a
+    glob matching no file. The source's glob decides its files, so a glob that matches none
+    leaves the source with nothing to offer. A source that declares a crawl is not checked: its
+    files land in the directory after the save (REQ-1960)."""
+    import json as _json
+
+    from provisa.core import org_files
+    from provisa.core.secrets import resolve_secrets
+    from provisa.file_source.files_glob import SourceGlobMatchesNothing, require_source_glob_matches
+
+    if input.type != "files" or not input.path:
+        return None
+    if _json.loads(input.mapping_json or "{}").get("crawl") is not None:
+        return None
+    try:
+        require_source_glob_matches(org_files.resolve_path(resolve_secrets(input.path)))
+    except SourceGlobMatchesNothing as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code=exc.code,
+            params={"source": input.id, **exc.params},
+        )
+    return None
+
+
 def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
     """Why a Microsoft 365 source's settings cannot be a source, in the setup's own terms, or
     None: for another source type, and for settings that can. The settings are the source's

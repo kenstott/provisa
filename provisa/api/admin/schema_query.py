@@ -1347,63 +1347,7 @@ class Query:  # REQ-021, REQ-042
         For gRPC sources, returns one table per query method of the proto, by its registered name.
         """
         require_capability(info, "table_registration")
-        from provisa.api.app import state
-        from provisa.api.admin.introspect import native_tables
-
-        source_type = state.source_types.get(source_id, "")
-        if source_type == "openapi":
-            await _ensure_openapi_spec(source_id)
-        pool = await _get_pool()
-        result = None
-        if not await _engine_lists(state, source_id, source_type):
-            async with pool.acquire() as config_conn:
-                with discovery_fallback(f"native tables for {source_id!r}"):
-                    result = await native_tables(
-                        source_id,
-                        source_type,
-                        schema_name,
-                        state.source_pools,
-                        config_conn,
-                        state,
-                    )
-        if result is not None:
-            return result
-        # the engine fallback
-        from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
-
-        skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
-        # REQ-1912: the engine lists only a source it holds a live attach of.
-        await _require_live_attach(source_id, "tables")
-        # REQ-1673: see available_schemas — list through the attached raw source on a native engine.
-        src = await _source_for_introspection(source_id)
-        if src is not None:
-            # REQ-1695: inside the org's vault — see available_schemas.
-            async with _bound_to_request_org():
-                seam = await asyncio.to_thread(
-                    state.federation_engine.introspect_tables, src, schema_name
-                )
-            if seam is not None:
-                return [
-                    AvailableTableType(name=n, comment=None) for n in seam if n.lower() not in skip
-                ]
-        catalog = state.catalog_for(source_id)
-        tables: list[AvailableTableType] = []
-        with discovery_fallback(f"engine tables for {source_id!r}"):
-            res = await run_admin_catalog_sql(
-                state,
-                state.federation_engine,
-                f'SELECT table_name FROM "{catalog}".information_schema.tables '
-                f"WHERE lower(table_schema) = lower('{schema_name}') "
-                f"AND table_type = 'BASE TABLE' "
-                f"ORDER BY table_name",
-                "source catalog",
-            )
-            tables = [
-                AvailableTableType(name=row[0], comment=None)
-                for row in res.rows
-                if row[0].lower() not in skip
-            ]
-        return tables
+        return await offered_tables(source_id, schema_name)
 
     @strawberry.field
     async def crawl_source(
@@ -3257,3 +3201,64 @@ async def _introspect_available_columns(
             for row in col_res.rows
         ]
     return cols_meta
+
+
+async def offered_tables(source_id: str, schema_name: str) -> list[AvailableTableType]:
+    """The tables a source offers under ``schema_name``: native introspection first, else the
+    bound engine's listing. What the Register Table form offers, and what a files source's
+    registration is checked against (REQ-788)."""
+    from provisa.api.app import state
+    from provisa.api.admin.introspect import native_tables
+
+    source_type = state.source_types.get(source_id, "")
+    if source_type == "openapi":
+        await _ensure_openapi_spec(source_id)
+    pool = await _get_pool()
+    result = None
+    if not await _engine_lists(state, source_id, source_type):
+        async with pool.acquire() as config_conn:
+            with discovery_fallback(f"native tables for {source_id!r}"):
+                result = await native_tables(
+                    source_id,
+                    source_type,
+                    schema_name,
+                    state.source_pools,
+                    config_conn,
+                    state,
+                )
+    if result is not None:
+        return result
+    # the engine fallback
+    from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
+
+    skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
+    # REQ-1912: the engine lists only a source it holds a live attach of.
+    await _require_live_attach(source_id, "tables")
+    # REQ-1673: see available_schemas — list through the attached raw source on a native engine.
+    src = await _source_for_introspection(source_id)
+    if src is not None:
+        # REQ-1695: inside the org's vault — see available_schemas.
+        async with _bound_to_request_org():
+            seam = await asyncio.to_thread(
+                state.federation_engine.introspect_tables, src, schema_name
+            )
+        if seam is not None:
+            return [AvailableTableType(name=n, comment=None) for n in seam if n.lower() not in skip]
+    catalog = state.catalog_for(source_id)
+    tables: list[AvailableTableType] = []
+    with discovery_fallback(f"engine tables for {source_id!r}"):
+        res = await run_admin_catalog_sql(
+            state,
+            state.federation_engine,
+            f'SELECT table_name FROM "{catalog}".information_schema.tables '
+            f"WHERE lower(table_schema) = lower('{schema_name}') "
+            f"AND table_type = 'BASE TABLE' "
+            f"ORDER BY table_name",
+            "source catalog",
+        )
+        tables = [
+            AvailableTableType(name=row[0], comment=None)
+            for row in res.rows
+            if row[0].lower() not in skip
+        ]
+    return tables

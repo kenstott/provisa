@@ -37,6 +37,7 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
     from provisa.core.secrets import resolve_secrets
     from provisa.file_source.files_glob import (
         FileColumnsDiffer,
+        FileOutsideSourceGlob,
         columns_of_file,
         matched_files,
         validate_glob_table,
@@ -54,7 +55,7 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
     try:
         files = matched_files(resolve_secrets(source["path"] or ""), glob)
         validate_glob_table(glob, files, columns_of_file)
-    except FileColumnsDiffer as exc:
+    except (FileColumnsDiffer, FileOutsideSourceGlob) as exc:
         return MutationResult(
             success=False, message=str(exc), code=exc.code, params=dict(exc.params)
         )
@@ -66,3 +67,38 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
             params={"table": model.table_name, "source": model.source_id, "error": str(exc)},
         )
     return None
+
+
+async def table_outside_source_glob_refusal(conn: Any, model: Any) -> MutationResult | None:
+    """A failing MutationResult when ``model`` is a table of a files source whose path is a glob
+    and the source does not offer it: its file is outside the source's glob, so it is not a
+    table of the source (REQ-788). The tables offered are the source's own listing, the one the
+    Register Table form shows. A ``file_glob`` table is checked by :func:`table_file_glob_refusal`;
+    another source, or a path that is no glob, is not checked here."""
+    if getattr(model, "file_glob", None):
+        return None
+    from provisa.core import org_files
+    from provisa.core.repositories import source as source_repo
+    from provisa.core.secrets import resolve_secrets
+    from provisa.file_source.files_glob import split_source_path
+
+    source = await source_repo.get(conn, model.source_id)
+    if source is None or source["type"] != "files" or not source["path"]:
+        return None
+    path = org_files.resolve_path(resolve_secrets(source["path"]))
+    if split_source_path(path)[1] is None:
+        return None
+    from provisa.api.admin.schema_query import offered_tables
+
+    offered = {t.name for t in await offered_tables(model.source_id, model.schema_name)}
+    if model.table_name in offered:
+        return None
+    return MutationResult(
+        success=False,
+        message=(
+            f"table {model.table_name!r} is not a table of source {model.source_id!r}: its file "
+            f"is outside the source's glob {source['path']!r}"
+        ),
+        code="schema.table_outside_source_glob",
+        params={"table": model.table_name, "source": model.source_id, "glob": source["path"]},
+    )

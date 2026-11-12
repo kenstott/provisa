@@ -531,9 +531,14 @@ async def register_table(
                 )
                 if _feed_refusal is not None:
                     raise TableSaveRefused(_feed_refusal)
-                from provisa.api.admin._file_glob import table_file_glob_refusal
+                from provisa.api.admin._file_glob import (
+                    table_file_glob_refusal,
+                    table_outside_source_glob_refusal,
+                )
 
-                _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+                _glob_refusal = await table_file_glob_refusal(
+                    _conn, model
+                ) or await table_outside_source_glob_refusal(_conn, model)  # REQ-788
                 if _glob_refusal is not None:
                     raise TableSaveRefused(_glob_refusal)
                 from provisa.api.admin._fake_guard import table_fake_refusal

@@ -376,17 +376,15 @@ def _files_operand(source: Any) -> dict:
             f"files source {source.id!r}: requires 'path' (directory) or mapping.storage_type (S3)"
         )
     # Calcite's FileSchemaFactory ``directory`` operand is a plain directory, not a glob — verified
-    # live: a trailing ``**`` (or any wildcard) passed through literally makes Calcite look for a
-    # subdirectory actually named "**", finding nothing. The Sources form's "Path / Glob" field
-    # still accepts a glob (kept for parity with TrinoFilesConnector, which DOES glob-match), so
-    # strip any wildcard segment here the same way the pre-REQ-1690 DuckDB connector used to.
-    parts = PurePath(raw_path).parts
-    dir_parts: list[str] = []
-    for part in parts:
-        if any(c in part for c in ("*", "?", "[")):
-            break
-        dir_parts.append(part)
-    directory = str(PurePath(*dir_parts)) if dir_parts else raw_path
+    # live: a wildcard in it makes Calcite look for a subdirectory literally named so. A source
+    # whose path is a glob is therefore given as the directory before the glob plus the adapter's
+    # ``glob`` operand, matched against each file's path relative to that directory (REQ-788: the
+    # source's glob decides its files, so its tables are only the files the glob matches).
+    from provisa.file_source.files_glob import split_source_path
+
+    directory, source_glob = split_source_path(raw_path)
+    if source_glob is not None:
+        operand["glob"] = source_glob
     # Also verified live: a relative directory resolves against the bundled Calcite child JVM's OWN
     # cwd (its bundle cache directory), not this process's — an unqualified "demo/files/northwind"
     # found nothing even with the glob already stripped. Absolute-ize against this process's cwd,
@@ -399,6 +397,12 @@ def _files_operand(source: Any) -> dict:
     glob_tables = getattr(source, "file_glob_tables", None) or []
     tables = []
     for spec in glob_tables:
+        if source_glob is not None:
+            # REQ-788: a table's glob may only reach files the source's glob matches; a file
+            # past it is refused by name (FileOutsideSourceGlob) before the adapter reads it.
+            from provisa.file_source.files_glob import matched_files
+
+            matched_files(raw_path, spec["file_glob"])
         entry = {
             "name": spec["name"],
             "url": str(Path(resolved_dir) / spec["file_glob"]),

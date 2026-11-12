@@ -50,7 +50,7 @@ async def crawl_directory_endpoint(
     require_capability_request(request, "source_registration")
     from provisa.file_source.crawler import crawl_directory
 
-    from provisa.file_source.files_glob import propose_glob_groups
+    from provisa.file_source.files_glob import propose_glob_groups, split_source_path
 
     try:
         discovered = crawl_directory(body.path, body.depth)
@@ -70,7 +70,8 @@ async def crawl_directory_endpoint(
 
     return CrawlResponse(
         path=body.path,
-        glob_groups=propose_glob_groups(discovered, body.path),
+        # REQ-788: a table's file_glob is relative to the directory before the source's glob.
+        glob_groups=propose_glob_groups(discovered, split_source_path(body.path)[0]),
         total_files=len(discovered),
         total_tables=total_tables,
         discovered=discovered,
