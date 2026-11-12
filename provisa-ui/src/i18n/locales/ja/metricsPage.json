@@ -34,6 +34,8 @@
     "fieldAiContext": "AIコンテキスト",
     "fieldTags": "タグ",
     "fieldAiContextPlaceholder": "AI支援クエリ生成のためのヒント",
+    "fieldTerm": "用語集の用語",
+    "fieldTermHint": "その定義と計算方法がメトリクスとともに表示されます",
     "saveFailed": "保存に失敗しました。",
     "editMetric": "メトリクス {{name}} を編集",
     "deleteMetric": "メトリクス {{name}} を削除",

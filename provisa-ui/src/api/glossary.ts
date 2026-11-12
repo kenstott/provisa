@@ -50,6 +50,8 @@ export interface GlossaryTermSummary {
   id: number;
   name: string;
   definition: string | null;
+  // REQ-2243: how the measure the term names is computed, in business language.
+  calculation_method: string | null;
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
@@ -212,6 +214,7 @@ export async function updateGlossaryTerm(
   body: {
     name?: string;
     definition?: string | null;
+    calculation_method?: string | null;
     export_excluded?: boolean;
     // REQ-1591: an abstract term's declared domains; a rooted term's come from its refs.
     domains?: string[];

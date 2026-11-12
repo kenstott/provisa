@@ -149,6 +149,7 @@ const salesMetric: Metric = {
   aiContext: null,
   visibleTo: ["admin"],
   fromFact: "orders",
+  term: null,
 };
 const reportingMetric: Metric = {
   name: "shipment_count",
@@ -158,6 +159,7 @@ const reportingMetric: Metric = {
   aiContext: null,
   visibleTo: ["admin"],
   fromFact: "shipments",
+  term: null,
 };
 const handAuthoredMetric: Metric = {
   name: "constant_one",
@@ -167,6 +169,7 @@ const handAuthoredMetric: Metric = {
   aiContext: null,
   visibleTo: ["admin"],
   fromFact: null,
+  term: null,
 };
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({

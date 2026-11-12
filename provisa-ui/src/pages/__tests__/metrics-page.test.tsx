@@ -107,6 +107,7 @@ const METRICS: Metric[] = [
     aiContext: null,
     visibleTo: ["*"],
     fromFact: "orders",
+    term: null,
   },
 ];
 
@@ -136,6 +137,12 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useTables: () => ({ tables: TABLES, loading: false, error: undefined, refetch: vi.fn() }),
   useUpsertMetric: () => ({ upsertMetric, loading: false }),
   useDeleteMetric: () => ({ deleteMetric, loading: false }),
+}));
+
+// REQ-2243: the glossary terms the editor's term picker offers.
+vi.mock("../../api/glossary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/glossary")>()),
+  listGlossaryTerms: vi.fn(async () => [{ name: "net revenue" }, { name: "order" }]),
 }));
 
 import { MetricsPage } from "../MetricsPage";
@@ -180,6 +187,20 @@ describe("MetricsPage detail-then-edit", () => {
     expect(screen.getByTestId("metric-builder-fact")).toHaveValue("orders");
     expect(screen.getByTestId("metric-builder-measure")).toHaveValue("amount");
     expect(screen.getByTestId("metric-builder-agg")).toHaveValue("SUM");
+  });
+
+  it("REQ-2243: a metric names a glossary term from the picker, and saves it", async () => {
+    upsertMetric.mockClear();
+    upsertMetric.mockResolvedValue({ success: true, message: "ok" });
+    render(<MetricsPage />);
+    await userEvent.click(screen.getByTestId("metrics-row-revenue"));
+    await userEvent.click(screen.getByTestId("metric-detail-edit-revenue"));
+    await selectOption(screen.getByTestId("metric-term-input"), "net revenue");
+    await userEvent.click(screen.getByTestId("metric-save-button"));
+    expect(upsertMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "revenue", term: "net revenue" }),
+      false,
+    );
   });
 
   it("saves an edited metric as an update, never a create", async () => {

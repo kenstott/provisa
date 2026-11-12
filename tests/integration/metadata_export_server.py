@@ -72,9 +72,11 @@ ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
 MEMBER_TTL = 3600
 GLOSSARY_TERM = "customer"
 GLOSSARY_DEFINITION = "A person or company that has placed at least one order."
-# REQ-2141/REQ-1389: a Class term grounded in the orders table. Beside it, GLOSSARY_TERM is the
-# Property orders.customer_id derives; customers has no Class, so its key customers.id grounds
-# that Property too. Each catalog receives three assignments: orders, and the two columns.
+# REQ-2141/REQ-1389: a Class term grounded in the orders table, whose key orders.id puts its ref
+# on that Class (KEYS ON THE CLASS). Beside it, GLOSSARY_TERM is the Property orders.customer_id
+# derives; customers has no Class, so its key customers.id grounds that Property too. Each catalog
+# receives four assignments (REQ-1389, a Class term is assigned to its key columns too): the Class
+# to orders and orders.id, the Property to the two columns.
 CLASS_TERM = "order"
 CLASS_DEFINITION = "A customer's request to buy, placed once."
 # A view over orders, a member too: its column lineage is what a target's lineage holds.

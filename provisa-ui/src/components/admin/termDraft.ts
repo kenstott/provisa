@@ -41,6 +41,8 @@ export interface Claim {
 export interface TermDraft {
   name: string;
   definition: string;
+  /** REQ-2243: the term's calculation method. */
+  calculationMethod: string;
   exportExcluded: boolean;
   /** REQ-2145: pii on the term, which every column it holds carries (a Property's only). */
   pii: boolean;
@@ -60,6 +62,7 @@ export function draftOf(term: GlossaryTermDetail, tables: number[]): TermDraft {
   return {
     name: term.name,
     definition: term.definition ?? "",
+    calculationMethod: term.calculation_method ?? "",
     exportExcluded: term.export_excluded,
     pii: term.tags.some((g) => g.tag_id === "pii"),
     domains: [...term.domains],
@@ -100,6 +103,8 @@ export function changes(
   const patch: Parameters<typeof updateGlossaryTerm>[1] = {};
   if (draft.name.trim() !== term.name) patch.name = draft.name.trim();
   if (draft.definition !== (term.definition ?? "")) patch.definition = draft.definition;
+  if (draft.calculationMethod !== (term.calculation_method ?? ""))
+    patch.calculation_method = draft.calculationMethod.trim() ? draft.calculationMethod : null;
   if (draft.exportExcluded !== term.export_excluded) patch.export_excluded = draft.exportExcluded;
   const sameDomains =
     draft.domains.length === term.domains.length &&

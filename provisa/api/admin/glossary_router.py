@@ -391,7 +391,8 @@ async def create_abstract_term(request: Request) -> dict:
 
 @router.patch("/terms/{term_id}")
 async def update_term(request: Request, term_id: int) -> dict:
-    """Rename, set the definition, or flip the export_excluded / retired flags."""
+    """Rename, set the definition or the calculation method, or flip the export_excluded /
+    retired flags."""
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
@@ -430,6 +431,10 @@ async def update_term(request: Request, term_id: int) -> dict:
                 found = await glossary_repo.rename_term(_conn, term_id, str(body["name"]))
             if "definition" in body:
                 found = await glossary_repo.set_definition(_conn, term_id, body["definition"])
+            if "calculation_method" in body:  # REQ-2243
+                found = await glossary_repo.set_calculation_method(
+                    _conn, term_id, body["calculation_method"]
+                )
             if "export_excluded" in body:
                 found = await glossary_repo.set_export_excluded(
                     _conn, term_id, bool(body["export_excluded"])

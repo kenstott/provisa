@@ -52,6 +52,7 @@ const TERM: GlossaryTermSummary = {
   id: 32,
   name: "Exposure",
   definition: "What a group stands to lose.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,

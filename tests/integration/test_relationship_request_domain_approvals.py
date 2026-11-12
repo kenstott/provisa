@@ -193,7 +193,9 @@ async def plane(monkeypatch):
     # Nor is any table compiled: every table is judged by its stored grants, whatever an earlier
     # test in this process left in the runtime (catalog_scope reads tables and contexts).
     monkeypatch.setattr(appmod.state, "tables", [], raising=False)
-    monkeypatch.setattr(appmod.state, "contexts", {}, raising=False)
+    # Every role's surface goes, whole: one an earlier test registered and never read is unbuilt,
+    # and dropping one part of it (state.contexts = {}) would build it from the stub above.
+    monkeypatch.setattr(appmod.state._active_runtime(), "surfaces", {})
     # The meta-roles of the users holding several roles: what each acts as, as the runtime's
     # meta-roles answer it (security/meta_role.acting_roles); any other role is itself.
     from provisa.security import meta_role

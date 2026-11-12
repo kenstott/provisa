@@ -40,9 +40,8 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The app serves 'default' as its own org, re-pointed and bound by the harness (REQ-1266).
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("default")]
@@ -83,9 +82,7 @@ def _prepare_sync():
         )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         for rid in ("platform_admin", "analyst", "org_admin"):
             conn.execute(text("INSERT INTO roles (id) VALUES (:i)"), {"i": rid})
     return engine

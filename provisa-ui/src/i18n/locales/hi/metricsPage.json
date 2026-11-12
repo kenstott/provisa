@@ -34,6 +34,8 @@
     "fieldAiContext": "AI संदर्भ",
     "fieldTags": "टैग",
     "fieldAiContextPlaceholder": "AI-सहायित क्वेरी जनरेशन के लिए संकेत",
+    "fieldTerm": "शब्दावली शब्द",
+    "fieldTermHint": "इसकी परिभाषा और गणना विधि मेट्रिक के साथ दिखाई जाती है",
     "saveFailed": "सहेजना विफल रहा।",
     "editMetric": "मेट्रिक {{name}} संपादित करें",
     "deleteMetric": "मेट्रिक {{name}} हटाएँ",

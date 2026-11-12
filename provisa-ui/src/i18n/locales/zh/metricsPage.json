@@ -34,6 +34,8 @@
     "fieldAiContext": "AI 上下文",
     "fieldTags": "标签",
     "fieldAiContextPlaceholder": "供 AI 辅助查询生成的提示",
+    "fieldTerm": "术语表术语",
+    "fieldTermHint": "其定义和计算方法与指标一同显示",
     "saveFailed": "保存失败。",
     "editMetric": "编辑指标 {{name}}",
     "deleteMetric": "删除指标 {{name}}",

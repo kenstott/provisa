@@ -85,7 +85,8 @@ def _model() -> dict:
             "arguments": [],
         }
 
-    reads = ["query_development", "full_results"]
+    # REQ-870: a role is listed a command only when it holds command_execution and is assigned it.
+    reads = ["query_development", "full_results", "command_execution"]
     return {
         "auth": {
             "provider": "simple",

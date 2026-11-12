@@ -100,6 +100,7 @@ def _term(term_id: int, name: str, definition: str | None, **flags) -> dict:
         "approved": True,
         "retired": False,
         "export_excluded": False,
+        "calculation_method": None,
         "status_reason": None,
         "retire_on": None,
         **flags,

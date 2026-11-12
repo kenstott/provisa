@@ -10,7 +10,7 @@
 
 import { Gauge } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -44,6 +44,7 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
+import { listGlossaryTerms } from "../api/glossary";
 
 interface MetricForm {
   name: string;
@@ -51,6 +52,8 @@ interface MetricForm {
   datatype: string;
   description: string;
   aiContext: string;
+  /** REQ-2243: the glossary term the metric names. */
+  term: string | null;
 }
 
 const EMPTY_FORM: MetricForm = {
@@ -59,6 +62,7 @@ const EMPTY_FORM: MetricForm = {
   datatype: "",
   description: "",
   aiContext: "",
+  term: null,
 };
 
 // The expression-builder shape: AGG(fact.column). A hand-edited expression that
@@ -90,6 +94,8 @@ interface MetricFormCardProps {
   builder: BuilderState;
   applyBuilder: (next: BuilderState) => void;
   factTables: ListedTable[];
+  /** REQ-2243: the glossary terms a metric may name. */
+  termNames: string[];
   saving: boolean;
   msg: string;
   onSave: () => void;
@@ -105,6 +111,7 @@ function MetricFormCard({
   builder,
   applyBuilder,
   factTables,
+  termNames,
   saving,
   msg,
   onSave,
@@ -215,6 +222,18 @@ function MetricFormCard({
               data-testid="metric-ai-context-input"
             />
           </FormField>
+          {/* REQ-2243: the term whose definition and calculation method the metric carries. */}
+          <FormField size="medium" hint={t("metricsPage.fieldTermHint")}>
+            <Select
+              label={t("metricsPage.fieldTerm")}
+              value={form.term}
+              onChange={(term) => setForm((f) => ({ ...f, term }))}
+              data={termNames}
+              clearable
+              searchable
+              data-testid="metric-term-input"
+            />
+          </FormField>
         </>
       )}
       <FormFooter
@@ -253,6 +272,18 @@ export function MetricsPage() {
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
+  // REQ-2243: the glossary terms a metric may name, for the editor's term picker.
+  const [termNames, setTermNames] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    listGlossaryTerms("", false).then(
+      (terms) => live && setTermNames(terms.map((term) => term.name)),
+      (e: Error) => live && setMsg(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // REQ-1320: facts are the metric sources — the builder's source picker.
   const factTables = tables.filter((tbl) => tbl.modelingRole === "fact");
@@ -280,6 +311,7 @@ export function MetricsPage() {
       datatype: m.datatype ?? "",
       description: m.description ?? "",
       aiContext: m.aiContext ?? "",
+      term: m.term,
     });
     const match = BUILDER_EXPR_RE.exec(m.expression);
     setBuilder(
@@ -320,6 +352,7 @@ export function MetricsPage() {
         datatype: form.datatype.trim() || null,
         description: form.description.trim() || null,
         aiContext: form.aiContext.trim() || null,
+        term: form.term,
       },
       // The new-metric form creates; a metric's own detail updates it.
       creating,
@@ -354,6 +387,7 @@ export function MetricsPage() {
       builder={builder}
       applyBuilder={applyBuilder}
       factTables={factTables}
+      termNames={termNames}
       saving={saving}
       msg={msg}
       onSave={handleSave}
