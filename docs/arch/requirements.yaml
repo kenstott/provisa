@@ -91124,8 +91124,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     page opens it focused on that term (its ancestors and descendants, and the columns, tables and products
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
-    lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    lateral edges are drawn, and 2D or 3D. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 --
+    expanding a term opens on that term alone, as a product does. Kept here for history; do not implement
+    against it.] Expanding a snippet opens the whole ontology with the same focus selected. [END SUPERSEDED
+    BLOCK] The separate term graph and product graph implementations are replaced by these presets. (Amended
     2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
     1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
     page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
@@ -91188,13 +91190,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
     2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
     on that product alone, its member tables, their columns and the terms grounded on them, with a control
-    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.
+    that shows the rest of the model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding
+    a term opens on that term alone, as a product does. Kept here for history; do not implement against
+    it.] Expanding a term still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK]
     (Amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s
     term lane, sibling terms (Dog and Cat under Pet) are not drawn side by side, where their edges leave
     from different positions and cross regardless of order; each term takes its own row, and the rank lines
     that join a term to its parent run beside the lane, not through its rows, so each lane can be ordered
     freely to minimise crossings. On the Pet Health graph the diagram has fewer crossings than before the
-    lanes were spread (42).'
+    lanes were spread (42). (Amended 2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding
+    a term''s graph opens on that term alone, as a product''s does on the product: the term, its ancestors
+    and descendants, and the columns, tables and products it reaches, at full hops, with the same control
+    that shows the rest of the model. The rest of the ontology is not read or drawn until that control asks
+    for it. No expanded snippet opens on the whole ontology; only the Ontology page''s own graph does.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
