@@ -150,6 +150,36 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         ("SELECT dcbrt(x) AS v FROM t", "trino", "SELECT CBRT(x) AS v FROM t"),
         ("SELECT dtrunc(x) AS v FROM t", "trino", "SELECT TRUNCATE(CAST(x AS DOUBLE)) AS v FROM t"),
         ("SELECT unicode_version() AS v", "mysql", "SELECT '15.1' AS v"),
+        # array_cat: PostgreSQL's NULL with an array is the array, NULL with NULL is NULL.
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "duckdb",
+            "SELECT CASE WHEN NOT a IS NULL OR NOT b IS NULL THEN LIST_CONCAT(a, b) END AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE CONCAT(a, b) END AS v "
+            "FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, b) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN NULL IS NULL THEN b WHEN b IS NULL THEN NULL ELSE CONCAT(NULL, b) END "
+            "AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, NULL) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN a IS NULL THEN NULL WHEN NULL IS NULL THEN a ELSE CONCAT(a, NULL) END "
+            "AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, NULL) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN NULL IS NULL THEN NULL WHEN NULL IS NULL THEN NULL "
+            "ELSE CONCAT(NULL, NULL) END AS v FROM t",
+        ),
     ],
 )
 def test_a_form_is_written_for_its_dialect(sql, dialect, expected):

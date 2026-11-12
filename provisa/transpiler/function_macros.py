@@ -1302,8 +1302,13 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN substr(CAST(value AS VARCHAR), 20, 1) IN ('8', '9', 'a', 'b') "
         "THEN uuid_extract_version(value) END",
     ),
+    # PostgreSQL's array_cat: a NULL array is the other one, two NULL arrays are NULL. Trino's
+    # concat of arrays is reached only with neither NULL.
     _macro(
-        "array_cat", "a, b", "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END"
+        "array_cat",
+        "a, b",
+        "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END",
+        {_TRINO: "CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE concat(a, b) END"},
     ),
     _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
     _macro(
