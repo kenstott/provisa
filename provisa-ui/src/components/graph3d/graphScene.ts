@@ -674,7 +674,9 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (NAMED.has(e.kind) && e.label) {
         // On the line as its ends stand when the label is placed: the arc, or the straight run.
         const share = named.get(pairKey(e)) ?? [e.id];
-        const t = (share.indexOf(e.id) + 1) / (share.length + 1);
+        // Measured from the pair's first end, whichever way each line runs, so no two coincide.
+        const k = (share.indexOf(e.id) + 1) / (share.length + 1);
+        const t = e.a <= e.b ? k : 1 - k;
         const from = nodeOf.get(e.a)?.mesh;
         if (!from) throw new Error(`edge ${e.id} starts at ${e.a}, which is not drawn`);
         const to = target.mesh;
