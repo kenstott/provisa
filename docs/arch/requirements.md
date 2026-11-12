@@ -26997,3 +26997,13 @@ Maintainer 2026-11-11: a glossary term may carry its calculation method beside i
 **Code:** —
 
 **Tests:** —
+
+### REQ-2244 · Admin UI {#REQ-2244}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+
+Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse: the thing stays on screen as a summary or as its parent, and its contents open in place (a table's columns, a section, a tree row, a list row's detail); collapsed, the summary or parent is still shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the full-screen control); a change of size is never called expand. Fold and unfold are not used. A table's columns in a graph are therefore expanded and collapsed, as the ERD already says.
+
+**Code:** —
+
+**Tests:** —

@@ -95472,3 +95472,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When a reader without rights to the masked column opens the column
     Then the reader sees the term's definition and calculation method
     And the reader does not see the column's formula
+
+- id: REQ-2244
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip
+    and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing
+    stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse:
+    the thing stays on screen as a summary or as its parent, and its contents open in place (a table''s
+    columns, a section, a tree row, a list row''s detail); collapsed, the summary or parent is still
+    shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the
+    full-screen control); a change of size is never called expand. Fold and unfold are not used. A
+    table''s columns in a graph are therefore expanded and collapsed, as the ERD already says.'
+  scenario: |
+    Given a graph that draws a table with its columns collapsed into it
+    When a reader looks at the table's control
+    Then it reads "Expand columns"
+    And the control that opens the graph in the large view reads "Enlarge"
+    And the control for a layer of the graph reads "Show" or "Hide"
