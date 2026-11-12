@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on SQLite. A f
 
 When SQLite is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 58, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 59, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 6 of the grid's 31 features are native on SQLite and left out.
 
@@ -84,13 +84,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which sqlite neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>

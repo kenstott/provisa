@@ -15,7 +15,10 @@ interval_in, jsonb_in and xid8in are strict: PostgreSQL answers a NULL argument 
 interval, jsonb or xid8. Only DuckDB holds a NULL that pgwire describes as that type, and answers it
 before the grid (provisa.transpiler.pg_forms_type_io folds a strict call of a NULL). Any other
 dialect's NULL would be described as text, an answer that differs, so the call is refused by name,
-with the message a call of a value it does not read gets."""
+with the message a call of a value it does not read gets. interval_in of a constant text is folded to
+the text interval_out writes, which pgwire describes as interval (provisa.pgwire.cast_types); one
+the fold leaves (infinity, which pgwire has no interval value of, or a text that is no constant) is
+refused so too."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -56,10 +59,39 @@ def _null_refused(function: str, result: str, patterns: tuple[str, ...]) -> Feat
     )
 
 
-INTERVAL_IN = _null_refused(
+_INTERVAL_IN_REFUSED = _refused("interval_in")
+
+INTERVAL_IN = Feature(
     "interval_in",
-    "interval",
-    ("interval_in(NULL, $o, $t)", "interval_in($v, NULL, $t)", "interval_in($v, $o, NULL)"),
+    FAMILY,
+    "interval_in of a NULL: PostgreSQL's NULL of interval; of a constant, its interval.",
+    read=Side(
+        rules=tuple(
+            Rule(pattern, dict.fromkeys(_UNHELD, _INTERVAL_IN_REFUSED))
+            for pattern in (
+                "interval_in(NULL, $o, $t)",
+                "interval_in($v, NULL, $t)",
+                "interval_in($v, $o, NULL)",
+                # Any other call the fold leaves (provisa.transpiler.pg_forms_type_io): a text
+                # that is no constant, and infinity, which pgwire has no interval value of.
+                "interval_in($v, $o, $t)",
+            )
+        ),
+        limitations={
+            d: (
+                Limitation(
+                    "A NULL of interval would be described as text: the call is refused.",
+                    _INTERVAL_IN_REFUSED,
+                ),
+                Limitation(
+                    "A finite constant is folded to its text, which pgwire describes as interval; "
+                    "infinity, and a text that is no constant, are refused.",
+                    _INTERVAL_IN_REFUSED,
+                ),
+            )
+            for d in _UNHELD
+        },
+    ),
 )
 JSONB_IN = _null_refused("jsonb_in", "jsonb", ("jsonb_in(NULL)",))
 XID8IN = _null_refused("xid8in", "xid8", ("xid8in(NULL)",))

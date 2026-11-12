@@ -2174,7 +2174,7 @@ def _polyfilled_by_rule(
     if polyfill.column_of(dialect) is None:
         raise FunctionRefused(called, dialect)
     if form is None:
-        return target  # the engine's own
+        return node  # the engine's own, as the statement writes it (by pg_catalog on DuckDB)
     if isinstance(form, polyfill.Refusal):
         raise RowRefused(called, dialect, form)
     if isinstance(form, polyfill.Rewrite):

@@ -231,13 +231,15 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINC
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -388,13 +390,15 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINC
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -545,13 +549,15 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINC
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -705,13 +711,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -859,13 +867,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which snowflake neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1007,13 +1017,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which databricks neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1155,13 +1167,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which bigquery neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1303,13 +1317,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which tsql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1451,13 +1467,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which redshift neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1599,13 +1617,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which mysql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1747,13 +1767,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which singlestore neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1895,13 +1917,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which sqlite neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2043,13 +2067,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which oracle neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2191,13 +2217,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which hive neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2339,13 +2367,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which exasol neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2487,13 +2517,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which druid neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
