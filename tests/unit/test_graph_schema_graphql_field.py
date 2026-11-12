@@ -133,3 +133,16 @@ def test_a_table_that_is_no_node_label_still_names_its_root_field(state, monkeyp
 def test_the_path_map_carries_each_tables_id(state):
     by_id = {info["table_id"]: field for field, info in state.table_path_maps["r"].items()}
     assert set(by_id) == {ORDERS, PRODUCTS}
+
+
+def test_each_label_says_whether_its_domain_is_a_system_domain(state):
+    # REQ-2135: a drop's path never passes through a system domain's labels unless an end is of
+    # that domain; the explorer reads which domains those are here, from the server's own list.
+    from provisa.security.rights import SYSTEM_DOMAINS
+
+    labels = {n["table_label"]: n for n in _graph_schema("r")["node_labels"]}
+    assert "meta" in SYSTEM_DOMAINS
+    assert labels["DataProducts"]["domain_id"] == "meta"
+    assert labels["DataProducts"]["system_domain"] is True
+    assert labels["Orders"]["domain_id"] == "sales"
+    assert labels["Orders"]["system_domain"] is False
