@@ -131,38 +131,17 @@ def _in_service(state: Any, table_id: int) -> dict | None:
 
 def _surface_with(state: Any, role_id: str, drafts: list[dict]) -> RoleSurface:
     """The role's surface with ``drafts`` in its compilation context — built as the role build
-    builds it, from this generation's inputs, with the tables moved from the drafts to the
-    tables. Their columns' types are the registered ones."""
-    from provisa.api.app_loaders import build_context, schema_input_for
-    from provisa.compiler.introspect import ColumnMetadata
+    builds it (app_loaders.schema_input_with_drafts). Its schema is the published one: a role
+    holding org_admin is offered the drafts there already, and no other role reads a draft by a
+    document of its own."""
+    from provisa.api.app_loaders import build_context, schema_input_with_drafts
 
     surface = role_surface(state, role_id)
     if surface is None:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
-    inputs = state.role_build_inputs
-    si = schema_input_for(
-        state, state.roles[role_id], [*inputs["tables"], *drafts], inputs["metrics"]
-    )
-    added = {d["id"] for d in drafts}
-    si = replace(
-        si,
-        draft_tables=[t for t in inputs["draft_tables"] if t["id"] not in added],
-        column_types={
-            **inputs["column_types"],
-            **{
-                draft["id"]: [
-                    ColumnMetadata(
-                        column_name=c["column_name"], data_type=c["data_type"], is_nullable=True
-                    )
-                    for c in draft["columns"]
-                ]
-                for draft in drafts
-            },
-        },
-    )
-    ctx = build_context(si)
+    ctx = build_context(schema_input_with_drafts(state, state.roles[role_id], drafts, marked=False))
     ctx.refusal = surface.context.refusal
     ctx.kept = dict(surface.context.kept)
     return replace(surface, context=ctx)
@@ -335,6 +314,44 @@ def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
     return [by_id[i] for i in ids]
 
 
+def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
+    """The drafts the root fields of GraphQL ``query`` name, each once, when every operation in it
+    is a query and ``role_id`` holds org_admin; none otherwise, and the document goes on to be
+    refused naming a draft as before (a mutation or subscription of a draft is refused, for a
+    role holding org_admin too). A document that does not parse names none: its parse refuses it
+    where every document is parsed."""
+    from graphql import GraphQLSyntaxError, OperationDefinitionNode, OperationType, parse
+
+    from provisa.compiler.parser import table_field_candidates
+    from provisa.security.rights import holds_org_admin
+
+    surface = role_surface(state, role_id)
+    if surface is None or not surface.context.draft_ids:
+        return []
+    if not holds_org_admin(state.roles[role_id]):
+        return []
+    try:
+        document = parse(query)
+    except GraphQLSyntaxError:
+        return []
+    operations = [d for d in document.definitions if isinstance(d, OperationDefinitionNode)]
+    if any(op.operation != OperationType.QUERY for op in operations):
+        return []
+    named = surface.context.draft_ids
+    ids: list[int] = []
+    for op in operations:
+        for selection in op.selection_set.selections:
+            name = getattr(getattr(selection, "name", None), "value", None)
+            if name is None:
+                continue
+            for candidate in table_field_candidates(name):
+                table_id = named.get(candidate)
+                if table_id is not None and table_id not in ids:
+                    ids.append(table_id)
+    by_id = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
+    return [by_id[i] for i in ids]
+
+
 async def plan_reading_drafts(
     state: Any,
     sql: str,
@@ -352,10 +369,31 @@ async def plan_reading_drafts(
     read by, a steward's preview and an org_admin's statement alike (REQ-1921). Nothing of it is
     kept: no plan, no response."""
     from provisa.compiler.directives import NO_CACHE_HINT
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
+
+    seen = await reading_drafts(state, role_id, drafts)
+    plan = await _govern_and_route_compiled(
+        sql,
+        role_id,
+        exec_params=exec_params,
+        state=seen,
+        cache_hint=NO_CACHE_HINT,
+        sdl_joins=False,
+        deliver=deliver,
+        buffered=buffered,
+        explain=explain,
+        as_of=as_of,
+    )
+    return plan, seen
+
+
+async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithDrafts:
+    """The view of ``state`` a read of ``drafts`` as ``role_id`` is governed and run in: the
+    role's surface with them added, their routes, and nothing it keeps reaching the real state.
+    Refused for a draft kept in another region than this node's."""
     from provisa.federation.query_residency import require_draft_read_in_its_region
     from provisa.federation.registry_view import registered_sources
     from provisa.federation.replica_routing import routes_with_draft
-    from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     # Where a regional table may be read is the regions' rule, in its own module.
     for draft in drafts:
@@ -375,20 +413,7 @@ async def plan_reading_drafts(
         else _surface_with(state, role_id, drafts)
     )
     bodies = {d["table_name"]: body for d in drafts if (body := _view_body(state, d)) is not None}
-    seen = _WithDrafts(state, drafts, role_id, surface, routes, bodies)
-    plan = await _govern_and_route_compiled(
-        sql,
-        role_id,
-        exec_params=exec_params,
-        state=seen,
-        cache_hint=NO_CACHE_HINT,
-        sdl_joins=False,
-        deliver=deliver,
-        buffered=buffered,
-        explain=explain,
-        as_of=as_of,
-    )
-    return plan, seen
+    return _WithDrafts(state, drafts, role_id, surface, routes, bodies)
 
 
 def table_for_steward(request: Any, state: Any, table_id: int) -> dict:
