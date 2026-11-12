@@ -95224,8 +95224,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and by nothing
     else. The component owns the library''s setup, one prescriptive visual language (a node shape with a
     type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries
-    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid
-    canvas, one place for the controls and the legend, one hover and selection state), its layout presets,
+    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, [SUPERSEDED
+    by REQ-2239, 2026-11-11 -- the canvas is plain; a background grid carries no information (A PLAIN CANVAS
+    AND READABLE LANES). Kept here for history; do not implement against it.] a dot-grid canvas, [END SUPERSEDED
+    BLOCK] one place for the controls and the legend, one hover and selection state), its layout presets,
     focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node''s
     type and the layout preset; it sets no colour, shape or control of its own. The visual language takes
     its tokens from the detail cards. A test fails any code outside the component that imports the graph
@@ -95242,7 +95244,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     associative table that exists to connect others, REQ-1588) is drawn as a diamond, as Chen''s ER notation
     draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
     colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
-    with arrows; dashed lines mean pending or indirect.'
+    with arrows; dashed lines mean pending or indirect. (Amended 2026-11-11, A PLAIN CANVAS AND READABLE
+    LANES:) Maintainer 2026-11-11, from the ontology term graph: the canvas is plain, with no background
+    grid. A lane''s group box bounds only its own nodes, with a gap between lanes, so boxes never overlap.
+    A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
+    is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
+    over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
+    and zooming is an explicit gesture.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
