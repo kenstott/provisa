@@ -95371,7 +95371,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
     references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
     A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
-    are listed as the reader''s role may see them (visible_to).'
+    are listed as the reader''s role may see them (visible_to). (Amended 2026-11-11, A METRIC NAMES ITS
+    TERM; THE METHOD HAS ITS OWN ANNOTATION:) Maintainer 2026-11-11: a metric is grounded in a glossary
+    term by naming it: a metric optionally carries one term, set in the metric editor and in configuration
+    and versioned with the metric, as a table names its class term. On ontology export the calculation method
+    is written in RDF as the Provisa predicate https://provisa.dev/ns#calculationMethod on the term, and
+    in an Ossie document as a calculation_methods list in its ai_context, as kept statements are carried.
+    An import maps that predicate and that list onto the method; annotations of other vocabularies are not
+    read as a method.'
   scenario: |
     Given a glossary term "net revenue" with a calculation method
     And a computed column grounded in that term whose formula reads a masked column
