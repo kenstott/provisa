@@ -867,10 +867,15 @@ main {
   min-height: 1px;
 }
 /* A form's Save and Cancel in the head of the panel it is open in, in place of the view's
- * actions: the same two as at its foot, beside the name, so the form has the panel's whole height. */
+ * actions: borderless and compact like the head's other actions, beside the name, so the form has
+ * the panel's whole height. */
 .form-footer.form-footer--head {
   flex: 0 0 auto;
   flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+.form-footer.form-footer--head .mantine-Button-root {
+  min-width: 0;
 }
 /* What a form in the panel says of a save that did not go through: one line under the head. */
 .split-pane__notice {
