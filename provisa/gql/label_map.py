@@ -463,16 +463,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 if rel.source_label == cur_label:
                     key = _used_key(rel, "fwd")
                     if key not in used_rel_keys:
-                        tgt_nm = self.nodes.get(rel.target_label)
-                        if tgt_nm and tgt_nm.native_filter_columns:
+                        if not self.end_reads(rel.target_label):
                             continue
                         queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
                 # Reverse edge (only when bidirectional)
                 if bidirectional and rel.target_label == cur_label:
                     key = _used_key(rel, "rev")
                     if key not in used_rel_keys:
-                        src_nm = self.nodes.get(rel.source_label)
-                        if src_nm and src_nm.native_filter_columns:
+                        if not self.end_reads(rel.source_label):
                             continue
                         # When forward uses source_constant + target_expr, the reverse
                         # must express: target_expr(source) = source_constant, not
@@ -503,11 +501,19 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
+    def end_reads(self, type_name: str, named: str | None = None) -> bool:
+        """Whether a pattern's end may read ``type_name``'s table (REQ-2135): the one rule every
+        expansion of a free node goes through. A parameterized table is a function of its
+        arguments, with no rows of its own an open pattern could find, so it is read only where a
+        label names it (``named``, the table the end's label or binding names; None for a free
+        end, a domain label among them) -- and then its parameters are required as for any read."""
+        nm = self.nodes.get(type_name)
+        return nm is None or not nm.parameterized or type_name == named
+
     def touches_parameterized(self, rel: RelationshipMapping) -> bool:
-        """Whether either end of ``rel`` is a parameterized table, which no path includes
-        (REQ-2135)."""
-        ends = (self.nodes.get(rel.source_label), self.nodes.get(rel.target_label))
-        return any(nm is not None and nm.parameterized for nm in ends)
+        """Whether either end of ``rel`` is a parameterized table, which no path includes, named
+        or not (REQ-2135)."""
+        return not (self.end_reads(rel.source_label) and self.end_reads(rel.target_label))
 
     def relationships_for(  # REQ-572
         self, source_label: str, target_label: str | None = None

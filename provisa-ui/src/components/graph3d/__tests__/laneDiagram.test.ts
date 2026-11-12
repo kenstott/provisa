@@ -13,7 +13,8 @@
 // edge joins a term to its broader term inside the term lane and every other term link is an arc
 // over it; the term lane placed by the lanes preset, its terms level with their columns (REQ-2239,
 // amended 2026-11-11); a table's columns tied to no term one node until expanded; a product's hops
-// counted along the lanes; Mermaid text.
+// counted as everywhere, a step between terms (amended 2026-11-12), before the lanes are laid out;
+// Mermaid text.
 
 import { describe, expect, it } from "vitest";
 import mermaid from "mermaid";
@@ -35,6 +36,16 @@ import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
   visibleGraph(data, new Set<LayerId>(PRESETS[preset].layers), NO_FILTERS, expanded, ENGINE_SCOPE);
+
+/** What a product's focus draws at ``depth`` hops (graphModel's reach), as the 2D view lays it out. */
+const focusedBy = (data: GraphData, focus: string, depth: number) =>
+  visibleGraph(
+    data,
+    new Set<LayerId>(PRESETS.all.layers),
+    { ...NO_FILTERS, focus: [focus] },
+    new Set(),
+    { ...ENGINE_SCOPE, neighbourhood: { ...ENGINE_SCOPE.neighbourhood, depth } },
+  );
 
 const lanesOf = (d: ReturnType<typeof laneDiagram>) => {
   const out: Record<Lane, string[]> = { term: [], column: [], table: [], product: [] };
@@ -74,12 +85,12 @@ describe("the lane diagram's lanes", () => {
     expect(linked(d)).toContain("t:customers>p:c360");
   });
 
-  it("lays out a product's snippet -- its hops counted along the lanes -- in the same lanes", () => {
-    const d = laneDiagram(shownBy(DATA, "all"), DATA, new Set(), { focus: "p:c360", depth: 3 });
+  it("lays out a product's snippet -- what its hops reach -- in the same lanes", () => {
+    const d = laneDiagram(focusedBy(DATA, "p:c360", 1), DATA, new Set());
     expect(lanesOf(d).product).toEqual(["p:c360"]);
     expect(lanesOf(d).column).toEqual(["c:customers.email"]);
     expect(lanesOf(d).table).toEqual(["t:customers", "t:orders"]);
-    expect(lanesOf(d).term).toEqual(["term:customer"]);
+    expect(lanesOf(d).term).toEqual(["term:customer", "term:party"]);
   });
 
   it("are drawn products to terms, left to right", () => {
@@ -322,7 +333,7 @@ describe("two term edges of different types between the same two terms", () => {
   });
 });
 
-describe("a product's hops in 2D, counted along the lanes", () => {
+describe("a product's hops in 2D, counted between terms", () => {
   // Customer is tied to customers.email; Party is a step from it, Agent a step from Party.
   const chain: GraphData = {
     nodes: [...DATA.nodes, { id: "term:agent", type: "term", label: "Agent" }],
@@ -332,44 +343,27 @@ describe("a product's hops in 2D, counted along the lanes", () => {
       { id: "41", a: "term:party", b: "term:customer", kind: "term_edge", label: "RELATED_TO" },
     ],
   };
-  const at = (depth: number) =>
-    laneDiagram(shownBy(chain, "all"), chain, new Set(), { focus: "p:c360", depth });
+  const at = (depth: number) => laneDiagram(focusedBy(chain, "p:c360", depth), chain, new Set());
 
-  it("draws the product's tables at 1 hop, and no column", () => {
+  it("draws the product's tables, their tied columns and terms at 1 hop, and a term a step on", () => {
     const d = at(1);
     expect(lanesOf(d)).toEqual({
       product: ["p:c360"],
       table: ["t:customers", "t:orders"],
-      column: [],
-      term: [],
+      column: ["c:customers.email"],
+      term: ["term:customer", "term:party"],
     });
-    expect(d.more).toEqual([]);
+    // orders' total is tied to no term drawn: one node.
+    expect(d.more.map((m) => [m.table, m.count])).toEqual([["t:orders", 1]]);
   });
 
-  it("draws their columns at 2, each table's folded into one node with no term in view", () => {
-    const d = at(2);
-    expect(lanesOf(d).term).toEqual([]);
-    expect(lanesOf(d).column).toEqual([]);
-    expect(d.more.map((m) => [m.table, m.count])).toEqual([
-      ["t:customers", 1],
-      ["t:orders", 1],
-    ]);
-  });
-
-  it("draws the terms tied to the columns at 3, the tied columns as themselves", () => {
-    const d = at(3);
-    expect(lanesOf(d).term).toEqual(["term:customer"]);
-    expect(lanesOf(d).column).toEqual(["c:customers.email"]);
-    expect(d.more.map((m) => m.table)).toEqual(["t:orders"]);
-  });
-
-  it("steps once across the term links for each hop past 3", () => {
-    expect(lanesOf(at(4)).term).toEqual(["term:customer", "term:party"]);
-    expect(lanesOf(at(5)).term).toEqual(["term:agent", "term:customer", "term:party"]);
+  it("steps once across the term links for each hop past 1, and to the end at All", () => {
+    expect(lanesOf(at(2)).term).toEqual(["term:agent", "term:customer", "term:party"]);
+    expect(lanesOf(at(Infinity)).term).toEqual(["term:agent", "term:customer", "term:party"]);
   });
 
   it("draws the focused product alone in the product lane, and no other product's tables", () => {
-    const d = at(5);
+    const d = at(Infinity);
     expect(lanesOf(d).product).toEqual(["p:c360"]);
     expect(d.graph.nodes.some((n) => n.type === "relation" || n.type === "command")).toBe(false);
   });

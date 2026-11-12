@@ -14,7 +14,9 @@
 // a shown term reaches (REQ-2130); the Product map's and a product's panel's keep the product
 // layers and the member tables. (Amended 2026-11-11, A TERM OPENS ON ITSELF:) an expanded snippet
 // opens on its own focus -- each at the depth a product's graph opens at -- and only the
-// Ontology page's graph opens whole.
+// Ontology page's graph opens whole. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) a hop is
+// a step between terms; a term's grounding and a product's own tables, columns and terms come at no
+// hop, so every snippet and expanded graph opens at 1.
 
 import { NEIGHBOURHOOD } from "./neighbourhood";
 import { productNode, termNode } from "./ontologyData";
@@ -43,8 +45,8 @@ export const PRODUCT_MAP: OntologyPreset = { ...WHOLE, products: true };
 /** A term's graph opens at what the term touches, its hops raised from there. */
 export const TERM_GRAPH_DEPTH = 1;
 
-/** A term's page: the ontology focused on the term -- its ancestors and descendants, and the
- * columns, tables and products it reaches -- in 2D, at one hop. */
+/** A term's page: the ontology focused on the term -- the terms a step from it, and the columns,
+ * tables and products each is grounded on -- in 2D, at one hop. */
 export const termPreset = (term: number): SnippetPreset => ({
   focus: termNode(term),
   depth: TERM_GRAPH_DEPTH,
@@ -52,8 +54,9 @@ export const termPreset = (term: number): SnippetPreset => ({
   flat: true,
 });
 
-/** REQ-2174 (amended 2026-11-07): a product's panel opens at its tables, matching its Related
- * Tables card: one hop, with Related tables on (snippetLayers). */
+/** REQ-2174 (amended 2026-11-07; 2026-11-12): a product's panel opens at one hop -- its tables,
+ * their columns and terms, and the terms a step from those -- with Related tables on
+ * (snippetLayers). */
 export const PRODUCT_PANEL_DEPTH = 1;
 
 /** A product's panel: the ontology focused on the product, by the Product map's rules. */
@@ -63,13 +66,13 @@ export const productPreset = (product: string): SnippetPreset => ({
   products: true,
 });
 
-/** A product's graph, expanded from its panel, opens at what the product delivers: its tables (1),
- * their columns (2) and the terms grounded on those columns (3). */
-export const PRODUCT_GRAPH_DEPTH = 3;
+/** A product's graph, expanded from its panel, opens at what the product delivers -- its tables,
+ * their columns and the terms grounded on those columns, at no hop -- and a step past them. */
+export const PRODUCT_GRAPH_DEPTH = 1;
 
-/** The expanded term graph's preset, for a term's page preset: the term, its ancestors and
- * descendants, and the columns, tables and products it reaches, at the depth a product's graph
- * opens at -- a term opens as a product does. */
+/** The expanded term graph's preset, for a term's page preset: the term, the terms a step from it,
+ * and the columns, tables and products each is grounded on, at the depth a product's graph opens
+ * at -- a term opens as a product does. */
 export const termGraph = (p: SnippetPreset): SnippetPreset => ({
   ...p,
   depth: PRODUCT_GRAPH_DEPTH,
