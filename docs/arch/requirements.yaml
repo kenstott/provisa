@@ -88159,7 +88159,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
     way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
     in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
-    the same list Columns.'
+    the same list Columns. (Amended 2026-11-12, THE TERM PAGE USES THE SHARED SECTIONS AND FIELD LAYOUT:)
+    Maintainer 2026-11-12: a term''s page is laid out as the other detail pages are. Its section showing
+    the term''s own neighbourhood is titled Graph, as a product''s is (Map is kept for an overview of many
+    things, the Product map). Each of its sections (Graph, Grounded in columns, Grounded in tables, Relationships,
+    Experts) collapses with the shared collapsible, its open or closed state remembered; Graph opens by
+    default. Its fields use the one form layout (REQ-1968): Name and Definition take the full width, and
+    the short fields (Domains, Role, Tags, Status, Grounding, Exclude from metadata export) flow in as many
+    columns as the panel allows.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -91241,7 +91248,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
     without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
     with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
-    does is unchanged.'
+    does is unchanged. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) Maintainer 2026-11-12: the hops
+    control counts steps between terms only. Every term drawn brings its grounding with it, whatever the
+    hop count: the columns it is bound to, their tables, and the products that hold them; a column is never
+    drawn without its table. So a term three term-steps from the focus is shown, with its column and table,
+    at three hops, where before the column and the table each took a further hop. A product''s graph follows
+    the same rule: the product''s own tables, columns and the terms grounded on them come with it, and hops
+    count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows
+    the connected part to its end, under the existing limit on how many nodes a graph draws.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
