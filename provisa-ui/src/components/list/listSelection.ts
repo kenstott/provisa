@@ -104,4 +104,3 @@ export interface BulkDeleteResult {
   deleted: string[];
   refused: BulkDeleteRefusal[];
 }
-

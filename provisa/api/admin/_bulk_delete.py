@@ -51,3 +51,42 @@ async def delete_each(
         dependents = params["dependents"] if "dependents" in params else []
         refused.append(BulkDeleteRefusal(name=name, reason=result.message, dependents=dependents))
     return BulkDeleteResult(deleted=deleted, refused=refused)
+
+
+async def same_name(key: str) -> str:
+    """The name of a row keyed by the name its page shows (a metric, source, role, domain, tag or
+    data product)."""
+    return key
+
+
+async def relationship_name(rel_id: str) -> str:
+    """A relationship as its page names it: its two tables, ``users -> inquiries``."""
+    from provisa.api.admin._table_ops import _get_pool
+    from provisa.core.repositories import relationship as rel_repo
+    from provisa.core.repositories import table as table_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        rel = await rel_repo.get(conn, rel_id)
+        # A relationship that is not stored has no name but the id it was asked by; its own
+        # delete then refuses it as not found.
+        if rel is None:
+            return rel_id
+        source = await table_repo.get(conn, rel["source_table_id"])
+        target = await table_repo.get(conn, rel["target_table_id"])
+    if source is None or target is None:
+        raise LookupError(f"relationship {rel_id!r} joins a table that is not registered")
+    return f"{source['table_name']} -> {target['table_name']}"
+
+
+async def scheduled_task_name(task_id: str) -> str:
+    """A scheduled task as its page names it: its name."""
+    from provisa.api.admin._table_ops import _get_pool
+    from provisa.core.repositories import scheduled_trigger as trigger_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        task = await trigger_repo.get(conn, task_id)
+    # A task that is not stored has no name but the id it was asked by; its own delete then
+    # refuses it as not found.
+    return task_id if task is None else task["name"]

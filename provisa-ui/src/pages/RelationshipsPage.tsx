@@ -10,7 +10,7 @@
 
 import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
@@ -42,6 +42,7 @@ import {
   useTables,
   useUpsertRelationship,
   useDeleteRelationship,
+  useDeleteRelationships,
 } from "../hooks/useAdminQueries";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
@@ -70,6 +71,8 @@ import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 /** A refusal over the tags a re-homed key ref would lose (REQ-2145): each column's change. */
 function tagLossOf(result: MutationResult): ColumnTagChange[] | null {
   return result.code === "tag.move_loses"
@@ -572,6 +575,10 @@ export function RelationshipsPage() {
     },
   ];
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
+  // REQ-2240: relationships selected and deleted together; a relationship is named by its tables.
+  const shownRelIds = useMemo(() => filteredRels.map((r) => String(r.id)), [filteredRels]);
+  const selection = useListSelection(shownRelIds);
+  const deleteRelationships = useDeleteRelationships();
   const groupBy = sortGroup.groupBy;
 
   // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
@@ -814,7 +821,17 @@ export function RelationshipsPage() {
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the
                 panel leaves too little room for scrolls sideways. */}
-              <ListTable testId="relationships-list">
+              <ListBulkBar
+                selection={selection}
+                nameOf={(key) => {
+                  const found = rels.find((r) => String(r.id) === key);
+                  if (!found) throw new Error(`relationship ${key} is not listed`);
+                  return `${found.sourceTableName} -> ${found.targetTableName}`;
+                }}
+                onDelete={deleteRelationships}
+                testId="relationships-bulk"
+              />
+              <ListTable testId="relationships-list" selection={selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[

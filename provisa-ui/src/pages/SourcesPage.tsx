@@ -38,6 +38,7 @@ import {
   useUpdateSource,
   useRenameSource,
   useDeleteSource,
+  useDeleteSources,
   useUpdateSourceCache,
   useUpdateSourceLoadProtection,
   useUpdateSourceAllowedDomains,
@@ -139,6 +140,8 @@ import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePick
 import { athenaHints } from "./sources/athena";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -257,6 +260,10 @@ export function SourcesPage() {
     ? { visible: filteredSources, hidden: 0 }
     : filterByRegion(filteredSources, regionSel, connected, (s) => s.region ?? null);
   const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
+  // REQ-2240: sources selected and deleted together.
+  const shownSourceIds = useMemo(() => regionSources.map((s) => s.id), [regionSources]);
+  const selection = useListSelection(shownSourceIds);
+  const deleteSources = useDeleteSources();
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: opensKaggle ? "kaggle" : "postgresql",
@@ -1809,7 +1816,17 @@ export function SourcesPage() {
             {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
                 horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
                 and, growing to its content, would never scroll vertically. */}
-            <ListTable minWidth={860} testId="sources-list">
+            <ListBulkBar
+              selection={selection}
+              nameOf={(id) => id}
+              onDelete={async (ids) => {
+                const result = await deleteSources(ids);
+                await refetchSources();
+                return result;
+              }}
+              testId="sources-bulk"
+            />
+            <ListTable minWidth={860} testId="sources-list" selection={selection}>
               <ListHead
                 sortGroup={sortGroup}
                 columns={[

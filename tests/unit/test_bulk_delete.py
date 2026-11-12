@@ -161,3 +161,94 @@ async def test_a_row_its_own_rights_check_refuses_is_named_and_the_others_go():
         ("HR", "Missing capability: 'domain hr'", [])
     ]
     assert gone == ["a", "b"]
+
+
+_KINDS = [
+    # bulk mutation, single delete, the right asked once before any row
+    ("delete_metrics", "delete_metric", "table_registration"),
+    ("delete_sources", "delete_source", "source_registration"),
+    ("delete_roles", "delete_role", "user_management"),
+    ("delete_domains", "delete_domain", "org_settings"),
+    ("delete_data_products", "delete_data_product", "data_product_rw"),
+]
+
+
+@pytest.mark.parametrize(("bulk", "single", "capability"), _KINDS)
+async def test_each_kind_deletes_every_row_through_its_single_delete(
+    monkeypatch, bulk, single, capability
+):
+    asked: list[str] = []
+    attempted: list[str] = []
+
+    def _require(_info, cap, domain_id=None):
+        asked.append(cap)
+
+    async def _single(_self, _info, key):
+        attempted.append(key)
+        if key == "kept":
+            return MutationResult(
+                success=False,
+                message="Cannot delete kept yet",
+                params={"dependents": [{"kind": "table", "id": 1, "name": "t", "via": []}]},
+            )
+        return MutationResult(success=True, message="deleted")
+
+    monkeypatch.setattr(schema_mutation, "require_capability", _require)
+    monkeypatch.setattr(schema_mutation.Mutation, single, _single)
+
+    mutation: Any = schema_mutation.Mutation()
+    result = await getattr(mutation, bulk)(_info(), ["a", "kept", "b"])
+
+    assert asked == [capability]
+    assert attempted == ["a", "kept", "b"]
+    assert result.deleted == ["a", "b"]
+    assert [(r.name, r.reason) for r in result.refused] == [("kept", "Cannot delete kept yet")]
+    assert result.refused[0].dependents == [{"kind": "table", "id": 1, "name": "t", "via": []}]
+
+
+@pytest.mark.parametrize(("bulk", "single", "capability"), _KINDS)
+async def test_each_kind_refuses_a_caller_without_its_right_before_any_row(
+    monkeypatch, bulk, single, capability
+):
+    attempted: list[str] = []
+
+    def _require(_info, cap, domain_id=None):
+        raise PermissionError(f"Missing capability: {cap!r}")
+
+    async def _single(_self, _info, key):
+        attempted.append(key)
+        return MutationResult(success=True, message="deleted")
+
+    monkeypatch.setattr(schema_mutation, "require_capability", _require)
+    monkeypatch.setattr(schema_mutation.Mutation, single, _single)
+
+    mutation: Any = schema_mutation.Mutation()
+    with pytest.raises(PermissionError, match=f"Missing capability: '{capability}'"):
+        await getattr(mutation, bulk)(_info(), ["a"])
+    assert attempted == []
+
+
+async def test_a_relationship_is_named_by_its_two_tables(plane, monkeypatch):
+    users = await _table(plane, "users")
+    inquiries = await _table(plane, "inquiries")
+    from provisa.api.admin._bulk_delete import relationship_name
+    from provisa.core.schema_org import relationships
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(relationships).values(
+                id="users-to-inquiries",
+                source_table_id=users,
+                target_table_id=inquiries,
+                source_column="id",
+                target_column="user_id",
+                cardinality="one-to-many",
+            )
+        )
+
+    async def _pool():
+        return plane
+
+    monkeypatch.setattr("provisa.api.admin._table_ops._get_pool", _pool)
+    assert await relationship_name("users-to-inquiries") == "users -> inquiries"
+    assert await relationship_name("gone") == "gone"

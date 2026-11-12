@@ -18,6 +18,7 @@ import {
   type ListLabelCol,
   type ListSortCol,
 } from "./ListTable";
+import type { ListSelection } from "./listSelection";
 import { pageItems, useListSortGroup, type ListColumn } from "./useListSortGroup";
 
 /**
@@ -44,6 +45,8 @@ export interface SortGroupTableProps<T> {
   initialSortCol?: string;
   /** Lets the page hide its pager while grouped. */
   onGroupedChange?: (grouped: boolean) => void;
+  /** REQ-2240: the rows can be selected (`useListSelection`). */
+  selection?: ListSelection;
 }
 
 export function SortGroupTable<T>({
@@ -61,6 +64,7 @@ export function SortGroupTable<T>({
   page,
   initialSortCol,
   onGroupedChange,
+  selection,
 }: SortGroupTableProps<T>) {
   const state = useListSortGroup(rows, columns, testPrefix, initialSortCol ?? null);
   const grouped = state.groupBy.length > 0;
@@ -68,7 +72,7 @@ export function SortGroupTable<T>({
     onGroupedChange?.(grouped);
   }, [grouped, onGroupedChange]);
   return (
-    <ListTable testId={testId} minWidth={minWidth}>
+    <ListTable testId={testId} minWidth={minWidth} selection={selection}>
       <ListHead sortGroup={state} columns={headers} />
       <Table.Tbody>
         {rows.length === 0 && empty !== undefined && (
