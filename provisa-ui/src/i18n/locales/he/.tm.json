@@ -2587,7 +2587,7 @@
   "he/glossaryTab.json::glossaryTab.stewardshipHint": "Stewardship summary: what agents can see, and what is waiting on a steward.",
   "he/glossaryTab.json::glossaryTab.stewardshipTitle": "Stewardship summary",
   "he/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "he/glossaryTab.json::glossaryTab.termGraphTitle": "Term graph",
+  "he/glossaryTab.json::glossaryTab.termGraphTitle": "Graph",
   "he/glossaryTab.json::glossaryTab.title": "Ontology",
   "he/glossaryTab.json::glossaryTab.toReview": "To review",
   "he/glossaryTab.json::glossaryTab.unretire": "Restore",

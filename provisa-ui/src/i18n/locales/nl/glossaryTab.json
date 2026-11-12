@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "{{count}} kolom verplaatsen?",
     "moveManyUnnamed_other": "{{count}} kolommen verplaatsen?",
     "moveCarryUnnamed": "Verplaatsen en hun nieuwe termen markeren met {{tags}}",
-    "termGraphTitle": "Termengraaf",
+    "termGraphTitle": "Graaf",
     "status_approved": "Goedgekeurd",
     "draftDefined": "Ontwerp: keur het goed als de definitie klopt. Agents en catalogi vinden en citeren data via goedgekeurde termen.",
     "grounding_grounded": "verankerd",

@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "להעביר עמודה {{count}}?",
     "moveManyUnnamed_other": "להעביר {{count}} עמודות?",
     "moveCarryUnnamed": "העבר וסמן את המונחים החדשים שלהן ב-{{tags}}",
-    "termGraphTitle": "גרף מונחים",
+    "termGraphTitle": "גרף",
     "status_approved": "מאושר",
     "draftDefined": "טיוטה: אשרו אותו כשההגדרה שלו נכונה. סוכנים וקטלוגים מוצאים ומצטטים נתונים דרך מונחים מאושרים.",
     "grounding_grounded": "מעוגן",

@@ -14,7 +14,8 @@
 // relationships and its experts.
 
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
+import type { ReactNode } from "react";
+import { Badge, Group, Stack, Table, Text } from "@mantine/core";
 import {
   termRole,
   addGlossaryEdge,
@@ -23,6 +24,7 @@ import {
   type GlossaryTermDetail,
 } from "../../api/glossary";
 import { DetailFields } from "../detail/DetailFields";
+import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
@@ -34,6 +36,33 @@ import { OntologySnippet } from "../graph3d/OntologyGraph";
 import { termPreset } from "../graph3d/ontologyPresets";
 
 type Option = { value: string; label: string };
+
+/** One section of the term's page: the application's collapsible, its open or closed state
+ * remembered per section as a product's detail cards remember theirs (DetailCard). */
+function TermSection({
+  section,
+  title,
+  defaultOpen,
+  children,
+}: {
+  section: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsibles id={`glossary-term.${section}`}>
+      <CollapsibleItem
+        value={section}
+        title={title}
+        defaultOpen={defaultOpen}
+        controlTestId={`glossary-term-${section}-toggle`}
+      >
+        {children}
+      </CollapsibleItem>
+    </Collapsibles>
+  );
+}
 
 export function TermReadView({
   term,
@@ -174,104 +203,109 @@ export function TermReadView({
         <RetiredTermRecord term={term} navigateToTerm={navigateToTerm} />
       )}
 
-      <Title order={5}>{t("glossaryTab.termGraphTitle")}</Title>
-      {/* REQ-2174: the ontology, focused on the term: its ancestors and descendants, and the
-          columns, tables and products it reaches. */}
-      <OntologySnippet
-        key={term.id}
-        preset={termPreset(term.id)}
-        name={term.name}
-        testId="glossary-term-dag"
-      />
-
-      <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
-      {term.refs.length === 0 ? (
-        <Text size="xs" c="dimmed">
-          {t("glossaryTab.noRefs")}
-        </Text>
-      ) : (
-        <SortGroupTable
-          testPrefix="glossary-refs"
-          minWidth={480}
-          rows={term.refs}
-          columns={[
-            { key: "column", label: t("glossaryTab.colColumn"), sortValue: (r) => r.column_name },
-            {
-              key: "table",
-              label: t("glossaryTab.colTable"),
-              sortValue: (r) => r.alias || r.table_name,
-            },
-            {
-              key: "source",
-              label: t("glossaryTab.colSource"),
-              sortValue: (r) => r.source_id,
-              groupValue: (r) => r.source_id,
-            },
-            {
-              key: "domain",
-              label: t("glossaryTab.colDomain"),
-              sortValue: (r) => r.domain_id,
-              groupValue: (r) => r.domain_id,
-            },
-          ]}
-          headers={[{ col: "column" }, { col: "table" }, { col: "source" }, { col: "domain" }]}
-          colSpan={4}
-          rowKey={(ref) => `${ref.table_id}:${ref.column_name}`}
-          render={(ref) => (
-            <ListRow
-              key={`${ref.table_id}:${ref.column_name}`}
-              testId={`glossary-ref-${ref.table_id}-${ref.column_name}`}
-            >
-              <Table.Td>{ref.column_name}</Table.Td>
-              <Table.Td>{ref.alias || ref.table_name}</Table.Td>
-              <Table.Td>{ref.source_id}</Table.Td>
-              <Table.Td>{ref.domain_id}</Table.Td>
-            </ListRow>
-          )}
+      <TermSection section="graph" title={t("glossaryTab.termGraphTitle")} defaultOpen>
+        {/* REQ-2174: the ontology, focused on the term: its ancestors and descendants, and the
+            columns, tables and products it reaches. */}
+        <OntologySnippet
+          key={term.id}
+          preset={termPreset(term.id)}
+          name={term.name}
+          testId="glossary-term-dag"
         />
-      )}
+      </TermSection>
 
-      <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
-      <GlossaryGroundedTables termId={term.id} canEdit={false} onChanged={() => undefined} />
-
-      <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
-      <GlossaryRelationships
-        detail={term}
-        canEdit={false}
-        relEditMode={false}
-        relTypeOptions={relTypeOptions}
-        otherTermOptions={otherTermOptions}
-        edgeTermId={null}
-        setEdgeTermId={() => undefined}
-        edgeRelType={null}
-        setEdgeRelType={() => undefined}
-        edgeFlipped={false}
-        setEdgeFlipped={() => undefined}
-        navigateToTerm={navigateToTerm}
-        act={async (fn) => fn()}
-        relLabel={relLabel}
-        t={t}
-        retypeGlossaryEdge={retypeGlossaryEdge}
-        removeGlossaryEdge={removeGlossaryEdge}
-        addGlossaryEdge={addGlossaryEdge}
-      />
-
-      <Title order={5}>{t("glossaryTab.expertsTitle")}</Title>
-      <Stack gap={4}>
-        {term.experts.map((expert) => (
-          <Group key={expert.user_id} gap="xs" data-testid={`glossary-expert-${expert.user_id}`}>
-            <Text size="sm">{expert.user_id}</Text>
-            <Badge size="sm" variant="light">
-              {t(`glossaryTab.kind_${expert.kind}`)}
-            </Badge>
-          </Group>
-        ))}
-        {term.experts.length === 0 && (
+      <TermSection section="grounded-columns" title={t("glossaryTab.refsTitle")}>
+        {term.refs.length === 0 ? (
           <Text size="xs" c="dimmed">
-            {t("glossaryTab.noExperts")}
+            {t("glossaryTab.noRefs")}
           </Text>
+        ) : (
+          <SortGroupTable
+            testPrefix="glossary-refs"
+            minWidth={480}
+            rows={term.refs}
+            columns={[
+              { key: "column", label: t("glossaryTab.colColumn"), sortValue: (r) => r.column_name },
+              {
+                key: "table",
+                label: t("glossaryTab.colTable"),
+                sortValue: (r) => r.alias || r.table_name,
+              },
+              {
+                key: "source",
+                label: t("glossaryTab.colSource"),
+                sortValue: (r) => r.source_id,
+                groupValue: (r) => r.source_id,
+              },
+              {
+                key: "domain",
+                label: t("glossaryTab.colDomain"),
+                sortValue: (r) => r.domain_id,
+                groupValue: (r) => r.domain_id,
+              },
+            ]}
+            headers={[{ col: "column" }, { col: "table" }, { col: "source" }, { col: "domain" }]}
+            colSpan={4}
+            rowKey={(ref) => `${ref.table_id}:${ref.column_name}`}
+            render={(ref) => (
+              <ListRow
+                key={`${ref.table_id}:${ref.column_name}`}
+                testId={`glossary-ref-${ref.table_id}-${ref.column_name}`}
+              >
+                <Table.Td>{ref.column_name}</Table.Td>
+                <Table.Td>{ref.alias || ref.table_name}</Table.Td>
+                <Table.Td>{ref.source_id}</Table.Td>
+                <Table.Td>{ref.domain_id}</Table.Td>
+              </ListRow>
+            )}
+          />
         )}
-      </Stack>
+      </TermSection>
+
+      <TermSection section="grounded-tables" title={t("glossaryTab.groundedTablesTitle")}>
+        <GlossaryGroundedTables termId={term.id} canEdit={false} onChanged={() => undefined} />
+      </TermSection>
+
+      <TermSection section="relationships" title={t("glossaryTab.relationshipsTitle")}>
+        <GlossaryRelationships
+          detail={term}
+          canEdit={false}
+          relEditMode={false}
+          relTypeOptions={relTypeOptions}
+          otherTermOptions={otherTermOptions}
+          edgeTermId={null}
+          setEdgeTermId={() => undefined}
+          edgeRelType={null}
+          setEdgeRelType={() => undefined}
+          edgeFlipped={false}
+          setEdgeFlipped={() => undefined}
+          navigateToTerm={navigateToTerm}
+          act={async (fn) => fn()}
+          relLabel={relLabel}
+          t={t}
+          retypeGlossaryEdge={retypeGlossaryEdge}
+          removeGlossaryEdge={removeGlossaryEdge}
+          addGlossaryEdge={addGlossaryEdge}
+        />
+      </TermSection>
+
+      <TermSection section="experts" title={t("glossaryTab.expertsTitle")}>
+        <Stack gap={4}>
+          {term.experts.map((expert) => (
+            <Group key={expert.user_id} gap="xs" data-testid={`glossary-expert-${expert.user_id}`}>
+              <Text size="sm">{expert.user_id}</Text>
+              <Badge size="sm" variant="light">
+                {t(`glossaryTab.kind_${expert.kind}`)}
+              </Badge>
+            </Group>
+          ))}
+          {term.experts.length === 0 && (
+            <Text size="xs" c="dimmed">
+              {t("glossaryTab.noExperts")}
+            </Text>
+          )}
+        </Stack>
+      </TermSection>
     </Stack>
   );
 }

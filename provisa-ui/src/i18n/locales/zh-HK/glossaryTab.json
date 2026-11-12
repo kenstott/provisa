@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "移動 {{count}} 個欄位？",
     "moveManyUnnamed_other": "移動 {{count}} 個欄位？",
     "moveCarryUnnamed": "移動並為其新術語標記 {{tags}}",
-    "termGraphTitle": "詞彙圖",
+    "termGraphTitle": "圖",
     "status_approved": "已批准",
     "draftDefined": "草稿：定義無誤後請批准它。智能體和目錄透過已批准的術語尋找並引用資料。",
     "grounding_grounded": "已錨定",

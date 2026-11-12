@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "移动 {{count}} 列？",
     "moveManyUnnamed_other": "移动 {{count}} 列？",
     "moveCarryUnnamed": "移动并为其新术语标记 {{tags}}",
-    "termGraphTitle": "术语图",
+    "termGraphTitle": "图",
     "status_approved": "已批准",
     "draftDefined": "草稿：定义无误后请批准它。智能体和目录通过已批准的术语查找并引用数据。",
     "grounding_grounded": "已锚定",
