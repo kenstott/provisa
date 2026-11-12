@@ -152,7 +152,8 @@
     "hopsFromMatches": "一致からのホップ数",
     "relatedTables": "関連テーブル",
     "restOfModel": "モデルの残りを表示",
-    "lateral": "横方向のエッジ",
+    "lateral": "関連付け",
+    "lateralHelp": "用語を順位付けせずに結ぶ線を表示します: 関連、同義語、優先用語、翻訳、反意語。",
     "grounding_grounded": "紐付け済み",
     "grounding_grounded_pending": "紐付け済み、下書き経由"
   }

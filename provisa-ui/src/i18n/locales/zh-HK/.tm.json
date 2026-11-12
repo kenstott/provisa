@@ -10233,5 +10233,6 @@
   "zh-HK/ontologyImport.json::ontologyImport.withItem": "With another item",
   "zh-HK/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "zh-HK/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
-  "zh-HK/provisaGraph.json::provisaGraph.layingOut": "Laying out…"
+  "zh-HK/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
+  "zh-HK/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
 }

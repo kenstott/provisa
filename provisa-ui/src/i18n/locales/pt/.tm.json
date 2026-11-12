@@ -10236,5 +10236,6 @@
   "pt/ontologyImport.json::ontologyImport.withItem": "With another item",
   "pt/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "pt/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
-  "pt/provisaGraph.json::provisaGraph.layingOut": "Laying out…"
+  "pt/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
+  "pt/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
 }

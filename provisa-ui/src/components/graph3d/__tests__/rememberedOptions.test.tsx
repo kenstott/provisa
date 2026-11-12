@@ -180,20 +180,26 @@ describe("what the reader sets on the graph, after a reload", () => {
   it("keeps Rotate", async () => {
     const view = render(explorer());
     await scene();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Rotate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rotate", hidden: true }));
     reload(view);
     const s = await scene();
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Rotate", hidden: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await waitFor(() => expect(s.setRotate).toHaveBeenLastCalledWith(true));
   });
 
   it("keeps Grid off", async () => {
     const view = render(explorer());
     await scene();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Grid" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grid", hidden: true }));
     reload(view);
     const s = await scene();
-    expect(screen.getByRole("checkbox", { name: "Grid" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Grid", hidden: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     await waitFor(() => expect(s.setGrid).toHaveBeenLastCalledWith(false));
   });
 
