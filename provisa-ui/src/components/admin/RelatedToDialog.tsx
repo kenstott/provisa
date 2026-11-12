@@ -85,6 +85,9 @@ export function RelatedToDialog({
     >
       <Stack gap="md">
         <Text size="sm">{t("glossaryTab.relatedToDialogWhy")}</Text>
+        <Text size="sm" data-testid="glossary-related-to-example">
+          {t("glossaryTab.relatedToDialogExample")}
+        </Text>
         <Text size="sm" fw={500}>
           {t("glossaryTab.relatedToDialogShapes")}
         </Text>

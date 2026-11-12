@@ -19,6 +19,7 @@ import { Anchor, Text } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { dataGraphql, metaReader, rootQuery } from "../../api/metaGraph";
+import { detailHref } from "../../components/list/useDetailParam";
 
 interface ClassTerm {
   id: number;
@@ -90,7 +91,7 @@ export function TableClassTerm({ tableId }: { tableId: number }) {
   return current ? (
     <Anchor
       component={Link}
-      to={`/admin/ontology?term=${current.id}`}
+      to={detailHref("ontology", current.id)}
       size="sm"
       data-testid="table-class-term-link"
     >

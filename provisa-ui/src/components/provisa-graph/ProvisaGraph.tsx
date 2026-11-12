@@ -24,7 +24,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useComputedColorScheme, type FloatingPosition } from "@mantine/core";
+import { Group, Loader, Text, useComputedColorScheme, type FloatingPosition } from "@mantine/core";
 import type { CyInstance } from "../graph/cytoscape-types";
 import { TIP_MAX_WIDTH, TipSurface } from "../Tip";
 import { arrangeLayered, nodesWithEdges, placeIsolatedGrid } from "./arrange";
@@ -35,7 +35,7 @@ import {
   type EventObject,
   type NodeSingular,
 } from "./core";
-import { cyCanvas } from "./cyCanvas";
+import { cyCanvas, type CyCanvas } from "./cyCanvas";
 import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
 import { GraphControls, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
@@ -234,10 +234,7 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(
-    () => graphElements(graph, typeName, detail),
-    [graph, typeName, detail],
-  );
+  const elements = useMemo(() => graphElements(graph, typeName, detail), [graph, typeName, detail]);
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
@@ -328,6 +325,19 @@ export function ProvisaGraph({
     [applyFocus, applyFilter],
   );
 
+  // ── laying out ───────────────────────────────────────────────────────────────────────────
+  // REQ-2239 (A GRAPH BEING LAID OUT SAYS SO): from the moment a layout starts until every node
+  // has its place and the opening fit has run, the core's div is held hidden -- the frame of
+  // unplaced nodes, all at one point, is never painted -- and the canvas says it is laying the
+  // graph out. Every preset passes through here: lanes, ELK (with saved places stood after it) and
+  // fCoSE.
+  const [layingOut, setLayingOut] = useState(true);
+  /** The core once its nodes have their places: what the controls, downloads, the camera and a
+   * save act on. Null while a layout runs. */
+  const placedRef = useRef<Core | null>(null);
+  /** A layout that failed: thrown while rendering, to the page's error boundary. */
+  const [failed, setFailed] = useState<Error | null>(null);
+
   // ── the drawing ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const box = boxRef.current;
@@ -335,6 +345,35 @@ export function ProvisaGraph({
     // ELK answers after this view may have moved on: the core draws into a canvas of its own,
     // which outlives the view while a layout is pending (cyCanvas).
     const canvas = cyCanvas(box);
+    // Hidden before the core is made in it: nothing is drawn until the layout has placed it.
+    canvas.container.style.visibility = "hidden";
+    placedRef.current = null;
+    setLayingOut(true);
+    let live = true;
+    const fail = (error: unknown) => {
+      if (!live) return;
+      setLayingOut(false);
+      setFailed(error instanceof Error ? error : new Error(String(error)));
+    };
+    /** The canvas, its layouts' failures said: one that throws as it starts, or whose placement
+     * throws once it answers, ends the laying out and goes to the page's error path. */
+    const laying: CyCanvas = {
+      container: canvas.container,
+      end: canvas.end,
+      run(layout, then) {
+        try {
+          canvas.run(layout, () => {
+            try {
+              then?.();
+            } catch (error) {
+              fail(error);
+            }
+          });
+        } catch (error) {
+          fail(error);
+        }
+      },
+    };
     const cy = cytoscape({
       container: canvas.container,
       elements: elements as unknown as Parameters<typeof cytoscape>[0]["elements"],
@@ -442,80 +481,96 @@ export function ProvisaGraph({
       linger.current = setTimeout(() => setTip(null), TIP_LINGER_MS);
     });
 
+    // Every node placed and the opening fit run: the drawing is shown.
     const finish = () => {
       applyMarks(cy);
+      placedRef.current = cy;
+      canvas.container.style.visibility = "";
+      setLayingOut(false);
       setDrawnAt((n) => n + 1);
     };
 
-    if (preset === "lanes" && lanes) {
-      runLanes(
-        cy,
-        canvas,
-        lanes,
-        graph.edges.filter((e) => e.overlay),
-        finish,
-      );
-    } else if (preset === "force") {
-      canvas.run(
-        cy.layout({ name: "fcose", animate: false, padding: 24 } as Parameters<
-          typeof cy.layout
-        >[0]),
-        () => {
-          fitClear(cy as unknown as CyInstance);
-          finish();
-        },
-      );
-    } else {
-      cy.on("dragfree", 'node[kind = "node"]', (evt: EventObject) => {
-        latest.current.onArrange?.();
-        const target = evt.target as unknown as {
-          id(): string;
-          position(): Pt;
-          position(p: Pt): void;
-        };
-        const raw = target.position();
-        const g = latest.current.options?.gridSnap ?? 0;
-        const at = g > 0 ? { x: Math.round(raw.x / g) * g, y: Math.round(raw.y / g) * g } : raw;
-        if (g > 0) target.position(at);
-        movedRef.current.set(target.id(), at);
-        // A move can swap a line's dominant axis, which decides which way its lanes spread.
-        if (latest.current.options?.routing === "taxi") applyTaxiLanes(c);
-      });
-      // Nodes with no lines are hidden while ELK places the rest; the arrangement after it puts
-      // them in a grid under their group.
-      const connected = nodesWithEdges(c);
-      cy.nodes('[kind = "node"]').forEach((n) => {
-        if (!connected.has(n.id())) n.style("display", "none");
-      });
-      canvas.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
-        const opts = latest.current.options;
-        const rect = box.getBoundingClientRect();
-        const arranged = arrangeLayered(c, {
-          gridSnap: opts?.gridSnap ?? 0,
-          showOrphans: opts?.showOrphans ?? true,
-          aspectRatio: rect.height > 0 ? rect.width / rect.height : null,
+    // The layout starts once the frame saying so has been painted: a placement that takes a
+    // while (a large lane diagram's is one long task) is seen to be under way, not a still canvas.
+    const layOut = () => {
+      if (preset === "lanes" && lanes) {
+        runLanes(
+          cy,
+          laying,
+          lanes,
+          graph.edges.filter((e) => e.overlay),
+          finish,
+        );
+      } else if (preset === "force") {
+        laying.run(
+          cy.layout({ name: "fcose", animate: false, padding: 24 } as Parameters<
+            typeof cy.layout
+          >[0]),
+          () => {
+            fitClear(cy as unknown as CyInstance);
+            finish();
+          },
+        );
+      } else {
+        cy.on("dragfree", 'node[kind = "node"]', (evt: EventObject) => {
+          latest.current.onArrange?.();
+          const target = evt.target as unknown as {
+            id(): string;
+            position(): Pt;
+            position(p: Pt): void;
+          };
+          const raw = target.position();
+          const g = latest.current.options?.gridSnap ?? 0;
+          const at = g > 0 ? { x: Math.round(raw.x / g) * g, y: Math.round(raw.y / g) * g } : raw;
+          if (g > 0) target.position(at);
+          movedRef.current.set(target.id(), at);
+          // A move can swap a line's dominant axis, which decides which way its lanes spread.
+          if (latest.current.options?.routing === "taxi") applyTaxiLanes(c);
         });
-        isolatedRef.current = arranged.isolatedIds;
-        if (latest.current.places) standPlaces(c, latest.current.places, movedRef.current);
-        fitClear(cy as unknown as CyInstance);
-        const routing = opts?.routing ?? "bezier";
-        cy.$(".pg-edge").style("curve-style", routing);
-        if (routing === "taxi") applyTaxiLanes(c);
-        finish();
-      });
-    }
+        // Nodes with no lines are hidden while ELK places the rest; the arrangement after it puts
+        // them in a grid under their group.
+        const connected = nodesWithEdges(c);
+        cy.nodes('[kind = "node"]').forEach((n) => {
+          if (!connected.has(n.id())) n.style("display", "none");
+        });
+        laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
+          const opts = latest.current.options;
+          const rect = box.getBoundingClientRect();
+          const arranged = arrangeLayered(c, {
+            gridSnap: opts?.gridSnap ?? 0,
+            showOrphans: opts?.showOrphans ?? true,
+            aspectRatio: rect.height > 0 ? rect.width / rect.height : null,
+          });
+          isolatedRef.current = arranged.isolatedIds;
+          if (latest.current.places) standPlaces(c, latest.current.places, movedRef.current);
+          fitClear(cy as unknown as CyInstance);
+          const routing = opts?.routing ?? "bezier";
+          cy.$(".pg-edge").style("curve-style", routing);
+          if (routing === "taxi") applyTaxiLanes(c);
+          finish();
+        });
+      }
+    };
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(layOut);
+    });
 
     // The canvas narrows beside a detail panel and widens when it closes: the graph follows.
     const observer = new ResizeObserver(() => {
       if (box.clientWidth === 0) return;
       cy.resize();
+      // A layout running fits the diagram when it ends.
+      if (placedRef.current !== cy) return;
       fitClear(cy as unknown as CyInstance, preset === "lanes" ? 24 : undefined);
       if (preset !== "lanes") applyMarks(cy);
     });
     observer.observe(box);
     return () => {
+      live = false;
+      cancelAnimationFrame(frame);
       observer.disconnect();
       cyRef.current = null;
+      placedRef.current = null;
       canvas.end(cy);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the drawing is rebuilt when what it draws, or how, changes; handlers are read through ``latest`` and the options that move nothing are applied below
@@ -555,7 +610,8 @@ export function ProvisaGraph({
   // ── the layered options that move nothing ────────────────────────────────────────────────
   const showOrphans = options?.showOrphans ?? true;
   useEffect(() => {
-    const cy = cyRef.current;
+    // A layout running arranges the orphans by the options when it ends.
+    const cy = placedRef.current;
     if (!cy || preset !== "layered") return;
     const c = cy as unknown as CyInstance;
     const isolated = isolatedRef.current;
@@ -586,7 +642,7 @@ export function ProvisaGraph({
 
   const gridSnap = options?.gridSnap ?? 0;
   useEffect(() => {
-    const cy = cyRef.current;
+    const cy = placedRef.current;
     if (!cy || gridSnap === 0) return;
     cy.batch(() =>
       cy.nodes('[kind = "node"]').forEach((n) => {
@@ -601,7 +657,7 @@ export function ProvisaGraph({
 
   const routing = options?.routing;
   useEffect(() => {
-    const cy = cyRef.current;
+    const cy = placedRef.current;
     if (!cy || routing === undefined) return;
     const c = cy as unknown as CyInstance;
     cy.batch(() => {
@@ -613,7 +669,7 @@ export function ProvisaGraph({
 
   // ── the camera ───────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const cy = cyRef.current;
+    const cy = placedRef.current;
     if (!cy || command === null) return;
     if (command.kind === "reset" || command.target == null)
       fitClear(cy as unknown as CyInstance, 24);
@@ -629,7 +685,7 @@ export function ProvisaGraph({
   useEffect(() => {
     if (!placesRef) return;
     placesRef.current = () =>
-      cyRef.current === null ? null : readPlaces(cyRef.current as unknown as CyInstance);
+      placedRef.current === null ? null : readPlaces(placedRef.current as unknown as CyInstance);
   }, [placesRef]);
 
   // ── the card ─────────────────────────────────────────────────────────────────────────────
@@ -669,16 +725,21 @@ export function ProvisaGraph({
     </>
   ) : null;
 
+  // A download is of the placed drawing: none while a layout runs.
   const exports = {
     svg: () =>
-      cyRef.current && exportSvg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+      placedRef.current &&
+      exportSvg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
     png: () =>
-      cyRef.current && exportPng(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+      placedRef.current &&
+      exportPng(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
     jpeg: () =>
-      cyRef.current &&
-      exportJpeg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+      placedRef.current &&
+      exportJpeg(placedRef.current as unknown as CyInstance, tokens.canvas, exportName),
     ...(exportData ? { json: () => exportJson(exportData(), exportName) } : {}),
   };
+
+  if (failed) throw failed;
 
   return (
     <div className="pg-root" data-testid={testId}>
@@ -695,6 +756,17 @@ export function ProvisaGraph({
           aria-label={ariaLabel}
           data-scheme={isDark ? "dark" : "light"}
         />
+        {layingOut && (
+          // The graph views' loading indicator (ReadState's), saying what is under way.
+          <div className="pg-laying-out" role="status" data-testid={`${testId}-laying-out`}>
+            <Group gap="xs">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                {t("provisaGraph.layingOut")}
+              </Text>
+            </Group>
+          </div>
+        )}
         {(overlay || (hint && !bare)) && (
           <div className="pg-corner">
             {overlay && <div className="pg-overlay">{overlay}</div>}
@@ -718,7 +790,7 @@ export function ProvisaGraph({
         {!bare && (
           <>
             <GraphControls
-              cyRef={cyRef as MutableRefObject<CyInstance | null>}
+              cyRef={placedRef as MutableRefObject<CyInstance | null>}
               stageRef={stageRef}
               exports={exports}
               copy={copy}

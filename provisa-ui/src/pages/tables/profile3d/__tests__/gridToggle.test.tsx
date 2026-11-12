@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Every 3D network graph's toolbar has one Grid checkbox, checked at first. Clearing it tells the
-// scene to leave the floor grid out, and the choice is kept across reloads, per graph.
+// Every 3D network graph's canvas controls have one Grid toggle (REQ-2239), pressed at first.
+// Releasing it tells the scene to leave the floor grid out, and the choice is kept across reloads,
+// per graph.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
@@ -52,12 +53,12 @@ const g: GraphData = {
   edges: [{ id: "e", a: "term:1", b: "term:2", kind: "term_edge", label: "KIND_OF" }],
 };
 
-describe("a 3D network graph's Grid checkbox", () => {
+describe("a 3D network graph's Grid toggle", () => {
   beforeEach(() => {
     made.scenes.length = 0;
   });
 
-  it("is checked at first, turns the scene's grid off, and keeps that across reloads", async () => {
+  it("is pressed at first, turns the scene's grid off, and keeps that across reloads", async () => {
     const view = render(
       <GraphExplorer
         data={g}
@@ -72,8 +73,8 @@ describe("a 3D network graph's Grid checkbox", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const scene = made.scenes[0];
     await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(true));
-    const box = screen.getByRole("checkbox", { name: "Grid" });
-    expect(box).toBeChecked();
+    const box = screen.getByRole("button", { name: "Grid", hidden: true });
+    expect(box).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(box);
     await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(false));
     view.unmount();
@@ -88,7 +89,10 @@ describe("a 3D network graph's Grid checkbox", () => {
         testId="x"
       />,
     );
-    expect(screen.getByRole("checkbox", { name: "Grid" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Grid", hidden: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     await waitFor(() => expect(made.scenes[1].setGrid).toHaveBeenLastCalledWith(false));
   });
@@ -105,7 +109,7 @@ describe("a 3D network graph's Grid checkbox", () => {
         testId="x"
       />,
     );
-    fireEvent.click(screen.getByRole("checkbox", { name: "Grid" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grid", hidden: true }));
     render(
       <GraphExplorer
         data={g}
@@ -117,6 +121,9 @@ describe("a 3D network graph's Grid checkbox", () => {
         testId="y"
       />,
     );
-    expect(screen.getAllByRole("checkbox", { name: "Grid" })[1]).toBeChecked();
+    expect(screen.getAllByRole("button", { name: "Grid", hidden: true })[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });

@@ -15,7 +15,7 @@ import { useMemo, useState } from "react";
 import { ResetSettingsButton } from "../ResetSettingsButton";
 import { useGraphSettings } from "../graphSettings";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
+import { Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import {
@@ -114,17 +114,6 @@ function TerrainView({
         >
           {t("profileTerrain.quantiles")}
         </Chip>
-        <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="terrain-rotate">
-          {t("profile3d.rotate")}
-        </Chip>
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() => move("reset", null)}
-          data-testid="terrain-reset"
-        >
-          {t("profile3d.resetView")}
-        </Button>
         <ResetSettingsButton onReset={s.resetSettings} testId="terrain" />
         {onExpand && <ExpandButton onClick={onExpand} testId="terrain-expand" />}
       </Group>
@@ -141,6 +130,11 @@ function TerrainView({
           onSelect={s.setSelected}
           onUserMove={() => s.setRotate(false)}
           exportName={s.exportName}
+          controls={{
+            testId: "terrain",
+            onReset: () => move("reset", null),
+            rotate: { value: s.rotate, onChange: s.setRotate },
+          }}
         />
         <TerrainDetail
           columns={s.columns}

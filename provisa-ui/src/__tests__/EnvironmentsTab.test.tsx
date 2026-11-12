@@ -204,11 +204,18 @@ describe("EnvironmentsTab", () => {
     // REQ-1918: nothing was removed; each thing that blocks it is listed under its kind.
     mockDelete.mockRejectedValue(
       new EnvironmentInUse("dev is still referred to by 2 item(s).", [
-        { kind: "membership", id: "viv", name: "viv", via: ["user_org_memberships.env_name"] },
+        {
+          kind: "membership",
+          id: "viv",
+          name: "viv",
+          label: "viv",
+          via: ["user_org_memberships.env_name"],
+        },
         {
           kind: "environment",
           id: "feature-x",
           name: "feature-x",
+          label: "feature-x",
           via: ["environments.parent"],
         },
       ]),

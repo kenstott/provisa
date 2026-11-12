@@ -119,7 +119,14 @@ class EnvDependent:
     via: str
 
     def as_dict(self) -> dict[str, Any]:
-        return {"kind": self.kind, "id": self.id, "name": self.name, "via": [self.via]}
+        # REQ-2240: each is shown as its page names it, which is its name.
+        return {
+            "kind": self.kind,
+            "id": self.id,
+            "name": self.name,
+            "label": self.name,
+            "via": [self.via],
+        }
 
 
 class EnvironmentInUse(RetirementError):  # REQ-1918

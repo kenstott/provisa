@@ -24,7 +24,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
-import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
+import { Tip } from "../Tip";
 import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
 import {
   chosenNow,
@@ -595,6 +595,11 @@ export function GraphExplorer({
       {t("graph3d.restOfModel")}
     </Chip>
   );
+  // Reset view: the camera back to its resting view, and every table folded back.
+  const resetView = () => {
+    move("reset", null);
+    setExpanded(new Set());
+  };
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
       <Text size="sm" c="dimmed">
@@ -625,6 +630,12 @@ export function GraphExplorer({
       command={command}
       exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
       testId={`${testId}-stage`}
+      controls={{
+        testId,
+        onReset: resetView,
+        rotate: { value: rotate, onChange: setRotate },
+        grid: { value: grid, onChange: setGrid },
+      }}
       bare={snippet}
     />
   );
@@ -667,31 +678,31 @@ export function GraphExplorer({
               onChange={(l) => save("layout", l)}
               testId={testId}
             />
-            <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
-              {t("profile3d.rotate")}
-            </Chip>
-            <GridToggle value={grid} onChange={setGrid} testId={testId} />
-            <Chip
-              size="xs"
-              checked={lateral}
-              onChange={(on) => save("lateral", on)}
-              data-testid={`${testId}-lateral`}
-            >
-              {t("graph3d.lateral")}
-            </Chip>
+            {/* REQ-2174 (THE TOGGLE IS CALLED ASSOCIATIONS): the term links that rank nothing.
+                The hint is on a span round the chip: the chip's own input is hidden, so the
+                pointer never enters it. */}
+            <Tip text={t("graph3d.lateralHelp")}>
+              <span>
+                <Chip
+                  size="xs"
+                  checked={lateral}
+                  onChange={(on) => save("lateral", on)}
+                  data-testid={`${testId}-lateral`}
+                >
+                  {t("graph3d.lateral")}
+                </Chip>
+              </span>
+            </Tip>
           </>
         )}
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() => {
-            move("reset", null);
-            setExpanded(new Set());
-          }}
-          data-testid={`${testId}-reset`}
-        >
-          {t("profile3d.resetView")}
-        </Button>
+        {/* REQ-2239: in 3D, Reset view is in the canvas's controls (Stage3D). The lane diagram's
+            stays here: it folds every table back as well as fitting, where its canvas's Fit fits
+            the whole image only. */}
+        {flat && (
+          <Button size="xs" variant="default" onClick={resetView} data-testid={`${testId}-reset`}>
+            {t("profile3d.resetView")}
+          </Button>
+        )}
         {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
@@ -957,7 +968,8 @@ function GraphDetail({
                   data-testid={`${testId}-link-${e.id}`}
                 >
                   <span className="p3d-row-name is-wrap">
-                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    {e.a === node.id ? "→" : "←"}
+                    {"\u00a0"}
                     <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>

@@ -152,7 +152,8 @@
     "hopsFromMatches": "Schritte ab den Treffern",
     "relatedTables": "Verwandte Tabellen",
     "restOfModel": "Rest des Modells anzeigen",
-    "lateral": "Laterale Kanten",
+    "lateral": "Assoziationen",
+    "lateralHelp": "Zeigt die Linien, die Begriffe ohne Rangfolge verbinden: verwandt, Synonym, Vorzugsbenennung, Übersetzung und Antonym.",
     "grounding_grounded": "Verankert",
     "grounding_grounded_pending": "Verankert, über einen Entwurf"
   }

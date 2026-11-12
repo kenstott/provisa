@@ -196,7 +196,6 @@ export function ReportsTab() {
           <CapabilityGate capability="table_registration">
             <Button
               size="compact-xs"
-              variant="default"
               leftSection={<Plus size={12} />}
               onClick={() => setAddOpen(true)}
               data-testid="add-report-btn"

@@ -25,6 +25,7 @@ import {
 } from "../../api/glossary";
 import { RelatedToDialog, ShapeTermForm, type PairTerm } from "./RelatedToDialog";
 import { GroundingGuideLink, RelTypeOptionView } from "./relTypeGuide";
+import { detailHref } from "../list/useDetailParam";
 
 // REQ-1387: each option reads its label, then the type's test.
 const renderRelTypeOption = ({ option }: { option: { value: string; label: string } }) => (
@@ -213,7 +214,7 @@ export function GlossaryRelationships({
               <Table.Td>
                 <Anchor
                   component="a"
-                  href={`?term=${edge.term_id}`}
+                  href={detailHref("ontology", edge.term_id)}
                   size="sm"
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -253,7 +254,7 @@ export function GlossaryRelationships({
               <Table.Td style={{ width: 180, whiteSpace: "nowrap" }}>
                 <Anchor
                   component="a"
-                  href={`?term=${edge.term_id}`}
+                  href={detailHref("ontology", edge.term_id)}
                   size="sm"
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
