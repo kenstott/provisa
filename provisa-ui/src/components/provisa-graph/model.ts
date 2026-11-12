@@ -87,8 +87,7 @@ export function nodeLabel(
   detail: Detail,
 ): { label: string; lineCount: number } {
   const head = [node.name, typeName.toUpperCase()];
-  const body =
-    detail === "none" ? [] : (node.lines ?? []).filter((l) => detail === "all" || l.key);
+  const body = detail === "none" ? [] : (node.lines ?? []).filter((l) => detail === "all" || l.key);
   const lines = body.length > 0 ? [...head, RULE, ...body.map((l) => l.text)] : head;
   return { label: lines.join("\n"), lineCount: lines.length };
 }
@@ -125,7 +124,10 @@ export function textWidth(line: string, size: number, mono = false): number {
 export function boxWidth(head: string[], mono: boolean): { w: number; text: number } {
   const size = mono ? 10 : SIZE.name;
   const need = Math.max(...head.map((l) => textWidth(l, size, mono)));
-  const w = Math.min(NODE_MAX_WIDTH, Math.max(SIZE.nodeWidth, Math.ceil(TEXT_LEFT + need + TEXT_RIGHT)));
+  const w = Math.min(
+    NODE_MAX_WIDTH,
+    Math.max(SIZE.nodeWidth, Math.ceil(TEXT_LEFT + need + TEXT_RIGHT)),
+  );
   return { w, text: w - TEXT_LEFT - TEXT_RIGHT };
 }
 

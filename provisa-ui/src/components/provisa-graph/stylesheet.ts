@@ -169,8 +169,10 @@ export function graphStylesheet(t: GraphTokens) {
       // A lane's box is drawn behind what is in it, and takes no pointer.
       selector: 'node[kind = "lane"]',
       style: {
+        // Its size is the box round its own nodes, as placed (lanes.ts): no padding past it.
         width: "data(w)",
         height: "data(h)",
+        padding: "0px",
         "z-index": 0,
         "z-compound-depth": "bottom",
         events: "no",
@@ -209,8 +211,14 @@ export function graphStylesheet(t: GraphTokens) {
         },
       },
     },
-    { selector: 'edge[arrow = "target"], edge[arrow = "both"]', style: { "target-arrow-shape": "triangle" } },
-    { selector: 'edge[arrow = "source"], edge[arrow = "both"]', style: { "source-arrow-shape": "triangle" } },
+    {
+      selector: 'edge[arrow = "target"], edge[arrow = "both"]',
+      style: { "target-arrow-shape": "triangle" },
+    },
+    {
+      selector: 'edge[arrow = "source"], edge[arrow = "both"]',
+      style: { "source-arrow-shape": "triangle" },
+    },
     { selector: "edge[?dashed]", style: { "line-style": "dashed", "line-dash-pattern": [5, 3] } },
     {
       selector: 'edge[tone = "via"]',

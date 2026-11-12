@@ -356,7 +356,10 @@ export function ProvisaGraph({
       (ev: WheelEvent) => {
         if (ev.ctrlKey || ev.metaKey) {
           const r = canvas.container.getBoundingClientRect();
-          zoomAbout(c, Math.exp(-ev.deltaY * WHEEL_ZOOM), { x: ev.clientX - r.left, y: ev.clientY - r.top });
+          zoomAbout(c, Math.exp(-ev.deltaY * WHEEL_ZOOM), {
+            x: ev.clientX - r.left,
+            y: ev.clientY - r.top,
+          });
           ev.preventDefault();
         } else if (scrollBy(c, ev.deltaX, ev.deltaY)) ev.preventDefault();
       },
@@ -393,9 +396,7 @@ export function ProvisaGraph({
     const enter = (h: GraphHover) => (evt: EventObject) => {
       // A node's card sits beside the node; a line's beside the pointer on it.
       const b =
-        h.kind === "node"
-          ? (evt.target as unknown as NodeSingular).renderedBoundingBox({})
-          : null;
+        h.kind === "node" ? (evt.target as unknown as NodeSingular).renderedBoundingBox({}) : null;
       const at = evt.renderedPosition as { x: number; y: number };
       keepTip();
       setTip(
@@ -536,7 +537,9 @@ export function ProvisaGraph({
     else if (hover) {
       const e = cy.getElementById(hover.id);
       lit = {
-        nodes: e.empty() ? new Set() : new Set([String(e.data("source")), String(e.data("target"))]),
+        nodes: e.empty()
+          ? new Set()
+          : new Set([String(e.data("source")), String(e.data("target"))]),
         links: new Set([hover.id]),
       };
     }
@@ -606,7 +609,8 @@ export function ProvisaGraph({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || command === null) return;
-    if (command.kind === "reset" || command.target == null) fitClear(cy as unknown as CyInstance, 24);
+    if (command.kind === "reset" || command.target == null)
+      fitClear(cy as unknown as CyInstance, 24);
     else {
       const at = cy.getElementById(command.target);
       if (at.empty()) return;
@@ -636,7 +640,10 @@ export function ProvisaGraph({
           right: stage.left + tip.x + tip.width,
           bottom: stage.top + tip.y + tip.height,
         },
-        { width: Math.max(tipEl.offsetWidth, TIP_MAX_WIDTH), height: tipEl.offsetHeight + TIP_FRAME },
+        {
+          width: Math.max(tipEl.offsetWidth, TIP_MAX_WIDTH),
+          height: tipEl.offsetHeight + TIP_FRAME,
+        },
         drawnGraph(cy, stage),
         { width: window.innerWidth, height: window.innerHeight },
       ),
@@ -657,13 +664,15 @@ export function ProvisaGraph({
   ) : null;
 
   const exports = {
-    svg: () => cyRef.current && exportSvg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    png: () => cyRef.current && exportPng(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    svg: () =>
+      cyRef.current && exportSvg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    png: () =>
+      cyRef.current && exportPng(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
     jpeg: () =>
-      cyRef.current && exportJpeg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+      cyRef.current &&
+      exportJpeg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
     ...(exportData ? { json: () => exportJson(exportData(), exportName) } : {}),
   };
-
 
   return (
     <div className="pg-root" data-testid={testId}>
@@ -674,7 +683,12 @@ export function ProvisaGraph({
         style={{ ["--pg-canvas" as string]: tokens.canvas }}
         onMouseLeave={() => setHoveredGroup(null)}
       >
-        <div ref={setBox} className="pg-canvas" aria-label={ariaLabel} data-scheme={isDark ? "dark" : "light"} />
+        <div
+          ref={setBox}
+          className="pg-canvas"
+          aria-label={ariaLabel}
+          data-scheme={isDark ? "dark" : "light"}
+        />
         {(overlay || (hint && !bare)) && (
           <div className="pg-corner">
             {overlay && <div className="pg-overlay">{overlay}</div>}

@@ -19,7 +19,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import cytoscape from "cytoscape";
 import elk from "cytoscape-elk";
-import { laneDiagram, drawnCrossings, placedLaneOrder, stackTerms, LANES, type At } from "../../graph3d/laneDiagram";
+import {
+  laneDiagram,
+  drawnCrossings,
+  placedLaneOrder,
+  stackTerms,
+  LANES,
+  type At,
+} from "../../graph3d/laneDiagram";
 import { laneGraph } from "../../graph3d/laneGraph";
 import { petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
 import type { GraphData } from "../../graph3d/graphModel";
@@ -62,15 +69,26 @@ async function laidOut(data: GraphData) {
     order: (at) => placedLaneOrder(d, at),
     settle: (order, at, widthOf) => stackTerms(d, order, at, widthOf),
   };
-  const elements = laneElements(graphElements(graph, (t) => t), opts);
+  const elements = laneElements(
+    graphElements(graph, (t) => t),
+    opts,
+  );
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,
     elements: elements as unknown as Parameters<typeof cytoscape>[0]["elements"],
-    style: graphStylesheet(graphTokens(false)) as unknown as Parameters<typeof cytoscape>[0]["style"],
+    style: graphStylesheet(graphTokens(false)) as unknown as Parameters<
+      typeof cytoscape
+    >[0]["style"],
   }) as unknown as Core;
   await new Promise<void>((done) =>
-    runLanes(cy, headlessCanvas, opts, graph.edges.filter((e) => e.overlay), done),
+    runLanes(
+      cy,
+      headlessCanvas,
+      opts,
+      graph.edges.filter((e) => e.overlay),
+      done,
+    ),
   );
   const at = (id: string): At => cy.getElementById(id).position();
   return { d, cy, at };
@@ -99,7 +117,12 @@ describe("the lanes preset on the pet-store Ontology graph", () => {
     const spans = LANES.map((l) => {
       const ids = placed.filter((id) => laneOf(id) === l);
       const bs = ids.map((id) => box(cy, id));
-      return { l, n: ids.length, y1: Math.min(...bs.map((b) => b.y1)), y2: Math.max(...bs.map((b) => b.y2)) };
+      return {
+        l,
+        n: ids.length,
+        y1: Math.min(...bs.map((b) => b.y1)),
+        y2: Math.max(...bs.map((b) => b.y2)),
+      };
     }).filter((s) => s.n > 1);
     const top = Math.min(...spans.map((s) => s.y1));
     const bottom = Math.max(...spans.map((s) => s.y2));
@@ -113,11 +136,10 @@ describe("the lanes preset on the pet-store Ontology graph", () => {
 
   it("boxes each lane round its own nodes alone, the boxes a gap apart", async () => {
     const { cy } = await laidOut(petStoreOntology());
+    // The boxes as drawn: their padding and border included, their titles not.
     const hulls = cy.nodes('[kind = "lane"]').map((n) => {
-      const p = n.position();
-      const w = n.data("w") as number;
-      const h = n.data("h") as number;
-      return { lane: n.id().slice("lane:".length), x1: p.x - w / 2, x2: p.x + w / 2, y1: p.y - h / 2, y2: p.y + h / 2 };
+      const b = n.boundingBox({ includeLabels: false });
+      return { lane: n.id().slice("lane:".length), x1: b.x1, x2: b.x2, y1: b.y1, y2: b.y2 };
     });
     const placed = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => ({
       lane: n.data("lane") as string,
@@ -127,10 +149,16 @@ describe("the lanes preset on the pet-store Ontology graph", () => {
     expect(hulls.length).toBe(4);
     hulls.sort((a, b) => a.x1 - b.x1);
     for (let i = 1; i < hulls.length; i++)
-      expect(hulls[i].x1 - hulls[i - 1].x2, `${hulls[i - 1].lane} | ${hulls[i].lane}`).toBeGreaterThanOrEqual(LANE_GAP);
+      expect(
+        hulls[i].x1 - hulls[i - 1].x2,
+        `${hulls[i - 1].lane} | ${hulls[i].lane}`,
+      ).toBeGreaterThanOrEqual(LANE_GAP);
     for (const { lane, b } of placed) {
       const own = hulls.find((h) => h.lane === lane)!;
-      expect(b.x1 >= own.x1 && b.x2 <= own.x2 && b.y1 >= own.y1 && b.y2 <= own.y2, `${lane} node in its box`).toBe(true);
+      expect(
+        b.x1 >= own.x1 && b.x2 <= own.x2 && b.y1 >= own.y1 && b.y2 <= own.y2,
+        `${lane} node in its box`,
+      ).toBe(true);
       for (const h of hulls.filter((x) => x.lane !== lane))
         expect(b.x2 <= h.x1 || b.x1 >= h.x2, `${lane} node outside ${h.lane}'s box`).toBe(true);
     }
@@ -144,7 +172,11 @@ describe("a node's label", () => {
     nodes: [
       { id: "t:long", type: "table" as const, name: LONG },
       { id: "t:short", type: "table" as const, name: "pets" },
-      { id: "c:col", type: "column" as const, name: "shelter.assignments_by_employee.employee_assignment_history_id" },
+      {
+        id: "c:col",
+        type: "column" as const,
+        name: "shelter.assignments_by_employee.employee_assignment_history_id",
+      },
     ],
     edges: [],
   };
@@ -152,8 +184,12 @@ describe("a node's label", () => {
     cytoscape({
       headless: true,
       styleEnabled: true,
-      elements: graphElements(spec, (t) => t) as unknown as Parameters<typeof cytoscape>[0]["elements"],
-      style: graphStylesheet(graphTokens(false)) as unknown as Parameters<typeof cytoscape>[0]["style"],
+      elements: graphElements(spec, (t) => t) as unknown as Parameters<
+        typeof cytoscape
+      >[0]["elements"],
+      style: graphStylesheet(graphTokens(false)) as unknown as Parameters<
+        typeof cytoscape
+      >[0]["style"],
     });
 
   it("is in a node wide enough for it", () => {
@@ -170,7 +206,8 @@ describe("a node's label", () => {
       const w = n.data("w") as number;
       const room = parseFloat(n.style("text-max-width") as string);
       const shift = parseFloat(String(n.numericStyle("text-margin-x")));
-      const iconRight = -w / 2 + parseFloat(String(n.numericStyle("background-position-x"))) + SIZE.icon;
+      const iconRight =
+        -w / 2 + parseFloat(String(n.numericStyle("background-position-x"))) + SIZE.icon;
       // The label is centred at the node's centre plus its shift and is at most its room wide:
       // it wraps anywhere rather than run past it.
       expect(n.style("text-halign")).toBe("center");
@@ -195,7 +232,10 @@ describe("a node's label", () => {
 describe("the canvas", () => {
   it("has no dot grid", () => {
     const css = readFileSync(resolve(__dirname, "../provisa-graph.css"), "utf8");
-    const stage = css.slice(css.indexOf(".pg-stage {"), css.indexOf("}", css.indexOf(".pg-stage {")));
+    const stage = css.slice(
+      css.indexOf(".pg-stage {"),
+      css.indexOf("}", css.indexOf(".pg-stage {")),
+    );
     expect(stage).toContain("background-color: var(--pg-canvas)");
     expect(css).not.toMatch(/radial-gradient|--pg-grid|background-size/);
     expect(Object.keys(graphTokens(false))).not.toContain("grid");

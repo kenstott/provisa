@@ -66,6 +66,8 @@ export const LANE_GAP = 56;
 const TIGHT_LANE_GAP = 24;
 /** A lane's box round its nodes, and the room above them for its title. */
 export const LANE_PAD = 16;
+/** A lane box's dashed border, as drawn past its size (stylesheet). */
+const LANE_EDGE = 2;
 const LANE_TITLE = 12;
 /** The least gap between two nodes of a lane, as the stacked lane's ELK spacing. */
 export const NODE_GAP = 14;
@@ -143,7 +145,8 @@ function stackedBands(
 }
 
 /** Where each node of ``lanes`` (left to right, each in its order top to bottom) is drawn. Each
- * lane is as wide as its widest node (or row), its nodes centred in it; the lanes' boxes stand
+ * lane is as wide as its widest node (or row), its nodes centred in it (the stacked lane's rows at
+ * its left edge, so its lines leave from one side); the lanes' boxes stand
  * ``gap`` apart. Every lane is spread over the height of the tallest packed lane: its first node at
  * the top, its last at the bottom, the space between shared evenly; a lane of one node sits at the
  * middle. ``settled`` gives the stacked lane's places, whose rows (``links`` the lines inside it)
@@ -172,18 +175,20 @@ export function placeLanes(
   const height = Math.max(0, ...banded.map((l) => packed(l.bands)));
   const out = new Map<string, At>();
   let left = 0;
-  for (const { bands } of banded) {
+  for (const { id, bands } of banded) {
     if (bands.length === 0) continue;
     const width = Math.max(...bands.map((b) => b.w));
     const free = height - bands.reduce((sum, b) => sum + b.h, 0);
     const step = bands.length > 1 ? free / (bands.length - 1) : 0;
     let top = bands.length > 1 ? 0 : (height - bands[0].h) / 2;
     for (const b of bands) {
-      const x0 = left + (width - b.w) / 2;
+      // An ordinary lane's nodes are centred in it; the stacked lane's rows start at its left
+      // edge, so every line out of it leaves from the same side.
+      const x0 = id === stacked ? left : left + (width - b.w) / 2;
       b.at.forEach((p, id) => out.set(id, { x: x0 + p.x, y: top + p.y }));
       top += b.h + step;
     }
-    left += width + 2 * LANE_PAD + gap;
+    left += width + 2 * (LANE_PAD + LANE_EDGE) + gap;
   }
   return out;
 }
@@ -240,12 +245,19 @@ export function runLanes(
     const stackOrder = stacked === undefined ? [] : (rows[0] ?? []);
     for (const row of rows) row.forEach((id, i) => rank.set(id, i));
     const settled =
-      stacked !== undefined && opts.settle ? opts.settle(stackOrder, at, widthOf) : new Map<string, At>();
+      stacked !== undefined && opts.settle
+        ? opts.settle(stackOrder, at, widthOf)
+        : new Map<string, At>();
     const lanes = ids.map((lane) => ({
       id: lane,
       items: nodes
         .filter((n) => laneOf.get(n.id()) === lane)
-        .map((n) => ({ id: n.id(), w: n.data("w") as number, h: n.data("h") as number, y: n.position("y") }))
+        .map((n) => ({
+          id: n.id(),
+          w: n.data("w") as number,
+          h: n.data("h") as number,
+          y: n.position("y"),
+        }))
         .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.y - b.y),
     }));
     const where = placeLanes(
@@ -269,8 +281,14 @@ function boxLanes(cy: Core, opts: LanesOptions): void {
   for (const lane of opts.lanes) {
     const inLane = placed.filter((n) => n.data("lane") === lane.id);
     if (inLane.empty()) continue;
-    const xs = inLane.map((n) => [n.position("x") - (n.data("w") as number) / 2, n.position("x") + (n.data("w") as number) / 2]);
-    const ys = inLane.map((n) => [n.position("y") - (n.data("h") as number) / 2, n.position("y") + (n.data("h") as number) / 2]);
+    const xs = inLane.map((n) => [
+      n.position("x") - (n.data("w") as number) / 2,
+      n.position("x") + (n.data("w") as number) / 2,
+    ]);
+    const ys = inLane.map((n) => [
+      n.position("y") - (n.data("h") as number) / 2,
+      n.position("y") + (n.data("h") as number) / 2,
+    ]);
     const x1 = Math.min(...xs.map((x) => x[0])) - LANE_PAD;
     const x2 = Math.max(...xs.map((x) => x[1])) + LANE_PAD;
     const y1 = Math.min(...ys.map((y) => y[0])) - LANE_PAD - LANE_TITLE;

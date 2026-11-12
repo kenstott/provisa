@@ -66,7 +66,12 @@ export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
 /** Scroll the diagram by (`dx`, `dy`) screen px, as far as it runs past the canvas and no
  * further: its top stays below the legend, its bottom no higher than the canvas's. Whether it
  * moved: a diagram that fits its canvas does not, and a wheel over it scrolls the page. */
-export function scrollBy(cy: CyInstance, dx: number, dy: number, padding: number = FIT_PADDING): boolean {
+export function scrollBy(
+  cy: CyInstance,
+  dx: number,
+  dy: number,
+  padding: number = FIT_PADDING,
+): boolean {
   const box = cy.container();
   if (!box) return false;
   const r = cy.elements().renderedBoundingBox({});
