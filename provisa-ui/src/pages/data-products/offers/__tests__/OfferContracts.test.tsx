@@ -40,8 +40,12 @@ vi.mock("../../../../api/dataProductContracts", () => ({
     fetchContractVersions(id, offer, member),
 }));
 const offers = vi.hoisted(() => ({ list: [] as Offer[] }));
+// Every section is mounted (Lineage and Related only once expanded): the reads the others make
+// answer nothing here.
 vi.mock("../../../../api/dataProductOffers", () => ({
   fetchOffers: () => Promise.resolve(offers.list),
+  fetchBids: () => Promise.resolve([]),
+  fetchProductProfiles: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {
