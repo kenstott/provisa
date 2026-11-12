@@ -5,6 +5,18 @@
     "sortNone": "未排序",
     "groupBy": "按 {{label}} 分组",
     "ungroupLevel": "取消分组（级别 {{level}}）",
-    "moreValues": "另有 {{count}} 项"
+    "moreValues": "另有 {{count}} 项",
+    "selectAll": "选择所有显示的行",
+    "selectRow": "选择行",
+    "selectedCount_one": "已选择 {{count}} 项",
+    "selectedCount_other": "已选择 {{count}} 项",
+    "bulkDelete": "删除",
+    "clearSelection": "清除选择",
+    "bulkDeleteTitle_one": "删除 {{count}} 行？",
+    "bulkDeleteTitle_other": "删除 {{count}} 行？",
+    "bulkDeleteConsequence": "将删除：{{names}}。仍被其他对象引用的项会保留，并说明原因。",
+    "bulkRefused_one": "{{count}} 项未删除：",
+    "bulkRefused_other": "{{count}} 项未删除：",
+    "dismiss": "关闭"
   }
 }

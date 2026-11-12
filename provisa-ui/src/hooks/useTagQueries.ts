@@ -20,7 +20,9 @@ import {
   UnassignTag as UNASSIGN_TAG_MUTATION,
   UpsertTagParamValue as UPSERT_TAG_PARAM_VALUE_MUTATION,
   DeleteTagParamValue as DELETE_TAG_PARAM_VALUE_MUTATION,
+  DeleteTags,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 
 const NO_TAGS: Tag[] = [];
 const NO_TAG_ASSIGNMENTS: TagAssignment[] = [];
@@ -180,4 +182,13 @@ function toAssignmentInput(input: TagAssignment) {
     reason: input.reason ?? null,
     expiresOn: input.expiresOn ?? null,
   };
+}
+
+/** REQ-2240: several tags deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteTags() {
+  return useBulkDelete(DeleteTags, "deleteTags", "ids", [
+    { query: TAGS_QUERY },
+    { query: TAG_ASSIGNMENTS_QUERY },
+  ]);
 }
