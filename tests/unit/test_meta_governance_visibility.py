@@ -54,7 +54,13 @@ def _meta_tables(table_id: int = 1) -> list[dict]:
     return [{"id": table_id, "columns": cols}]
 
 
+def _built(role: dict) -> dict:
+    """``role`` as the build holds it: with the roles it acts as (REQ-2188, app_loaders)."""
+    return {**role, "acting_chain": [role["id"]]}
+
+
 def _build(role: dict):
+    role = _built(role)
     return build_governance_context(
         role["id"], _FakeRLSContext({}), {}, _meta_ctx(), _meta_tables(), role
     )
@@ -211,6 +217,7 @@ def _relationships() -> list[dict]:
 
 
 def _row_gov(role: dict):
+    role = _built(role)
     return build_governance_context(
         role["id"],
         _FakeRLSContext({}),
@@ -328,6 +335,7 @@ def _listed_gov(domain_access: list[str]):
         "description": "Test role.",
         "capabilities": [],
         "domain_access": domain_access,
+        "acting_chain": ["sales"],  # REQ-2188: as the build records it
     }
     # finance's payroll lists its id: its name is in the catalog of every role.
     payroll = {

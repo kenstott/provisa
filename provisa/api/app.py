@@ -3711,7 +3711,9 @@ async def _rebuild_schemas_impl(
         roles = flatten_role_dicts(
             _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
         )
-        expand_column_grants(tables, role_chains_by_id)
+        # REQ-1921: a draft's grants too, so a role inheriting from one granted it is named
+        # it -- to be refused as draft, or read by a role holding org_admin.
+        expand_column_grants([*tables, *draft_tables], role_chains_by_id)
         narrow_own_domain_grants([*tables, *draft_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074

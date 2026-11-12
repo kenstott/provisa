@@ -63,7 +63,7 @@ def test_the_model_table_holds_a_drafts_row(plane):
 _RT = 1
 
 
-def _governed(role_id: str, domain_access: list[str]):
+def _governed(role_id: str, domain_access: list[str], chain: list[str]):
     from provisa.compiler.sql_types import CompilationContext, TableMeta
     from provisa.compiler.stage2 import build_governance_context
     from provisa.security.rights import META_DOMAIN_ID
@@ -83,7 +83,13 @@ def _governed(role_id: str, domain_access: list[str]):
     column = {"column_name": "id", "visible_to": [role_id]}
     served = [{"id": 1, "domain_id": "pet_store", "columns": [column]}]
     rls = type("Rls", (), {"rules": {}, "write_rules": {}})()
-    role = {"id": role_id, "capabilities": [], "domain_access": domain_access}
+    # As the build holds it: with the roles it acts as (REQ-2188).
+    role = {
+        "id": role_id,
+        "capabilities": [],
+        "domain_access": domain_access,
+        "acting_chain": chain,
+    }
     return build_governance_context(role_id, rls, {}, ctx, served, role)
 
 
@@ -98,39 +104,42 @@ def _rows_read(plane, gov) -> list[int]:
 
 _EVERY = ["*", "meta", "ops", "ontology"]
 
+# A built role's acting chain: itself and its ancestors, or a meta role's members and theirs.
+_HOLDING = [
+    ("org_admin", _EVERY, ["org_admin"]),
+    # A role inheriting from org_admin through its parents (REQ-2155).
+    ("steward", ["pet_store"], ["steward", "org_admin"]),
+    # The meta role a person holding several roles acts as ("Role: All").
+    (
+        "meta:analyst+data_product_owner+org_admin",
+        _EVERY,
+        ["analyst", "data_product_owner", "org_admin"],
+    ),
+    # A scoped meta role: the draft beside the rows of its scope.
+    ("meta:analyst+org_admin", ["pet_store"], ["analyst", "org_admin"]),
+]
+_NOT_HOLDING = [
+    ("analyst", _EVERY, ["analyst", "viewer"]),
+    ("meta:analyst+data_product_owner", _EVERY, ["analyst", "data_product_owner"]),
+    ("analyst", ["pet_store"], ["analyst"]),
+    ("org_admin_helper", ["pet_store"], ["org_admin_helper"]),
+]
 
-@pytest.mark.parametrize(
-    ("role_id", "domain_access"),
-    [
-        ("org_admin", _EVERY),
-        # The meta role a person holding several roles acts as ("Role: All").
-        ("meta:analyst+data_product_owner+org_admin", _EVERY),
-        # A scoped meta role: the draft beside the rows of its scope.
-        ("meta:analyst+org_admin", ["pet_store"]),
-    ],
-)
-def test_a_role_holding_org_admin_reads_a_drafts_row(plane, role_id, domain_access):
+
+@pytest.mark.parametrize(("role_id", "domain_access", "chain"), _HOLDING)
+def test_a_role_holding_org_admin_reads_a_drafts_row(plane, role_id, domain_access, chain):
     """The Associations' class-term read (registered_tables, id eq the draft's) finds its row."""
-    assert _rows_read(plane, _governed(role_id, domain_access)) == [1, 2]
+    assert _rows_read(plane, _governed(role_id, domain_access, chain)) == [1, 2]
 
 
-@pytest.mark.parametrize(
-    ("role_id", "domain_access"),
-    [
-        ("analyst", _EVERY),
-        ("meta:analyst+data_product_owner", _EVERY),
-        ("analyst", ["pet_store"]),
-    ],
-)
-def test_no_other_role_reads_a_drafts_row(plane, role_id, domain_access):
-    assert _rows_read(plane, _governed(role_id, domain_access)) == [1]
+@pytest.mark.parametrize(("role_id", "domain_access", "chain"), _NOT_HOLDING)
+def test_no_other_role_reads_a_drafts_row(plane, role_id, domain_access, chain):
+    assert _rows_read(plane, _governed(role_id, domain_access, chain)) == [1]
 
 
-def test_holding_org_admin_is_org_admin_or_a_meta_role_naming_it():
+@pytest.mark.parametrize(("role_id", "domain_access", "chain"), _HOLDING + _NOT_HOLDING)
+def test_holding_org_admin_is_org_admin_inherited_or_a_members(role_id, domain_access, chain):
     from provisa.security.rights import holds_org_admin
 
-    assert holds_org_admin("org_admin")
-    assert holds_org_admin("meta:analyst+org_admin")
-    assert not holds_org_admin("analyst")
-    assert not holds_org_admin("meta:analyst+data_product_owner")
-    assert not holds_org_admin("org_admin_helper")
+    role = {"id": role_id, "domain_access": domain_access, "acting_chain": chain}
+    assert holds_org_admin(role) == ((role_id, domain_access, chain) in _HOLDING)

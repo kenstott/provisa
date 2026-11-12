@@ -499,7 +499,15 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # two described-table meta views (registered_tables_meta.id / table_columns_meta.table_id), so it
     # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
     meta_scope = compute_meta_row_scope(role, tables, relationships)
-    sees_drafts = holds_org_admin(role_id)  # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: read only where the model table is in this
+    # compilation, the one table it decides.
+    _draft_rows = [
+        tm
+        for tm in {tm.table_id: tm for tm in ctx.tables.values()}.values()
+        if getattr(tm, "domain_id", None) == META_DOMAIN_ID
+        and getattr(tm, "table_name", "") == DRAFT_ROWS_VIEW
+    ]
+    sees_drafts = bool(_draft_rows) and holds_org_admin(role)
     if meta_scope is not None:
         ids = sorted(meta_scope) or [-1]  # empty → matches no row
         # A setting's value, told to the statement's catalog views: an array, not SQL.
@@ -541,11 +549,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     if not sees_drafts:
         # REQ-1921: the model table's draft rows are read by a role holding org_admin, and by
         # no other, whatever its scope (the whole catalog's included).
-        for tm in {tm.table_id: tm for tm in ctx.tables.values()}.values():
-            if getattr(tm, "domain_id", None) == META_DOMAIN_ID and (
-                getattr(tm, "table_name", "") == DRAFT_ROWS_VIEW
-            ):
-                _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
+        for tm in _draft_rows:
+            _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.

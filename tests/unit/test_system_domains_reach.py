@@ -139,7 +139,9 @@ def _flat(role_id: str = ROLE, *capabilities: str) -> dict:
         else r
         for r in [*_standard(), *OWN]
     ]
-    return {**next(r for r in flatten_role_dicts(rows) if r["id"] == role_id), "description": "d"}
+    flat = next(r for r in flatten_role_dicts(rows) if r["id"] == role_id)
+    # REQ-2188: the roles it acts as, as the build records them (app_loaders).
+    return {**flat, "description": "d", "acting_chain": role_chains(rows)[role_id]}
 
 
 def _chains() -> dict[str, list[str]]:

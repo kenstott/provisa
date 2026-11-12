@@ -81,6 +81,7 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
         "description": "Test role.",
         "capabilities": list(capabilities),
         "domain_access": domain_access,
+        "acting_chain": ["r"],  # REQ-2188: as the build records it
     }
 
 

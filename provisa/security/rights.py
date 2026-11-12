@@ -230,11 +230,14 @@ def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
     return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
-def holds_org_admin(role_id: str) -> bool:  # REQ-1921
-    """Whether ``role_id`` holds org_admin: org_admin itself, or a meta-role with org_admin among
-    its members. A draft is served to such a role (A DRAFT IS SERVED TO ORG_ADMIN); this is the
-    one place that answers it."""
-    return ORG_ADMIN_ROLE in members_of(role_id)
+def holds_org_admin(role: dict) -> bool:  # REQ-1921
+    """Whether ``role`` holds org_admin: org_admin itself, a role inheriting from it through its
+    parents (REQ-2155), or a meta-role one of whose members does. A draft is served to such a role
+    (A DRAFT IS SERVED TO ORG_ADMIN); this is the one place that answers it.
+
+    ``role`` is a built role (state.roles): its ``acting_chain`` is the role and its ancestors, or
+    a meta-role's members and theirs (REQ-2188)."""
+    return ORG_ADMIN_ROLE in role["acting_chain"]
 
 
 DEVELOPER_ROLE = "developer"

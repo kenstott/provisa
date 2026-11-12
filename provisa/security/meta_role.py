@@ -462,7 +462,9 @@ def _build(
     inputs = state.role_build_inputs
     chains = {meta_id: meta_chain(meta_id, member_ids, inputs["role_chains"], qualifiers)}
     # Inheritance with several parents: every grant to a member reaches the child.
-    for t in inputs["tables"]:
+    # REQ-1921: and on a draft, so the child is named it as its members are -- refused as draft,
+    # or read where the child holds org_admin.
+    for t in [*inputs["tables"], *inputs["draft_tables"]]:
         expand_grants(t.get("columns") or [], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
