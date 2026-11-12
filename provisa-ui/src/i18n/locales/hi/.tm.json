@@ -2519,11 +2519,11 @@
   "hi/glossaryTab.json::glossaryTab.rel_VALID_VALUE_OF_reverse": "Has valid value",
   "hi/glossaryTab.json::glossaryTab.relatedToDialogAnyway": "Add Related to anyway",
   "hi/glossaryTab.json::glossaryTab.relatedToDialogNoNames": "No names were suggested ({{reason}}). Start a shape and type the name yourself.",
-  "hi/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Shapes that would resolve the pair, tightest first:",
+  "hi/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Ways to say how these two are connected, most specific first:",
   "hi/glossaryTab.json::glossaryTab.relatedToDialogStart": "Start",
   "hi/glossaryTab.json::glossaryTab.relatedToDialogSuggesting": "Suggesting names…",
   "hi/glossaryTab.json::glossaryTab.relatedToDialogTitle": "Link {{from}} and {{to}} with Related to?",
-  "hi/glossaryTab.json::glossaryTab.relatedToDialogWhy": "Related to is the least useful edge: it does not ground, so the term still cannot reach data through it. One new term between the two would turn the pair into edges that ground.",
+  "hi/glossaryTab.json::glossaryTab.relatedToDialogWhy": "\"Related to\" says two terms are connected, but not how. Nothing can follow it from a term to data. Usually a term is missing in between that says how.",
   "hi/glossaryTab.json::glossaryTab.relatedToHint": "This term reaches no data: its only links are Related to, which don't ground. The pair may lack a term in between.",
   "hi/glossaryTab.json::glossaryTab.relatedToOnly": "Related to",
   "hi/glossaryTab.json::glossaryTab.relatedToOnlyHint": "Related to links hold a place and don't ground. How to resolve them",
@@ -10238,5 +10238,6 @@
   "hi/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "hi/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
   "hi/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
+  "hi/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "hi/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
 }
