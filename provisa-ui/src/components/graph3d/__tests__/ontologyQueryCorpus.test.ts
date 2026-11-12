@@ -28,6 +28,7 @@ import {
   termLevels,
 } from "../ontologyData";
 import { PRODUCT_MAP, PRODUCT_MAP_LAYERS } from "../ontologyPresets";
+import { tableColumnsQuery } from "../tableColumns";
 import type { LayerId, QueryScope } from "../graphModel";
 import { searchItems } from "../../../lib/searchItems";
 
@@ -212,6 +213,8 @@ function corpus(): Record<string, string> {
     "ontology product map: opening+columns",
     ontologyQuery(m, productMapOpening([...PRODUCT_MAP_LAYERS, "columns"])),
   );
+  // REQ-2244: a table expanded in a term's graph reads its columns, that table alone.
+  add("ontology table columns: one table", tableColumnsQuery(m, "t:101"));
   return out;
 }
 
@@ -336,7 +339,7 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
   it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
-    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts/);
+    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts|m__registeredTables/);
   });
 });
 
