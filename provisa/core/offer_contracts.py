@@ -29,14 +29,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TYPE_CHECKING
 
 from provisa.core import contract_versions, model_change
 from provisa.core.models import (
     ContractChange,
     ContractCheck,
-    ContractVersion,
-    DataContract,
     DataProductOffer,
     OfferContract,
     OfferContractVersion,
@@ -44,6 +42,9 @@ from provisa.core.models import (
     OfferTerms,
     VersionColumn,
 )
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 #: The version an offer's contract on a dataset is created at.
 FIRST_OFFER_CONTRACT_VERSION = "1.0.0"
@@ -90,16 +91,9 @@ def terms(
     )
 
 
-def _as_version(t: OfferTerms) -> ContractVersion:
-    """``t`` as :mod:`contract_versions` compares a version: its fields and its checks."""
-    return ContractVersion(
-        contract=DataContract(version=FIRST_OFFER_CONTRACT_VERSION),
-        columns=[
-            VersionColumn(name=f.name, type=f.type, description=f.description) for f in t.fields
-        ],
-        checks=t.checks,
-        saved_at=datetime.min,
-    )
+def _columns(t: OfferTerms) -> list[VersionColumn]:
+    """``t``'s fields as :mod:`contract_versions` compares them."""
+    return [VersionColumn(name=f.name, type=f.type, description=f.description) for f in t.fields]
 
 
 def _changed(
@@ -124,7 +118,9 @@ def differences(before: OfferTerms, after: OfferTerms) -> list[ContractChange]:
     and checks' differences as :func:`contract_versions.differences` reads them; a column masked
     (breaking) or unmasked; a row rule added (breaking: fewer rows) or removed; and the data
     level, data quality results, profiles and duration, each breaking when it gives less."""
-    changes = contract_versions.differences(_as_version(before), _as_version(after))
+    changes = contract_versions.differences(
+        _columns(before), _columns(after), before.checks, after.checks
+    )
     old = {f.name: f for f in before.fields}
     for field in after.fields:
         was = old.get(field.name)

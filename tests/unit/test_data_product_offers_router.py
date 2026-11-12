@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from provisa.api import offer_derivation
 from provisa.api.admin import data_product_offers_router as router
 
 
@@ -128,7 +129,7 @@ def test_an_offers_contract_states_the_columns_its_role_reads(monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.security.effective_rights.data_view_from_state", view)
-    seen = router._seen_columns(_state(), "viewer", table)
+    seen = offer_derivation.seen_columns(_state(), "viewer", table)
     assert [(c.name, c.read, c.mask, c.description) for c in seen] == [
         ("id", True, None, None),
         ("email", True, "regex", "Where to write"),

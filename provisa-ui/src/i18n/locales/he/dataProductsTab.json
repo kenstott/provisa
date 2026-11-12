@@ -210,7 +210,15 @@
         "check_removed": "בדיקת האיכות {{subject}} הוסרה",
         "check_changed": "בדיקת האיכות {{subject}} שונתה",
         "description_changed": "התיאור שונה",
-        "terms_changed": "התנאים שונו: {{subject}}"
+        "terms_changed": "התנאים שונו: {{subject}}",
+        "field_masked": "השדה {{subject}} מוסך ({{after}})",
+        "field_unmasked": "השדה {{subject}} כבר אינו ממוסך",
+        "row_rule_added": "נוסף כלל שורה: {{subject}}",
+        "row_rule_removed": "הוסר כלל שורה: {{subject}}",
+        "data_level_changed": "רמת הנתונים שונתה מ-{{before}} ל-{{after}}",
+        "dq_results_changed": "תוצאות האיכות שונו מ-{{before}} ל-{{after}}",
+        "profiles_changed": "הפרופילים שונו מ-{{before}} ל-{{after}}",
+        "duration_changed": "המשך שונה מ-{{before}} ל-{{after}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "תפקידים",
         "history": "היסטוריית גרסאות"
       }
-    }
+    },
+    "detailPanel": "פרטי מוצר הנתונים"
   }
 }

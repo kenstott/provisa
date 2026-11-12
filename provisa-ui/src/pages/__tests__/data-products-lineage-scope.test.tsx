@@ -8,15 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1640, REQ-1666, REQ-2156: the product detail's lineage is the LineageDag the Lineage page
-// draws, over what the product lineage endpoint answers -- the member tables, their ancestry and one
-// hop downstream, cut to the reader's rights (the server's, held by its own tests) -- full width
-// below the cards, for any reader of the product: no governance right is asked.
+// REQ-1640, REQ-1666, REQ-2156: the product detail's lineage is drawn over what the product lineage
+// endpoint answers -- the member tables, their ancestry and one hop downstream, cut to the reader's
+// rights (the server's, held by its own tests) -- for any reader of the product: no governance right
+// is asked. REQ-2239: it is the panel's Lineage tab, drawn by the one graph component.
 
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import type {
-  LineageGraphData,
   LineageNode,
   ProductInput,
   ProductLineage,
@@ -24,6 +23,9 @@ import type {
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
+import { openTab } from "../data-products/__tests__/panelTabs";
+import type { GraphSpec } from "../../components/provisa-graph/model";
+import type { LanesOptions } from "../../components/provisa-graph/lanes";
 
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
@@ -90,26 +92,12 @@ vi.mock("../../api/lineage", async (importOriginal) => ({
   },
 }));
 
-// The DAG itself is the Lineage page's, held by its own tests: here, what it is given.
-type Lanes = { members: ReadonlySet<string>; title: (lane: number) => string };
-const drawn: {
-  graph: LineageGraphData;
-  members?: ReadonlySet<string>;
-  lanes?: Lanes;
-  relationLabel?: (relation: string) => string;
-}[] = [];
-vi.mock("../../components/lineage/LineageDag", () => ({
-  LineageDag: ({
-    graph,
-    lanes,
-    relationLabel,
-  }: {
-    graph: LineageGraphData;
-    lanes?: Lanes;
-    relationLabel?: (relation: string) => string;
-  }) => {
-    drawn.push({ graph, members: lanes?.members, lanes, relationLabel });
-    return <div data-testid="lineage-dag" />;
+// The graph itself is the one graph component's, held by its own tests: here, what it is given.
+const drawn: { graph: GraphSpec; lanes?: LanesOptions }[] = [];
+vi.mock("../../components/provisa-graph/ProvisaGraph", () => ({
+  ProvisaGraph: ({ graph, lanes }: { graph: GraphSpec; lanes?: LanesOptions }) => {
+    drawn.push({ graph, lanes });
+    return <div data-testid="provisa-graph" />;
   },
 }));
 
@@ -168,7 +156,6 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useDeleteDataProducts: () => vi.fn(),
   useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),
@@ -193,36 +180,43 @@ import { upstreamLineage } from "../data-products/upstreamLineage";
 
 async function opened() {
   render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
-  // The DAG is the tallest panel on the page: it starts closed.
-  fireEvent.click(await screen.findByTestId("data-product-detail-lineage-toggle-pet_health"));
+  // Lineage is a tab of its own: drawn when it is opened.
+  fireEvent.click(await screen.findByTestId("data-product-tab-lineage-pet_health"));
   await waitFor(() => expect(drawn.length).toBeGreaterThan(0));
   return drawn[drawn.length - 1];
 }
+
+const ids = (g: GraphSpec) => g.nodes.map((n) => n.id).sort();
 
 describe("product detail lineage scope (REQ-1666, REQ-2156)", () => {
   it("draws what the product lineage endpoint answers upstream of the expanded product", async () => {
     const { graph } = await opened();
     expect(asked).toContain("pet_health");
     // REQ-2174 (amended 2026-11-07): where the product comes from, never what reads it.
-    expect(graph).toEqual(upstreamLineage(LINEAGE));
-    expect(graph.nodes.map((n) => n.id)).not.toContain("pet_store.dim_pet.id");
-    expect(graph.nodes).toHaveLength(LINEAGE.nodes.length - 1);
+    expect(ids(graph)).toEqual(
+      [...new Set(upstreamLineage(LINEAGE).nodes.map((n) => n.relation as string))].sort(),
+    );
+    expect(ids(graph)).not.toContain("pet_store.dim_pet");
+    expect(graph.edges.map((e) => `${e.source}>${e.target}`).sort()).toEqual([
+      "native:pet_store.pets>pet_store.pets",
+      "pet_store.breeds>pet_store.pets",
+      "staging.pet_prices>pet_store.pets",
+    ]);
   });
 
-  it("builds its swimlanes around the members the endpoint names", async () => {
-    const { members } = await opened();
-    expect(members).toEqual(new Set(["pet_store.pets"]));
+  it("builds its lanes around the members the endpoint names", async () => {
+    const { graph, lanes } = await opened();
+    const tables = lanes!.lanes[lanes!.lanes.length - 1];
+    expect(graph.nodes.filter((n) => n.lane === tables.id).map((n) => n.id)).toEqual([
+      "pet_store.pets",
+    ]);
   });
 
   it("heads each lane in words and names each table as the catalog does", async () => {
-    const { lanes, relationLabel } = await opened();
-    expect([-3, -2, -1, 0].map((l) => lanes!.title(l))).toEqual([
-      "Upstream, hop 2 beyond the inputs",
-      "Upstream, hop 1 beyond the inputs",
-      "Inputs",
-      "This product's tables",
-    ]);
-    expect(relationLabel!("pet_store.pets")).toBe("pet-store.pets");
+    const { graph, lanes } = await opened();
+    // What reads a member straight is its nearest input, as far as its reader sees.
+    expect(lanes!.lanes.map((l) => l.title)).toEqual(["Inputs", "This product's tables"]);
+    expect(graph.nodes.find((n) => n.id === "pet_store.pets")?.name).toBe("pet-store.pets");
   });
 });
 
@@ -241,7 +235,11 @@ const input = (relation: string, over: Partial<ProductInput> = {}): ProductInput
   ...over,
 });
 
-const panel = (lineage: ProductLineage | null, owner = true) =>
+const panel = (
+  lineage: ProductLineage | null,
+  owner = true,
+  tab: "quality" | "lineage" = "quality",
+) => {
   render(
     <DataProductDetailPanel
       p={product}
@@ -255,12 +253,13 @@ const panel = (lineage: ProductLineage | null, owner = true) =>
       lineageLoading={false}
       lineageError=""
       lineageGraph={lineage}
-      contractsVersion={0}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
     />,
   );
+  openTab(tab, "pet_health");
+};
 
 describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", () => {
   const listed = (inputs: ProductInput[]) => {
@@ -310,11 +309,11 @@ describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", ()
   });
 });
 
-describe("the product detail's lineage DAG (REQ-1640)", () => {
-  it("is drawn below the cards, not as one of them", async () => {
-    panel(LINEAGE);
-    fireEvent.click(screen.getByTestId("data-product-detail-lineage-toggle-pet_health"));
+describe("the product detail's lineage (REQ-1640)", () => {
+  it("is a tab of its own, not one of the other sections", async () => {
+    panel(LINEAGE, true, "lineage");
     expect(await screen.findByTestId("data-product-detail-lineage-pet_health")).toBeInTheDocument();
     expect(screen.queryByTestId("data-product-card-lineage-pet_health")).toBeNull();
+    expect(screen.queryByTestId("data-product-card-inputPorts-pet_health")).toBeNull();
   });
 });

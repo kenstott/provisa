@@ -28,6 +28,7 @@ from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
+    DataProduct,
     Domain,
     STORED_MODEL,
     ProvisaConfig,
@@ -1103,12 +1104,7 @@ async def set_product_members(  # REQ-1634
         table_ids = []
         waiting = None
         for name in dp.tables:
-            parts = name.split(".")
-            row = (
-                await table_repo.get_by_name(conn, *parts)
-                if len(parts) == 3
-                else await table_repo.find_by_table_name(conn, name)
-            )
+            row = await _product_table(conn, name)
             if row is None:
                 if defer_unregistered and name not in declared:
                     waiting = name
@@ -1125,6 +1121,43 @@ async def set_product_members(  # REQ-1634
             )
         except data_product_repo.MembershipRefused as refused:
             raise ValueError(f"data product {dp.id!r}: {refused}") from refused
+        await _save_declared_offers(conn, dp)
+
+
+async def _product_table(conn: "Connection", name: str) -> dict | None:
+    """The registered table a data product names: by its alias, else its table name, or as
+    ``source.schema.table``; None when no registration holds it."""
+    parts = name.split(".")
+    if len(parts) == 3:
+        return await table_repo.get_by_name(conn, *parts)
+    return await table_repo.find_by_table_name(conn, name)
+
+
+async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  # REQ-2180
+    """Each offer ``dp`` declares added, or replacing the product's offer of its name; a sample's
+    views named as the product's tables are. An offer the store refuses fails the load, naming the
+    product. Their contracts are derived by the build the load is followed by."""
+    from provisa.core.models import DataProductOffer
+    from provisa.core.repositories import data_product_offer as offer_repo
+
+    held = {o["name"]: o["id"] for o in await offer_repo.list_offers(conn, dp.id)}
+    for declared in dp.offers:
+        views = []
+        for name in declared.sample_views:
+            row = await _product_table(conn, name)
+            if row is None:
+                raise ValueError(
+                    f"data product {dp.id!r}: offer {declared.name!r} names view {name!r}, "
+                    "which no registration holds"
+                )
+            views.append(int(row["id"]))
+        offer = DataProductOffer.model_validate({**declared.model_dump(), "sample_views": views})
+        try:
+            await offer_repo.save(conn, dp.id, offer, offer_id=held.get(offer.name), by=None)
+        except offer_repo.OfferRefused as refused:
+            raise ValueError(
+                f"data product {dp.id!r}: offer {declared.name!r}: {refused}"
+            ) from refused
 
 
 async def _load_after_tables(  # REQ-1919

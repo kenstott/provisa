@@ -30,7 +30,6 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
-from sqlglot.time import format_time
 
 from provisa.core.pg_error import raising
 from provisa.transpiler import function_macros, pg_syntax, pg_xml
@@ -945,7 +944,7 @@ def _call(node: exp.Expr) -> exp.Expr:
         # A format the statement casts to text ('YYYY-MM-DD'::text) is that format: sqlglot reads
         # PostgreSQL's template into the engine's of a literal alone.
         written = node.args["format"].this.this
-        read = format_time(written, Postgres.TIME_MAPPING, Postgres.TIME_TRIE)
+        read = pg_syntax.template(written)
         called = node.copy()
         called.set("format", exp.Literal.string(read))
         return called

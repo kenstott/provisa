@@ -8,16 +8,19 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A data product's read view is cards, each the application's collapsible: one look, open or closed
-// as this viewer left it, its content kept inside it. The Graph spans the panel's width,
-// below the cards.
+// REQ-2180 OFFERS (maintainer 2026-11-11, replacing the grid of detail cards): a data product's
+// panel is a header -- owner, domain, freshness, a query to run now, and its values in the
+// application's collapsible, open or closed as this viewer left it -- then the same tabs for the
+// read view and the edit view: Offers (the default), Quality, Profile, Lineage, Related and, for
+// its owner alone, Requests. Each tab keeps its content inside it.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within } from "../../../test-utils/render";
+import { render, screen, fireEvent } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
+import { openTab } from "./panelTabs";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/OntologyGraph", () => ({
@@ -54,7 +57,7 @@ const LINEAGE: ProductLineage = {
   })),
 };
 
-function panel() {
+function panel(owner = true) {
   return render(
     <DataProductDetailPanel
       p={PRODUCT}
@@ -63,10 +66,9 @@ function panel() {
       reader={null}
       canEdit={false}
       canDelete={false}
-      owner
-      seesConsumers
+      owner={owner}
+      seesConsumers={owner}
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       onEdit={vi.fn()}
@@ -76,63 +78,83 @@ function panel() {
   );
 }
 
-const card = (section: string) => screen.getByTestId(`data-product-card-${section}-pet_health`);
+const tab = (name: string) => screen.queryByTestId(`data-product-tab-${name}-pet_health`);
 
-describe("a data product's cards", () => {
+describe("a data product's panel", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("are each the application's collapsible, headed by its label", () => {
+  it("is a header, then its tabs, Offers first and in view", () => {
     panel();
-    for (const [section, label] of [
-      ["details", "Details"],
-      ["customProperties", "Custom Properties"],
-      ["inputPorts", "Input Ports"],
-      ["graph", "Graph"],
-    ]) {
-      expect(card(section).querySelector(".provisa-collapsible")).not.toBeNull();
-      expect(
-        screen.getByTestId(`data-product-card-${section}-pet_health-toggle`),
-      ).toHaveTextContent(label);
-    }
+    const header = screen.getByTestId("data-product-header-pet_health");
+    const tabs = ["offers", "quality", "profile", "lineage", "related", "requests"].map(
+      (name) => tab(name) as HTMLElement,
+    );
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      "Offers",
+      "Quality",
+      "Profile",
+      "Lineage",
+      "Related",
+      "Requests",
+    ]);
+    // The header comes before the tabs.
+    expect(header.compareDocumentPosition(tabs[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("data-product-offers-pet_health")).toBeInTheDocument();
   });
 
-  it("open again as the viewer left them", () => {
+  it("shows Requests to its owner alone", () => {
+    panel(false);
+    expect(tab("offers")).not.toBeNull();
+    expect(tab("requests")).toBeNull();
+  });
+
+  it("mounts only the tab in view", () => {
+    panel();
+    expect(screen.queryByTestId("data-product-related-pet_health")).toBeNull();
+    openTab("related", "pet_health");
+    expect(screen.getByTestId("data-product-related-pet_health")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-product-offers-pet_health")).toBeNull();
+  });
+
+  it("keeps its values in the application's collapsible, open again as the viewer left it", () => {
     const first = panel();
-    const toggle = () => screen.getByTestId("data-product-card-inputPorts-pet_health-toggle");
-    expect(toggle()).toHaveAttribute("aria-expanded", "true");
-    fireEvent.click(toggle());
+    const details = screen.getByTestId("data-product-card-details-pet_health");
+    expect(details.closest(".provisa-collapsible")).not.toBeNull();
+    const toggle = () => screen.getByTestId("data-product-card-details-pet_health-toggle");
+    expect(toggle()).toHaveTextContent("Details");
+    // Closed at first: the tabs are the panel's working surface.
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
     first.unmount();
     panel();
-    expect(toggle()).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByTestId("data-product-card-graph-pet_health-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("keep their content inside them: what cannot wrap scrolls within the card", () => {
+  it("keeps a tab's content inside it: what cannot wrap scrolls within the tab", () => {
     panel();
-    const ports = within(card("inputPorts")).getByTestId("data-product-detail-inputs-pet_health");
+    openTab("quality", "pet_health");
+    const ports = screen.getByTestId("data-product-detail-inputs-pet_health");
     let body = ports.parentElement as HTMLElement;
     while (body && body.style.overflowX !== "auto") body = body.parentElement as HTMLElement;
     expect(body).not.toBeNull();
-    expect(card("inputPorts").contains(body)).toBe(true);
+    expect(body.getAttribute("role")).toBe("tabpanel");
     expect(body.style.overflowWrap).toBe("anywhere");
   });
 
-  it("have no Queries card: the panel's own read is not shown", () => {
+  it("has no Queries card: the panel's own read is not shown", () => {
     panel();
     expect(screen.queryByTestId("data-product-card-queries-pet_health")).toBeNull();
     expect(screen.queryByText("query DataProductPanel", { exact: false })).toBeNull();
   });
 
-  it("keep the Graph a card among them, and the lineage DAG below them, across the panel", () => {
+  it("draws the ontology graph in Related, and lineage in a tab of its own", () => {
     panel();
-    const columns = card("details").parentElement as HTMLElement;
-    expect(columns.style.columnWidth).toBe("320px");
-    expect(columns.contains(card("graph"))).toBe(true);
-    const lineage = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
-    expect(columns.contains(lineage)).toBe(false);
+    expect(screen.queryByTestId("graph-panel")).toBeNull();
+    openTab("related", "pet_health");
+    expect(screen.getByTestId("graph-panel")).toBeInTheDocument();
+    openTab("lineage", "pet_health");
+    expect(screen.queryByTestId("graph-panel")).toBeNull();
   });
 });

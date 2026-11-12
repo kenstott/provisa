@@ -210,7 +210,15 @@
         "check_removed": "Comprobación de calidad {{subject}} eliminada",
         "check_changed": "Comprobación de calidad {{subject}} cambiada",
         "description_changed": "Descripción cambiada",
-        "terms_changed": "Términos cambiados: {{subject}}"
+        "terms_changed": "Términos cambiados: {{subject}}",
+        "field_masked": "Campo {{subject}} enmascarado ({{after}})",
+        "field_unmasked": "Campo {{subject}} ya no enmascarado",
+        "row_rule_added": "Regla de fila añadida: {{subject}}",
+        "row_rule_removed": "Regla de fila quitada: {{subject}}",
+        "data_level_changed": "Nivel de datos cambiado de {{before}} a {{after}}",
+        "dq_results_changed": "Resultados de calidad cambiados de {{before}} a {{after}}",
+        "profiles_changed": "Perfiles cambiados de {{before}} a {{after}}",
+        "duration_changed": "Duración cambiada de {{before}} a {{after}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "Roles",
         "history": "Historial de versiones"
       }
-    }
+    },
+    "detailPanel": "Detalle del producto de datos"
   }
 }

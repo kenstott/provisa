@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "नवीनतम प्रोफ़ाइल, रन {{time}}",
-    "none": "अभी तक कोई प्रोफ़ाइल रन नहीं।"
+    "none": "अभी तक कोई प्रोफ़ाइल रन नहीं।",
+    "viewTable": "टेबल",
+    "viewTerrain": "टेरेन"
   }
 }

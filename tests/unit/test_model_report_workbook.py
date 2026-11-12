@@ -1109,32 +1109,39 @@ def test_the_ontology_sheet_states_each_terms_axioms():
     )
 
 
-def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
-    """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
-    usage, limitations and its schema: the member's columns the caller is served (a contract
-    selects none of its own)."""
+def test_the_data_contracts_sheet_lists_each_offers_contracts_with_their_served_columns():
+    """REQ-1592 (2026-10-27): each output port's contract -- one per offer and dataset, derived
+    from the offer (REQ-2180) -- with its version, its product's status, the purpose, usage and
+    limitations the product writes once for all of them, and its schema: the columns the offer's
+    role reads, a masked one marked so, that the caller is served."""
+    from datetime import UTC, datetime
+
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
         MetadataSnapshot,
+        OfferExport,
     )
-    from provisa.core.models import ContractTerms, DataContract, DataProduct
+    from provisa.core import offer_contracts
+    from provisa.core.models import DataProduct, DataProductOffer
 
     orders = dataclasses.replace(
         _asset_table("orders", ["id", "total"]),
         semantic_uri=f"provisa://{ORG}/sales/tables/orders",
-        contract=DataContract(
-            version="1.2.0",
-            status="active",
-            description="every order placed",
-            terms=ContractTerms(usage="reporting", limitations="no PII"),
-        ),
     )
-    drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
-    loose = dataclasses.replace(
-        _asset_table("loose", ["id"]),
-        contract=DataContract(version="0.1.0"),  # in no product the workbook shows
+    drafts = _asset_table("drafts", ["id"])  # a member the offer gives no contract on
+    loose = _asset_table("loose", ["id"])  # in no product the workbook shows
+    offer = DataProductOffer(name="default", role_id="viewer")
+    seen = [
+        offer_contracts.SeenColumn("id", "int"),
+        offer_contracts.SeenColumn("total", "int", mask="truncate"),
+        offer_contracts.SeenColumn("secret", "int"),  # read by the role, served to no caller
+    ]
+    derived = offer_contracts.recorded(
+        None,
+        offer_contracts.terms(offer, seen, row_rules=[], sample_views=[], checks=[], profiles=[]),
+        at=datetime(2026, 11, 11, tzinfo=UTC),
     )
     snapshot = MetadataSnapshot(
         org_id=ORG,
@@ -1146,10 +1153,27 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
                 name="Orders",
                 domain_id="sales",
                 owner=None,
-                description="",
+                description="every order placed",
+                usage="reporting",
+                limitations="no PII",
+                status="live",
                 members=(orders.ref, drafts.ref),
             )
         ],
+        offers={
+            "orders_prod": (
+                OfferExport(
+                    name="default",
+                    role_id="viewer",
+                    data_level="full",
+                    dq_results=True,
+                    profiles=False,
+                    open=False,
+                    duration_days=None,
+                    contracts={orders.ref.fqn(): derived, loose.ref.fqn(): derived},
+                ),
+            )
+        },
     )
     config = ProvisaConfig(
         sources=[],
@@ -1164,14 +1188,15 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
     header = wb.HEADERS[wb.DATA_CONTRACTS]
     assert [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_CONTRACTS]] == [
         {
-            "id": f"provisa://{ORG}/sales/tables/orders",
+            "id": f"provisa://{ORG}/sales/tables/orders/offers/default",
             "product": "Orders",
+            "offer": "default",
             "output port": "orders",
-            "version": "1.2.0",
+            "version": "1.0.0",
             "status": "active",
             "purpose": "every order placed",
             "usage": "reporting",
             "limitations": "no PII",
-            "columns": "id (int), total (int)",
+            "columns": "id (int), total (int, masked: truncate)",
         }
     ]

@@ -42,7 +42,7 @@ from provisa.api.admin.types import AvailableColumnType, MutationResult
 from provisa.api.errors import ApiError
 from provisa.core import schema_org
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.models import DataContract, Source, SourceType
+from provisa.core.models import Source, SourceType
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import source as source_repo
 from provisa.dbt.manifest import from_definitions, parse_manifest, to_definitions
@@ -366,17 +366,24 @@ async def _members(db: Database, product_id: str) -> list[int]:
         return await data_product_repo.member_table_ids(conn, product_id)
 
 
-async def _contract(db: Database, table_id: int) -> DataContract:
+async def _promised(db: Database, table_id: int) -> dict[str, bool]:
+    """The member's columns, each with whether it is required (never null), as stored."""
     async with db.acquire() as conn:
-        row = (
+        rows = (
             await conn.execute_core(
-                select(schema_org.registered_tables.c.contract).where(
-                    schema_org.registered_tables.c.id == table_id
-                )
+                select(
+                    schema_org.table_columns.c.column_name, schema_org.table_columns.c.not_null
+                ).where(schema_org.table_columns.c.table_id == table_id)
             )
-        ).fetchone()
-    assert row is not None
-    return DataContract.model_validate(row.contract)
+        ).fetchall()
+    return {r.column_name: bool(r.not_null) for r in rows}
+
+
+async def _offers(db: Database, product_id: str) -> list[str]:
+    from provisa.core.repositories import data_product_offer as offers
+
+    async with db.acquire() as conn:
+        return [o["name"] for o in await offers.list_offers(conn, product_id)]
 
 
 async def _refusal(code: str) -> ApiError:
@@ -525,17 +532,17 @@ async def test_a_product_carries_its_owner_and_tests(db, registered, grouped):
 
 
 @pytest.mark.asyncio
-async def test_each_member_carries_its_schema_promise_and_version(db, registered, grouped):
+async def test_each_member_carries_its_schema_promise_and_its_product_its_default_offer(
+    db, registered, grouped
+):
+    """REQ-2180: a product's contracts are derived from its offers, their schema its members'
+    columns: what the manifest promises of the columns is written on them, so every contract
+    derived states it. A dbt product starts, as every product does, with its default offer."""
     await _hold(db, grouped)
     await _register()
-    orders = await _contract(db, await _table_id(db, "customer_orders"))
-    assert orders.version == "2"
-    assert orders.description == "One row per customer with lifetime value."
-    assert [v.contract.version for v in orders.versions] == ["2"]
-    promised = {c.name: c.required for c in orders.versions[0].columns}
-    assert promised == {"customer_id": True, "customer_name": False, "lifetime_value": False}
-    events = await _contract(db, await _table_id(db, "order_events"))
-    assert events.version == "0.1.0"
+    orders = await _promised(db, await _table_id(db, "customer_orders"))
+    assert orders == {"customer_id": True, "customer_name": False, "lifetime_value": False}
+    assert await _offers(db, "finance") == ["default"]
 
 
 @pytest.mark.asyncio

@@ -80,8 +80,7 @@ function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTa
     testId: `data-contract-history-${tableId}`,
     rowTestId: (row) => rowId(row.version),
     rows: [...versions].reverse().map((v) => ({
-      version: v.contract.version,
-      status: v.contract.status,
+      version: v.version,
       saved_at: v.saved_at,
       saved_by: v.saved_by,
       changes: v.changes,
@@ -106,14 +105,6 @@ function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTa
               </Badge>
             )}
           </Stack>
-        ),
-      },
-      {
-        name: "status",
-        cell: (row) => (
-          <span data-testid={`${rowId(row.version)}-status`}>
-            {t(`dataProductsTab.contract.status.${String(row.status)}`)}
-          </span>
         ),
       },
       {
