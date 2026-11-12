@@ -115,6 +115,16 @@ titled the same way.
   the view gives it. Shown on hover or keyboard focus. Each control's tooltip is drawn in place
   (so it shows in full screen), on one line beside its button: an in-place Tip is as wide as its
   text (`max-content`, up to the tip's 340px), not as wide as the bar.
+- The bar is the one stack every graph's canvas has, 2D and 3D (`CanvasControls.tsx`:
+  `CanvasControls`, `CanvasButton`, `FullscreenButton`; `canvas-controls.css`). A 3D view
+  (`profile3d/Stage3D.tsx`: the ontology graph and the table profile views) holds, in this order,
+  Reset view, Rotate, Grid (where its scene draws a floor grid), full screen and download (image
+  or a recorded turn, `ExportMenu.tsx`). Rotate and Grid are toggles: pressed (`aria-pressed`,
+  the light variant) while on, read from and written to the view's remembered settings. What is
+  drawn and how it is arranged stays in the view's toolbar; Rotate, Grid and Reset view are not
+  toolbar buttons in 3D. A 3D view's legend stands beside the stack, not under it. The ontology
+  explorer's lane diagram keeps its toolbar Reset view: it folds every table back as well as
+  fitting (`fitClear`), where the stack's fit fits the whole image (`fitWhole`).
 - One legend, top-right (clear of the application's floating buttons at the bottom-right): the
   types drawn, each a band swatch, icon and name.
 - Top-left: what the view lays over the canvas (the ERD's tables new since a save), then the hint.

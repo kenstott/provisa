@@ -152,7 +152,8 @@
     "hopsFromMatches": "Saltos a partir das correspondências",
     "relatedTables": "Tabelas relacionadas",
     "restOfModel": "Mostrar o resto do modelo",
-    "lateral": "Arestas laterais",
+    "lateral": "Associações",
+    "lateralHelp": "Mostra as linhas que ligam termos sem os hierarquizar: relacionado, sinônimo, termo preferido, tradução e antônimo.",
     "grounding_grounded": "Ancorado",
     "grounding_grounded_pending": "Ancorado, por meio de um rascunho"
   }

@@ -65,6 +65,7 @@ function stage(exportable: ExportableScene) {
       exportable={exportable}
       exportName="ontology"
       testId="x"
+      controls={{ testId: "x", onReset: () => {}, rotate: { value: true, onChange: () => {} } }}
     />,
   );
 }
