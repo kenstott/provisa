@@ -45,7 +45,7 @@ on:
         type: boolean
         default: false
       ui:
-        description: none | chromium | chromium-with-deps (.github/actions/setup-ui).
+        description: none | chromium (.github/actions/setup-ui).
         type: string
         default: none
       ui-timeout:

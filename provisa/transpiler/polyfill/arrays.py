@@ -223,15 +223,63 @@ ARRAY_UPPER = Feature(
     ),
 )
 
+#: The sources a statement goes to directly that hold no array type: array_length is refused there.
+_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift")
+
+#: The first dimension's length, NULL for an empty or NULL array, on each dialect whose own array
+#: length takes no dimension: the source's length, where it is above 0 (BigQuery's answers 0 of a
+#: NULL array, Hive's and Databricks' -1).
+_FIRST_LENGTH: dict[str, str] = {
+    "duckdb": "CAST(CASE WHEN len($a) > 0 THEN len($a) END AS INTEGER)",
+    **_on_trino("CAST(CASE WHEN cardinality($a) > 0 THEN cardinality($a) END AS INTEGER)"),
+    "clickhouse": "CAST(CASE WHEN length($a) > 0 THEN length($a) END AS Nullable(Int32))",
+    "snowflake": "CAST(CASE WHEN ARRAY_SIZE($a) > 0 THEN ARRAY_SIZE($a) END AS INTEGER)",
+    "bigquery": "CASE WHEN ARRAY_LENGTH($a) > 0 THEN ARRAY_LENGTH($a) END",
+    "databricks": "CAST(CASE WHEN SIZE($a) > 0 THEN SIZE($a) END AS INT)",
+    "hive": "CAST(CASE WHEN SIZE($a) > 0 THEN SIZE($a) END AS INT)",
+    "druid": "CASE WHEN ARRAY_LENGTH($a) > 0 THEN ARRAY_LENGTH($a) END",
+}
+
+#: The dialects whose own array length answers the first dimension's only (sqlglot drops a
+#: dimension argument: "Cannot transpile dimension argument"): any other is refused.
+_FIRST_ONLY = ("snowflake", "bigquery", "databricks", "hive", "druid")
+
+
+def _first_only(dialect: str) -> Refusal:
+    return Refusal("0A000", f"array_length() reads only dimension 1 on {dialect}")
+
+
 ARRAY_LENGTH = Feature(
     "array_length",
     FAMILY,
     "The length of a dimension; NULL for a dimension the array does not have.",
     read=Side(
         rules=(
+            # The first dimension, written as the number 1: its length on every dialect with arrays.
+            Rule(
+                "array_length($a::anyarray, 1)",
+                {**_no_form_on("array_length", _ARRAY_LESS), **_FIRST_LENGTH},
+            ),
             # generate_subscripts(a, d) is read as its reverse-false form (pg_functions).
-            Rule("array_length($a::anyarray, $d::integer)", _DIMENSION_LENGTH),
-        )
+            Rule(
+                "array_length($a::anyarray, $d::integer)",
+                {
+                    **_no_form_on("array_length", _ARRAY_LESS),
+                    **_DIMENSION_LENGTH,
+                    **{dialect: _first_only(dialect) for dialect in _FIRST_ONLY},
+                },
+            ),
+        ),
+        limitations={
+            dialect: (
+                Limitation(
+                    "Only the first dimension, written as the number 1: any other dimension, or one"
+                    " not written as a number, is refused, where PostgreSQL answers its length or"
+                    " NULL.",
+                ),
+            )
+            for dialect in _FIRST_ONLY
+        },
     ),
 )
 

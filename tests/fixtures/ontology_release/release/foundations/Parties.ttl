@@ -1,0 +1,38 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix fnd: <https://example.org/mini-fibo/foundations/Parties/> .
+
+<https://example.org/mini-fibo/foundations/Parties/> a owl:Ontology ;
+    rdfs:label "Parties" ;
+    owl:versionIRI <https://example.org/mini-fibo/2026Q4/foundations/Parties/> .
+
+fnd:Party a owl:Class ;
+    rdfs:label "party"@en , "partie"@fr ;
+    skos:definition "A person or organization that takes part in an agreement."@en .
+
+fnd:Person a owl:Class ;
+    rdfs:subClassOf fnd:Party ;
+    rdfs:label "person"@en ;
+    skos:definition "A human being."@en .
+
+fnd:Organization a owl:Class ;
+    rdfs:subClassOf fnd:Party ;
+    owl:disjointWith fnd:Person ;
+    rdfs:label "organization"@en ;
+    skos:definition "A group of people organized for a purpose."@en ;
+    skos:editorialNote "Kept apart from person on purpose."@en ;
+    dcterms:source <https://www.iso.org/standard/12345.html> .
+
+fnd:isControlledBy a owl:ObjectProperty ;
+    rdfs:label "is controlled by"@en ;
+    rdfs:domain fnd:Party ;
+    rdfs:range fnd:Party .
+
+fnd:hasLegalName a owl:DatatypeProperty ;
+    rdfs:label "has legal name"@en ;
+    rdfs:domain fnd:Organization ;
+    rdfs:range xsd:string .

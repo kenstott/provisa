@@ -89883,68 +89883,73 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the live group marked live. Clicking a schema property or a quality check opens its detail in the same
     stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.
     (Amended 2026-10-29, A PRODUCT''S CONTRACTS ARE A LIST BENEATH IT:) Maintainer 2026-10-29: every output
-    port other than a command port has exactly one contract. In the data products list, an expanded product
-    shows its contracts as a secondary list beneath its Lineage panel, one row per contract (output port,
-    contract version, status, consumers, SLA headline, last checked, and a warning where one applies), collapsed
-    at first. Expanding a row shows that contract''s details beneath it in the same dense card panels a
-    product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
-    changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
-    are no longer a card in the product''s top panels; the product''s other cards, its output ports among
-    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.
-    (Amended 2026-10-29, A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29:
-    every saved version of a contract is kept, with when and by whom it was saved. Each version records
-    its differences from the one before it, and a difference that can break a consumer (a field removed
-    or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
-    is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
-    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
-    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
-    change is not yet in force while its version''s status is proposed or draft, meaning every version after
-    the last one in neither status. Who saved a version is visible to anyone who can read the data product.
-    (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
-    means a data quality check a product makes on its output ports, and nothing else. Columns are never
-    called promised, and fields is not a second name for them: a contract declares its columns. The contract
-    view''s card and the contract editor''s field are both Columns, and the quality card is Promises. (Amended
-    2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
-    reference to a product''s expectations, the data quality checks on its input ports. They belong to the
-    consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
-    by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
-    2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
-    level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
-    TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
-    tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
-    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-11-01, HOW TO USE:)
-    Maintainer 2026-11-01, on the contract''s servers section: "do this". The contract view''s Servers section
-    becomes How to use, with three columns: Surface, Address and Try it. Try it is a complete URI where
-    one is enough (REST, JSON:API, the OpenAPI description) and a runnable statement using the table''s
-    real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
-    the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
-    a query. The instructions are generated in the contract builder so exported contracts carry them; the
-    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-11-01,
-    HOW TO USE, BY LINK:) Maintainer 2026-11-01: "they could be hyperlinks to show an example on the related
-    provisa ui explore", "just a bit more expanded explanation then the access patterns". This replaces
-    the How to use amendment''s runnable statements and its generation in the contract builder. How to use
-    has Surface, Address, a sentence on how the surface is used, and a link that opens the example in the
-    matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
-    the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
-    who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
-    carries the standard servers field and no instructions. (Amended 2026-11-01, HOW TO USE NEEDS ACCESS:)
-    Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
-    well." How to use says on every surface that it works only once access is granted, and names who grants
-    it, from the contract''s roles and first-level approvers. (Amended 2026-11-01, THE ADDRESS IS THE MOST
-    SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI that points specifically to the requested data
-    set (like openapi for example) that might provide a little more vvalue." The Address column of How to
-    use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
-    the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
-    and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
-    table. (Amended 2026-11-01, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
-    narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
-    specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
-    generated description takes a table filter beside role and domains, and the contract''s address uses
-    it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S COLUMNS:) A contract holds no columns of
-    its own and its editor has no column selection, superseding the 2026-10-30 text that a contract declares
-    its columns. Each saved version snapshots its member table''s columns, and a version''s field differences
-    compare snapshots, so a field removed or renamed, a type changed incompatibly or a field made required
-    is still marked breaking (maintainer 2026-11-08).'
+    port other than a command port has exactly one contract. [SUPERSEDED by REQ-2180, 2026-11-11 -- contracts
+    are derived per offer and shown on each offer''s card (REQ-2180 THE UI SHOWS CONTRACTS PER OFFER); there
+    is no product-wide contracts list and no hand-edited contract. Kept here for history; do not implement
+    against it.] In the data products list, an expanded product shows its contracts as a secondary list
+    beneath its Lineage panel, one row per contract (output port, contract version, status, consumers, SLA
+    headline, last checked, and a warning where one applies), collapsed at first. [END SUPERSEDED BLOCK]
+    [SUPERSEDED by REQ-2180, 2026-11-11 -- contracts are derived per offer and shown on each offer''s card
+    (REQ-2180 THE UI SHOWS CONTRACTS PER OFFER); there is no product-wide contracts list and no hand-edited
+    contract. Kept here for history; do not implement against it.] Expanding a row shows that contract''s
+    details beneath it in the same dense card panels a product uses (details, fields promised, SLAs and
+    freshness, quality promises, consumers, versions and changes); several may be open at once, and a contract''s
+    details are read when its row opens. [END SUPERSEDED BLOCK] The contracts are no longer a card in the
+    product''s top panels; the product''s other cards, its output ports among them, are unchanged. A link
+    naming a product and a contract opens that product with that contract expanded. (Amended 2026-10-29,
+    A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29: every saved version
+    of a contract is kept, with when and by whom it was saved. Each version records its differences from
+    the one before it, and a difference that can break a consumer (a field removed or renamed, a type changed
+    incompatibly, a field made required, a promised SLA or quality check weakened) is marked breaking. A
+    contract row in the product''s contracts list warns of a breaking change not yet in force, and its Versions
+    and changes card lists the versions and shows each one''s differences. (Amended 2026-10-29, WHAT NOT
+    YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking change is not yet in
+    force while its version''s status is proposed or draft, meaning every version after the last one in
+    neither status. Who saved a version is visible to anyone who can read the data product. (Amended 2026-10-29,
+    A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise means a data quality
+    check a product makes on its output ports, and nothing else. Columns are never called promised, and
+    fields is not a second name for them: a contract declares its columns. The contract view''s card and
+    the contract editor''s field are both Columns, and the quality card is Promises. (Amended 2026-10-29,
+    EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no reference to
+    a product''s expectations, the data quality checks on its input ports. They belong to the consuming
+    product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried by ODPS
+    outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer 2026-10-30:
+    Support and team, Servers, Pricing, and Custom properties and tags are cards at the same level as Details,
+    Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE TIERS:) Maintainer
+    2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium tables in a two-column
+    flow; large tables, Servers and Columns, full width at the bottom. Fields not declared fold into one
+    quiet line per panel, in place of a row each. (Amended 2026-11-01, HOW TO USE:) Maintainer 2026-11-01,
+    on the contract''s servers section: "do this". The contract view''s Servers section becomes How to use,
+    with three columns: Surface, Address and Try it. Try it is a complete URI where one is enough (REST,
+    JSON:API, the OpenAPI description) and a runnable statement using the table''s real names otherwise
+    (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read the table, Try it shows
+    who to ask, from the contract''s roles and first-level approvers, instead of a query. The instructions
+    are generated in the contract builder so exported contracts carry them; the standard servers field stays
+    as it is, and a token appears only as a placeholder. (Amended 2026-11-01, HOW TO USE, BY LINK:) Maintainer
+    2026-11-01: "they could be hyperlinks to show an example on the related provisa ui explore", "just a
+    bit more expanded explanation then the access patterns". This replaces the How to use amendment''s runnable
+    statements and its generation in the contract builder. How to use has Surface, Address, a sentence on
+    how the surface is used, and a link that opens the example in the matching Explore page, using the handlers
+    Access Patterns uses. A surface with no page of its own opens the page that speaks its language: Flight
+    SQL opens SQL. When the viewing role cannot read the table, who to ask replaces the link, from the contract''s
+    roles and first-level approvers. An exported contract carries the standard servers field and no instructions.
+    (Amended 2026-11-01, HOW TO USE NEEDS ACCESS:) Maintainer 2026-11-01: "they won''t work until access
+    is granted. so instructions should say that as well." How to use says on every surface that it works
+    only once access is granted, and names who grants it, from the contract''s roles and first-level approvers.
+    (Amended 2026-11-01, THE ADDRESS IS THE MOST SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI
+    that points specifically to the requested data set (like openapi for example) that might provide a little
+    more vvalue." The Address column of How to use shows the most specific URI each surface has for the
+    table: the table''s own URI on REST and JSON:API, the OpenAPI description narrowed as far as it can
+    be, and a connection URI with the schema for pgwire and Flight SQL. A surface with one endpoint per
+    server shows that endpoint, and its link carries the table. (Amended 2026-11-01, OPENAPI NARROWS TO
+    THE TABLE:) Maintainer 2026-11-01: "if you couldn''t narrow to a table what exactly would the point
+    be". This replaces "as far as it can be" in the most specific address amendment: the OpenAPI description
+    in How to use is narrowed to the one table. The generated description takes a table filter beside role
+    and domains, and the contract''s address uses it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S
+    COLUMNS:) A contract holds no columns of its own and its editor has no column selection, superseding
+    the 2026-10-30 text that a contract declares its columns. Each saved version snapshots its member table''s
+    columns, and a version''s field differences compare snapshots, so a field removed or renamed, a type
+    changed incompatibly or a field made required is still marked breaking (maintainer 2026-11-08).'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -91873,8 +91878,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     through a role every member holds, which is checked when it is marked open and refused naming what is
     not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
     the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
-    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
-    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    SANITIZED:) Maintainer 2026-11-11. [SUPERSEDED by REQ-2180, 2026-11-11 -- the sections are summary rows
+    that expand in place, not tabs (THE PRODUCT PAGE IS SUMMARY ROWS). Kept here for history; do not implement
+    against it.] A product''s page has a Profile tab beside Offers, Quality, Lineage, Related and Requests.
+    [END SUPERSEDED BLOCK] Wherever a profile is shown -- on that tab, or as part of an offer that includes
     profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
     PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
     no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
@@ -91889,7 +91896,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity provider, it decides, and Provisa enforces whatever its claims say. With none, the local default
     applies an expiry cancel at once -- the date was agreed when the grant was made, so it needs no second
     approval -- as the matching ordinary removal, attributed to the expiry; access ends within the run''s
-    interval. Provisa holds no separate read-time check of an expiry date.'
+    interval. Provisa holds no separate read-time check of an expiry date. (Amended 2026-11-11, THE PRODUCT
+    PAGE IS SUMMARY ROWS:) Maintainer 2026-11-11, after reviewing another product''s data product page,
+    which shows every panel open with a header and subtitle each and reads as overwhelming. A product''s
+    detail is a short header (name, owner, domain, at most three facts: consumers, quality, freshness; and
+    its support contact) above one section per subject in a fixed order -- Offers, Quality, Profile, Lineage,
+    Related, Requests (owners only), Access (its ways in), Ask (suggested questions run as the reader''s
+    role) -- each collapsed to a one-line summary computed from its content, never typed, so the reader
+    scans every section''s state at once and expands one in place for detail. Offers is open at first. Sections
+    have no subtitles, and a graph is drawn only inside an expanded section. Each offer carries its terms
+    of use -- purpose, usage and limitations -- in prose, shown on its card and in its contract. (Amended
+    2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS:) Maintainer 2026-11-11. The request form
+    names who will approve it (the product''s owner, or the authority the request hook reaches); asks what
+    kind of consumer the request is for -- a person, a team, another data product, or an agent; asks its
+    purpose, prefilled from the offer''s stated usage and editable; shows the offer''s terms of use; and
+    is sent only once the requester agrees to them. (Amended 2026-11-11, QUALITY IS STATUS AND COUNTS, NOT
+    A SCORE:) Maintainer 2026-11-11: there is no single quality score for a product or dataset; a weighted
+    number hides which check failed and whether it matters for the reader''s use. Quality is summarised
+    per offer as the worst outcome of the checks its contract promises, how many passed and failed, the
+    failing checks named, and when they last ran (for example: 22 checks, 1 failing: customer_id unique,
+    checked 2h ago). Anywhere a sortable figure is wanted it is the plain count of promised checks passing
+    out of those promised.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -95197,8 +95224,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and by nothing
     else. The component owns the library''s setup, one prescriptive visual language (a node shape with a
     type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries
-    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid
-    canvas, one place for the controls and the legend, one hover and selection state), its layout presets,
+    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, [SUPERSEDED
+    by REQ-2239, 2026-11-11 -- the canvas is plain; a background grid carries no information (A PLAIN CANVAS
+    AND READABLE LANES). Kept here for history; do not implement against it.] a dot-grid canvas, [END SUPERSEDED
+    BLOCK] one place for the controls and the legend, one hover and selection state), its layout presets,
     focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node''s
     type and the layout preset; it sets no colour, shape or control of its own. The visual language takes
     its tokens from the detail cards. A test fails any code outside the component that imports the graph
@@ -95215,7 +95244,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     associative table that exists to connect others, REQ-1588) is drawn as a diamond, as Chen''s ER notation
     draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
     colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
-    with arrows; dashed lines mean pending or indirect.'
+    with arrows; dashed lines mean pending or indirect. (Amended 2026-11-11, A PLAIN CANVAS AND READABLE
+    LANES:) Maintainer 2026-11-11, from the ontology term graph: the canvas is plain, with no background
+    grid. A lane''s group box bounds only its own nodes, with a gap between lanes, so boxes never overlap.
+    A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
+    is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
+    over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
+    and zooming is an explicit gesture.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
@@ -95255,3 +95290,60 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Forward restores the same panel on the same tab. Each page uses one parameter naming its object, read
     and written in one shared place, so every link into a detail view (for example from a refused delete,
     REQ-2240) is that same URL.'
+
+- id: REQ-2242
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: constraint
+  unit_test: true
+  description: 'Maintainer 2026-11-11: Provisa never changes sqlglot''s own classes at runtime. Every change
+    to how a dialect tokenizes, parses or generates (today five assignments in provisa/transpiler: DuckDB''s
+    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types) is
+    made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses and
+    expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa does
+    not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc), whose
+    classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives
+    byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the
+    plain build stays, and the measurement is recorded.'
+
+- id: REQ-2243
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition:
+    how the measure or derived value is computed, in business language (for example net revenue is gross
+    order value less refunds and discounts, on the order date, in the order''s currency). It is governed
+    like the definition (approved, versioned, exported with the term, written back on ontology export),
+    and an ontology import maps a term''s calculation annotation onto it. Everyone who can read the term
+    reads its method. [SUPERSEDED by REQ-2243, 2026-11-11 -- a dataset shows the governed metrics it uses
+    with their definitions, not column formulas (A DATASET SHOWS ITS METRICS). Kept here for history; do
+    not implement against it.] A computed column grounded in the term shows the method with its definition;
+    the column''s own formula (its expression) is the implementation and is shown only to a reader who can
+    read every input it uses (REQ-2152). [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2243, 2026-11-11 -- a
+    dataset shows the governed metrics it uses with their definitions, not column formulas (A DATASET SHOWS
+    ITS METRICS). Kept here for history; do not implement against it.] (Amended 2026-11-11, A VIEW''S FORMULA
+    IS ITS SEMANTIC SQL:) Maintainer 2026-11-11: for a computed column of a view or a materialized view,
+    the formula shown is the column''s expression in the view''s semantic SQL definition (over semantic
+    names, as the modeller wrote it), never the physical SQL the view compiles to or the MV''s stored table;
+    the inputs whose read rights decide who sees it are that expression''s semantic columns. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, A DATASET SHOWS ITS METRICS:) Maintainer 2026-11-11, correcting the earlier
+    reading of another product: what is shown for a dataset is not a column''s formula but the governed
+    metrics (REQ-1317, REQ-1319) it uses, each with its name, description and AI definition. A view declared
+    from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
+    references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
+    A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
+    are listed as the reader''s role may see them (visible_to).'
+  scenario: |
+    Given a glossary term "net revenue" with a calculation method
+    And a computed column grounded in that term whose formula reads a masked column
+    When a reader without rights to the masked column opens the column
+    Then the reader sees the term's definition and calculation method
+    And the reader does not see the column's formula

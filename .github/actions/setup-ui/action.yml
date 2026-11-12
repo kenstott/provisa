@@ -17,10 +17,9 @@ inputs:
     default: "false"
   playwright:
     description: >-
-      none | chromium | chromium-with-deps. Plain `chromium` installs no system packages: the
-      ubuntu-24.04 runner image already carries Chromium's shared libraries and fonts, and the
-      apt refresh `--with-deps` triggers has stalled past a job's timeout when the mirror was
-      unreachable (run 32158624857: 28.5 minutes, zero tests run).
+      none | chromium. `chromium` installs no system packages: the ubuntu runner image already
+      carries Chromium's shared libraries and fonts. `--with-deps` is not offered: it runs a full
+      apt update, which fails (apt exit 100) or stalls when an Ubuntu mirror is unreachable.
     default: none
 runs:
   using: composite
@@ -50,9 +49,3 @@ runs:
       shell: bash
       working-directory: provisa-ui
       run: npx playwright install chromium
-
-    - name: Install Playwright browser (with system packages)
-      if: inputs.playwright == 'chromium-with-deps'
-      shell: bash
-      working-directory: provisa-ui
-      run: npx playwright install --with-deps chromium
