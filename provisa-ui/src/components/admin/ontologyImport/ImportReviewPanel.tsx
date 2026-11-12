@@ -130,8 +130,8 @@ export function ImportReviewPanel({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [useDefinition, setUseDefinition] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<ImportItem | null>(null);
-  const [aligning, setAligning] = useState<ImportItem | null>(null);
-  const [applying, setApplying] = useState(false);
+  const [alignFor, setAlignFor] = useState<ImportItem | null>(null);
+  const [applyOpen, setApplyOpen] = useState(false);
 
   const load = useCallback(async () => {
     setReview(await fetchOntologyImport(importId));
@@ -225,7 +225,7 @@ export function ImportReviewPanel({
         <Group gap="xs" data-toolbar>
           <Button
             leftSection={<Upload size={14} />}
-            onClick={() => setApplying(true)}
+            onClick={() => setApplyOpen(true)}
             data-testid="ontology-apply-btn"
           >
             {t("ontologyImport.apply")}
@@ -361,7 +361,7 @@ export function ImportReviewPanel({
                           size="compact-xs"
                           variant="subtle"
                           leftSection={<Plus size={12} />}
-                          onClick={() => setAligning(item)}
+                          onClick={() => setAlignFor(item)}
                           data-testid={`ontology-item-align-${item.id}`}
                         >
                           {t("ontologyImport.addAlignment")}
@@ -448,25 +448,25 @@ export function ImportReviewPanel({
           }}
         />
       )}
-      {aligning && (
+      {alignFor && (
         <AddAlignmentDialog
           importId={importId}
-          item={aligning}
+          item={alignFor}
           items={review.items}
           terms={terms}
-          onClose={() => setAligning(null)}
+          onClose={() => setAlignFor(null)}
           onAdded={() => {
-            setAligning(null);
+            setAlignFor(null);
             void act(async () => undefined);
           }}
         />
       )}
-      {applying && (
+      {applyOpen && (
         <ApplyImportDialog
           review={review}
-          onClose={() => setApplying(false)}
+          onClose={() => setApplyOpen(false)}
           onApplied={(result) => {
-            setApplying(false);
+            setApplyOpen(false);
             // The glossary page reads its terms again: the import made and aligned some.
             window.dispatchEvent(new Event("provisa:glossary-changed"));
             notifications.show({
