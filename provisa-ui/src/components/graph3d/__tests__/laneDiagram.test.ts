@@ -9,9 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2174 (amended 2026-10-28; 2026-11-07, WHAT THE GRAPH DRAWS): the 2D view's lane diagram --
-// products, their tables, those tables' columns and the terms tied to them, left to right; rank
-// edges set the term lane's levels and every other term link is an arc over it; a table's columns
-// tied to no term one node until expanded; a product's hops counted along the lanes; Mermaid text.
+// products, their tables, those tables' columns and the terms tied to them, left to right; a rank
+// edge joins a term to its broader term inside the term lane and every other term link is an arc
+// over it; the term lane placed by the lanes preset, its terms level with their columns (REQ-2239,
+// amended 2026-11-11); a table's columns tied to no term one node until expanded; a product's hops
+// counted along the lanes; Mermaid text.
 
 import { describe, expect, it } from "vitest";
 import mermaid from "mermaid";
@@ -19,18 +21,16 @@ import { NO_FILTERS, visibleGraph, type GraphData, type LayerId } from "../graph
 import {
   LANES,
   connectedTo,
-  drawnCrossings,
   laneDiagram,
   laneMermaid,
   moreId,
-  placedLaneOrder,
-  stackTerms,
-  TERM_HEIGHT,
   type At,
   type Lane,
 } from "../laneDiagram";
 import { tipPlacement } from "../../provisa-graph/tipPlacement";
+import { NODE_GAP } from "../../provisa-graph/lanes";
 import { SIZE } from "../../provisa-graph/tokens";
+import { placedDiagram } from "./crossingFixtures";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
@@ -391,10 +391,10 @@ describe("the product lane, read from the graph", () => {
   });
 });
 
-describe("the term lane's own order (a line crossing others that need not)", () => {
-  // Crop year binds a column of both tables; loss ratio and premium one each. With the terms
-  // kept in the order ELK packed them -- crop year last, at the bottom -- crop year's line must
-  // cross another; with crop year between the other two, none does.
+describe("the term lane's places (REQ-2239, amended 2026-11-11, THE SCORE IS THE ANGLE OF THE LINES)", () => {
+  // Crop year binds a column of both tables; loss ratio and premium one each. Loss ratio and premium
+  // sit level with their columns; crop year sits level with one of its two (either leaves its lines
+  // as flat in total), on the row of fewer crossings, the higher on a tie.
   const data: GraphData = {
     nodes: [
       { id: "term:loss", type: "term", label: "loss ratio" },
@@ -415,77 +415,43 @@ describe("the term lane's own order (a line crossing others that need not)", () 
     ],
   };
   const d = laneDiagram(data, data, new Set());
-  const FIRST: Record<string, At> = {
-    "term:loss": { x: 800, y: 0 },
-    "term:premium": { x: 800, y: 40 },
-    "term:year": { x: 800, y: 80 },
-    "c:claims.year": { x: 600, y: 0 },
-    "c:claims.loss": { x: 600, y: 40 },
-    "c:policies.year": { x: 600, y: 80 },
-    "c:policies.premium": { x: 600, y: 120 },
-    "t:claims": { x: 400, y: 20 },
-    "t:policies": { x: 400, y: 100 },
-  };
-  const first = (id: string) => FIRST[id];
-  const drawn = (lanes: string[][]) => {
-    const at = stackTerms(d, lanes[0], first);
-    for (const row of lanes.slice(1)) {
-      if (row.length === 0) continue;
-      const ys = row.map((id) => first(id).y);
-      const lo = Math.min(...ys);
-      const hi = Math.max(...ys);
-      row.forEach((id, i) =>
-        at.set(id, { x: first(id).x, y: lo + ((i + 0.5) * (hi - lo)) / row.length }),
-      );
-    }
-    return (id: string) => at.get(id) as At;
-  };
 
-  it("draws the crop-year graph with no crossing, crop year between the terms beside it", () => {
-    const lanes = placedLaneOrder(d, first);
-    const at = drawn(lanes);
-    expect(drawnCrossings(d.links, at)).toBe(0);
-    expect(lanes[0].indexOf("term:year")).toBe(1);
+  it("draws the crop-year graph with loss ratio and premium level, crop year level with its first column", () => {
+    const at = placedDiagram(d);
+    expect(at("term:loss").y).toBe(at("c:claims.loss").y);
+    expect(at("term:premium").y).toBe(at("c:policies.premium").y);
+    // Either column of crop year crosses one line (the columns' order is the tables'): the higher.
+    expect(at("term:year").y).toBe(at("c:claims.year").y);
   });
 
-  it("keeps a block of terms joined by rank lines in the shape ELK gave it", () => {
+  it("keeps a parent that binds no column on the row above its child", () => {
     const tree = laneDiagram(FOCUS_DATA, FOCUS_DATA, new Set());
-    const at = (id: string): At =>
-      ({ "term:party": { x: 800, y: 0 }, "term:customer": { x: 800, y: 62 } })[id] ?? { x: 400, y: 0 };
-    const moved = stackTerms(tree, ["term:party", "term:customer"], at);
-    const party = moved.get("term:party") as At;
-    const customer = moved.get("term:customer") as At;
-    expect(customer.y - party.y).toBeCloseTo(62, 9);
-    expect(customer.x - party.x).toBeCloseTo(0, 9);
+    const at = placedDiagram(tree);
+    expect(at("term:customer").y).toBe(at("c:customers.email").y);
+    expect(at("term:customer").y - at("term:party").y).toBe(SIZE.nodeHeight + NODE_GAP);
+    expect(at("term:customer").x).toBe(at("term:party").x);
   });
 
-  it("stacks blocks of terms a gap apart at the height ProvisaGraph draws a term", () => {
-    // REQ-2239: a term is drawn SIZE.nodeHeight tall; blocks stacked at an older, shorter
-    // height overlapped by the difference (Customer over Order in the product's lane diagram).
+  it("gives every term a row of its own, a node gap apart at the height ProvisaGraph draws a term", () => {
     const tree = laneDiagram(FOCUS_DATA, FOCUS_DATA, new Set());
-    const order = ["term:party", "term:customer", "term:order"];
-    const at = (id: string): At =>
-      ({
-        "term:party": { x: 800, y: 0 },
-        "term:customer": { x: 800, y: 62 },
-        "term:order": { x: 800, y: 0 },
-      })[id] ?? { x: 400, y: 0 };
-    const moved = stackTerms(tree, order, at);
-    const ys = order.map((id) => (moved.get(id) as At).y).sort((a, b) => a - b);
-    expect(TERM_HEIGHT).toBe(SIZE.nodeHeight);
+    const at = placedDiagram(tree);
+    const ys = ["term:party", "term:customer", "term:order", "term:invoice"]
+      .map((id) => at(id).y)
+      .sort((a, b) => a - b);
     for (let i = 1; i < ys.length; i++)
-      expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(SIZE.nodeHeight);
+      expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(SIZE.nodeHeight + NODE_GAP);
   });
 
-  it("wraps terms with no line out of the lane below the stack, not down the diagram", () => {
+  it("puts terms with no line out of the lane below the rest, each on its own row", () => {
     const lone = Array.from({ length: 12 }, (_, i) => `term:lone${i}`);
     const only: GraphData = {
       nodes: lone.map((id) => ({ id, type: "term" as const, label: id })),
       edges: [],
     };
-    const l = laneDiagram(only, only, new Set());
-    const moved = stackTerms(l, lone, () => ({ x: 0, y: 0 }), () => 120);
-    expect(new Set(lone.map((id) => (moved.get(id) as At).y)).size).toBeLessThan(lone.length);
+    const at = placedDiagram(laneDiagram(only, only, new Set()));
+    const ys = lone.map((id) => at(id).y);
+    expect(new Set(ys).size).toBe(lone.length);
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBe(SIZE.nodeHeight + NODE_GAP);
   });
 });
 

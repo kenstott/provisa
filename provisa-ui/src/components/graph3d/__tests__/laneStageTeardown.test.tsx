@@ -62,6 +62,8 @@ vi.mock("cytoscape", () => {
         };
       },
       nodes: () => none,
+      // The lanes preset reads the lines to place the term lane: none drawn here.
+      edges: () => none,
       elements: () => none,
       getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
