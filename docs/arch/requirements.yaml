@@ -95105,7 +95105,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     for the first of them, the others a click away: a preview of its first rows, read through the governed
     query as the person''s own role; a button that opens the query explorer with a query on it ready to
     run; and the same table through the other access methods, each ready to copy (the GraphQL query, the
-    connection string for a SQL client over pgwire, the REST and MCP equivalents).'
+    connection string for a SQL client over pgwire, the REST and MCP equivalents). (Amended 2026-11-12,
+    SEVERAL TABLES ARE PICKED WITH THE STANDARD MULTI-SELECT:) Maintainer 2026-11-11, restated 2026-11-12:
+    Register Table has one Table field, the standard multi-select picker used on every other page, which
+    takes one table or many; there is no One table / Several tables switch and no list of checkboxes made
+    for this form. A table already registered is not offered. A table that needs input is offered but cannot
+    be picked, with its reason, shown the way the picker shows any option that cannot be picked. The submit
+    button counts the tables picked. The Schema field is absent, not disabled, when the source has one schema
+    or its configuration fixes it to one. The form holds only Source, Domain, Schema when it applies, and
+    Tables: the SQL alias and every other setting of one table are edited in the table''s detail panel after
+    it is registered.'
   scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
