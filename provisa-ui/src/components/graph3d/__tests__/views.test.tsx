@@ -141,14 +141,20 @@ describe("a product's panel", () => {
     // REQ-2174 (amended 2026-11-07): it opens at 1 hop with Related tables on.
     expect(new Set(focuses().map(String))).toEqual(new Set(["p:c360,1"]));
     expect(reads.scopes.at(-1)?.layers).toContain("related");
-    // Its snippet draws the product and its tables, counted from the product alone.
+    // Its snippet draws the product, its tables, the columns tied to terms and those terms (at no
+    // hop), and the term a step from them (REQ-2174, amended 2026-11-12).
     await waitFor(() =>
       expect(nodeIds(drawn())).toEqual(
-        expect.arrayContaining(["p:c360", "t:customers", "t:orders"]),
+        expect.arrayContaining([
+          "p:c360",
+          "t:customers",
+          "t:orders",
+          "c:customers.email",
+          "term:customer",
+          "term:party",
+        ]),
       ),
     );
-    expect(nodeIds(drawn())).not.toContain("c:customers.email");
-    expect(nodeIds(drawn())).not.toContain("term:customer");
   });
 
   it("names its depth control by its focus: Hops from the product", async () => {
@@ -157,23 +163,58 @@ describe("a product's panel", () => {
     expect(screen.getByTestId("snip-depth-label")).toHaveTextContent("Hops from customer_360");
   });
 
-  it("counts its hops from the product: columns at 2, the terms tied to them at 3", async () => {
+  it("counts its hops between terms, from the terms its tables' columns are", async () => {
+    // Agent is a step past Party, which is a step from Customer, which customers.email is.
+    reads.data = {
+      nodes: [...FACTS.nodes, { id: "term:agent", type: "term", label: "Agent", domains: [] }],
+      edges: [
+        ...FACTS.edges,
+        { id: "ag", a: "term:party", b: "term:agent", kind: "term_edge", label: "PART_OF" },
+      ],
+    };
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
+    expect(nodeIds(drawn())).not.toContain("term:agent");
+    // A column tied to a term drawn is itself; orders' total is one node.
+    expect(nodeIds(drawn())).toEqual(expect.arrayContaining(["c:customers.email", "fold:t:orders"]));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "2" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:agent"));
+  });
+
+  it("offers 1 2 3 4 and All, All following the connected part to its end", async () => {
+    // A chain of terms past 4 steps from Customer.
+    const chain = ["party", "a", "b", "c", "d"];
+    reads.data = {
+      nodes: [
+        ...FACTS.nodes,
+        ...chain.slice(1).map((c) => ({ id: `term:${c}`, type: "term" as const, label: c })),
+      ],
+      edges: [
+        ...FACTS.edges,
+        ...chain.slice(1).map((c, i) => ({
+          id: `ch${i}`,
+          a: `term:${chain[i]}`,
+          b: `term:${c}`,
+          kind: "term_edge" as const,
+          label: "PART_OF",
+        })),
+      ],
+    };
     snippet(productPreset("c360"), "customer_360");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "2" }));
-    // At 2 no term is drawn, so each table's columns are one node.
-    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:customers"));
-    expect(drawn().nodes.find((n) => n.id === "fold:t:customers")?.label).toBe(
-      "1 column with no term in this view",
-    );
-    expect(nodeIds(drawn())).not.toContain("term:customer");
-    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
-    await waitFor(() =>
-      expect(nodeIds(drawn())).toEqual(
-        expect.arrayContaining(["term:customer", "c:customers.email", "fold:t:orders"]),
-      ),
-    );
-    expect(nodeIds(drawn())).not.toContain("fold:t:customers");
+    const control = screen.getByTestId("snip-depth");
+    expect(within(control).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "all",
+    ]);
+    fireEvent.click(within(control).getByRole("radio", { name: "4" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:c"));
+    expect(nodeIds(drawn())).not.toContain("term:d");
+    fireEvent.click(within(control).getByRole("radio", { name: "All" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:d"));
   });
 
   it("offers Related tables in 3D, on", async () => {
@@ -229,8 +270,8 @@ describe("a product's panel", () => {
 });
 
 describe("a product's graph, expanded from its panel", () => {
-  // The product, its member tables, the columns the terms are on, those terms; orders' column tied
-  // to no term stays folded into one node.
+  // The product, its member tables, the columns the terms are on, those terms, and the term a step
+  // from them; orders' column tied to no term stays folded into one node.
   const OWN = [
     "c:customers.email",
     "fold:t:orders",
@@ -238,6 +279,7 @@ describe("a product's graph, expanded from its panel", () => {
     "t:customers",
     "t:orders",
     "term:customer",
+    "term:party",
   ];
   const open = async () => {
     snippet(productPreset("c360"), "customer_360");
@@ -249,7 +291,7 @@ describe("a product's graph, expanded from its panel", () => {
   it("draws the product alone by default, read for that product", async () => {
     await open();
     await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
-    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 });
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 1 });
     expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
     // The focus is the Focus filter's, its hops the usual control, the product still selected.
     expect(screen.getByTestId("graph3d-depth-label")).toHaveTextContent("Hops from customer_360");
@@ -302,7 +344,7 @@ describe("a product's graph, expanded from its panel", () => {
     expect(screen.queryByTestId("graph3d-depth")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("graph3d-rest"));
     await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
-    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 });
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 1 });
   });
 
   it("refits the camera to the graph the control brings in", async () => {
@@ -418,7 +460,7 @@ describe("a term's graph, expanded from its page", () => {
     await open();
     await waitFor(() => expect(reads.scopes.length).toBeGreaterThan(0));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
-    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,3"]));
+    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,1"]));
   });
 
   it("draws the term's reach alone, and says only that it shows", async () => {
@@ -451,7 +493,7 @@ describe("a term's graph, expanded from its page", () => {
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("Customer");
     fireEvent.click(screen.getByTestId("graph3d-rest"));
     await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
-    expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:customer", depth: 3 });
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:customer", depth: 1 });
   });
 });
 

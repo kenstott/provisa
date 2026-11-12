@@ -170,8 +170,10 @@ describe("a focus's neighbourhood", () => {
 });
 
 describe("a product's neighbourhood", () => {
-  // REQ-2174 (amended 2026-11-07): counted from the product alone, no longer from its members too.
-  it("is counted from the product alone: its tables, their columns, the terms bound to those", async () => {
+  // REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): counted from the product alone;
+  // its tables, their columns and the terms bound to those come with it, and each hop is a step
+  // across the term links from those terms.
+  it("brings its tables, their columns and the terms bound to those, then steps between terms", async () => {
     const { visibleGraph, NO_FILTERS, ONTOLOGY_SCOPE } = await import("../graphModel");
     type K = "member" | "has_column" | "term_binding" | "term_edge" | "in_domain";
     const node = (id: string, type: string) => ({ id, type, label: id });
@@ -184,6 +186,7 @@ describe("a product's neighbourhood", () => {
         node("c:1:a", "column"),
         node("term:a", "term"),
         node("term:b", "term"),
+        node("term:c", "term"),
       ],
       edges: [
         edge("p:x", "d:sales", "in_domain"),
@@ -191,6 +194,7 @@ describe("a product's neighbourhood", () => {
         edge("t:1", "c:1:a", "has_column"),
         edge("c:1:a", "term:a", "term_binding"),
         edge("term:a", "term:b", "term_edge"),
+        edge("term:b", "term:c", "term_edge"),
       ],
     } as never;
     const layers = new Set(ONTOLOGY_SCOPE.layerOrder);
@@ -201,12 +205,10 @@ describe("a product's neighbourhood", () => {
       })
         .nodes.map((n) => n.id)
         .sort();
-    // Two hops from the product reach its table's column; the bound term is a third.
-    const two = drawn(["p:x"], 2);
-    expect(two).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a"]));
-    expect(two).not.toContain("term:a");
-    const three = drawn(["p:x"], 3);
-    expect(three).toContain("term:a");
-    expect(three).not.toContain("term:b");
+    // One hop: the product's own, and the term a step from its bound term.
+    const one = drawn(["p:x"], 1);
+    expect(one).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a", "term:a", "term:b"]));
+    expect(one).not.toContain("term:c");
+    expect(drawn(["p:x"], 2)).toContain("term:c");
   });
 });
