@@ -152,6 +152,23 @@ def _a_draft_read_by_org_admin(srv) -> None:
     assert marked, schema.text
 
 
+def _ways_to_reach(srv, table_id: int) -> dict:
+    """The admin's ways to reach the table, as the Your data step reads them."""
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={
+            "query": "query($id: Int!, $role: String!) { tableAccess(tableId: $id, role: $role) "
+            "{ graphql sql draft } }",
+            "variables": {"id": table_id, "role": _ROLE},
+        },
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=60,
+    )
+    assert response.status_code == 200, response.text
+    assert "errors" not in response.json(), response.text
+    return response.json()["data"]["tableAccess"]
+
+
 def _replica_rows(pg: _SourceAndEngine) -> int | None:
     with psycopg.connect(pg.url(pg.engine_port, "provisa"), autocommit=True) as conn:
         if conn.execute("SELECT to_regclass(%s)", (_REPLICA,)).fetchone()[0] is None:
@@ -185,9 +202,15 @@ def test_a_table_registered_through_the_admin_is_out_of_service_until_released(s
     )
     table_id = registered_id(registered["message"])
     _a_draft_read_by_org_admin(srv)
+    # Its ways to reach it, as org_admin is served it: marked as a draft's.
+    ways = _ways_to_reach(srv, table_id)
+    assert ways["draft"] is True, ways
+    assert "orders(limit: 10)" in ways["graphql"], ways
+    assert "orders" in ways["sql"], ways
 
     _mutate(srv, f"setTableDraft(tableId: {table_id}, draft: false)")
     assert _read(srv) == _ID_AMOUNT
+    assert _ways_to_reach(srv, table_id)["draft"] is False
 
     _mutate(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
     _mutate(srv, 'updateSourceReplicate(sourceId: "src", replicate: 0)')

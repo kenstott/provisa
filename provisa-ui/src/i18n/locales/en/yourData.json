@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "MCP tool call",
     "copy": "Copy the {{what}}",
-    "close": "Close"
+    "close": "Close",
+    "draft": "Draft",
+    "draftNote": "This table is a draft: only roles holding org_admin reach it these ways until it is released."
   }
 }

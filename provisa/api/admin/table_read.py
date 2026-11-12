@@ -391,6 +391,29 @@ async def plan_reading_drafts(
     return plan, seen
 
 
+def surface_with_drafts(state: Any, role_id: str, drafts: list[dict]) -> RoleSurface:
+    """``role_id``'s surface with ``drafts`` in its compilation context: what a read of them is
+    governed in (:func:`reading_drafts`), and what names them. Under "Role: All" it is the
+    meta-role's: the union of its members' rights (REQ-1620)."""
+    if is_meta_role_id(role_id):
+        return _meta_surface_with(state, role_id, drafts)
+    return _surface_with(state, role_id, drafts)
+
+
+def draft_served_to(state: Any, role_id: str, table_id: int) -> dict | None:
+    """The draft ``table_id`` when it is served to ``role_id``: the role holds org_admin (A DRAFT
+    IS SERVED TO ORG_ADMIN) and its context names the draft (a column of it is the role's). None
+    otherwise: to that role the table is not served, draft or not."""
+    from provisa.security.rights import holds_org_admin
+
+    surface = role_surface(state, role_id)
+    if surface is None or table_id not in surface.context.draft_ids.values():
+        return None
+    if not holds_org_admin(state.roles[role_id]):
+        return None
+    return _draft(state, table_id)
+
+
 async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithDrafts:
     """The view of ``state`` a read of ``drafts`` as ``role_id`` is governed and run in: the
     role's surface with them added, their routes, and nothing it keeps reaching the real state.
@@ -410,12 +433,7 @@ async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithD
         source = sources.get(draft["source_id"])
         if source is not None:
             routes = routes_with_draft(state, draft, source, routes)
-    # Under "Role: All" the read is the meta-role's: the union of its members' rights (REQ-1620).
-    surface = (
-        _meta_surface_with(state, role_id, drafts)
-        if is_meta_role_id(role_id)
-        else _surface_with(state, role_id, drafts)
-    )
+    surface = surface_with_drafts(state, role_id, drafts)
     bodies = {d["table_name"]: body for d in drafts if (body := _view_body(state, d)) is not None}
     return _WithDrafts(state, drafts, role_id, surface, routes, bodies)
 

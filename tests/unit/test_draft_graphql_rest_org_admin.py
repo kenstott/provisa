@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 4c6fde58-bdf4-4256-9339-70184ec2f73a
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -21,6 +22,7 @@ The real role build, the real endpoint and router, with routing stood in for."""
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -278,3 +280,45 @@ def test_no_catalog_listing_names_a_draft_for_a_role_holding_org_admin(state):  
         _ctx, in_view, _metrics = role_catalog_index(seen, role_id)
         assert _REFUNDS in in_view.table_id_to_oid
         assert _REFUNDS in role_visibility(seen, role_id)
+
+
+# ---- The ways to reach it (admin tableAccess) --------------------------------------------- #
+
+
+def _endpoints() -> Any:
+    from provisa.api.metadata_export.model import ServingEndpoints
+
+    return ServingEndpoints(
+        hostname="data.example.com",
+        database="provisa",
+        http_origin="https://data.example.com",
+        pgwire_port=5433,
+        http_paths={"GraphQL": "/data/graphql", "REST": "/data/rest"},
+    )
+
+
+def _access(state_: Any, role_id: str) -> Any:
+    from provisa.api.admin._table_access import table_access
+
+    return asyncio.run(table_access(state_, role_id, _REFUNDS, _endpoints()))
+
+
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "meta"])
+def test_a_role_holding_org_admin_is_told_how_to_reach_the_draft_marked_draft(state, role_id):  # noqa: F811
+    """Named as its surface names it: the field its schema offers, the REST path that answers it,
+    and the SQL its statements name it by -- each of which reads the draft (above)."""
+    if role_id == "meta":
+        role_id = _meta(state, ["org_admin", "r"])
+    access = _access(state, role_id)
+    assert access.draft is True
+    assert access.graphql == "query {\n  refunds(limit: 10) {\n    id\n    note\n  }\n}"
+    assert access.sql == 'SELECT * FROM "sales"."refunds" LIMIT 10'
+    assert access.rest == "GET https://data.example.com/data/rest/sales/refunds?limit=20"
+    assert json.loads(access.mcp) == {"tool": "run_sql", "arguments": {"sql": access.sql}}
+    assert access.pgwire is not None and access.pgwire.endswith("search_path%3Dsales")
+
+
+def test_every_other_role_is_not_told_how_to_reach_a_draft(state):  # noqa: F811
+    for role_id in ("r", _meta(state, ["r", "s"])):
+        with pytest.raises(ValueError, match=f"table {_REFUNDS} is not served to role"):
+            _access(state, role_id)

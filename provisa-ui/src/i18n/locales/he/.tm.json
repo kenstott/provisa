@@ -10351,5 +10351,7 @@
   "he/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops",
   "he/tableSections.json::tableSections.classTermNoModel": "Its term could not be read: your roles cannot read the model's tables.",
   "he/tableSections.json::tableSections.classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
-  "he/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of."
+  "he/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of.",
+  "he/yourData.json::yourData.draft": "Draft",
+  "he/yourData.json::yourData.draftNote": "This table is a draft: only roles holding org_admin reach it these ways until it is released."
 }
