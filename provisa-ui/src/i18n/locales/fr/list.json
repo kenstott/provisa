@@ -5,6 +5,18 @@
     "sortNone": "non trié",
     "groupBy": "Grouper par {{label}}",
     "ungroupLevel": "Dégrouper (niveau {{level}})",
-    "moreValues": "+{{count}} de plus"
+    "moreValues": "+{{count}} de plus",
+    "selectAll": "Sélectionner toutes les lignes affichées",
+    "selectRow": "Sélectionner la ligne",
+    "selectedCount_one": "{{count}} sélectionnée",
+    "selectedCount_other": "{{count}} sélectionnées",
+    "bulkDelete": "Supprimer",
+    "clearSelection": "Effacer la sélection",
+    "bulkDeleteTitle_one": "Supprimer {{count}} ligne ?",
+    "bulkDeleteTitle_other": "Supprimer {{count}} lignes ?",
+    "bulkDeleteConsequence": "Seront supprimés : {{names}}. Ceux auxquels un objet fait encore référence sont conservés, avec la raison.",
+    "bulkRefused_one": "{{count}} n’a pas été supprimé :",
+    "bulkRefused_other": "{{count}} n’ont pas été supprimés :",
+    "dismiss": "Fermer"
   }
 }

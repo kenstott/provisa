@@ -5,6 +5,18 @@
     "sortNone": "not sorted",
     "groupBy": "Group by {{label}}",
     "ungroupLevel": "Ungroup (level {{level}})",
-    "moreValues": "+{{count}} more"
+    "moreValues": "+{{count}} more",
+    "selectAll": "Select every row shown",
+    "selectRow": "Select row",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "bulkDelete": "Delete",
+    "clearSelection": "Clear",
+    "bulkDeleteTitle_one": "Delete {{count}} row?",
+    "bulkDeleteTitle_other": "Delete {{count}} rows?",
+    "bulkDeleteConsequence": "These will be deleted: {{names}}. Any that something still refers to are kept, and named with why.",
+    "bulkRefused_one": "{{count}} was not deleted:",
+    "bulkRefused_other": "{{count}} were not deleted:",
+    "dismiss": "Dismiss"
   }
 }
