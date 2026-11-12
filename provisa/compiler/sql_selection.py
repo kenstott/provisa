@@ -510,7 +510,10 @@ def _collect_nested_columns(
                     json_text=_json_text,
                 )
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")
-                select_parts.append(f"{_when_joined(json_expr, joined)} AS {_q(json_alias)}")
+                # A to-one's subquery is null with its row; a list is [] for none, never null.
+                if nested_join_meta.cardinality == "one-to-many":
+                    json_expr = _when_joined(json_expr, joined)
+                select_parts.append(f"{json_expr} AS {_q(json_alias)}")
                 columns.append(
                     ColumnRef(
                         alias=nested_alias,
