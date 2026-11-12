@@ -91241,7 +91241,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
     without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
     with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
-    does is unchanged.'
+    does is unchanged. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) Maintainer 2026-11-12: the hops
+    control counts steps between terms only. Every term drawn brings its grounding with it, whatever the
+    hop count: the columns it is bound to, their tables, and the products that hold them; a column is never
+    drawn without its table. So a term three term-steps from the focus is shown, with its column and table,
+    at three hops, where before the column and the table each took a further hop. A product''s graph follows
+    the same rule: the product''s own tables, columns and the terms grounded on them come with it, and hops
+    count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows
+    the connected part to its end, under the existing limit on how many nodes a graph draws.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
