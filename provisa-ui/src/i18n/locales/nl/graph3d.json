@@ -152,7 +152,8 @@
     "hopsFromMatches": "Stappen vanaf de treffers",
     "relatedTables": "Gerelateerde tabellen",
     "restOfModel": "De rest van het model tonen",
-    "lateral": "Laterale randen",
+    "lateral": "Associaties",
+    "lateralHelp": "Toont de lijnen die termen verbinden zonder ze te rangschikken: verwant, synoniem, voorkeursterm, vertaling en antoniem.",
     "grounding_grounded": "Verankerd",
     "grounding_grounded_pending": "Verankerd, via een concept"
   }

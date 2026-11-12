@@ -175,14 +175,8 @@
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
-/* A view's export (ExportMenu): its control in the stage's top-left corner, and a recording's
-   progress and cancel in its place while a turn is recorded. */
-.p3d-export {
-  position: absolute;
-  inset-inline-start: 8px;
-  top: 8px;
-  z-index: 2;
-}
+/* A recording's progress and cancel, beside the view's controls while a turn is recorded
+   (ExportMenu). */
 .p3d-recording {
   display: flex;
   align-items: center;
@@ -218,6 +212,12 @@
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+/* Beside the view's controls (CanvasControls, bottom-left), never under them: the stack's
+   inset, its width (a 28px button, 2px padding and a 1px border each side) and a gap. */
+.p3d-legend-beside-controls {
+  inset-inline-start: calc(8px + 34px + 8px);
+  max-width: calc(100% - 60px);
 }
 .p3d-legend i {
   display: inline-block;
