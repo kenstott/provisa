@@ -91878,8 +91878,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     through a role every member holds, which is checked when it is marked open and refused naming what is
     not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
     the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
-    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
-    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    SANITIZED:) Maintainer 2026-11-11. [SUPERSEDED by REQ-2180, 2026-11-11 -- the sections are summary rows
+    that expand in place, not tabs (THE PRODUCT PAGE IS SUMMARY ROWS). Kept here for history; do not implement
+    against it.] A product''s page has a Profile tab beside Offers, Quality, Lineage, Related and Requests.
+    [END SUPERSEDED BLOCK] Wherever a profile is shown -- on that tab, or as part of an offer that includes
     profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
     PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
     no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
@@ -91894,7 +91896,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity provider, it decides, and Provisa enforces whatever its claims say. With none, the local default
     applies an expiry cancel at once -- the date was agreed when the grant was made, so it needs no second
     approval -- as the matching ordinary removal, attributed to the expiry; access ends within the run''s
-    interval. Provisa holds no separate read-time check of an expiry date.'
+    interval. Provisa holds no separate read-time check of an expiry date. (Amended 2026-11-11, THE PRODUCT
+    PAGE IS SUMMARY ROWS:) Maintainer 2026-11-11, after reviewing another product''s data product page,
+    which shows every panel open with a header and subtitle each and reads as overwhelming. A product''s
+    detail is a short header (name, owner, domain, at most three facts: consumers, quality, freshness; and
+    its support contact) above one section per subject in a fixed order -- Offers, Quality, Profile, Lineage,
+    Related, Requests (owners only), Access (its ways in), Ask (suggested questions run as the reader''s
+    role) -- each collapsed to a one-line summary computed from its content, never typed, so the reader
+    scans every section''s state at once and expands one in place for detail. Offers is open at first. Sections
+    have no subtitles, and a graph is drawn only inside an expanded section. Each offer carries its terms
+    of use -- purpose, usage and limitations -- in prose, shown on its card and in its contract. (Amended
+    2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS:) Maintainer 2026-11-11. The request form
+    names who will approve it (the product''s owner, or the authority the request hook reaches); asks what
+    kind of consumer the request is for -- a person, a team, another data product, or an agent; asks its
+    purpose, prefilled from the offer''s stated usage and editable; shows the offer''s terms of use; and
+    is sent only once the requester agrees to them. (Amended 2026-11-11, QUALITY IS STATUS AND COUNTS, NOT
+    A SCORE:) Maintainer 2026-11-11: there is no single quality score for a product or dataset; a weighted
+    number hides which check failed and whether it matters for the reader''s use. Quality is summarised
+    per offer as the worst outcome of the checks its contract promises, how many passed and failed, the
+    failing checks named, and when they last ran (for example: 22 checks, 1 failing: customer_id unique,
+    checked 2h ago). Anywhere a sortable figure is wanted it is the plain count of promised checks passing
+    out of those promised.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
