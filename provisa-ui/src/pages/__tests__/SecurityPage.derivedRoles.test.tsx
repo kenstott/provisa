@@ -154,7 +154,7 @@ describe("a derived role's panel is in the URL", () => {
     fireEvent.click(await screen.findByTestId("derived-value-row-region__eu"));
     await waitFor(() => expect(where()).toBe("/security/roles?derived=region%3Aeu"));
     expect(
-      within(screen.getByTestId("roles-split-panel")).getByTestId("derived-values-region"),
+      within(screen.getByTestId("roles-split-panel")).getByTestId("value-role-read-region__eu"),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByText("history-back"));
     await waitFor(() => expect(where()).toBe("/security/roles?role=analyst"));

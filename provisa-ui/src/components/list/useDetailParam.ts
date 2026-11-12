@@ -28,6 +28,8 @@ interface DetailView {
   tab?: { param: string; first: string };
   /** Parameters that belong to the open object, dropped with it when another opens or it closes. */
   alsoClears?: readonly string[];
+  /** Another view's parameters, of an object sharing this panel: dropped when this one opens. */
+  replaces?: readonly string[];
 }
 
 // Existing names are kept, so links built before REQ-2241 open the same panels.
@@ -53,9 +55,9 @@ export const DETAIL_VIEWS = {
     route: "/security/roles",
     param: "role",
     tab: { param: "section", first: "details" },
-    alsoClears: ["derived"],
+    replaces: ["derived"],
   },
-  derived: { route: "/security/roles", param: "derived", alsoClears: ["role", "section"] },
+  derived: { route: "/security/roles", param: "derived", replaces: ["role", "section"] },
   rls: { route: "/security/rls", param: "rule" },
   commands: { route: "/commands", param: "command", tab: { param: "section", first: "command" } },
 } as const satisfies Record<string, DetailView>;
@@ -226,6 +228,7 @@ export function useDetailParam(page: DetailPage): DetailParam {
         // what belonged to the one before (a marked column, a linked contract) goes with it.
         if (p.get(view.param) !== next) {
           for (const linked of view.alsoClears ?? []) p.delete(linked);
+          for (const other of view.replaces ?? []) p.delete(other);
           p.set(view.param, next);
         }
         if (how?.tab !== undefined) showTab(p, how.tab);
