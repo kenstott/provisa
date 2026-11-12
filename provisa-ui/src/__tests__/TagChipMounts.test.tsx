@@ -77,7 +77,6 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   fetchLibrary: vi.fn(async () => [DOC]),
   fetchLibraryDocument: vi.fn(async () => DETAIL),
   fetchCitedBy: vi.fn(async () => ({ terms: [], drifted: 0 })),
-  fetchRetrieval: vi.fn(async () => ({ retrieval: "passage" })),
 }));
 
 const target = (el: HTMLElement) => JSON.parse(el.dataset.target as string);

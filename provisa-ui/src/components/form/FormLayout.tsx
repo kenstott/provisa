@@ -28,12 +28,13 @@ import {
 } from "react";
 import { Button, Divider, Loader, Text } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
-import { Check, CircleHelp, X } from "lucide-react";
+import { Check, CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { PanelActionsContext, PanelNoticeContext } from "../list/panelActions";
 import { PanelHeadStyle } from "../list/PanelHeadStyle";
 import { useHelpNaming } from "./useHelpNaming";
+import { CancelButton } from "./CancelButton";
 import { usePendingPress } from "./usePendingPress";
 import { Tip } from "../Tip";
 import { readValue } from "./readValue";
@@ -51,9 +52,10 @@ const FormLayoutContext = createContext(false);
 
 /**
  * A form drawn read-only: the same form, so the read view lists exactly the fields the form has
- * for what it shows, under the same labels. Each field is its label and its value on the shared
- * detail grid ("—" when empty, "Set" for a secret that holds something); the layout around the
- * fields, the notes and the buttons are not drawn, and the form's Save and Cancel are not offered.
+ * for what it shows, under the same labels, in the same flow and at the same sizes as its edit
+ * form (REQ-1968). Each field is its label above its value ("—" when empty, "Set" for a secret
+ * that holds something) and its hint below; the notes and buttons around the fields are not
+ * drawn, and the form's Save and Cancel are not offered.
  */
 export function FormRead({
   children,
@@ -62,51 +64,95 @@ export function FormRead({
 }: {
   children: ReactNode;
   /** Values the form does not set but the object has, read after its fields. */
-  derived?: DetailField[];
+  derived?: ReadValue[];
   testId?: string;
 }) {
   return (
     <FormReadContext.Provider value={true}>
       <FormLayoutContext.Provider value={true}>
-        <dl className="detail-fields form-read" data-testid={testId}>
+        <div className="form-layout form-read" data-testid={testId}>
           {children}
           {derived.map((f) => (
-            <ReadRow key={f.label} label={f.label} value={f.value} testId={f.testId} />
+            <ReadRow
+              key={f.label}
+              label={f.label}
+              value={f.value}
+              testId={f.testId}
+              size={f.size}
+              hint={f.hint}
+              hintTestId={f.hintTestId}
+            />
           ))}
-        </dl>
+        </div>
       </FormLayoutContext.Provider>
     </FormReadContext.Provider>
   );
 }
 
+/** A value read beside a form's fields: its label, its value, and the field's size and hint. */
+export type ReadValue = DetailField & {
+  /** As wide as the field would be in the form; the enclosing field's size, else medium. */
+  size?: FormFieldSize;
+  /** A brief explanation of the value, shown below it, dimmed. */
+  hint?: ReactNode;
+  hintTestId?: string;
+};
+
+/** The size and hint of the field a read row is drawn for, when the row draws itself. */
+const ReadCellContext = createContext<{ size: FormFieldSize; hint?: string }>({
+  size: "medium",
+});
+
 /**
- * One field of a form read: its label beside its value ("—" when empty). A control that labels
- * itself draws this when `useFormRead()` says the form is read.
+ * One field of a form read: its label above its value ("—" when empty) and its hint below, in a
+ * cell of the field's size in the form's flow. A control that labels itself draws this when
+ * `useFormRead()` says the form is read.
  */
 export function ReadRow({
   label,
   value,
   testId,
+  size,
+  hint,
+  hintTestId,
 }: {
   label: ReactNode;
   value: ReactNode;
   testId?: string;
+  size?: FormFieldSize;
+  hint?: ReactNode;
+  hintTestId?: string;
 }) {
   const { t } = useTranslation();
+  const cell = useContext(ReadCellContext);
+  const shownHint = hint ?? cell.hint;
   return (
-    <>
+    <dl className={classes("form-field", `form-field--${size ?? cell.size}`)}>
       <Text component="dt" c="dimmed" fw={500} size="sm">
         {label}
       </Text>
       <Text component="dd" m={0} size="sm" data-testid={testId}>
         {value === null || value === undefined || value === "" ? t("detailFields.empty") : value}
       </Text>
-    </>
+      {shownHint !== undefined && (
+        <Text component="dd" className="form-read__hint" size="xs" data-testid={hintTestId}>
+          {shownHint}
+        </Text>
+      )}
+    </dl>
   );
 }
 
-/** A field read: its control's label beside the value the control holds. */
-function ReadField({ children }: { children: ReactNode }) {
+/** A field read: its control's label above the value the control holds, at the field's size. */
+function ReadField({
+  size,
+  hint,
+  children,
+}: {
+  size: FormFieldSize;
+  hint?: string;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const only = Children.toArray(children);
   const control = only.length === 1 ? only[0] : null;
@@ -120,9 +166,18 @@ function ReadField({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  // A field whose child is no labelled control (a section of further fields) reads as those.
-  if (!isValidElement(control) || label === undefined) return <>{children}</>;
-  return <ReadRow label={label} value={readValue(control, t)} />;
+  // A field whose child is no labelled control (a control that reads itself, or a section of
+  // further fields) reads as those; a row drawn for this field takes its size and its hint, and
+  // a field inside it its own.
+  return (
+    <ReadCellContext.Provider value={{ size, hint }}>
+      {!isValidElement(control) || label === undefined ? (
+        children
+      ) : (
+        <ReadRow label={label} value={readValue(control, t)} />
+      )}
+    </ReadCellContext.Provider>
+  );
 }
 
 function useInsideFormLayout(component: string): void {
@@ -248,7 +303,12 @@ export function FormField({
     ) : (
       node
     );
-  if (read) return within(<ReadField>{children}</ReadField>);
+  if (read)
+    return within(
+      <ReadField size={size} hint={hint}>
+        {children}
+      </ReadField>,
+    );
   let content = children;
   if (hint !== undefined || help !== undefined) {
     const only = Children.toArray(children);
@@ -487,7 +547,7 @@ type ButtonExtras = { "data-testid"?: string; disabled?: boolean };
  *
  * `panel`: the form is a detail panel's content, and these are the panel's actions while it is
  * open. In a panel (`SplitPane`) the same two buttons then sit in its pinned head beside the
- * name -- borderless and compact, so they cost no height -- in place of a row at the form's foot;
+ * name -- Save borderless and compact, Cancel the one Cancel -- in place of a row at the form's foot;
  * outside a panel a form that says `panel` keeps the row at its foot. One implementation, the
  * same test ids either way. `problem` is what the form has to say of a save that did not go
  * through: in a panel a line under its head, else a line above the row.
@@ -529,8 +589,8 @@ export function FormFooter({
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
   const busy = saving || pending;
-  // In a panel's head the two take the head's one style (PanelHeadStyle): borderless and
-  // compact; the words and icons are the same. Cancel leaves its bordered look at the foot.
+  // In a panel's head Save takes the head's one style (PanelHeadStyle): borderless and compact.
+  // Cancel is the one Cancel (CancelButton), the same in the head, at the foot and in a dialog.
   const inHeadLook = inHead ? ({ variant: undefined } as const) : {};
   const said = problem ? (
     <div className="form-problem" role="alert" data-testid="form-problem">
@@ -559,19 +619,11 @@ export function FormFooter({
       )}
       {action}
       {onCancel !== undefined && (
-        <Button
-          variant="default"
-          {...inHeadLook}
-          {...cancelProps}
-          type="button"
+        <CancelButton
           onClick={onCancel}
-          // REQ-2115: leaving a form changes nothing; Polly presses it without asking.
-          data-changes="false"
-          leftSection={<X size={14} />}
           disabled={busy || cancelProps?.disabled === true}
-        >
-          {t("common.cancel")}
-        </Button>
+          testId={cancelProps?.["data-testid"]}
+        />
       )}
       {children}
     </>

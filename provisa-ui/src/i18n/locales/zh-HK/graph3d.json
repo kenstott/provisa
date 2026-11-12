@@ -152,7 +152,8 @@
     "hopsFromMatches": "距相符項目的跳數",
     "relatedTables": "相關數據表",
     "restOfModel": "顯示模型的其餘部分",
-    "lateral": "橫向邊",
+    "lateral": "關聯",
+    "lateralHelp": "顯示不分層級連接術語的線條：相關、同義詞、首選術語、翻譯和反義詞。",
     "grounding_grounded": "已錨定",
     "grounding_grounded_pending": "已錨定，經由草稿"
   }

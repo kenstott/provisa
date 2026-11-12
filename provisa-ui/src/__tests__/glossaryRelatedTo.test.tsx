@@ -282,6 +282,10 @@ describe("Related to guidance", () => {
     render(<GlossaryTab />);
     const dialog = await chooseRelatedTo();
     expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogWhy"));
+    expect(within(dialog).getByTestId("glossary-related-to-example")).toHaveTextContent(
+      t("glossaryTab.relatedToDialogExample"),
+    );
+    expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogShapes"));
     expect(mockSuggest).toHaveBeenCalledWith(1, 5);
     await within(dialog).findByText(/revenue line/);
     const shapes = within(dialog)

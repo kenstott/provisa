@@ -98,10 +98,10 @@ beforeEach(() => {
 });
 
 describe("the Commands lists' search", () => {
-  it("lists the commands matching any word of the search, in both lists", async () => {
+  it("lists the commands matching every word of the search, or either side of or, in both lists", async () => {
     render(<CommandsPage />);
     await screen.findByTestId("commands-fn-row-refund_order");
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund notify" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund or notify" } });
     expect(screen.getByTestId("commands-fn-row-refund_order")).toBeInTheDocument();
     expect(screen.getByTestId("commands-wh-row-notify_ops")).toBeInTheDocument();
     expect(screen.queryByTestId("commands-fn-row-close_period")).toBeNull();

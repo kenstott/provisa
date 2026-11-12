@@ -100,9 +100,17 @@ describe("deleting a role on the Security page", () => {
             kind: "role_assignment",
             id: 7,
             name: "alice holds seller",
+            label: "alice holds seller",
             via: ["user_role_assignments.role_id"],
           },
-          { kind: "column", id: 41, name: "orders.amount", via: ["table_columns.visible_to"] },
+          {
+            kind: "column",
+            id: 41,
+            name: "orders.amount",
+            label: "orders.amount",
+            via: ["table_columns.visible_to"],
+            table_id: 3,
+          },
         ],
       },
     });

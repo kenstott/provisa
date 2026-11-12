@@ -100,12 +100,31 @@ titled the same way.
   wheel with Ctrl or Cmd held zooms about the pointer.
 - The fit control fits the entire image, below the legend, however small that makes it
   (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
+- A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the
+  moment a layout starts (on open, and on any change of what is drawn or how: preset, filter,
+  depth, saved places, Reset view's relayout) until every node has its place and the opening fit
+  has run, the core's div is held hidden, so the frame of unplaced nodes stacked at one point is
+  never painted, and the canvas shows the graph views' loader (ReadState's `Loader`) with
+  `provisaGraph.layingOut`. The layout starts once that frame has been painted, so a placement
+  that runs as one long task (a large lane diagram's) is seen to be under way. The controls and legend stay; the controls, downloads, the camera and
+  a save act only on a placed drawing. A layout that throws as it starts, or whose placement throws
+  once it answers, ends the laying out and is thrown to the page's error boundary.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
   the view gives it. Shown on hover or keyboard focus. Each control's tooltip is drawn in place
   (so it shows in full screen), on one line beside its button: an in-place Tip is as wide as its
   text (`max-content`, up to the tip's 340px), not as wide as the bar.
+- The bar is the one stack every graph's canvas has, 2D and 3D (`CanvasControls.tsx`:
+  `CanvasControls`, `CanvasButton`, `FullscreenButton`; `canvas-controls.css`). A 3D view
+  (`profile3d/Stage3D.tsx`: the ontology graph and the table profile views) holds, in this order,
+  Reset view, Rotate, Grid (where its scene draws a floor grid), full screen and download (image
+  or a recorded turn, `ExportMenu.tsx`). Rotate and Grid are toggles: pressed (`aria-pressed`,
+  the light variant) while on, read from and written to the view's remembered settings. What is
+  drawn and how it is arranged stays in the view's toolbar; Rotate, Grid and Reset view are not
+  toolbar buttons in 3D. A 3D view's legend stands beside the stack, not under it. The ontology
+  explorer's lane diagram keeps its toolbar Reset view: it folds every table back as well as
+  fitting (`fitClear`), where the stack's fit fits the whole image (`fitWhole`).
 - One legend, top-right (clear of the application's floating buttons at the bottom-right): the
   types drawn, each a band swatch, icon and name.
 - Top-left: what the view lays over the canvas (the ERD's tables new since a save), then the hint.
@@ -138,10 +157,15 @@ titled the same way.
   (nearest the terms they link to, else below the rest); none takes a row another has taken, so a
   block moves round the terms already level. Every term has its own row, `NODE_GAP` apart. The
   lines between two terms (rank lines and the arcs laid over them) run beside the lane, on its
-  right, as right-angled segments, never through a term's row (`besideRoutes`). Crossings that no
-  placement removes are accepted. The same graph is always drawn the same way. Each lane's box
-  bounds its own nodes (and the term lane's lines beside it), its title above them, the boxes
-  `LANE_GAP` apart.
+  right, as right-angled segments, never through a term's row (`besideRoutes`). Each such line's
+  name (J1227) is drawn right of its run down its track, growing away from the lane, centred on
+  the middle of that run (`besideNames`); a name never lies on a node, another name or any line's
+  route: it moves along its own run a name's height at a time (nearest the middle first, above
+  before below) to the first clear place, and where its run has none it moves right past what it
+  meets. Names are placed from the track nearest the lane outward, each track top to bottom. Other
+  lines keep the generic edge label. Crossings that no placement removes are accepted. The same
+  graph is always drawn the same way. Each lane's box bounds its own nodes (and the term lane's
+  lines beside it and their names), its title above them, the boxes `LANE_GAP` apart.
 - `force`: fCoSE.
 
 ## Owned by the component

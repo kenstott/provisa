@@ -135,12 +135,12 @@ describe("TagsTab", () => {
     expect(screen.getAllByTestId(/^tags-row-/)).toHaveLength(1);
   });
 
-  it("finds tags matching any word of the search", () => {
+  it("finds tags matching every word of the search, or either side of or", () => {
     render(<TagsTab />);
     fireEvent.click(
       within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
     );
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii finance" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pii or finance" } });
     expect(screen.getAllByTestId(/^tags-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
       "tags-row-pii",
       "tags-row-finance",
@@ -371,7 +371,13 @@ describe("TagsTab", () => {
       params: {
         tag: "finance",
         dependents: [
-          { kind: "row_filter", id: 4, name: "analyst on tag finance", via: ["rls_rules.tag_id"] },
+          {
+            kind: "row_filter",
+            id: 4,
+            name: "analyst on tag finance",
+            label: "analyst on tag finance",
+            via: ["rls_rules.tag_id"],
+          },
         ],
       },
     } as never);

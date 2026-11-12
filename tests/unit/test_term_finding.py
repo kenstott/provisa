@@ -799,11 +799,17 @@ def api(control_plane, monkeypatch):
     async def _embedder():
         return EMBEDDER
 
+    async def _embed_terms(org_id: str) -> None:
+        return None
+
     monkeypatch.setattr(router, "_pool", lambda: db)
     monkeypatch.setattr(router, "require_active_org_id", lambda request: "default")
     monkeypatch.setattr(router, "_launch", launched.append)
     monkeypatch.setattr(router, "_model", _model)
     monkeypatch.setattr(library_api, "_embedder", _embedder)
+    # REQ-2185: a decision that makes a term embeds it in the background, which these cases do not
+    # run (test_reference_library_terms_embedded).
+    monkeypatch.setattr(library_api, "embed_terms", _embed_terms)
     # Which right gates each endpoint, and how domains narrow curation, are the glossary's own
     # tests (test_glossary_rights.py, test_glossary_stewardship.py); here they must not block.
     monkeypatch.setattr(glossary_router, "_require_glossary_rw", lambda request: None)
@@ -948,6 +954,29 @@ async def test_the_steward_edits_accepts_merges_rejects_and_bulk_accepts(api):
     after = await router.get_scan(found["scan"]["id"], _request())
     assert after["scan"]["counts"] == {"accepted": 3, "merged": 1, "rejected": 1}
     assert "ontology terms accepted from a document" in api.notified
+
+
+async def test_accepting_or_merging_a_draft_embeds_the_glossary_terms(api, monkeypatch):
+    """REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): each decision that makes or redefines a term
+    calls the one trigger; a rejection makes none."""
+    from tests.unit.test_reference_library_terms_embedded import record_embeds
+
+    embedded = record_embeds(monkeypatch)
+    async with api.db.acquire() as conn:
+        await glossary_repo.create_abstract_term(conn, "client", domains={"d"})
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    drafts = _by_name(found)
+    await router.accept_draft(drafts["know your customer check"]["id"], _request())
+    assert embedded == ["default"]
+    await router.merge_draft(drafts["customer"]["id"], _request({}))
+    assert embedded == ["default"] * 2
+    await router.reject_draft(drafts["account (ledger)"]["id"], _request())
+    assert embedded == ["default"] * 2
+    await router.bulk_accept(
+        found["scan"]["id"],
+        _request({"draft_ids": [drafts["record retention period"]["id"]]}),
+    )
+    assert embedded == ["default"] * 3
 
 
 async def test_a_rescan_shows_what_the_glossary_now_holds_as_matches_and_duplicates(api):

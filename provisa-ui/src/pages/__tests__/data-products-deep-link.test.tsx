@@ -141,12 +141,12 @@ import { DataProductsPage, EXPANDED_STORAGE_KEY } from "../DataProductsPage";
 import { storageKey as scopedKey } from "../../lib/browserStorage";
 
 describe("the Data Products list's search", () => {
-  it("lists the products matching any word of the search", async () => {
+  it("lists the products matching every word of the search, or either side of or", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products"] });
     await waitFor(() =>
       expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet invoices" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet or invoices" } });
     expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument();
     expect(screen.queryByTestId("data-products-row-workforce_ops")).toBeNull();
   });

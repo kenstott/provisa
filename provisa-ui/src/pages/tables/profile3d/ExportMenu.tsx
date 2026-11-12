@@ -8,18 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Every 3D view's export, one control on its stage: an image of the view as it is (PNG, JPEG,
+// Every 3D view's export, the Download in its stage's controls (CanvasControls): an image of the view as it is (PNG, JPEG,
 // WebP where the browser encodes it, SVG where the scene draws flat), at 1x or 2x, or a video of
 // one full turn about it (MP4 or WebM, whichever the browser records), with its progress and a
-// cancel. Files are named after the view and the day (exportImage.ts). The scale, the length and the
+// cancel beside the controls. Files are named after the view and the day (exportImage.ts). The scale, the length and the
 // formats last chosen are remembered for every view (graphSettings.ts), the last formats checked.
 
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Button, Menu, Progress, SegmentedControl, Text } from "@mantine/core";
+import { Button, Menu, Progress, SegmentedControl, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Check, Download } from "lucide-react";
-import { Tip } from "../../../components/Tip";
+import { CanvasButton, CONTROL_ICON } from "../../../components/provisa-graph/CanvasControls";
 import {
   exportFileName,
   exportImage,
@@ -113,28 +113,12 @@ export function ExportMenu({
   const last = (on: boolean) =>
     on ? <Check size={12} aria-label={t("profile3d.lastFormat")} /> : null;
 
-  if (recording !== null) {
-    return (
-      <div className="p3d-export p3d-recording" data-testid={`${testId}-recording`}>
-        <Text size="xs">{t("profile3d.recording", { percent: Math.round(recording * 100) })}</Text>
-        <Progress value={recording * 100} size="sm" w={140} />
-        <Button
-          size="compact-xs"
-          variant="default"
-          onClick={() => abort.current?.abort()}
-          data-testid={`${testId}-recording-cancel`}
-        >
-          {t("profile3d.cancelRecording")}
-        </Button>
-      </div>
-    );
-  }
   const { raster, video } = formats ?? { raster: [], video: [] };
   return (
-    <div className="p3d-export">
+    <>
       <Menu
-        position="bottom-start"
-        withinPortal
+        position="right-end"
+        withinPortal={false}
         closeOnItemClick
         transitionProps={{ duration: 0 }}
         onOpen={() => {
@@ -142,17 +126,12 @@ export function ExportMenu({
         }}
       >
         <Menu.Target>
-          <Tip text={t("profile3d.export")} named>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              disabled={!scene}
-              aria-label={t("profile3d.export")}
-              data-testid={`${testId}-export`}
-            >
-              <Download size={14} aria-hidden />
-            </ActionIcon>
-          </Tip>
+          <CanvasButton
+            label={t("erdModal.download")}
+            icon={<Download size={CONTROL_ICON} aria-hidden />}
+            disabled={!scene || recording !== null}
+            testId={`${testId}-export`}
+          />
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Label>{t("profile3d.exportImage")}</Menu.Label>
@@ -210,6 +189,22 @@ export function ExportMenu({
           )}
         </Menu.Dropdown>
       </Menu>
-    </div>
+      {recording !== null && (
+        <div className="pg-beside p3d-recording" data-testid={`${testId}-recording`}>
+          <Text size="xs">
+            {t("profile3d.recording", { percent: Math.round(recording * 100) })}
+          </Text>
+          <Progress value={recording * 100} size="sm" w={140} />
+          <Button
+            size="compact-xs"
+            variant="default"
+            onClick={() => abort.current?.abort()}
+            data-testid={`${testId}-recording-cancel`}
+          >
+            {t("profile3d.cancelRecording")}
+          </Button>
+        </div>
+      )}
+    </>
   );
 }

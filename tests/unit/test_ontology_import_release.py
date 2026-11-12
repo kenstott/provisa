@@ -24,6 +24,7 @@ catalog (its sources beside it, in release/)."""
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 import base64
 import socket
 import types
@@ -475,6 +476,8 @@ def api(control_plane, monkeypatch):
     monkeypatch.setattr(glossary_router, "_curate_authority", lambda request: None)
     monkeypatch.setattr(glossary_router, "_is_org_curator", lambda request: False)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background, which these cases do not run.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     return types.SimpleNamespace(db=db)
 
 

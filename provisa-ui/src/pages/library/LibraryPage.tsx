@@ -17,19 +17,15 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Group, SegmentedControl, Table, Text } from "@mantine/core";
+import { Alert, Button, Group, Table, Text } from "@mantine/core";
 import { Check, Library, TriangleAlert } from "lucide-react";
 import {
   fetchLibrary,
-  fetchRetrieval,
   reembedLibrary,
-  saveRetrieval,
   type LibraryDocument,
   type ReembedOutcome,
-  type Retrieval,
 } from "../../api/referenceLibrary";
 import { FilterInput } from "../../components/admin/FilterInput";
-import { LabelWithHelp } from "../../components/form/FormLayout";
 import {
   ListEmpty,
   ListHead,
@@ -52,57 +48,6 @@ import { addedOrRefreshed, when } from "./libraryParts";
 
 /** How often the list is read again while a document is indexing, in milliseconds. */
 const POLL_MS = 3000;
-
-/** The library's retrieval setting, saved as it is changed. */
-function RetrievalSetting({ onError }: { onError: (message: string) => void }) {
-  const { t } = useTranslation();
-  const [retrieval, setRetrieval] = useState<Retrieval | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetchRetrieval()
-      .then(setRetrieval)
-      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
-  }, [onError]);
-
-  const change = async (next: Retrieval) => {
-    const before = retrieval;
-    setRetrieval(next);
-    setSaving(true);
-    try {
-      setRetrieval(await saveRetrieval(next));
-    } catch (e) {
-      setRetrieval(before);
-      onError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Group gap="xs" wrap="nowrap" data-testid="reflib-retrieval">
-      <Text size="sm" component="div">
-        <LabelWithHelp
-          label={t("referenceLibrary.retrieval")}
-          help={t("referenceLibrary.retrievalHelp")}
-          textId="reflib-retrieval-label"
-        />
-      </Text>
-      <SegmentedControl
-        size="xs"
-        aria-labelledby="reflib-retrieval-label"
-        value={retrieval ?? ""}
-        disabled={retrieval === null || saving}
-        onChange={(v) => change(v as Retrieval)}
-        data={[
-          { value: "passage", label: t("referenceLibrary.retrievalPassage") },
-          { value: "graph", label: t("referenceLibrary.retrievalGraph") },
-        ]}
-        data-testid="reflib-retrieval-control"
-      />
-    </Group>
-  );
-}
 
 export function LibraryPage() {
   const { t, i18n } = useTranslation();
@@ -219,27 +164,19 @@ export function LibraryPage() {
   ) : null;
 
   return (
-    <div
-      className="page-sticky-head"
-      style={{ padding: "1rem 1.25rem" }}
-      data-tour="reference-library"
-    >
-      <Group justify="space-between" wrap="nowrap" mb={4}>
-        <PageTitle icon={Library} order={3}>
-          {t("referenceLibrary.title")}
-        </PageTitle>
-        <Group gap="xs" wrap="nowrap" data-toolbar>
-          <FilterInput
-            value={search}
-            onChange={setSearch}
-            placeholder={t("referenceLibrary.filterPlaceholder")}
-            testId="reflib-filter"
-            remember="library"
-          />
-          {canEdit && <RetrievalSetting onError={setError} />}
+    <div className="page page-sticky-head" data-tour="reference-library">
+      <div className="page-header">
+        <PageTitle icon={Library}>{t("referenceLibrary.title")}</PageTitle>
+        <FilterInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t("referenceLibrary.filterPlaceholder")}
+          testId="reflib-filter"
+          remember="library"
+        />
+        <div className="page-actions">
           {canEdit && stale > 0 && (
             <Button
-              size="xs"
               variant="light"
               color="orange"
               data-testid="reflib-reembed-all"
@@ -251,7 +188,6 @@ export function LibraryPage() {
           )}
           {canEdit && !adding && (
             <Button
-              size="xs"
               data-testid="reflib-add"
               onClick={() => {
                 setAdding(true);
@@ -273,8 +209,8 @@ export function LibraryPage() {
             ariaLabel={t("referenceLibrary.helpLabel")}
             testId="reflib-page-help"
           />
-        </Group>
-      </Group>
+        </div>
+      </div>
       <Text c="dimmed" size="sm" mb="sm" data-testid="reflib-why">
         {t("referenceLibrary.why")}
       </Text>

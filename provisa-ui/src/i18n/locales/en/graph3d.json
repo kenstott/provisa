@@ -152,7 +152,8 @@
     "hopsFromMatches": "Hops from the matches",
     "relatedTables": "Related tables",
     "restOfModel": "Show the rest of the model",
-    "lateral": "Lateral edges",
+    "lateral": "Associations",
+    "lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",
     "grounding_grounded": "Grounded",
     "grounding_grounded_pending": "Grounded, via a draft"
   }

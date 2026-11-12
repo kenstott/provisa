@@ -28,6 +28,7 @@ import {
 import { ontologyCountQuery, ontologyQuery } from "../../components/graph3d/ontologyData";
 import type { QueryScope } from "../../components/graph3d/graphModel";
 import { listQuery, panelQueries } from "../../pages/data-products/productCore";
+import { searchItems } from "../../lib/searchItems";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
 const list = (name: string): GraphqlType => ({
@@ -142,7 +143,7 @@ const SCOPE: QueryScope = {
   tags: [],
   sensitivities: [],
   orphans: true,
-  search: ["party"],
+  search: searchItems("party"),
   focus: null,
   depth: 2,
 };

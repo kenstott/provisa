@@ -42,6 +42,23 @@ class TestTranspileToTrino:
         )
         assert "to_json" not in transpile_to_trino(pg).lower()
 
+    def test_to_json_in_a_json_object_is_its_json_text_marked_format_json(self):
+        # REQ-2176: Trino's JSON_OBJECT takes a JSON value only as text marked FORMAT JSON; a
+        # value of type JSON it casts to varchar, which no array or object survives ("Cannot
+        # cast '["Small"]' to varchar"). A session node's labels are such a list.
+        pg = "SELECT JSON_OBJECT('labels': to_json(\"__labels\"), 'k': \"k\") AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON, "
+            "'k': \"k\") AS n FROM t"
+        )
+
+    def test_to_json_in_a_built_object_is_its_json_text_marked_format_json(self):
+        pg = "SELECT json_build_object('labels', to_json(\"__labels\")) AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON) "
+            "AS n FROM t"
+        )
+
     def test_nested_json_build_object_is_rewritten(self):
         pg = (
             'SELECT json_build_object(\'u\', json_build_object(\'id\', "b"."id")) AS x FROM "t" "b"'

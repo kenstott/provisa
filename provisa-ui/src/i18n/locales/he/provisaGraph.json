@@ -2,6 +2,7 @@
   "provisaGraph": {
     "legend": "מקרא",
     "hint": "גררו להזזה · גללו לתנועה · Ctrl/⌘ + גלילה להגדלה",
+    "layingOut": "מסדר את הפריסה…",
     "type": {
       "product": "מוצר נתונים",
       "source": "מקור",

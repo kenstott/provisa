@@ -74,6 +74,7 @@ import { runUiActions } from "../mcp/uiActions";
 import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
 import { keepClearOf } from "./clearOfGraph";
 import { TourRunningContext } from "./tourRunning";
+import { CancelButton } from "../components/form/CancelButton";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -1356,9 +1357,7 @@ function TourStatusOverlay({
                 {t("tour.status.skip")}
               </button>
             )}
-            <button type="button" className="tour-status-btn" onClick={onExit}>
-              {t("tour.status.cancel")}
-            </button>
+            <CancelButton onClick={onExit} />
           </div>
         )}
       </div>

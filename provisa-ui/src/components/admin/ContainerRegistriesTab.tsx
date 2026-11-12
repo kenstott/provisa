@@ -238,7 +238,6 @@ export function ContainerRegistriesTab() {
           {t("containerRegistries.help")}
         </Text>
         <Button
-          variant="default"
           onClick={() => setDrafts((ds) => [...(ds ?? []), blank()])}
           data-testid="container-registries-add"
         >
