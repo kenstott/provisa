@@ -66,12 +66,14 @@ vi.mock("cytoscape", () => {
         };
       },
       nodes: () => none,
+      // The lanes preset reads the lines to place the term lane: none drawn here.
+      edges: () => none,
       elements: () => ({
         ...none,
         filter: () => none,
         forEach: (f: (e: unknown) => void) => record.elements.forEach((e) => f(drawnElement(e))),
       }),
-      // Every node at the origin: the second pass's order is ELK's to keep, not the test's.
+      // Every node at the origin: where the lanes preset places them is lanes.test's to check.
       getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
       fit: vi.fn(),

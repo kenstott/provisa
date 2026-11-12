@@ -88995,22 +88995,31 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: >-
-    The Ontology View reads, on the server, the graph it draws, and the query it reads is the one
-    Open as query exports. The page's search is the query's root filter: the terms whose name or
-    definition holds any of its items (a quoted phrase is one item), whatever the case, the items'
-    own wildcards taken literally. Each match is read with its neighbourhood, the same rule the view
-    draws by: what lies within two hops of a match along any edge drawn, both ways, a product or a
-    domain drawn where it is reached and never passed through, and a table passed through only when
-    entered as a product's member. The neighbourhood is one stated rule that the view's drawing and
-    the query share; the query reads each hop as a nested level of the terms an edge reaches, the
-    last level with its edges' ends alone, so it reads nothing past the neighbourhood. A search
-    therefore never stops a graph being opened as a query. Before it reads the graph the view counts
-    the terms its query would read at its root, by id; past a budget of 500 the graph is not read.
-    With no search and no domain chosen the view then draws its overview, each domain with the
-    number of terms in it, and picking a domain narrows the view to it; a search or a domain still
-    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn.
-    The product graph and lineage follow the same pattern later.
+  description: 'The Ontology View reads, on the server, the graph it draws, and the query it reads is the
+    one Open as query exports. The page''s search is the query''s root filter: the terms whose name or definition
+    holds any of its items (a quoted phrase is one item), whatever the case, the items'' own wildcards taken
+    literally. Each match is read with its neighbourhood, the same rule the view draws by: what lies within
+    two hops of a match along any edge drawn, both ways, a product or a domain drawn where it is reached
+    and never passed through, and a table passed through only when entered as a product''s member. The neighbourhood
+    is one stated rule that the view''s drawing and the query share; the query reads each hop as a nested
+    level of the terms an edge reaches, the last level with its edges'' ends alone, so it reads nothing
+    past the neighbourhood. A search therefore never stops a graph being opened as a query. Before it reads
+    the graph the view counts the terms its query would read at its root, by id; past a budget of 500 the
+    graph is not read. With no search and no domain chosen the view then draws its overview, each domain
+    with the number of terms in it, and picking a domain narrows the view to it; a search or a domain still
+    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn. The product
+    graph and lineage follow the same pattern later. (Amended 2026-11-11, A PLUS MARKS A REQUIRED ITEM:)
+    Maintainer 2026-11-12: in every page search (the one rule the page filters, the term list and the Ontology
+    View share), an item written with a leading + is required, and an item without one is one of the at-least-one-of
+    items: a row is kept when it holds every + item and, if there are items without a +, at least one of
+    them. So red +blue green keeps what holds blue and either red or green; +red +blue keeps what holds
+    both; red green keeps what holds either, as before. A + goes before a word or before a quoted phrase.
+    The search field''s hint says so. (Amended 2026-11-11, A MINUS MARKS AN ITEM THAT MUST NOT MATCH:) Maintainer
+    2026-11-12: beside +, an item written with a leading - must not be found: a row is kept when it holds
+    every + item, holds no - item, and, if there are items with neither mark, holds at least one of them.
+    So +red -blue green keeps what holds red, does not hold blue, and holds green. A mark counts only at
+    the start of an item, before a word or a quoted phrase: the hyphen inside pet-store is part of the word.
+    Text that itself begins with + or - is searched by putting it in quotes.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -92194,50 +92203,52 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
     model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
     which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
-    Maintainer 2026-11-04: the reference library has a retrieval setting, passage or graph, shown and changed
-    on the Admin Reference library page. Passage retrieval is today''s: the passages nearest the question.
-    Graph retrieval also follows the glossary: it finds the in-service glossary terms the question names,
-    walks their relationships out from those terms, and offers the passages the reached terms cite as further
-    candidates, so an answer can draw on a rule whose wording does not resemble the question (the aggregation
-    rule behind a currency transaction report). A candidate''s priority is the weight of the relationship
-    types on its path, multiplied over the path, so it falls with each hop from the initial terms: SYNONYM_OF
-    and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF 0.8; DERIVED_FROM and REPLACES
-    0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The walk stops where the priority
-    falls below 0.25. The passages nearest the question come first; graph candidates fill the rest of the
-    same passage budget in priority order, at most two per reached term, so graph retrieval never displaces
-    what passage retrieval found. Each graph candidate reaches the assistant labelled with its path (from
-    which term, over which relationships), and the assistant cites only the passages it used, so an irrelevant
-    candidate never reaches the answer. Only terms, relationships and documents the role may read are walked
-    or offered. Acceptance: in the bank secrecy demo, asked which cash deposits need a currency transaction
-    report, Polly''s answer with graph retrieval cites the aggregation rule (31 CFR 1010.313), and with
-    passage retrieval the answer is recorded for comparison. (Amended 2026-11-04, THE LIBRARY''S STORE AND
-    RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and egress rules, its document
-    extraction and the org''s embedding model, and keeps its documents and passages in the org''s control
-    plane, each passage with its section, page, position in its document and embedding in a pgvector column
-    under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries pgvector, and the
-    library refuses to start without it (no unindexed search). Retrieval for a question, within the role''s
-    readable documents, in this order of priority within one passage budget: (1) the passages nearest the
-    question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded by the in-service
-    terms the question names, the terms whose embedding (name and definition) is nearest the question, and
-    the terms citing the passages of (1); the reached terms'' definitions are returned as context beside
-    the passages they cite; (3) neighbours of the passages of (1) and (2): the passages just before and
-    after each in its document, and the passages nearest each by embedding. Every item reaches the assistant
-    labelled with how it was reached; the assistant cites only what it used. Glossary terms are the graph''s
-    entities and ontology relationships its relations; Provisa runs no separate entity extraction over the
-    library beyond Find terms. A passage that is repeatedly used in answers but cited by no glossary term
-    is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S BUILD KEEPS ITS SCANNED
-    DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true, and the demo''s build
-    then keeps that document through the same keep a steward uses, so the published bundle carries it kept
-    and an assistant in every sandbox of that demo finds its passages without a visitor keeping it. Without
-    keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05, THE ACCEPTANCE IS THE
-    WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval is accepted on
-    a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
-    graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
-    recorded for comparison, does not. The aggregation question (1010.313), which passage search already
-    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
-    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
-    its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
-    as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
+    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-11 -- retrieval is
+    always what graph retrieval was; there is no setting to choose. Kept here for history; do not implement
+    against it.] the reference library has a retrieval setting, passage or graph, shown and changed on the
+    Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the passages nearest
+    the question. Graph retrieval also follows the glossary: it finds the in-service glossary terms the
+    question names, walks their relationships out from those terms, and offers the passages the reached
+    terms cite as further candidates, so an answer can draw on a rule whose wording does not resemble the
+    question (the aggregation rule behind a currency transaction report). A candidate''s priority is the
+    weight of the relationship types on its path, multiplied over the path, so it falls with each hop from
+    the initial terms: SYNONYM_OF and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF
+    0.8; DERIVED_FROM and REPLACES 0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The
+    walk stops where the priority falls below 0.25. The passages nearest the question come first; graph
+    candidates fill the rest of the same passage budget in priority order, at most two per reached term,
+    so graph retrieval never displaces what passage retrieval found. Each graph candidate reaches the assistant
+    labelled with its path (from which term, over which relationships), and the assistant cites only the
+    passages it used, so an irrelevant candidate never reaches the answer. Only terms, relationships and
+    documents the role may read are walked or offered. Acceptance: in the bank secrecy demo, asked which
+    cash deposits need a currency transaction report, Polly''s answer with graph retrieval cites the aggregation
+    rule (31 CFR 1010.313), and with passage retrieval the answer is recorded for comparison. (Amended 2026-11-04,
+    THE LIBRARY''S STORE AND RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and
+    egress rules, its document extraction and the org''s embedding model, and keeps its documents and passages
+    in the org''s control plane, each passage with its section, page, position in its document and embedding
+    in a pgvector column under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries
+    pgvector, and the library refuses to start without it (no unindexed search). Retrieval for a question,
+    within the role''s readable documents, in this order of priority within one passage budget: (1) the
+    passages nearest the question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded
+    by the in-service terms the question names, the terms whose embedding (name and definition) is nearest
+    the question, and the terms citing the passages of (1); the reached terms'' definitions are returned
+    as context beside the passages they cite; (3) neighbours of the passages of (1) and (2): the passages
+    just before and after each in its document, and the passages nearest each by embedding. Every item reaches
+    the assistant labelled with how it was reached; the assistant cites only what it used. Glossary terms
+    are the graph''s entities and ontology relationships its relations; Provisa runs no separate entity
+    extraction over the library beyond Find terms. A passage that is repeatedly used in answers but cited
+    by no glossary term is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S
+    BUILD KEEPS ITS SCANNED DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true,
+    and the demo''s build then keeps that document through the same keep a steward uses, so the published
+    bundle carries it kept and an assistant in every sandbox of that demo finds its passages without a visitor
+    keeping it. Without keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05,
+    THE ACCEPTANCE IS THE WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval
+    is accepted on a question passage search cannot answer: for a customer who keeps depositing cash just
+    under $10,000, graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage
+    retrieval, recorded for comparison, does not. The aggregation question (1010.313), which passage search
+    already finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads
+    Excel workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed
+    by its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is
+    read as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
     A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
     own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
     is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
@@ -92253,7 +92264,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
     term finding run in a background job; its index status is a property (indexing with progress where known,
     ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07).'
+    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-11, TERMS ARE EMBEDDED AS
+    THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
+    and when its name or definition changes, and its embedding is removed when it leaves service, whatever
+    the library''s retrieval setting, as a document''s passages are embedded when the document is added.
+    The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
+    nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
+    embedding. An org with no vector model embeds nothing. (Amended 2026-11-11, ONE RETRIEVAL, NO SETTING:)
+    Maintainer 2026-11-12: graph retrieval already returns the passages nearest the question first, undisplaced,
+    and only adds the passages the glossary reaches before the neighbours; when the glossary reaches nothing
+    it returns what passage retrieval returns. So there is nothing for a person to choose: the library has
+    one retrieval, the one that was called graph, and the passage-or-graph setting and its control on the
+    Library page are removed. No reranking model is added: the passages nearest the question stay first
+    and each passage still says how it was reached.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
@@ -95304,7 +95327,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
     tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
     force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
-    longer toolbar buttons.'
+    longer toolbar buttons. (Amended 2026-11-11, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
+    while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
+    at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
+    places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
+    and on Reset view when it lays out again.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4

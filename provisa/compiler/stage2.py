@@ -274,8 +274,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
               role's directly-accessible tables with NO 1-hop neighbour expansion (fail-closed).
         source_types: {source_id: source_type}, e.g. {"sales-pg": "postgresql"}. Together with
               ``engine``, enables the REQ-971 mask pushdown/streaming decision below. When either
-              is None, no capability check runs — the mask expression is inlined unconditionally
-              (matches every connector registered today, all of which declare predicate_pushdown).
+              is None, no capability check runs; the mask expression is inlined either way, and
+              the engine computes whatever part of it the source cannot.
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
         source_hints: {source_id: federation_hints}: each source's settings, which
@@ -621,9 +621,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             continue  # the reader reaches no domain: every listed name is outside its reach
         _and_rule(gov, tm.table_id, predicate)
 
-    # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
-    # the predicate down and cannot stream, fail loud here rather than silently inlining an
-    # unsupported expression that a downstream connector cannot evaluate.
+    # REQ-971: mask pushdown/streaming decision, read from each masked table's connector
+    # capability. A mask is a projection expression in this governed statement, and the statement
+    # is executed by the engine: a mask the source cannot evaluate is computed by the engine as it
+    # streams the result (REQ-971's engine-side stage; REQ-1494: every fake is computed by the
+    # serving engine). Nothing in the tier buffers the unmasked relation, so every mask streams.
     if source_types is not None and engine is not None:
         from provisa.federation.promote import plan_mask_evaluation
 
@@ -640,7 +642,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
             hints = (source_hints or {}).get(source_id, {})
             cap = engine.connector_pushdown(Source.settings_view(source_id, source_type, hints))
-            plan_mask_evaluation(cap, can_stream=False)
+            plan_mask_evaluation(cap, can_stream=True)
 
     return gov
 
