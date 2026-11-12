@@ -30,7 +30,7 @@
     "citedByDriftedHelp": "Les mots cités ne figurent plus dans ce document. Vérifiez cette citation.",
     "citedByDriftedCount": "Citations dérivées : {{n}}",
     "intro": "Documents sur lesquels s'appuient et que citent les assistants de l'organisation : politiques, réglementations, contrats, spécifications et normes. Un assistant agissant pour un rôle utilise un document dont le rôle lit les domaines, et tout document de l'organisation entière.",
-    "add": "Ajouter un document",
+    "add": "+ Document",
     "addTitle": "Ajouter un document",
     "loading": "Chargement de la bibliothèque de référence...",
     "empty": "La bibliothèque ne contient encore aucun document.",
@@ -90,10 +90,6 @@
     "helpWhat": "Un ensemble restreint et choisi de documents de référence (politiques, réglementations, contrats, processus), ajoutés par fichier ou URL. Ce n'est pas un entrepôt de documents.",
     "helpWho": "Polly y puise ses réponses et en cite les passages. Les agents IA connectés via le serveur MCP de Provisa y effectuent des recherches (search_reference_library). « Trouver des termes » la lit pour proposer des termes et des définitions de glossaire.",
     "helpSees": "Un assistant agissant pour un rôle ne s'appuie que sur les documents conservés dont le rôle lit les domaines, ainsi que sur ceux de l'organisation entière.",
-    "helpEmbedding": "Les passages d'un document sont intégrés avec le modèle d'embedding de l'organisation lors de son ajout ; « Réintégrer » n'est nécessaire que si ce modèle change.",
-    "retrieval": "Récupération",
-    "retrievalPassage": "Passage",
-    "retrievalGraph": "Graphe",
-    "retrievalHelp": "Comment la question d'un assistant est traitée à partir de la bibliothèque. Passage : les passages les plus proches de la question, et les passages qui les entourent. Graphe : suit aussi le glossaire depuis les termes que nomme la question, par leurs relations, jusqu'aux passages que citent les termes atteints, de sorte qu'une réponse peut s'appuyer sur une règle dont la formulation ne ressemble pas à la question."
+    "helpEmbedding": "Les passages d'un document sont intégrés avec le modèle d'embedding de l'organisation lors de son ajout ; « Réintégrer » n'est nécessaire que si ce modèle change."
   }
 }

@@ -19,6 +19,7 @@ Concept."""
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 import base64
 import types
 from typing import TYPE_CHECKING, Any, cast
@@ -110,6 +111,8 @@ def api(control_plane, monkeypatch):
     monkeypatch.setattr(glossary_router, "_curate_authority", lambda request: None)
     monkeypatch.setattr(glossary_router, "_is_org_curator", lambda request: False)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background, which these cases do not run.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     return types.SimpleNamespace(db=db, notified=notified)
 
 
@@ -489,3 +492,14 @@ async def test_bulk_approval_decides_each_and_names_the_refused(api):
     )
     assert decided["approved"] == ids
     assert decided["refused"] == [{"id": 999, "message": "no import holds an alignment 999"}]
+
+
+async def test_applying_an_import_embeds_the_terms_it_brought_into_service(api, monkeypatch):
+    """REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): an applied import calls the one trigger."""
+    from tests.unit.test_reference_library_terms_embedded import record_embeds
+
+    embedded = record_embeds(monkeypatch)
+    review = await router.import_ontology(_request(_upload(ONTOLOGY)))
+    assert embedded == []
+    await router.apply_import(review["import"]["id"], _request())
+    assert embedded == ["default"]

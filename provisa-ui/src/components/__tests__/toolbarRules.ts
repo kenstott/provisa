@@ -13,14 +13,15 @@
 // the named controls come first
 // (buttons with words, segmented controls, chips, selects, sliders), then the icon-only buttons,
 // then the (?) help last. An icon-only button is borderless wherever it is: subtle or transparent,
-// or light for a toggle while it is on.
+// or light for a toggle while it is on. A list page's filter is no toolbar control: it stands in the
+// page header between the title and the toolbar, where it grows (TablesPage), never inside one.
 
 import ts from "typescript";
 
 export type ToolbarKind = "named" | "icon" | "help";
 
 export interface ToolbarViolation {
-  rule: "bordered-icon-button" | "toolbar-order";
+  rule: "bordered-icon-button" | "toolbar-order" | "filter-in-toolbar";
   line: number;
   detail: string;
 }
@@ -175,6 +176,13 @@ export function checkToolbarRules(file: string, source: string): ToolbarViolatio
     if (open && ts.isJsxElement(n)) {
       const cls = attr(open, "className");
       if (attr(open, "data-toolbar") || (cls && attrStrings(cls).some(isToolbar))) {
+        const filters = (c: ts.Node): void => {
+          const o = opening(c);
+          if (o && o.tagName.getText() === "FilterInput")
+            out.push({ rule: "filter-in-toolbar", line: lineOf(c), detail: "FilterInput" });
+          ts.forEachChild(c, filters);
+        };
+        n.children.forEach(filters);
         const kinds = kindsIn(n.children, sf);
         for (let i = 1; i < kinds.length; i++)
           if (RANK[kinds[i][0]] < RANK[kinds[i - 1][0]])
