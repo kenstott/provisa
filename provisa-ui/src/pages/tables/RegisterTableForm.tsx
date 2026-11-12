@@ -52,6 +52,7 @@ import {
 } from "../../api/profiler";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { Registration } from "./draftTable";
+import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { Paging, RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
@@ -738,8 +739,11 @@ export function RegisterTableForm({
               {sources
                 .filter(
                   (s) =>
-                    s.allowedDomains.length === 0 ||
-                    s.allowedDomains.some((d) => checkedDomains.has(d)),
+                    // Views come from + View, and a system source is Provisa's own.
+                    s.id !== DERIVED_SOURCE_ID &&
+                    !s.isSystem &&
+                    (s.allowedDomains.length === 0 ||
+                    s.allowedDomains.some((d) => checkedDomains.has(d))),
                 )
                 .map((s) => (
                   <option key={s.id} value={s.id}>
