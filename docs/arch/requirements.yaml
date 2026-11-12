@@ -89014,7 +89014,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     items: a row is kept when it holds every + item and, if there are items without a +, at least one of
     them. So red +blue green keeps what holds blue and either red or green; +red +blue keeps what holds
     both; red green keeps what holds either, as before. A + goes before a word or before a quoted phrase.
-    The search field''s hint says so.'
+    The search field''s hint says so. (Amended 2026-11-11, A MINUS MARKS AN ITEM THAT MUST NOT MATCH:) Maintainer
+    2026-11-12: beside +, an item written with a leading - must not be found: a row is kept when it holds
+    every + item, holds no - item, and, if there are items with neither mark, holds at least one of them.
+    So +red -blue green keeps what holds red, does not hold blue, and holds green. A mark counts only at
+    the start of an item, before a word or a quoted phrase: the hyphen inside pet-store is part of the word.
+    Text that itself begins with + or - is searched by putting it in quotes.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
