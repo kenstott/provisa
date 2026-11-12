@@ -53,8 +53,9 @@ uppercase, weight 700.
   the type's colour.
 - A two-line label: the name, then the type's name in uppercase. The label runs from 8px past the
   icon to 10px short of the right edge (`TEXT_LEFT`, `TEXT_RIGHT`), never over the icon: its
-  room is the node's own (`text-max-width` from the node's width), and a name longer than the room,
-  a dotted name with no space in it included, wraps (`text-overflow-wrap: anywhere`). A node with `lines` lists them
+  room is the node's own (`text-max-width` from the node's width), and a label longer than the room
+  wraps at its spaces, or anywhere when one of its words (a dotted name with no space in it) is
+  wider than the room (`labelWrap`, `text-overflow-wrap`). A node with `lines` lists them
   under a rule, left-aligned, in monospace.
 - A fold node (`kind: "more"`) is the same box, dashed, with no band.
 - **The one exception: a junction is a diamond** (REQ-2239, amended 2026-11-11, A JUNCTION IS A
@@ -96,6 +97,7 @@ titled the same way.
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
+- The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
   the view gives it. Shown on hover or keyboard focus.

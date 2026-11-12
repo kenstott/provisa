@@ -177,6 +177,13 @@ describe("a node's label", () => {
         type: "column" as const,
         name: "shelter.assignments_by_employee.employee_assignment_history_id",
       },
+      // A fold node's sentence wraps at its spaces, never inside a word ("thi s view").
+      {
+        id: "more:t",
+        type: "more" as const,
+        kind: "more" as const,
+        name: "3 columns with no term in this view",
+      },
     ],
     edges: [],
   };
@@ -208,13 +215,27 @@ describe("a node's label", () => {
       const shift = parseFloat(n.style("text-margin-x") as string);
       const iconRight = -w / 2 + parseFloat(n.style("background-position-x") as string) + SIZE.icon;
       // The label is centred at the node's centre plus its shift and is at most its room wide:
-      // it wraps anywhere rather than run past it.
+      // it wraps at its spaces, or anywhere when a word of it is wider than the room.
       expect(n.style("text-halign")).toBe("center");
-      expect(n.style("text-overflow-wrap"), n.id()).toBe("anywhere");
-      expect(shift - room / 2, `${n.id()} label's left edge`).toBeGreaterThan(iconRight);
+      const words = String(n.data("label")).split(/\s+/);
+      const wider = words.some((x) => textWidth(x, SIZE.name) > room);
+      expect(n.style("text-overflow-wrap"), n.id()).toBe(wider ? "anywhere" : "whitespace");
       expect(shift + room / 2, `${n.id()} label's right edge`).toBeLessThanOrEqual(w / 2);
+      expect(shift - room / 2, `${n.id()} label's left edge`).toBeGreaterThanOrEqual(-w / 2);
+      // A fold node has no icon.
+      if (n.data("kind") === "node")
+        expect(shift - room / 2, `${n.id()} label's left edge`).toBeGreaterThan(iconRight);
     });
     cy.destroy();
+  });
+
+  it("wraps a sentence at its spaces and a name with none wherever it must", () => {
+    const cy = drawn();
+    const more = cy.getElementById("more:t").style("text-overflow-wrap");
+    const long = cy.getElementById("c:col").style("text-overflow-wrap");
+    cy.destroy();
+    expect(more).toBe("whitespace");
+    expect(long).toBe("anywhere");
   });
 
   it("wraps a name past the widest node, and the node grows in height for it", () => {

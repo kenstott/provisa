@@ -64,9 +64,9 @@ export function graphStylesheet(t: GraphTokens) {
         "font-weight": 500,
         color: t.text,
         // The label runs from past the icon to short of the right edge, and wraps rather than
-        // run past either: a name with no space in it wraps anywhere.
+        // run past either: at its spaces, or anywhere when a word is wider than its room.
         "text-wrap": "wrap",
-        "text-overflow-wrap": "anywhere",
+        "text-overflow-wrap": "data(wrap)",
         "text-max-width": textRoom,
         "text-valign": "center",
         "text-halign": "center",

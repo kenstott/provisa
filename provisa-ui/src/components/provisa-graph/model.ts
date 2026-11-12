@@ -104,7 +104,7 @@ export const NODE_MAX_WIDTH = 360;
 
 /** A line's width drawn at ``size`` px, as near as can be told without a canvas: a little over the
  * system sans (or, ``mono``, the monospace) widths, so a node sized by it is wide enough. A label
- * longer than its node still never runs past its room: it wraps (the stylesheet's
+ * longer than its node still never runs past its room: it wraps (labelWrap, the stylesheet's
  * ``text-overflow-wrap``). */
 export function textWidth(line: string, size: number, mono = false): number {
   if (mono) return line.length * size * 0.62;
@@ -129,6 +129,18 @@ export function boxWidth(head: string[], mono: boolean): { w: number; text: numb
     Math.max(SIZE.nodeWidth, Math.ceil(TEXT_LEFT + need + TEXT_RIGHT)),
   );
   return { w, text: w - TEXT_LEFT - TEXT_RIGHT };
+}
+
+/** How a label wraps in ``room`` px: at its spaces, unless a word of it is wider than the room
+ * (a dotted name such as shelter.assignments_by_employee), which then breaks where it must. */
+export function labelWrap(
+  lines: string[],
+  room: number,
+  size: number,
+  mono: boolean,
+): "whitespace" | "anywhere" {
+  const words = lines.flatMap((l) => l.split(/\s+/));
+  return words.some((w) => textWidth(w, size, mono) > room) ? "anywhere" : "whitespace";
 }
 
 /** How many lines ``lines`` take in ``room`` px, each wrapped where it runs past. */
@@ -193,6 +205,12 @@ export function graphElements(
               : nodeHeight(drawnLines),
         w: shape === "diamond" ? SIZE.diamondWidth : box.w,
         textW: box.text,
+        wrap: labelWrap(
+          lines,
+          shape === "diamond" ? SIZE.diamondWidth - 40 : box.text,
+          mono ? 10 : SIZE.name,
+          mono,
+        ),
         body: lineCount > 2 ? "yes" : "no",
         description: n.description ?? "",
         ...(n.parent !== undefined ? { parent: n.parent } : {}),
