@@ -153,7 +153,12 @@ export function sortLanes(
     for (let a = 0; a < sorted.length; ) {
       let b = a + 1;
       while (b < sorted.length && same(sorted[b].k, sorted[a].k)) b++;
-      items.push(...chainShared(sorted.slice(a, b).map((x) => x.n), reach));
+      items.push(
+        ...chainShared(
+          sorted.slice(a, b).map((x) => x.n),
+          reach,
+        ),
+      );
       a = b;
     }
     out[i].items = items;
@@ -188,10 +193,7 @@ function chainShared(tied: LaneItem[], reach: (id: string) => Set<string>): Lane
  * lane, the first track nearest it. A line takes the first track where it meets no line it shares no
  * node with along its span (lines from one node share a track, a comb), the shortest lines first, so a
  * line nests inside a longer one and two lines cross only where their spans interleave. */
-function besideTracks(
-  order: string[],
-  lines: LaneLine[],
-): Map<string, number> {
+function besideTracks(order: string[], lines: LaneLine[]): Map<string, number> {
   const row = new Map(order.map((id, i) => [id, i]));
   const spans = lines
     .filter((k) => row.has(k.source) && row.has(k.target) && k.source !== k.target)
@@ -256,7 +258,12 @@ export function placeLanes(
     const order = [...items].sort((p, q) => (out.get(p.id) as At).y - (out.get(q.id) as At).y);
     const tracks =
       id === beside
-        ? new Set(besideTracks(order.map((n) => n.id), lines).values()).size
+        ? new Set(
+            besideTracks(
+              order.map((n) => n.id),
+              lines,
+            ).values(),
+          ).size
         : 0;
     const room = tracks > 0 ? TRACK_INSET + (tracks - 1) * TRACK_STEP : 0;
     left += width + room + 2 * (LANE_PAD + LANE_EDGE) + gap;
@@ -366,19 +373,13 @@ export function placeRows(
     }
     const lineCount = members.reduce((s, id) => s + (wants.get(id) as number[]).length, 0);
     const kind =
-      members.length > 1
-        ? lineCount > 0
-          ? 2
-          : 3
-        : lineCount === 1
-          ? 0
-          : lineCount > 1
-            ? 1
-            : 3;
+      members.length > 1 ? (lineCount > 0 ? 2 : 3) : lineCount === 1 ? 0 : lineCount > 1 ? 1 : 3;
     return { members, off, h: h - NODE_GAP, kind, first: index.get(members[0]) as number };
   });
   const ideal = (u: (typeof units)[number]) =>
-    u.kind === 3 ? Infinity : key(u.members.find((id) => (wants.get(id) as number[]).length > 0) as string);
+    u.kind === 3
+      ? Infinity
+      : key(u.members.find((id) => (wants.get(id) as number[]).length > 0) as string);
   units.sort(
     (p, q) =>
       p.kind - q.kind || (same(ideal(p), ideal(q)) ? 0 : ideal(p) - ideal(q)) || p.first - q.first,
@@ -402,7 +403,9 @@ export function placeRows(
   };
   for (const u of units) {
     const level: number[] = [];
-    u.members.forEach((id, i) => (wants.get(id) as number[]).forEach((c) => level.push(c - u.off[i])));
+    u.members.forEach((id, i) =>
+      (wants.get(id) as number[]).forEach((c) => level.push(c - u.off[i])),
+    );
     let score: (top: number) => number;
     if (u.kind === 3) {
       const near = u.members
@@ -410,7 +413,8 @@ export function placeRows(
         .map((m) => out.get(m))
         .filter((y): y is number => y !== undefined);
       const bottom = Math.max(0, ...taken.map(([, b]) => b + NODE_GAP));
-      const aim = near.length > 0 ? near.reduce((s, v) => s + v, 0) / near.length - u.h / 2 : bottom;
+      const aim =
+        near.length > 0 ? near.reduce((s, v) => s + v, 0) / near.length - u.h / 2 : bottom;
       level.push(aim);
       score = (top) => Math.abs(top - aim);
     } else
@@ -428,7 +432,11 @@ export function placeRows(
       ]),
     ]
       .filter((c) => fits(c.top, u.h))
-      .map((c) => ({ ...c, score: score(c.top), crossings: u.kind === 3 ? 0 : crossings(u, c.top) }));
+      .map((c) => ({
+        ...c,
+        score: score(c.top),
+        crossings: u.kind === 3 ? 0 : crossings(u, c.top),
+      }));
     tops.sort(
       (p, q) =>
         (same(p.score, q.score) ? 0 : p.score - q.score) ||
@@ -453,7 +461,11 @@ export function besideRoutes(cy: Core, lane: string): Map<string, At[]> {
   const byId = new Map(items.map((n) => [n.id, n]));
   const lines: LaneLine[] = [];
   cy.edges().forEach((e) => {
-    const k = { id: e.id(), source: e.data("source") as string, target: e.data("target") as string };
+    const k = {
+      id: e.id(),
+      source: e.data("source") as string,
+      target: e.data("target") as string,
+    };
     if (byId.has(k.source) && byId.has(k.target)) lines.push(k);
   });
   const order = [...items].sort((p, q) => p.y - q.y).map((n) => n.id);
@@ -491,7 +503,11 @@ export function runLanes(
     const items = placedItems(cy);
     const lines: LaneLine[] = [];
     cy.edges().forEach((e) => {
-      lines.push({ id: e.id(), source: e.data("source") as string, target: e.data("target") as string });
+      lines.push({
+        id: e.id(),
+        source: e.data("source") as string,
+        target: e.data("target") as string,
+      });
     });
     const gap = opts.tight ? TIGHT_LANE_GAP : LANE_GAP;
     const laid = new Set(overlay.map((e) => e.id));
@@ -551,7 +567,8 @@ function placedItems(cy: Core): (LaneItem & { lane: string; x: number; y: number
 /** Each lane boxed round its own nodes and the lines beside it, its title above them. */
 function boxLanes(cy: Core, opts: LanesOptions): void {
   const items = placedItems(cy);
-  const routes = opts.beside === undefined ? new Map<string, At[]>() : besideRoutes(cy, opts.beside);
+  const routes =
+    opts.beside === undefined ? new Map<string, At[]>() : besideRoutes(cy, opts.beside);
   const trackRight = Math.max(-Infinity, ...[...routes.values()].map((p) => p[1].x));
   for (const lane of opts.lanes) {
     const inLane = items.filter((n) => n.lane === lane.id);

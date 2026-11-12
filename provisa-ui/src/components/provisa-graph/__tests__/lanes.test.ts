@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import cytoscape from "cytoscape";
-import { laneDiagram, drawnCrossings, LANES, type At } from "../../graph3d/laneDiagram";
+import { laneDiagram, drawnCrossings, LANES, type At, type Lane } from "../../graph3d/laneDiagram";
 import { laneGraph } from "../../graph3d/laneGraph";
 import { petHealthOntology, petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
 import type { GraphData } from "../../graph3d/graphModel";
@@ -148,7 +148,7 @@ function termLane(cy: Core, overlay: Set<string>) {
   const score = (ids: string[], dy = 0) =>
     ids.reduce(
       (s, id) =>
-        s + (cols.get(id) as number[]).reduce((u, c) => u + Math.abs((byId.get(id)!.y + dy) - c), 0),
+        s + (cols.get(id) as number[]).reduce((u, c) => u + Math.abs(byId.get(id)!.y + dy - c), 0),
       0,
     );
   /** Whether ``ids`` moved by ``dy`` overlap no other term's row (a node gap kept). */
@@ -186,7 +186,7 @@ describe("terms sit level with their columns (REQ-2239, amended 2026-11-11)", ()
       const given = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => n.id());
       const laneAt = new Map<string, number>();
       cy.nodes('[kind = "node"], [kind = "more"]').forEach((n) => {
-        laneAt.set(n.id(), LANES.indexOf(n.data("lane")));
+        laneAt.set(n.id(), LANES.indexOf(n.data("lane") as Lane));
       });
       const left = new Map<string, number[]>();
       const y = (id: string) => cy.getElementById(id).position().y;
@@ -239,8 +239,8 @@ describe("terms sit level with their columns (REQ-2239, amended 2026-11-11)", ()
       const productY = (tb: string) => {
         const ps = cy
           .edges()
-          .filter((e) => e.data("target") === tb && lane(e.data("source")) === "product")
-          .map((e) => cy.getElementById(e.data("source")).position().y);
+          .filter((e) => e.data("target") === tb && lane(e.data("source") as string) === "product")
+          .map((e) => cy.getElementById(e.data("source") as string).position().y);
         return ps.length === 0 ? Infinity : ps.reduce((s, v) => s + v, 0) / ps.length;
       };
       const tables = drawnLanes(cy)[1];
@@ -257,7 +257,8 @@ describe("terms sit level with their columns (REQ-2239, amended 2026-11-11)", ()
         if (run.length > 2) runs++;
         for (let k = 0; k + 1 < run.length; k++) {
           const best = Math.max(...run.slice(k + 1).map((b) => shared(run[k], b)));
-          if (best > 0) expect(shared(run[k], run[k + 1]), `${run[k]} then ${run[k + 1]}`).toBe(best);
+          if (best > 0)
+            expect(shared(run[k], run[k + 1]), `${run[k]} then ${run[k + 1]}`).toBe(best);
         }
         i = j;
       }
@@ -334,9 +335,10 @@ describe("terms sit level with their columns (REQ-2239, amended 2026-11-11)", ()
       expect(families).toBeGreaterThan(1);
       const rows = [...t.terms].sort((p, q) => p.y - q.y);
       for (let i = 1; i < rows.length; i++)
-        expect(rows[i].y - rows[i].h / 2, `${rows[i].id} below ${rows[i - 1].id}`).toBeGreaterThanOrEqual(
-          rows[i - 1].y + rows[i - 1].h / 2 + NODE_GAP - 1e-9,
-        );
+        expect(
+          rows[i].y - rows[i].h / 2,
+          `${rows[i].id} below ${rows[i - 1].id}`,
+        ).toBeGreaterThanOrEqual(rows[i - 1].y + rows[i - 1].h / 2 + NODE_GAP - 1e-9);
     });
 
     it(`draws the same graph the same way twice (${name})`, async () => {
@@ -366,7 +368,9 @@ describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () =
         .map((n) => ({ id: n.id(), b: box(cy, n.id()) }));
       const inside = cy.edges().filter((e) => {
         const lane = (id: string) => cy.getElementById(id).data("lane");
-        return lane(e.data("source")) === "term" && lane(e.data("target")) === "term";
+        return (
+          lane(e.data("source") as string) === "term" && lane(e.data("target") as string) === "term"
+        );
       });
       const styles = inside.map((e) => ({
         id: e.id(),
@@ -389,30 +393,31 @@ describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () =
         const path = routes.get(id) as At[];
         expect(path.length, id).toBe(4);
         expect(path[0].x, `${id} leaves from a term's right side`).toBeLessThanOrEqual(right);
-        for (const p of path.slice(1, -1)) expect(p.x, `${id} beside the lane`).toBeGreaterThan(right);
+        for (const p of path.slice(1, -1))
+          expect(p.x, `${id} beside the lane`).toBeGreaterThan(right);
         // Its run down the lane passes through no term's row.
-        for (const t of terms)
-          expect(path[1].x > t.b.x2, `${id} clear of ${t.id}`).toBe(true);
+        for (const t of terms) expect(path[1].x > t.b.x2, `${id} clear of ${t.id}`).toBe(true);
       }
     });
 });
 
 describe("the lanes preset on the pet-store Ontology graph", () => {
-
   it("spreads every lane but the term lane over the height of the tallest", async () => {
     const { d, cy } = await laidOut(petStoreOntology());
     const laneOf = (id: string) => cy.getElementById(id).data("lane") as string;
     const placed = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => n.id());
-    const spans = LANES.filter((l) => l !== "term").map((l) => {
-      const ids = placed.filter((id) => laneOf(id) === l);
-      const bs = ids.map((id) => box(cy, id));
-      return {
-        l,
-        n: ids.length,
-        y1: Math.min(...bs.map((b) => b.y1)),
-        y2: Math.max(...bs.map((b) => b.y2)),
-      };
-    }).filter((s) => s.n > 1);
+    const spans = LANES.filter((l) => l !== "term")
+      .map((l) => {
+        const ids = placed.filter((id) => laneOf(id) === l);
+        const bs = ids.map((id) => box(cy, id));
+        return {
+          l,
+          n: ids.length,
+          y1: Math.min(...bs.map((b) => b.y1)),
+          y2: Math.max(...bs.map((b) => b.y2)),
+        };
+      })
+      .filter((s) => s.n > 1);
     const top = Math.min(...spans.map((s) => s.y1));
     const bottom = Math.max(...spans.map((s) => s.y2));
     cy.destroy();

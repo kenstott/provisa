@@ -13,8 +13,8 @@ diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
   ("+N columns"); clicking it is the view's `onMore`.
 - `edges`: `{ id, source, target, label?, arrow?, dashed?, tone?, data? }`.
 - `groups`: `{ id, label, description?, collapsed? }`.
-- `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (ELK layered in fixed lane
-  partitions, left to right), or `"force"` (fCoSE).
+- `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (fixed lanes left to right,
+  sorted and placed by the component, no layout library), or `"force"` (fCoSE).
 
 A view sets no colour, shape, size, font or control of its own. `data` carries the view's own
 identifiers (a table id, a relationship id) back to it on a click; it is never styled.
@@ -116,18 +116,27 @@ titled the same way.
 - `layered`: ELK layered, upward, groups laid out with their children; then nodes without edges
   placed in a grid under their group, groups packed to the pane's aspect, related nodes kept
   apart (the ERD's arrangement).
-- `lanes`: ELK layered left to right in fixed lane partitions places the diagram once; one lane
-  may be a compound laid out top-down by its rank edges. The lanes are layers whose order inside
-  is free: the view orders each lane by the barycentre of its neighbours (terms by their columns,
-  columns by their tables), crossings cut, and the component places the lanes from that order
-  (`placeLanes`): side by side, each as wide as its widest node; every lane spread over the height
-  of the tallest (its first node at the top, its last at the bottom, a lone node at the middle),
-  the stacked lane's rows keeping their shape. In the stacked (term) lane a block of terms joined by
-  rank lines keeps ELK's shape, its terms taking each level's places left to right in the order
-  (which sibling sits where is ordered as any node's place is), its rows at the lane's left edge;
-  terms with no line out of the lane follow in the column while it is no taller than the tallest
-  other lane, then wrap in rows. Each lane's box bounds its own nodes alone, its
-  title above them, the boxes `LANE_GAP` apart. Arcs are laid over the placed nodes.
+- `lanes` (REQ-2239, amended 2026-11-11; REQ-2174, EACH SIBLING TERM ON ITS OWN ROW): no layout
+  library places the diagram. Every lane but the term (`beside`) lane is sorted left to right by a
+  sort, not a search (`sortLanes`): the first lane keeps its order; each lane after it by the mean
+  place of what its nodes join on their left, nodes tied on that key (the tables of one product, or
+  of none) next to the one reaching the most of the same nodes two lanes on (tables sharing terms),
+  ties in the order given. Those lanes stand side by side, each as wide as its widest node, each
+  spread over the height of the tallest of them (its first node at the top, its last at the
+  bottom, a lone node at the middle; `placeLanes`). The term lane is placed, not sorted
+  (`placeRows`), scored by the angle of its lines to the columns (the lanes a fixed distance apart,
+  the summed vertical run): a term bound to one column sits level with it; a term bound to several
+  sits level with the median of them (two tied: fewer crossings, then the higher); the children of
+  one parent, and a parent bound to no column with them, are a block on adjacent rows, in the order
+  of their columns, placed where its lines' summed run is least. Units are placed one at a time,
+  single-column terms first, then multi-column terms, then blocks, then terms bound to nothing
+  (nearest the terms they link to, else below the rest); none takes a row another has taken, so a
+  block moves round the terms already level. Every term has its own row, `NODE_GAP` apart. The
+  lines between two terms (rank lines and the arcs laid over them) run beside the lane, on its
+  right, as right-angled segments, never through a term's row (`besideRoutes`). Crossings that no
+  placement removes are accepted. The same graph is always drawn the same way. Each lane's box
+  bounds its own nodes (and the term lane's lines beside it), its title above them, the boxes
+  `LANE_GAP` apart.
 - `force`: fCoSE.
 
 ## Owned by the component

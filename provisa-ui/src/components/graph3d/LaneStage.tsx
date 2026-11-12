@@ -9,10 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2174 (amended 2026-10-28; 2026-11-07): the graph's 2D view, the lane diagram (laneDiagram.ts),
-// drawn by the one graph (REQ-2239) in its lanes preset: products to terms left to right, each lane
-// sorted by the lane on its left; each term on its own row, the links between terms (rank links and
-// the others, named by their type) run beside the term lane. A click picks a node (the detail panel), a hover shows its card, a "+N columns" node
-// expands in place; the diagram copies as Mermaid text. A card holds the node's facts with links to
+// drawn by the one graph (REQ-2239) in its lanes preset: products to terms left to right, products,
+// tables and columns sorted by the lane on their left, each term level with its column (amended
+// 2026-11-11); each term on its own row, the links between terms (rank links and the others, named
+// by their type) run beside the term lane. A click picks a node (the detail panel), a hover shows
+// its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A card holds the node's facts with links to
 // their pages, and stays while the pointer is on it.
 
 import { useCallback, useMemo } from "react";
