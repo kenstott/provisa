@@ -350,6 +350,9 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
     # a column ref does.
     _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
+    # REQ-2243: a metric that names a term for its meaning is a definition the term stands behind,
+    # so it blocks the term as a grounded table does, until the metric is changed or retired.
+    _dep("metrics", "term_id", "glossary_term", "metric", "name"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
