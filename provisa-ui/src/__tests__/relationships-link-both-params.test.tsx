@@ -73,6 +73,7 @@ vi.mock("../hooks/useAdminQueries", () => ({
   useDomains: () => DOMAINS,
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
+  useDeleteRelationships: () => vi.fn(),
 }));
 vi.mock("../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
