@@ -173,7 +173,7 @@ def test_a_decision_refused_for_a_synthetic_need_lists_the_offer_for_review(
     monkeypatch.setattr(router.offers, "set_review", set_review)
     decision = SimpleNamespace(request_id=3)
     with pytest.raises(Exception):  # the ApiError the refusal becomes
-        asyncio.run(router._decide(conn, _state(), decision, None))
+        asyncio.run(router._decide(conn, _state(auth_config={}), decision, None))
     assert listed == [(7, reason)]
 
 
@@ -200,5 +200,7 @@ def test_a_decision_refused_for_another_reason_does_not_list_the_offer(monkeypat
     monkeypatch.setattr(router.offer_hooks, "held_by_idp", lambda _a: True)
     monkeypatch.setattr(router.offers, "set_review", set_review)
     with pytest.raises(Exception):
-        asyncio.run(router._decide(conn, _state(), SimpleNamespace(request_id=3), None))
+        asyncio.run(
+            router._decide(conn, _state(auth_config={}), SimpleNamespace(request_id=3), None)
+        )
     assert listed == []
