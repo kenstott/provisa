@@ -133,7 +133,11 @@ vi.mock("../ontologyData", async (importOriginal) => ({
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: () => LANES_DATA.data,
+  // The graph read; a test's own reader answers by the scope asked (its depth).
+  ontologyGraph: (_rows: unknown, s: { depth: number }) =>
+    typeof LANES_DATA.data === "function"
+      ? (LANES_DATA.data as (s: { depth: number }) => unknown)(s)
+      : LANES_DATA.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -145,7 +149,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 
 import { OntologySnippet } from "../OntologyGraph";
-import { productPreset } from "../ontologyPresets";
+import { productPreset, termPreset } from "../ontologyPresets";
 
 const DATA_READ = {
   nodes: [
@@ -316,7 +320,12 @@ const hover = (id: string) => {
     (x) => x.event === "mouseover" && x.selector.includes('node[kind = "more"]'),
   ) as Handler;
   const box = () => ({ x1: 10, y1: 10, x2: 40, y2: 36 });
-  act(() => h.fn({ target: { id: () => id, renderedBoundingBox: box }, renderedPosition: { x: 10, y: 10 } }));
+  act(() =>
+    h.fn({
+      target: { id: () => id, renderedBoundingBox: box },
+      renderedPosition: { x: 10, y: 10 },
+    }),
+  );
 };
 
 describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
@@ -464,5 +473,47 @@ describe("focusing a term (the rest of its graph with it)", () => {
     hover("term:amount");
     await waitFor(() => expect(faded("t:customers")).toBe(true));
     expect(faded("t:orders")).toBe(false);
+  });
+});
+
+describe("a term's graph in 2D, its hops raised", () => {
+  // J1206: Pet's graph drew the same lanes at 1 and 3 hops -- nothing is read past 1 hop of Pet.
+  // The depth control does redraw the lane diagram: Medication's graph is a chain, Visit at 1 hop,
+  // Visit's other part at 2.
+  const CHAIN = {
+    nodes: [
+      { id: "term:1", type: "term" as const, label: "Medication" },
+      { id: "term:2", type: "term" as const, label: "Visit" },
+      { id: "term:3", type: "term" as const, label: "Diagnosis" },
+    ],
+    edges: [
+      { id: "r1", a: "term:1", b: "term:2", kind: "term_edge" as const, label: "PART_OF" },
+      { id: "r2", a: "term:3", b: "term:2", kind: "term_edge" as const, label: "PART_OF" },
+    ],
+  };
+  // The server reads a term's neighbourhood to the depth asked: each hop a step along the chain.
+  const readTo = (s: { depth: number }) => {
+    const keep = new Set(CHAIN.nodes.slice(0, Math.min(3, s.depth + 1)).map((n) => n.id));
+    return {
+      nodes: CHAIN.nodes.filter((n) => keep.has(n.id)),
+      edges: CHAIN.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
+    };
+  };
+
+  it("redraws the lanes with what the hops reach", async () => {
+    LANES_DATA.data = readTo;
+    try {
+      render(<OntologySnippet preset={termPreset(1)} name="Medication" testId="term-graph" />);
+      act(() => observed.fire.forEach((f) => f()));
+      await screen.findByTestId("term-graph-lanes");
+      await waitFor(() => expect(ids("node")).toEqual(["term:1", "term:2"]));
+      fireEvent.click(
+        within(screen.getByTestId("term-graph-depth")).getByRole("radio", { name: "2" }),
+      );
+      await waitFor(() => expect(ids("node")).toEqual(["term:1", "term:2", "term:3"]));
+      expect(laneOf("term:3")).toBe("term");
+    } finally {
+      LANES_DATA.data = DATA_READ;
+    }
   });
 });

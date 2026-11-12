@@ -113,7 +113,7 @@ export function LaneStage({
           text: () => laneMermaid(diagram, laneTitle, moreLabel),
           testId: `${testId}-mermaid`,
         }}
-        hint={t("profile3d.hintFlat")}
+        hint={t("provisaGraph.hint")}
       />
     </div>
   );

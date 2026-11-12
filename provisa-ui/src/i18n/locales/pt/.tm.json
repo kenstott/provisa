@@ -5231,6 +5231,7 @@
   "pt/profilerPanel.json::profilerPanel.title": "Data Profiler",
   "pt/profilerPanel.json::profilerPanel.unsaved": "Save the table to apply this change.",
   "pt/profilerPanel.json::profilerPanel.viewRuns": "View Profile Runs",
+  "pt/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
   "pt/qdrantFields.json::qdrantFields.apiKey": "API key",
   "pt/qdrantFields.json::qdrantFields.apiKeyHint": "Leave empty for an instance without one. A secret reference, such as ${secret:NAME}, is resolved when the source is read.",
   "pt/qdrantFields.json::qdrantFields.grpc": "Read over gRPC",

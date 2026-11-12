@@ -21,6 +21,7 @@
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
 import { SIZE } from "../provisa-graph/tokens";
+import { placeLanes } from "../provisa-graph/lanes";
 
 export type Lane = "term" | "column" | "table" | "product";
 
@@ -305,7 +306,8 @@ export function laneOrder(d: LaneDiagram, termOrder: string[]): string[][] {
       termsOf.set(k.to, [...(termsOf.get(k.to) ?? []), at]);
     }
     if (lf === "column" && lt === "table") tableOf.set(k.from, k.to);
-    if (lf === "table" && lt === "product") productsOf.set(k.from, [...(productsOf.get(k.from) ?? []), k.to]);
+    if (lf === "table" && lt === "product")
+      productsOf.set(k.from, [...(productsOf.get(k.from) ?? []), k.to]);
   }
   const columns = [...inLane("column"), ...d.more.map((m) => m.id)];
   const tables = inLane("table");
@@ -329,7 +331,9 @@ export function laneOrder(d: LaneDiagram, termOrder: string[]): string[][] {
         ? { id, a: Infinity, m: Infinity, i }
         : { id, a: median(ts), m: ts.reduce((s, v) => s + v, 0) / ts.length, i };
     });
-    keyed.sort((x, y) => (x.a === y.a ? 0 : x.a - y.a) || (x.m === y.m ? 0 : x.m - y.m) || x.i - y.i);
+    keyed.sort(
+      (x, y) => (x.a === y.a ? 0 : x.a - y.a) || (x.m === y.m ? 0 : x.m - y.m) || x.i - y.i,
+    );
     b.members = sifted(
       keyed.map((k) => k.id),
       (u, v) => inversions(ups(u), ups(v)),
@@ -353,7 +357,8 @@ export function laneOrder(d: LaneDiagram, termOrder: string[]): string[][] {
   const productsAt = () => new Map(products.map((p, i) => [p, i]));
   for (let round = 0; round < ROUNDS; round++) {
     const pAt = productsAt();
-    const prods = (b: Block) => (b.table ? (productsOf.get(b.table) ?? []) : []).map((p) => pAt.get(p) as number);
+    const prods = (b: Block) =>
+      (b.table ? (productsOf.get(b.table) ?? []) : []).map((p) => pAt.get(p) as number);
     order = sifted(
       order,
       (x, y) =>
@@ -394,7 +399,8 @@ export interface At {
 
 /** Pairs of drawn lines (centre to centre) that cross, sharing no end. */
 export function drawnCrossings(links: LaneLink[], at: (id: string) => At): number {
-  const side = (a: At, b: At, c: At) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  const side = (a: At, b: At, c: At) =>
+    Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
   const segs = links.map((k) => ({ k, p: at(k.from), q: at(k.to) }));
   let n = 0;
   for (let i = 0; i < segs.length; i++)
@@ -402,7 +408,10 @@ export function drawnCrossings(links: LaneLink[], at: (id: string) => At): numbe
       const a = segs[i];
       const b = segs[j];
       if ([a.k.from, a.k.to].some((id) => id === b.k.from || id === b.k.to)) continue;
-      if (side(a.p, a.q, b.p) * side(a.p, a.q, b.q) < 0 && side(b.p, b.q, a.p) * side(b.p, b.q, a.q) < 0)
+      if (
+        side(a.p, a.q, b.p) * side(a.p, a.q, b.q) < 0 &&
+        side(b.p, b.q, a.p) * side(b.p, b.q, a.q) < 0
+      )
         n++;
     }
   return n;
@@ -440,10 +449,12 @@ const reachesOut = (d: LaneDiagram, block: string[]) =>
 
 /** Where the terms are drawn, given their ``order`` (top to bottom, by block) and where ELK put
  * them (``at``): the blocks stacked in one column at the lane's left edge, centred on the other
- * lanes, so every order the lanes can take is open to them. ELK packs the term lane's blocks by
+ * lanes, so every order the lanes can take is open to them. A block of terms joined by rank lines
+ * keeps ELK's shape, its terms taking each level's places left to right in ``order``. ELK packs the term lane's blocks by
  * size, a lone term wherever one fits, which is a line across the diagram for no reason. Blocks
- * with no line out of the lane wrap in rows below the column: they cross nothing, and a stack of
- * them would only make the diagram taller. ``widthOf`` is a node's drawn width, for those rows. */
+ * with no line out of the lane follow in the column while it is no taller than the tallest other
+ * lane, then wrap in rows below it: they cross nothing, and a longer stack would only make the
+ * diagram taller. ``widthOf`` is a node's drawn width, for those rows. */
 export function stackTerms(
   d: LaneDiagram,
   order: string[],
@@ -461,13 +472,32 @@ export function stackTerms(
     const ys = b.map((id) => at(id).y);
     return Math.max(...ys) - Math.min(...ys) + TERM_HEIGHT;
   };
-  const place = (b: string[], x: number, y: number) => {
-    const xs = b.map((id) => at(id).x);
-    const ys = b.map((id) => at(id).y);
-    const x0 = Math.min(...xs);
-    const y0 = Math.min(...ys);
-    for (const id of b) out.set(id, { x: x + at(id).x - x0, y: y + at(id).y - y0 });
+  // A block keeps the shape ELK gave it, its places on each level taken left to right by its
+  // terms in ``order``: which sibling sits where is the order's, as a node's place in a lane is.
+  const slotted = (b: string[]) => {
+    const levels = new Map<number, string[]>();
+    for (const id of b) {
+      const l = Math.round(at(id).y);
+      levels.set(l, [...(levels.get(l) ?? []), id]);
+    }
+    const shape = new Map<string, At>();
+    for (const ids of levels.values()) {
+      const xs = ids.map((id) => at(id).x).sort((p, q) => p - q);
+      ids.forEach((id, i) => shape.set(id, { x: xs[i], y: at(id).y }));
+    }
+    return shape;
   };
+  const place = (b: string[], x: number, y: number) => {
+    const shape = slotted(b);
+    const x0 = Math.min(...b.map((id) => (shape.get(id) as At).x));
+    const y0 = Math.min(...b.map((id) => (shape.get(id) as At).y));
+    for (const id of b) {
+      const p = shape.get(id) as At;
+      out.set(id, { x: x + p.x - x0, y: y + p.y - y0 });
+    }
+  };
+  const widthOfBlock = (b: string[]) =>
+    Math.max(...b.map((id) => at(id).x + widthOf(id))) - Math.min(...b.map((id) => at(id).x));
   const total = linked.reduce((sum, b) => sum + heightOf(b) + TERM_GAP, -TERM_GAP);
   const middle =
     others.length > 0 ? (Math.min(...others) + Math.max(...others)) / 2 : at(order[0]).y;
@@ -476,10 +506,28 @@ export function stackTerms(
     place(b, left, y);
     y += heightOf(b) + TERM_GAP;
   }
+  // Blocks with no line out stay in the column while it is no taller than the tallest other lane
+  // (every lane is drawn that tall: the column costs nothing there); past that they wrap.
+  const counts = new Map<Lane, number>();
+  for (const n of d.graph.nodes) {
+    const l = d.lane.get(n.id) as Lane;
+    if (l !== "term") counts.set(l, (counts.get(l) ?? 0) + 1);
+  }
+  counts.set("column", (counts.get("column") ?? 0) + d.more.length);
+  const tallest = Math.max(
+    0,
+    ...[...counts.values()].map((n) => n * (TERM_HEIGHT + TERM_GAP) - TERM_GAP),
+  );
+  const top = linked.length > 0 ? middle - total / 2 : y;
+  while (lone.length > 0 && y + heightOf(lone[0]) - top <= tallest) {
+    const b = lone.shift() as string[];
+    place(b, left, y);
+    y += heightOf(b) + TERM_GAP;
+  }
   let x = left;
   let row = 0;
   for (const b of lone) {
-    const width = Math.max(...b.map((id) => at(id).x + widthOf(id))) - Math.min(...b.map((id) => at(id).x));
+    const width = widthOfBlock(b);
     if (x > left && x + width > left + UNLINKED_ROW) {
       x = left;
       y += row + TERM_GAP;
@@ -500,18 +548,27 @@ export function stackTerms(
 export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): string[][] {
   const terms = d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => n.id);
   const start = [...terms].sort((p, q) => first(p).y - first(q).y || first(p).x - first(q).x);
-  // Where each node would be drawn, the other lanes at their lane's x, spread over its first height.
+  // Where each node would be drawn, as ProvisaGraph places the lanes from their order
+  // (placeLanes): the terms stacked, every lane spread over the height of the tallest.
+  const termLinks = d.links
+    .filter((k) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term")
+    .map((k) => [k.from, k.to] as [string, string]);
+  const item = (id: string) => ({ id, w: SIZE.nodeWidth, h: SIZE.nodeHeight });
   const placed = (lanes: string[][]) => {
-    const at = stackTerms(d, lanes[0], first);
-    for (const row of lanes.slice(1)) {
-      if (row.length === 0) continue;
-      const ys = row.map((id) => first(id).y);
-      const lo = Math.min(...ys);
-      const hi = Math.max(...ys);
-      row.forEach((id, i) =>
-        at.set(id, { x: first(id).x, y: lo + ((i + 0.5) * (hi - lo)) / row.length }),
-      );
-    }
+    const stacked = stackTerms(d, lanes[0], first, () => SIZE.nodeWidth);
+    const [terms, columns, tables, products] = lanes;
+    const rows: Record<Lane, string[]> = {
+      term: terms,
+      column: columns,
+      table: tables,
+      product: products,
+    };
+    const at = placeLanes(
+      LANES.map((l) => ({ id: l, items: rows[l].map(item) })),
+      "term",
+      (id) => stacked.get(id) ?? first(id),
+      termLinks,
+    );
     return (id: string) => at.get(id) as At;
   };
   const score = (order: string[]) => {
@@ -550,7 +607,105 @@ export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): stri
     }
     if (best.n >= before) break;
   }
+  const swept = barycentreSweeps(d, best.lanes, placed);
+  if (swept.n < best.n) best = swept;
   return refineDrawn(d, best.lanes, placed);
+}
+
+const SWEEPS = 8;
+
+/** ``lanes`` reordered by sweeps of barycentres, the lanes being layers whose order inside is free:
+ * up from the terms (each column by the mean height of its terms, each table's block of columns by
+ * its columns', the products by their tables'), then down from the products (each table by its
+ * products', the columns following their table, each block of terms by the columns and tables it
+ * reaches). Every sweep is judged on the drawing (``placed``): the order that crosses least is kept.
+ * A node with no neighbour on the side swept from keeps its height. */
+function barycentreSweeps(
+  d: LaneDiagram,
+  lanes: string[][],
+  placed: (lanes: string[][]) => (id: string) => At,
+): { lanes: string[][]; n: number } {
+  const near = new Map<string, string[]>();
+  const link = (a: string, b: string) => near.set(a, [...(near.get(a) ?? []), b]);
+  for (const k of d.links) {
+    link(k.from, k.to);
+    link(k.to, k.from);
+  }
+  const moreIds = new Set(d.more.map((m) => m.id));
+  const laneOf = (id: string): Lane => (moreIds.has(id) ? "column" : (d.lane.get(id) as Lane));
+  const tableOf = new Map<string, string>();
+  for (const k of d.links)
+    if (laneOf(k.from) === "column" && laneOf(k.to) === "table") tableOf.set(k.from, k.to);
+  const mean = (xs: number[]) => xs.reduce((s, v) => s + v, 0) / xs.length;
+  /** The mean height of ``id``'s neighbours in ``lane``, given ``at``; its own with none. */
+  const centre = (at: (id: string) => At, id: string, lane: Lane) => {
+    const ys = (near.get(id) ?? []).filter((n) => laneOf(n) === lane).map((n) => at(n).y);
+    return ys.length > 0 ? mean(ys) : at(id).y;
+  };
+  const sorted = (ids: string[], key: (id: string) => number) =>
+    ids
+      .map((id, i) => ({ id, k: key(id), i }))
+      .sort((a, b) => a.k - b.k || a.i - b.i)
+      .map((x) => x.id);
+  /** The column lane in ``tables``' order, each table's columns as ``within`` orders them. */
+  const columnsBy = (columns: string[], tables: string[], within: (ids: string[]) => string[]) => {
+    const loose = columns.filter((c) => !tableOf.has(c));
+    return [
+      ...tables.flatMap((t) => within(columns.filter((c) => tableOf.get(c) === t))),
+      ...loose,
+    ];
+  };
+  const score = (l: string[][]) => drawnCrossings(d.links, placed(l));
+  let best = { lanes, n: score(lanes) };
+  let cur = lanes;
+  for (let sweep = 0; sweep < SWEEPS && best.n > 0; sweep++) {
+    // Up from the terms.
+    let at = placed(cur);
+    const colKey = (c: string) => centre(at, c, "term");
+    const tableKey = (t: string) => {
+      const members = cur[1].filter((c) => tableOf.get(c) === t);
+      const ys = [
+        ...members.map(colKey),
+        ...(near.get(t) ?? []).filter((n) => laneOf(n) === "term").map((n) => at(n).y),
+      ];
+      return ys.length > 0 ? mean(ys) : at(t).y;
+    };
+    let tables = sorted(cur[2], tableKey);
+    let columns = columnsBy(cur[1], tables, (ids) => sorted(ids, colKey));
+    let next = [cur[0], columns, tables, cur[3]];
+    at = placed(next);
+    next = [cur[0], columns, tables, sorted(cur[3], (p) => centre(at, p, "table"))];
+    let n = score(next);
+    if (n < best.n) best = { lanes: next, n };
+    cur = next;
+    // Down from the products.
+    at = placed(cur);
+    tables = sorted(cur[2], (t) => centre(at, t, "product"));
+    columns = columnsBy(cur[1], tables, (ids) => ids);
+    next = [cur[0], columns, tables, cur[3]];
+    at = placed(next);
+    // Each term by the heights of what it reaches outside the lane; a block of terms by its
+    // terms', and inside it each level's places taken in its terms' order.
+    const reach = (id: string) =>
+      (near.get(id) ?? []).filter((x) => laneOf(x) !== "term").map((x) => at(x).y);
+    const termKey = (id: string) => {
+      const ys = reach(id);
+      return ys.length > 0 ? mean(ys) : at(id).y;
+    };
+    const blocks = termBlocks(d, cur[0]).map((b) => {
+      const ys = b.flatMap(reach);
+      return { b: sorted(b, termKey), k: ys.length > 0 ? mean(ys) : mean(b.map((id) => at(id).y)) };
+    });
+    const terms = blocks
+      .map((x, i) => ({ ...x, i }))
+      .sort((x, y) => x.k - y.k || x.i - y.i)
+      .flatMap((x) => x.b);
+    next = [terms, columns, tables, cur[3]];
+    n = score(next);
+    if (n < best.n) best = { lanes: next, n };
+    cur = next;
+  }
+  return best;
 }
 
 const REFINE_PASSES = 4;
@@ -558,8 +713,9 @@ const REFINE_PASSES = 4;
 const REFINE_BUDGET = 20_000_000;
 
 /** ``lanes`` improved by moves judged on the drawing itself: each block of terms, each table with
- * its columns moved to the place in its lane where the drawn lines cross least, then each column
- * inside its table's block, then each product; passes repeat while one gains, at most
+ * its columns moved to the place in its lane where the drawn lines cross least, each term inside its
+ * block (which of its level's places it takes), then each column inside its table's block, then each
+ * product; passes repeat while one gains, at most
  * REFINE_PASSES. */
 function refineDrawn(
   d: LaneDiagram,
@@ -628,6 +784,18 @@ function refineDrawn(
   for (let pass = 0; pass < REFINE_PASSES && best > 0; pass++) {
     const before = best;
     termRow = moveEach(termRow, (ts) => fromBlocks(blocks, products, ts));
+    // Which sibling of a block takes which of its level's places (stackTerms).
+    for (let i = 0; i < termRow.length; i++) {
+      if (termRow[i].length < 2) continue;
+      const members = moveEach(termRow[i], (ms) =>
+        fromBlocks(
+          blocks,
+          products,
+          termRow.map((x, j) => (j === i ? ms : x)),
+        ),
+      );
+      termRow = termRow.map((x, j) => (j === i ? members : x));
+    }
     blocks = moveEach(blocks, (bs) => fromBlocks(bs, products));
     for (let i = 0; i < blocks.length; i++) {
       const members = moveEach(blocks[i].members, (ms) =>
@@ -674,7 +842,8 @@ export function connectedTo(d: LaneDiagram, id: string): Connected {
     return reached;
   };
   const other = (x: string, k: LaneLink) => (k.from === x ? k.to : k.to === x ? k.from : null);
-  const inLane = (x: string, k: LaneLink) => at(k.from) === term && at(k.to) === term && other(x, k) !== null;
+  const inLane = (x: string, k: LaneLink) =>
+    at(k.from) === term && at(k.to) === term && other(x, k) !== null;
   const chain = (from: string[]) => [
     ...walk(from, (x, k) => (inLane(x, k) && k.to === x ? k.from : null)),
     ...walk(from, (x, k) => (inLane(x, k) && k.from === x ? k.to : null)),
@@ -731,9 +900,7 @@ export function laneMermaid(
   const dotted = (from: string, to: string, label?: string) =>
     `  ${idOf(from)} -.->${label ? `|${quote(label)}|` : ""} ${idOf(to)}`;
   for (const k of d.links)
-    out.push(
-inTerms(k) ? dotted(k.to, k.from, k.label) : `  ${idOf(k.to)} --> ${idOf(k.from)}`
-    );
+    out.push(inTerms(k) ? dotted(k.to, k.from, k.label) : `  ${idOf(k.to)} --> ${idOf(k.from)}`);
   for (const k of d.arcs) out.push(dotted(k.from, k.to, k.label));
   return out.join("\n");
 }

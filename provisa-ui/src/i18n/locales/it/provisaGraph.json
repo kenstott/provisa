@@ -1,6 +1,7 @@
 {
   "provisaGraph": {
     "legend": "Legenda",
+    "hint": "Trascina per spostare · scorri per muoverti · Ctrl/⌘ + scorri per ingrandire",
     "type": {
       "product": "Prodotto dati",
       "source": "Origine",
