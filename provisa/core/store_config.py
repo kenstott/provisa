@@ -199,6 +199,10 @@ def _profile_result_of(
 
 def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     fields = _fields(Table, {**row, "class_term": class_term})
+    if fields.get("view_metrics") is not None:
+        # REQ-1318: registration stores a metrics view's declaration and the SQL it compiles to;
+        # a configuration states the declaration alone, and loading it compiles the SQL again.
+        fields.pop("view_sql", None)
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
         {k: v for k, v in c.items() if v is not None and k != "column_name"}
