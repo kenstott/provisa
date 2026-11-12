@@ -119,7 +119,11 @@ titled the same way.
   columns by their tables), crossings cut, and the component places the lanes from that order
   (`placeLanes`): side by side, each as wide as its widest node; every lane spread over the height
   of the tallest (its first node at the top, its last at the bottom, a lone node at the middle),
-  the stacked lane's rows keeping their shape. Each lane's box bounds its own nodes alone, its
+  the stacked lane's rows keeping their shape. In the stacked (term) lane a block of terms joined by
+  rank lines keeps ELK's shape, its terms taking each level's places left to right in the order
+  (which sibling sits where is ordered as any node's place is), its rows at the lane's left edge;
+  terms with no line out of the lane follow in the column while it is no taller than the tallest
+  other lane, then wrap in rows. Each lane's box bounds its own nodes alone, its
   title above them, the boxes `LANE_GAP` apart. Arcs are laid over the placed nodes.
 - `force`: fCoSE.
 

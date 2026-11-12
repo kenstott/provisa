@@ -205,9 +205,8 @@ describe("a node's label", () => {
     cy.nodes().forEach((n) => {
       const w = n.data("w") as number;
       const room = parseFloat(n.style("text-max-width") as string);
-      const shift = parseFloat(String(n.numericStyle("text-margin-x")));
-      const iconRight =
-        -w / 2 + parseFloat(String(n.numericStyle("background-position-x"))) + SIZE.icon;
+      const shift = parseFloat(n.style("text-margin-x") as string);
+      const iconRight = -w / 2 + parseFloat(n.style("background-position-x") as string) + SIZE.icon;
       // The label is centred at the node's centre plus its shift and is at most its room wide:
       // it wraps anywhere rather than run past it.
       expect(n.style("text-halign")).toBe("center");

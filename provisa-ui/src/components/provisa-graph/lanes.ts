@@ -234,11 +234,9 @@ export function runLanes(
 
   const at = (id: string) => ({ ...cy.getElementById(id).position() });
   const widthOf = (id: string) => cy.getElementById(id).data("w") as number;
-  const placed = () => cy.nodes('[kind = "node"], [kind = "more"]');
 
   canvas.run(layout, () => {
-    const nodes = placed();
-    const laneOf = new Map(nodes.map((n) => [n.id(), n.data("lane") as string]));
+    const items = placedItems(cy);
     // Each node's place in its lane: the view's order, else top to bottom as ELK put it.
     const rank = new Map<string, number>();
     const rows = opts.order?.(at) ?? [];
@@ -250,21 +248,20 @@ export function runLanes(
         : new Map<string, At>();
     const lanes = ids.map((lane) => ({
       id: lane,
-      items: nodes
-        .filter((n) => laneOf.get(n.id()) === lane)
-        .map((n) => ({
-          id: n.id(),
-          w: n.data("w") as number,
-          h: n.data("h") as number,
-          y: n.position("y"),
-        }))
+      items: items
+        .filter((n) => n.lane === lane)
         .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.y - b.y),
     }));
+    // The lines between nodes, for the stacked lane's rows.
+    const links: [string, string][] = [];
+    cy.elements().forEach((e) => {
+      if (!e.isNode()) links.push([e.data("source") as string, e.data("target") as string]);
+    });
     const where = placeLanes(
       lanes,
       stacked,
       (id) => settled.get(id) ?? at(id),
-      cy.edges().map((e) => [e.source().id(), e.target().id()] as [string, string]),
+      links,
       opts.tight ? TIGHT_LANE_GAP : LANE_GAP,
     );
     cy.batch(() => where.forEach((p, id) => cy.getElementById(id).position(p)));
@@ -275,24 +272,34 @@ export function runLanes(
   });
 }
 
+/** The nodes laid out (not a lane's box or the stacked lane's frame): each one's lane, size and
+ * place. */
+function placedItems(cy: Core): (LaneItem & { lane: string; x: number; y: number })[] {
+  const out: (LaneItem & { lane: string; x: number; y: number })[] = [];
+  cy.nodes('[kind = "node"], [kind = "more"]').forEach((n) => {
+    const p = n.position();
+    out.push({
+      id: n.id(),
+      lane: n.data("lane") as string,
+      w: n.data("w") as number,
+      h: n.data("h") as number,
+      x: p.x,
+      y: p.y,
+    });
+  });
+  return out;
+}
+
 /** Each lane boxed round its own nodes, its title above them. */
 function boxLanes(cy: Core, opts: LanesOptions): void {
-  const placed = cy.nodes('[kind = "node"], [kind = "more"]');
+  const items = placedItems(cy);
   for (const lane of opts.lanes) {
-    const inLane = placed.filter((n) => n.data("lane") === lane.id);
-    if (inLane.empty()) continue;
-    const xs = inLane.map((n) => [
-      n.position("x") - (n.data("w") as number) / 2,
-      n.position("x") + (n.data("w") as number) / 2,
-    ]);
-    const ys = inLane.map((n) => [
-      n.position("y") - (n.data("h") as number) / 2,
-      n.position("y") + (n.data("h") as number) / 2,
-    ]);
-    const x1 = Math.min(...xs.map((x) => x[0])) - LANE_PAD;
-    const x2 = Math.max(...xs.map((x) => x[1])) + LANE_PAD;
-    const y1 = Math.min(...ys.map((y) => y[0])) - LANE_PAD - LANE_TITLE;
-    const y2 = Math.max(...ys.map((y) => y[1])) + LANE_PAD;
+    const inLane = items.filter((n) => n.lane === lane.id);
+    if (inLane.length === 0) continue;
+    const x1 = Math.min(...inLane.map((n) => n.x - n.w / 2)) - LANE_PAD;
+    const x2 = Math.max(...inLane.map((n) => n.x + n.w / 2)) + LANE_PAD;
+    const y1 = Math.min(...inLane.map((n) => n.y - n.h / 2)) - LANE_PAD - LANE_TITLE;
+    const y2 = Math.max(...inLane.map((n) => n.y + n.h / 2)) + LANE_PAD;
     cy.add({
       group: "nodes",
       data: {

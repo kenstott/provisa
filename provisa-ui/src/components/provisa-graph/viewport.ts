@@ -40,9 +40,14 @@ export const READABLE_ZOOM = 0.8;
  * from its top at the readable zoom and scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
   const box = cy.container();
+  if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) {
+    // A canvas not on the page (headless, or not yet laid out): cytoscape's own fit.
+    cy.fit(undefined, padding);
+    return;
+  }
   const bb = cy.elements().boundingBox({});
-  if (!box || bb.w <= 0 || bb.h <= 0 || box.clientWidth <= 0 || box.clientHeight <= 0) {
-    // Nothing drawn, or a canvas not on the page (headless): cytoscape's own fit.
+  if (bb.w <= 0 || bb.h <= 0) {
+    // Nothing drawn: nothing to fit to.
     cy.fit(undefined, padding);
     return;
   }
