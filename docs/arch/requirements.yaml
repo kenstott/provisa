@@ -81011,12 +81011,18 @@
     a brief explanation (one short sentence) sits below the field, and a longer explanation is reached from
     a help icon immediately to the right of the label. Controls in one row share a baseline. A form takes
     its natural height; it never scrolls inside a box that hides its first or last row. (Amended 2026-11-12,
-    ONE SAVE AND CANCEL PAIR, IN A HEAD AS IN A FOOT:) Maintainer 2026-11-12: a detail panel''s head in
-    edit mode shows the same pair a form''s foot shows: the filled Save and the bordered Cancel, the same
-    size. Save is drawn the same in every position. (Amended 2026-11-12, A DESTRUCTIVE CONFIRM IS FILLED
-    RED:) Maintainer 2026-11-12: the button that confirms a destructive action is filled red with white
-    letters, the same size as the Cancel beside it, in every confirm dialog; one component holds the look,
-    beside Save and Cancel. It names the action where the dialog knows it (Delete), and says Confirm otherwise.'
+    ONE SAVE AND CANCEL PAIR, IN A HEAD AS IN A FOOT:) Maintainer 2026-11-12: [SUPERSEDED by REQ-1968, 2026-11-12
+    -- no button in a panel head has a border (amendment of 2026-11-12). Kept here for history; do not implement
+    against it.] a detail panel''s head in edit mode shows the same pair a form''s foot shows: the filled
+    Save and the bordered Cancel, the same size. [END SUPERSEDED BLOCK] Save is drawn the same in every
+    position. (Amended 2026-11-12, A DESTRUCTIVE CONFIRM IS FILLED RED:) Maintainer 2026-11-12: the button
+    that confirms a destructive action is filled red with white letters, the same size as the Cancel beside
+    it, in every confirm dialog; one component holds the look, beside Save and Cancel. It names the action
+    where the dialog knows it (Delete), and says Confirm otherwise. (Amended 2026-11-12, NO BUTTON IN A
+    PANEL HEAD HAS A BORDER:) Maintainer 2026-11-12, revising the rule of earlier the same day: no button
+    in a detail panel''s action bar (its head) has a border. Save and Cancel there are drawn as the head''s
+    other actions are: no border and no fill, the icon and the word. The filled Save and the bordered Cancel
+    stay where a form ends: a page form''s foot and a dialog. One component still holds each look.'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
