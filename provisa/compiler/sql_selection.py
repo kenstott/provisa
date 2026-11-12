@@ -289,6 +289,13 @@ def _empty_list_if_none(subquery: str) -> str:
     return f"COALESCE({subquery}, {EMPTY_JSON_LIST})"
 
 
+def _when_joined(expr: str, joined: str | None) -> str:
+    """``expr`` -- a value a joined row does not hold itself (a list nested in it, a literal) --
+    null when no row joined: ``joined`` is its join's condition, null when the row is absent.
+    The encoder answers a to-many row of nulls as no element, a to-one as null (J1218)."""
+    return expr if joined is None else f"CASE WHEN {joined} THEN {expr} END"
+
+
 def _build_rel_json_expr(
     selections,
     ctx: CompilationContext,
@@ -391,8 +398,10 @@ def _collect_nested_columns(
     variables: dict | None,
     cardinality: str | None = None,
     flat: bool = False,
+    joined: str | None = None,
 ) -> tuple[int, bool]:
-    """Recursively collect columns and JOINs from nested selections."""
+    """Recursively collect columns and JOINs from nested selections. ``joined`` is the condition
+    of the join reading ``parent_alias`` (``_when_joined``); None for the root's own rows."""
     has_lateral = False
     for nested_sel in selections:
         if not isinstance(nested_sel, FieldNode):
@@ -501,7 +510,7 @@ def _collect_nested_columns(
                     json_text=_json_text,
                 )
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")
-                select_parts.append(f"{json_expr} AS {_q(json_alias)}")
+                select_parts.append(f"{_when_joined(json_expr, joined)} AS {_q(json_alias)}")
                 columns.append(
                     ColumnRef(
                         alias=nested_alias,
@@ -540,6 +549,7 @@ def _collect_nested_columns(
                     variables,
                     cardinality=nested_join_meta.cardinality,
                     flat=flat,
+                    joined=f"{tgt_expr} = {src_expr}",
                 )
                 has_lateral |= _child_lateral
         else:
@@ -606,11 +616,11 @@ def _collect_nested_columns(
             )
             nested_sql = ctx.physical_to_sql.get((parent_table.table_id, nested_phys), nested_phys)
             if nested_name == "__typename":  # the object's GraphQL type, not a column
-                col_expr = _sql_str_literal(parent_type_name)
+                col_expr = _when_joined(_sql_str_literal(parent_type_name), joined)
                 nested_sql = nested_response_key
             elif nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
-                col_expr = _sql_str_literal(_nvc)
+                col_expr = _when_joined(_sql_str_literal(_nvc), joined)
             else:
                 col_expr = f"{_q(parent_alias)}.{_q(nested_sql)}"
             # Named by its response path (edges_out__target_term__id): the statement reads as the
