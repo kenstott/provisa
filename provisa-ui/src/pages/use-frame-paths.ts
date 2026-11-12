@@ -8,11 +8,30 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useCallback, type RefObject } from "react";
+import { useCallback, useMemo, type RefObject } from "react";
 import type { DropNotice, FrameData, GNode } from "../components/graph/graph-model";
+import type { SchemaNodeLabel, SchemaRel } from "../components/graph/graph-schema-types";
 import type { SparqlVocabulary } from "../components/graph/sparql";
 import { droppedQuery, type DropNode, type SparqlDrop } from "../components/graph/sparqlDrop";
-import { nodePathQuery } from "./graph-drop";
+import { compoundLabelOf, nodePathQuery, type PathScope } from "./graph-drop";
+
+/**
+ * REQ-2135: what a Cypher drop's path may walk. ``parameterized``: the labels it never reaches (a
+ * parameterized table has no rows without its arguments). ``pathScope``: the role's labels and the
+ * Domains picker's selection, the one the sidebar's labels are narrowed by.
+ */
+export function usePathScope(
+  nodeLabels: SchemaNodeLabel[],
+  checkedDomains: ReadonlySet<string>,
+): { parameterized: ReadonlySet<string>; pathScope: PathScope } {
+  const parameterized = useMemo(
+    () =>
+      new Set(nodeLabels.filter((n) => n.nativeFilterColumns.length > 0).map(compoundLabelOf)),
+    [nodeLabels],
+  );
+  const pathScope = useMemo(() => ({ nodeLabels, checkedDomains }), [nodeLabels, checkedDomains]);
+  return { parameterized, pathScope };
+}
 
 /** REQ-2135: what a pill on a SPARQL frame and a node on a Cypher node ask of the page. */
 export function useFramePaths({
@@ -20,6 +39,9 @@ export function useFramePaths({
   vocabulary,
   prefixes,
   pkMap,
+  schemaRels,
+  parameterized,
+  pathScope,
   changeFrame,
   rerunFrame,
   runQuery,
@@ -28,6 +50,9 @@ export function useFramePaths({
   vocabulary: SparqlVocabulary | null;
   prefixes: Record<string, string>;
   pkMap: Record<string, string[]>;
+  schemaRels: readonly SchemaRel[];
+  parameterized: ReadonlySet<string>;
+  pathScope: PathScope;
   changeFrame: (id: string, change: (frame: FrameData) => Partial<FrameData>) => void;
   rerunFrame: (
     id: string,
@@ -53,21 +78,26 @@ export function useFramePaths({
     [framesRef, vocabulary, prefixes, changeFrame, rerunFrame],
   );
 
-  /** A node dragged onto another asks for the paths between the two, in a frame of its own. */
+  /** A node dragged onto another asks for the paths between the two, in a frame of its own; the
+   * paths stay in the selected domains, and a drop no such path joins says so and runs nothing. */
   const onNodePath = useCallback(
     (frameId: string, from: GNode, to: GNode) => {
-      const query = nodePathQuery(from, to, (label) => pkMap[label]?.[0]);
-      if (query === null) {
-        const notice = {
-          key: "graphFrame.cypherPathNoKey",
-          values: { from: from.label, to: to.label },
-        };
-        changeFrame(frameId, () => ({ dropNotices: [notice] }));
+      const done = nodePathQuery(
+        from,
+        to,
+        (label) => pkMap[label]?.[0],
+        schemaRels,
+        parameterized,
+        pathScope,
+      );
+      if ("refused" in done) {
+        const { refused } = done;
+        changeFrame(frameId, () => ({ dropNotices: [refused] }));
         return;
       }
-      void runQuery(query);
+      void runQuery(done.query);
     },
-    [pkMap, changeFrame, runQuery],
+    [pkMap, schemaRels, parameterized, pathScope, changeFrame, runQuery],
   );
 
   return { onSparqlDrop, onNodePath };

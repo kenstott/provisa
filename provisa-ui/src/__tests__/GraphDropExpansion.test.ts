@@ -9,13 +9,33 @@
 // stopped at the first type found would draw one kind of edge and silently hide the others.
 
 import { describe, it, expect } from "vitest";
-import { buildDropExpansion, nodePathQuery, type DropExpansion } from "../pages/graph-drop";
+import {
+  buildDropExpansion,
+  nodePathQuery,
+  type DropExpansion,
+  type PathScope,
+} from "../pages/graph-drop";
 import type { GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
 
 /** A relationship type as /data/graph-schema answers it for the acting role (its label map). */
 function rt(type: string, source = "GlossaryTerm", target = "GlossaryTerm"): SchemaRel {
   return { type, source, target, properties: [], join: `${type} ${source} ${target}` };
+}
+
+/** Every label the relationships join, each of a data domain, none selected: no way is out of scope
+ * here (the selected domains' own cases are GraphDropDomains.test.ts). */
+function everyLabel(rels: SchemaRel[]): PathScope {
+  const labels = [...new Set(rels.flatMap((r) => [r.source, r.target]))];
+  return {
+    nodeLabels: labels.map((label) => {
+      const [domainLabel, tableLabel] = label.includes(":")
+        ? label.split(":")
+        : [null, label];
+      return { domainLabel, domainId: domainLabel, tableLabel, systemDomain: false };
+    }),
+    checkedDomains: new Set(),
+  };
 }
 
 /** The expansion of a drop that joins the frame. */
@@ -25,14 +45,14 @@ function expand(
   rels: SchemaRel[],
   parameterized: string[] = [],
 ): DropExpansion {
-  const done = buildDropExpansion(query, label, rels, new Set(parameterized));
+  const done = buildDropExpansion(query, label, rels, new Set(parameterized), everyLabel(rels));
   if ("refused" in done) throw new Error(done.refused.key);
   return done;
 }
 
 /** Why a drop changed nothing. */
 function refusal(query: string, label: string, rels: SchemaRel[], parameterized: string[] = []) {
-  const done = buildDropExpansion(query, label, rels, new Set(parameterized));
+  const done = buildDropExpansion(query, label, rels, new Set(parameterized), everyLabel(rels));
   if ("refused" in done) return done.refused;
   throw new Error(`added: ${done.query}`);
 }
@@ -303,19 +323,26 @@ describe("REQ-2135 a node dropped on a node", () => {
   });
   const key = (label: string) => ({ A: "id", B: "code" })[label];
 
+  const rels = [rt("R", "A", "B")];
+  const paths = (from: GNode, to: GNode) =>
+    nodePathQuery(from, to, key, rels, new Set(), everyLabel(rels));
+
   it("asks every shortest path between the two, with a hop limit and a row cap", () => {
-    expect(nodePathQuery(node("A", { id: 1 }), node("B", { code: "x'1" }), key)).toBe(
-      [
-        "MATCH p = allShortestPaths((a:A)-[*..4]-(b:B))",
+    expect(paths(node("A", { id: 1 }), node("B", { code: "x'1" }))).toEqual({
+      query: [
+        "MATCH p = allShortestPaths((a:A)-[:R*..4]-(b:B))",
         "WHERE a.id = 1 AND b.code = 'x\\'1'",
         "RETURN p",
         "LIMIT 25",
       ].join("\n"),
-    );
+    });
   });
 
-  it("answers null for a node whose key is not known", () => {
-    expect(nodePathQuery(node("Z", {}), node("B", { code: "x" }), key)).toBeNull();
-    expect(nodePathQuery(node("A", {}), node("B", { code: "x" }), key)).toBeNull();
+  it("says by name a node whose key is not known, and asks nothing", () => {
+    const noKey = (from: string, to: string) => ({
+      refused: { key: "graphFrame.cypherPathNoKey", values: { from, to } },
+    });
+    expect(paths(node("Z", {}), node("B", { code: "x" }))).toEqual(noKey("Z", "B"));
+    expect(paths(node("A", {}), node("B", { code: "x" }))).toEqual(noKey("A", "B"));
   });
 });

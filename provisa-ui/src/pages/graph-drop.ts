@@ -22,7 +22,7 @@
  * Kept out of the page component so the pattern it writes can be read back in a test.
  */
 import type { DropNotice, GNode } from "../components/graph/graph-model";
-import type { SchemaRel } from "../components/graph/graph-schema-types";
+import type { SchemaNodeLabel, SchemaRel } from "../components/graph/graph-schema-types";
 import {
   MAX_SCHEMA_HOPS,
   MAX_SCHEMA_PATHS,
@@ -41,6 +41,67 @@ export interface DropExpansion {
 /** A drop that changes nothing, and why. */
 export interface DropRefused {
   refused: DropNotice;
+}
+
+/** What /data/graph-schema says of a label that a path's way through depends on. */
+export type ScopedLabel = Pick<
+  SchemaNodeLabel,
+  "domainLabel" | "domainId" | "tableLabel" | "systemDomain"
+>;
+
+/**
+ * Where a drop's path may go (REQ-2135): the role's labels, and the domains the Domains picker
+ * selects (none selected reads as every domain, as the sidebar reads it).
+ */
+export interface PathScope {
+  nodeLabels: readonly ScopedLabel[];
+  checkedDomains: ReadonlySet<string>;
+}
+
+/** A label as a query writes it: ``Domain:Table``, or the table's alone where it has no domain. */
+export function compoundLabelOf(n: Pick<ScopedLabel, "domainLabel" | "tableLabel">): string {
+  return n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
+}
+
+/** The labels of the selected domains: the sidebar's list, and the labels a path may pass through. */
+export function inSelectedDomains<L extends ScopedLabel>(
+  nodeLabels: readonly L[],
+  checkedDomains: ReadonlySet<string>,
+): L[] {
+  return checkedDomains.size === 0
+    ? [...nodeLabels]
+    : nodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId));
+}
+
+/**
+ * The labels a path between ``ends`` may pass through: those of the selected domains, less a system
+ * domain's (meta, ontology, ops, as the server says) unless one of ``ends`` is of that domain. The
+ * model's own metadata joins every table to every other (HAS_TABLE through its registration), and
+ * is no relationship of the data the reader asked about.
+ */
+export function pathThrough(scope: PathScope, ends: readonly string[]): Set<string> {
+  const endDomains = new Set(
+    scope.nodeLabels.filter((n) => ends.includes(compoundLabelOf(n))).map((n) => n.domainId),
+  );
+  return new Set(
+    inSelectedDomains(scope.nodeLabels, scope.checkedDomains)
+      .filter((n) => !n.systemDomain || endDomains.has(n.domainId))
+      .map(compoundLabelOf),
+  );
+}
+
+/** The refusal of a drop no path within reach joins, by name. */
+function noPath(name: string, held: readonly string[], hops: number | null): DropRefused {
+  const classes = held.join(", ");
+  return {
+    refused:
+      hops === null
+        ? { key: "graphFrame.sparqlDropNoPath", values: { name, classes } }
+        : {
+            key: "graphFrame.sparqlDropTooFar",
+            values: { name, classes, hops, most: MAX_SCHEMA_HOPS },
+          },
+  };
 }
 
 /**
@@ -73,6 +134,7 @@ export function buildDropExpansion(
   compoundLabel: string,
   schemaRels: SchemaRel[],
   parameterized: ReadonlySet<string>,
+  scope: PathScope,
 ): DropExpansion | DropRefused {
   // Map each label the query declares, as written (a compound label whole), to every variable bound
   // to it, by parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch
@@ -102,19 +164,16 @@ export function buildDropExpansion(
     };
   const held = Object.keys(varsByLabel);
   if (held.length === 0) return { refused: { key: "graphFrame.sparqlDropNoClass" } };
-  const { paths, hops } = shortestSchemaPaths(schemaRels, held, [compoundLabel], parameterized);
-  if (paths.length === 0) {
-    const classes = held.join(", ");
-    return {
-      refused:
-        hops === null
-          ? { key: "graphFrame.sparqlDropNoPath", values: { name: compoundLabel, classes } }
-          : {
-              key: "graphFrame.sparqlDropTooFar",
-              values: { name: compoundLabel, classes, hops, most: MAX_SCHEMA_HOPS },
-            },
-    };
-  }
+  // The path stays in the selected domains, and out of a system domain neither end is of.
+  const through = pathThrough(scope, [...held, compoundLabel]);
+  const { paths, hops } = shortestSchemaPaths(
+    schemaRels,
+    held,
+    [compoundLabel],
+    parameterized,
+    through,
+  );
+  if (paths.length === 0) return noPath(compoundLabel, held, hops);
   const seen = new Set<string>();
   const routes = paths.flatMap((steps) =>
     varsByLabel[steps[0].from].flatMap((anchor) => {
@@ -191,14 +250,20 @@ const NODE_PATH_ROWS = 25;
 
 /**
  * The query a node dragged onto another runs (REQ-2135): every shortest path of the data between the
- * two, within MAX_SCHEMA_HOPS, through any relationship. Null where a node's key is not known, which
- * is what names it: ``key`` is a label's key column.
+ * two, within MAX_SCHEMA_HOPS. Its pattern names the relationship types it may take: each one whose
+ * every relationship joins labels a path may pass through (``pathThrough``) or the two ends, so the
+ * walk stays in the selected domains and out of a system domain neither node is of. Refused by name
+ * where a node's key is not known (``key`` is a label's key column), and where no such path joins
+ * the two labels.
  */
 export function nodePathQuery(
   from: GNode,
   to: GNode,
   key: (label: string) => string | undefined,
-): string | null {
+  schemaRels: readonly SchemaRel[],
+  parameterized: ReadonlySet<string>,
+  scope: PathScope,
+): { query: string } | DropRefused {
   const keyed = ([variable, node]: [string, GNode]) => {
     const column = key(node.label);
     const value = column === undefined ? undefined : node.properties[column];
@@ -211,13 +276,36 @@ export function nodePathQuery(
   };
   const a = keyed(["a", from]);
   const b = keyed(["b", to]);
-  if (a === null || b === null) return null;
-  return [
-    `MATCH p = allShortestPaths((a:${from.label})-[*..${MAX_SCHEMA_HOPS}]-(b:${to.label}))`,
-    `WHERE ${a} AND ${b}`,
-    "RETURN p",
-    `LIMIT ${NODE_PATH_ROWS}`,
-  ].join("\n");
+  if (a === null || b === null)
+    return {
+      refused: { key: "graphFrame.cypherPathNoKey", values: { from: from.label, to: to.label } },
+    };
+  const ends = [from.label, to.label];
+  const through = pathThrough(scope, ends);
+  const joins = (label: string) => through.has(label) || ends.includes(label);
+  // A type is taken whole or not at all: a variable-length pattern names types, not the labels
+  // between, so a type with one relationship outside the scope (HAS_TABLE, every table's) is left out.
+  const outside = new Set(
+    schemaRels.filter((r) => !joins(r.source) || !joins(r.target)).map((r) => r.type),
+  );
+  const taken = schemaRels.filter((r) => !outside.has(r.type));
+  const { paths, hops } = shortestSchemaPaths(
+    taken,
+    [from.label],
+    [to.label],
+    parameterized,
+    through,
+  );
+  if (paths.length === 0) return noPath(to.label, [from.label], hops);
+  const types = [...new Set(taken.map((r) => r.type))].sort().join("|");
+  return {
+    query: [
+      `MATCH p = allShortestPaths((a:${from.label})-[:${types}*..${MAX_SCHEMA_HOPS}]-(b:${to.label}))`,
+      `WHERE ${a} AND ${b}`,
+      "RETURN p",
+      `LIMIT ${NODE_PATH_ROWS}`,
+    ].join("\n"),
+  };
 }
 
 const NUMERIC_TYPES = new Set([

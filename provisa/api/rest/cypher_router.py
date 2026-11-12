@@ -1140,6 +1140,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     from provisa.api.app import state
 
     from provisa.api.role_surface import role_surface
+    from provisa.security.rights import SYSTEM_DOMAINS
 
     role_id = _resolve_role_id(request, state)
     # One surface, taken once: its context and its root fields come from the same build.
@@ -1180,6 +1181,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "label": n.label,
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
+                    # REQ-2135: whether the label's domain is a system domain (meta, ontology,
+                    # ops: rights.SYSTEM_DOMAINS), which a drop's path never passes through
+                    # unless an end of it is of that domain.
+                    "system_domain": n.domain_id in SYSTEM_DOMAINS,
                     "table_label": n.table_label,
                     # The registered table the label reads, so a client can link a node to it.
                     "table_id": n.table_id,

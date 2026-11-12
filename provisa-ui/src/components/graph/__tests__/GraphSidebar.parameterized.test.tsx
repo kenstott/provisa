@@ -23,6 +23,7 @@ const label = (
 ): SchemaNodeLabel => ({
   domainLabel: null,
   domainId: null,
+  systemDomain: false,
   tableLabel: table,
   tableId: 1,
   properties: [],

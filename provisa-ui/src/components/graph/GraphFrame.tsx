@@ -907,7 +907,8 @@ export function GraphFrame({
             )}
           </div>
         )}
-        {frame.status !== "error" && !frame.redirect && activeView === "table" && (
+        {/* An answer's panes: a query still running has none, and "No rows" is an answer. */}
+        {frame.status === "done" && !frame.redirect && activeView === "table" && (
           <TableView
             columns={frame.columns}
             rows={frame.rows}
@@ -916,7 +917,7 @@ export function GraphFrame({
             setColWidths={setTableColWidths}
           />
         )}
-        {frame.status !== "error" &&
+        {frame.status === "done" &&
           activeView === "json" &&
           (() => {
             const jsonStr = JSON.stringify(frame.rows, null, 2);

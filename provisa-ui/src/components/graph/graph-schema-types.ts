@@ -11,6 +11,8 @@
 export interface SchemaNodeLabel {
   domainLabel: string | null;
   domainId: string | null;
+  /** Whether the label's domain is a system domain (meta, ontology, ops), as the server lists them. */
+  systemDomain: boolean;
   tableLabel: string;
   /** The registered table the label reads. */
   tableId: number;
