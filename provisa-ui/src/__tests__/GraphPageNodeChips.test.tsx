@@ -24,8 +24,10 @@ vi.mock("../context/AuthContext", () => ({
     loading: false,
   }),
 }));
+// One set, as the real context holds one: a new set on every render re-runs the counts fetch.
+const NO_DOMAINS = vi.hoisted(() => new Set<string>());
 vi.mock("../context/DomainFilterContext", () => ({
-  useDomainFilter: () => ({ checkedDomains: new Set<string>() }),
+  useDomainFilter: () => ({ checkedDomains: NO_DOMAINS }),
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
@@ -56,7 +58,7 @@ describe("GraphPage — node chips", () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         let body: unknown = {};
         if (String(url).includes("/data/cypher")) {
-          cypher.push(String(init?.body));
+          if (init?.body !== undefined) cypher.push(String(init.body));
           body = { results: [] };
         } else if (String(url).includes("/data/graph-counts"))
           body = { node_count: 2, rel_count: 0, label_counts: {}, rel_counts: {} };
