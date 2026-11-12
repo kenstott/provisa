@@ -73,8 +73,16 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
     )
 
 
-def _offer(snapshot, name: str, role_id: str) -> OfferExport:
-    """An offer of the one product, its contract on each member reading every column."""
+def _offer(
+    snapshot,
+    name: str,
+    role_id: str,
+    *,
+    masks: dict[str, str] | None = None,
+    row_rules: tuple[str, ...] = (),
+) -> OfferExport:
+    """An offer of the one product, its contract on each member reading every column: each
+    column ``masks`` names masked by that kind, and ``row_rules`` the role's rules in words."""
     from provisa.core.models import DataProductOffer
 
     (product,) = snapshot.data_products
@@ -85,8 +93,11 @@ def _offer(snapshot, name: str, role_id: str) -> OfferExport:
             None,
             offer_contracts.terms(
                 offer,
-                [offer_contracts.SeenColumn(c.name, c.data_type) for c in tables[m.fqn()].columns],
-                row_rules=[],
+                [
+                    offer_contracts.SeenColumn(c.name, c.data_type, mask=(masks or {}).get(c.name))
+                    for c in tables[m.fqn()].columns
+                ],
+                row_rules=list(row_rules),
                 sample_views=[],
                 checks=[],
                 profiles=[],
@@ -295,6 +306,34 @@ def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
         {"username": "alice@example.com", "role": "owner"},
         {"username": "ana@example.com", "role": "team"},
     ]
+
+
+def test_a_contracts_custom_properties_go_to_openmetadata_in_the_shapes_it_reads():  # REQ-2180
+    """OpenMetadata's ODCS model reads a schema element's customProperties as an object of
+    name to value, where ODCS 3.1 writes a list of {property, value}: a masked column's mask goes
+    as that object. The contract's own list stays a list, each value a string as OpenMetadata's
+    model types it, so a list value (the offer's row rules) goes as its JSON. The ODCS document
+    Provisa serves keeps ODCS's list."""
+    import json
+
+    from provisa.api.metadata_export.odps import offer_contract
+    from provisa.api.metadata_export.openmetadata import _data_contract_entities
+
+    snapshot = _build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    (product,) = snapshot.data_products
+    default = _offer(
+        snapshot, "default", "viewer", masks={"id": "regex"}, row_rules=("Only EU orders",)
+    )
+    snapshot.offers = {product.id: (default,)}
+    (contract,) = _data_contract_entities(snapshot)
+    (column,) = contract.body["schema"][0]["properties"]
+    assert column["customProperties"] == {"masked": "regex"}
+    assert {"property": "rowRules", "value": json.dumps(["Only EU orders"])} in contract.body[
+        "customProperties"
+    ]
+    (table,) = snapshot.tables
+    (served,) = offer_contract(snapshot, product, table, default)["schema"][0]["properties"]
+    assert served["customProperties"] == [{"property": "masked", "value": "regex"}]
 
 
 @pytest.mark.parametrize(
