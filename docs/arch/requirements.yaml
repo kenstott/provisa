@@ -91878,8 +91878,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     through a role every member holds, which is checked when it is marked open and refused naming what is
     not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
     the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
-    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
-    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    SANITIZED:) Maintainer 2026-11-11. [SUPERSEDED by REQ-2180, 2026-11-11 -- the sections are summary rows
+    that expand in place, not tabs (THE PRODUCT PAGE IS SUMMARY ROWS). Kept here for history; do not implement
+    against it.] A product''s page has a Profile tab beside Offers, Quality, Lineage, Related and Requests.
+    [END SUPERSEDED BLOCK] Wherever a profile is shown -- on that tab, or as part of an offer that includes
     profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
     PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
     no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
@@ -91894,7 +91896,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity provider, it decides, and Provisa enforces whatever its claims say. With none, the local default
     applies an expiry cancel at once -- the date was agreed when the grant was made, so it needs no second
     approval -- as the matching ordinary removal, attributed to the expiry; access ends within the run''s
-    interval. Provisa holds no separate read-time check of an expiry date.'
+    interval. Provisa holds no separate read-time check of an expiry date. (Amended 2026-11-11, THE PRODUCT
+    PAGE IS SUMMARY ROWS:) Maintainer 2026-11-11, after reviewing another product''s data product page,
+    which shows every panel open with a header and subtitle each and reads as overwhelming. A product''s
+    detail is a short header (name, owner, domain, at most three facts: consumers, quality, freshness; and
+    its support contact) above one section per subject in a fixed order -- Offers, Quality, Profile, Lineage,
+    Related, Requests (owners only), Access (its ways in), Ask (suggested questions run as the reader''s
+    role) -- each collapsed to a one-line summary computed from its content, never typed, so the reader
+    scans every section''s state at once and expands one in place for detail. Offers is open at first. Sections
+    have no subtitles, and a graph is drawn only inside an expanded section. Each offer carries its terms
+    of use -- purpose, usage and limitations -- in prose, shown on its card and in its contract. (Amended
+    2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS:) Maintainer 2026-11-11. The request form
+    names who will approve it (the product''s owner, or the authority the request hook reaches); asks what
+    kind of consumer the request is for -- a person, a team, another data product, or an agent; asks its
+    purpose, prefilled from the offer''s stated usage and editable; shows the offer''s terms of use; and
+    is sent only once the requester agrees to them. (Amended 2026-11-11, QUALITY IS STATUS AND COUNTS, NOT
+    A SCORE:) Maintainer 2026-11-11: there is no single quality score for a product or dataset; a weighted
+    number hides which check failed and whether it matters for the reader''s use. Quality is summarised
+    per offer as the worst outcome of the checks its contract promises, how many passed and failed, the
+    failing checks named, and when they last ran (for example: 22 checks, 1 failing: customer_id unique,
+    checked 2h ago). Anywhere a sortable figure is wanted it is the plain count of promised checks passing
+    out of those promised.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -95202,8 +95224,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and by nothing
     else. The component owns the library''s setup, one prescriptive visual language (a node shape with a
     type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries
-    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid
-    canvas, one place for the controls and the legend, one hover and selection state), its layout presets,
+    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, [SUPERSEDED
+    by REQ-2239, 2026-11-11 -- the canvas is plain; a background grid carries no information (A PLAIN CANVAS
+    AND READABLE LANES). Kept here for history; do not implement against it.] a dot-grid canvas, [END SUPERSEDED
+    BLOCK] one place for the controls and the legend, one hover and selection state), its layout presets,
     focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node''s
     type and the layout preset; it sets no colour, shape or control of its own. The visual language takes
     its tokens from the detail cards. A test fails any code outside the component that imports the graph
@@ -95220,7 +95244,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     associative table that exists to connect others, REQ-1588) is drawn as a diamond, as Chen''s ER notation
     draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
     colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
-    with arrows; dashed lines mean pending or indirect.'
+    with arrows; dashed lines mean pending or indirect. (Amended 2026-11-11, A PLAIN CANVAS AND READABLE
+    LANES:) Maintainer 2026-11-11, from the ontology term graph: the canvas is plain, with no background
+    grid. A lane''s group box bounds only its own nodes, with a gap between lanes, so boxes never overlap.
+    A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
+    is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
+    over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
+    and zooming is an explicit gesture.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
@@ -95279,3 +95309,41 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives
     byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the
     plain build stays, and the measurement is recorded.'
+
+- id: REQ-2243
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition:
+    how the measure or derived value is computed, in business language (for example net revenue is gross
+    order value less refunds and discounts, on the order date, in the order''s currency). It is governed
+    like the definition (approved, versioned, exported with the term, written back on ontology export),
+    and an ontology import maps a term''s calculation annotation onto it. Everyone who can read the term
+    reads its method. [SUPERSEDED by REQ-2243, 2026-11-11 -- a dataset shows the governed metrics it uses
+    with their definitions, not column formulas (A DATASET SHOWS ITS METRICS). Kept here for history; do
+    not implement against it.] A computed column grounded in the term shows the method with its definition;
+    the column''s own formula (its expression) is the implementation and is shown only to a reader who can
+    read every input it uses (REQ-2152). [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2243, 2026-11-11 -- a
+    dataset shows the governed metrics it uses with their definitions, not column formulas (A DATASET SHOWS
+    ITS METRICS). Kept here for history; do not implement against it.] (Amended 2026-11-11, A VIEW''S FORMULA
+    IS ITS SEMANTIC SQL:) Maintainer 2026-11-11: for a computed column of a view or a materialized view,
+    the formula shown is the column''s expression in the view''s semantic SQL definition (over semantic
+    names, as the modeller wrote it), never the physical SQL the view compiles to or the MV''s stored table;
+    the inputs whose read rights decide who sees it are that expression''s semantic columns. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, A DATASET SHOWS ITS METRICS:) Maintainer 2026-11-11, correcting the earlier
+    reading of another product: what is shown for a dataset is not a column''s formula but the governed
+    metrics (REQ-1317, REQ-1319) it uses, each with its name, description and AI definition. A view declared
+    from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
+    references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
+    A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
+    are listed as the reader''s role may see them (visible_to).'
+  scenario: |
+    Given a glossary term "net revenue" with a calculation method
+    And a computed column grounded in that term whose formula reads a masked column
+    When a reader without rights to the masked column opens the column
+    Then the reader sees the term's definition and calculation method
+    And the reader does not see the column's formula
