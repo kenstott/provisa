@@ -179,6 +179,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -200,6 +201,7 @@ const CHURN: GlossaryTermSummary = {
   id: 2,
   name: "Churn",
   definition: null,
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -221,6 +223,7 @@ const MARGIN: GlossaryTermSummary = {
   id: 3,
   name: "Margin",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: true,
   ref_count: 0,
@@ -244,6 +247,7 @@ const DANGLING: GlossaryTermSummary = {
   id: 4,
   name: "Orphan Concept",
   definition: "Declared but wired to nothing physical.",
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -280,6 +284,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -290,6 +295,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -301,6 +307,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),

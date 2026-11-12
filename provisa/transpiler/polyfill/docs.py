@@ -10,9 +10,10 @@
 
 """The polyfill pages, generated from the grid (REQ-2236, A PAGE PER ENGINE, EVERY POLYFILL LISTED;
 EVERY CONNECTOR PROVISA SENDS SQL TO): one page per connector dialect, listing every feature with a
-polyfill or a limitation there and counting those left out as native, and a summary of each feature
-across the dialects. Each rule is printed as the
-grid holds it; a rule that is a function name is printed with the function's one-line purpose.
+polyfill or a limitation there and counting those left out as native, and an index of the same
+tables, one per dialect. The grid stays keyed by dialect; only the pages pivot it. Each rule is
+printed as the grid holds it; a rule that is a function name is printed with the function's
+one-line purpose.
 scripts/gen_polyfill_docs.py writes them; nothing here is edited by hand."""
 
 # Requirements: REQ-2236
@@ -110,17 +111,34 @@ def _written_in(dialect: str) -> str:
     return f" Its forms are written in {DIALECTS[written].title}'s SQL, which it runs."
 
 
-def dialect_page(grid: Grid, dialect: str) -> str:
-    """The page of ``dialect``."""
+_HEADER = (
+    "<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th>"
+    "<th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>"
+)
+
+
+def dialect_table(grid: Grid, dialect: str) -> str:
+    """``dialect``'s table: a row of each feature not native there, and the count of those that
+    are, left out. The dialect's page and the index print it alike."""
     title = DIALECTS[dialect].title
     listed = grid.on(dialect)
     native = len(grid.features) - len(listed)
-    rules, functions = _counts(grid, dialect)
-    header = (
-        "<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th>"
-        "<th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>"
+    rows = "".join(f"{_row(feature, dialect)}\n" for feature in listed)
+    return "\n".join(
+        (
+            f"{native} of the grid's {len(grid.features)} features are native on {title} and"
+            " left out.",
+            "",
+            _HEADER,
+            f"{rows}</tbody></table>",
+        )
     )
-    rows = "\n".join(_row(feature, dialect) for feature in listed)
+
+
+def dialect_page(grid: Grid, dialect: str) -> str:
+    """The page of ``dialect``."""
+    title = DIALECTS[dialect].title
+    rules, functions = _counts(grid, dialect)
     return "\n".join(
         (
             f"# Polyfills on {title}",
@@ -134,9 +152,8 @@ def dialect_page(grid: Grid, dialect: str) -> str:
             f" limitations.{_written_in(dialect)}",
             "",
             f"This page lists every feature that has a polyfill or a limitation on {title}. A"
-            f" feature {title} does natively with no difference from PostgreSQL is left out:"
-            f" {native} of the grid's {len(grid.features)} features are left out as native."
-            " The conformance runs check the omission: a feature left out that answers"
+            f" feature {title} does natively with no difference from PostgreSQL is left out and"
+            " counted. The conformance runs check the omission: a feature left out that answers"
             " otherwise than PostgreSQL fails the run.",
             "",
             f"When {title} is a serving engine reading a source it attaches directly, it may push"
@@ -147,46 +164,35 @@ def dialect_page(grid: Grid, dialect: str) -> str:
             " function. A rule is printed as the translator runs it: the PostgreSQL pattern, its"
             " holes written `$name` (typed with `::type`), then the dialect's replacement.",
             "",
-            header,
-            rows,
-            "</tbody></table>",
+            dialect_table(grid, dialect),
             "",
         )
     )
 
 
 def summary_page(grid: Grid) -> str:
-    """Each feature across the dialects, for choosing an engine or a source."""
-    dialects = tuple(DIALECTS)
-    head = " | ".join(("Feature", "Family", *(DIALECTS[d].title for d in dialects)))
-    rule = " | ".join("---" for _ in range(2 + len(dialects)))
-    rows = [
-        " | ".join(
-            (
-                f"`{feature.name}`",
-                feature.family,
-                *(grid.status(feature, dialect).value for dialect in dialects),
-            )
+    """The index: each dialect's table, as its page prints it."""
+    sections = [
+        "\n".join(
+            (f"## [{DIALECTS[dialect].title}]({dialect}.md)", "", dialect_table(grid, dialect))
         )
-        for feature in grid.features
+        for dialect in DIALECTS
     ]
-    pages = ", ".join(f"[{DIALECTS[d].title}]({d}.md)" for d in dialects)
     return "\n".join(
         (
-            "# Polyfills across the dialects",
+            "# Polyfills by dialect",
             "",
             _GENERATED,
             "",
-            "Each PostgreSQL feature of the polyfill grid on each connector dialect Provisa sends"
-            " SQL to, a serving engine's or a source's a statement is sent to directly:"
-            " **native** (it answers as PostgreSQL does, with no polyfill), **polyfilled** (Provisa supplies"
-            " PostgreSQL's behaviour, with no difference), **differs** (polyfilled, with a"
-            " limitation), **refused** (a client receives the refusal its row states). The"
-            f" polyfills and limitations of each dialect are on its page: {pages}.",
+            "A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a"
+            " connector dialect Provisa sends SQL to: a serving engine's, or a source's a"
+            " statement is sent to directly. Each dialect below has a table of every feature that"
+            " has a polyfill or a limitation there: its read polyfill, read limitations, write"
+            " polyfill and write limitations. A feature the dialect does natively with no"
+            " difference from PostgreSQL is left out and counted. Each dialect's page prints the"
+            " same table with the rules it runs.",
             "",
-            f"| {head} |",
-            f"| {rule} |",
-            *(f"| {row} |" for row in rows),
+            "\n\n".join(sections),
             "",
         )
     )

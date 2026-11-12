@@ -1222,3 +1222,111 @@ def test_focused_tests_refuses_an_integration_file_by_name(tests):
 def test_focused_tests_passes_files_that_need_no_stack():
     done = _refusal("tests/unit/test_a.py tests/unit/test_b.py::test_c")
     assert done.returncode == 0 and done.stdout == ""
+
+
+def test_the_odbc_install_refreshes_only_microsofts_package_list():
+    """A full `apt-get update` reaches every Ubuntu mirror: an outage there failed the ODBC step
+    (run 43036808445) though msodbcsql18 is Microsoft's. The retry and timeout options stay."""
+    body = yaml.safe_load((REPO / ".github" / "actions" / "mssql-odbc" / "action.yml").read_text())
+
+    # The one step that refreshes a package list (J1189b split the install into resolve, cache and
+    # install steps; only the resolve step runs `apt-get update`).
+    def _code(step: dict) -> list[str]:
+        script = re.sub(r"\\\n\s*", " ", step.get("run", ""))
+        return [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+
+    refreshing = [
+        s
+        for s in body["runs"]["steps"]
+        if any("apt-get" in line and " update" in line for line in _code(s))
+    ]
+    (step,) = refreshing
+    script = re.sub(r"\\\n\s*", " ", step["run"])
+    updates = [line for line in _code(step) if "apt-get" in line and " update" in line]
+    assert len(updates) == 1
+    for option in (
+        "-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/mssql-release.list",
+        "-o Dir::Etc::sourceparts=-",
+        "-o APT::Get::List-Cleanup=0",
+        "$APT_OPTS",
+    ):
+        assert option in updates[0], option
+    assert "$CURL_OPTS" in script
+    assert "APT_OPTS" in step["env"] and "CURL_OPTS" in step["env"]
+
+
+def test_every_odbc_install_goes_through_the_one_action_that_refreshes_only_microsofts_list():
+    """No workflow installs msodbcsql18 itself: the action is the one place that does."""
+    for path in WORKFLOWS:
+        assert "msodbcsql18" not in path.read_text(), path.name
+    users = [p.name for p in WORKFLOWS if "./.github/actions/mssql-odbc" in p.read_text()]
+    assert users, "no workflow uses the mssql-odbc action"
+
+
+def test_no_workflow_or_action_installs_playwright_with_a_full_apt_refresh():
+    """`playwright install --with-deps` runs a full `apt-get update`, which fails (apt exit 100)
+    when an Ubuntu mirror is unreachable. The runner image carries Chromium's system libraries,
+    so every install is plain `playwright install chromium`, through the setup-ui action."""
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for line in path.read_text().splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            assert "--with-deps" not in line or "playwright" not in line, f"{path.name}: {line}"
+        assert "chromium-with-deps" not in path.read_text(), path.name
+    action = yaml.safe_load((REPO / ".github" / "actions" / "setup-ui" / "action.yml").read_text())
+    commands = [s["run"] for s in action["runs"]["steps"] if "playwright" in s.get("run", "")]
+    assert commands == ["npx playwright install chromium"]
+
+
+@pytest.mark.parametrize("name", ["ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml"])
+def test_the_trino_and_swap_ui_lanes_install_plain_chromium(name):
+    body = yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
+    (job,) = body["jobs"].values()
+    assert job["with"]["ui"] == "chromium"
+
+
+_MSSQL_ODBC = REPO / ".github" / "actions" / "mssql-odbc" / "action.yml"
+
+
+def _odbc_steps() -> list[dict]:
+    return yaml.safe_load(_MSSQL_ODBC.read_text())["runs"]["steps"]
+
+
+def test_the_mssql_odbc_action_caches_the_deb_set():
+    """An Ubuntu archive outage (runs 43056312618, 43059293707) must not fail the install: the
+    msodbcsql18 .deb set is cached."""
+    caches = [s for s in _odbc_steps() if str(s.get("uses", "")).startswith("actions/cache")]
+    assert len(caches) == 1
+    assert caches[0]["with"]["path"] and caches[0]["with"]["key"]
+    miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
+    assert "--download-only" in miss["run"]
+    assert "/var/cache/apt/archives/*.deb" in miss["run"]
+
+
+def test_a_mssql_odbc_cache_hit_installs_offline():
+    hit = next(s for s in _odbc_steps() if "== 'true'" in s.get("if", ""))
+    assert "cache-hit" in hit["if"]
+    assert "dpkg -i" in hit["run"]
+    assert not re.search(r"apt-get|curl|apt update", hit["run"]), "a hit must not touch the network"
+    assert "ACCEPT_EULA=Y" in hit["run"]
+
+
+def test_the_mssql_odbc_cache_key_includes_the_package_versions():
+    steps = _odbc_steps()
+    resolve = next(s for s in steps if s.get("id") == "resolve")
+    cache = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache"))
+    assert cache["with"]["key"] == "${{ steps.resolve.outputs.key }}"
+    assert "apt-cache policy msodbcsql18" in resolve["run"]
+    assert "msodbcsql18-${msodbc_version}" in resolve["run"]
+    assert "install -s" in resolve["run"] and "sha256sum" in resolve["run"]
+    assert "deps-${deps_hash}" in resolve["run"]
+
+
+def test_the_mssql_odbc_install_keeps_its_retries_and_has_no_fallback():
+    for step in _odbc_steps():
+        if "run" not in step:
+            continue
+        assert "|| true" not in step["run"] and "continue-on-error" not in step
+    miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
+    assert "Acquire::Retries=5" in miss["env"]["APT_OPTS"]
+    assert "ACCEPT_EULA=Y" in miss["run"]

@@ -348,14 +348,34 @@ def entry_for(masks: list[dict], chain: list[str]) -> int | None:
 
 
 def rule_of(mask: dict) -> MaskingRule:
-    """The masking rule of a mask entry's ``mask`` ({type, pattern, replace, value, precision})."""
+    """The masking rule of a mask entry's ``mask`` ({type, pattern, replace, value, precision};
+    a fake's {type, fake, fake_stable, fake_stable_version}, REQ-1494)."""
     return MaskingRule(
         mask_type=MaskType(mask["type"]),
         pattern=mask.get("pattern"),
         replace=mask.get("replace"),
         value=mask.get("value"),
         precision=mask.get("precision"),
+        fake=mask.get("fake"),
+        fake_stable=bool(mask.get("fake_stable")),
+        fake_stable_version=mask.get("fake_stable_version"),
     )
+
+
+def synthetic_masks(  # REQ-2180, REQ-1494
+    masks: list[dict], roles: list[str], data_type: str, fake: dict | None
+) -> list[dict]:
+    """A column's mask list with a role-wide fake mask for ``roles`` -- the roles of a synthetic
+    offer of a product the column's table is a dataset of -- ahead of its own entries: those roles
+    read the column through its declared fake (``fake``: {fake, fake_stable,
+    fake_stable_version}), or completely masked where it declares none, never its real value.
+    Every other reader reads it through the column's own list, unmasked where it has none."""
+    mask = (
+        {"type": MaskType.fake.value, **fake}
+        if fake is not None
+        else {"type": MaskType.constant.value, "value": full_mask(data_type)}
+    )
+    return [{"to": list(roles), "mask": mask}, *(masks or [{"to": None, "mask": None}])]
 
 
 def resolve(masks: list[dict], chain: list[str], data_type: str) -> MaskingRule | None:

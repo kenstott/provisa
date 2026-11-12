@@ -88155,7 +88155,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
     Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
     Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
-    managed, so a term is made a Class or a Property in one place.'
+    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-12, THE TERM PAGE SAYS
+    GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
+    way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
+    in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
+    the same list Columns.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -88991,22 +88995,45 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: >-
-    The Ontology View reads, on the server, the graph it draws, and the query it reads is the one
-    Open as query exports. The page's search is the query's root filter: the terms whose name or
-    definition holds any of its items (a quoted phrase is one item), whatever the case, the items'
-    own wildcards taken literally. Each match is read with its neighbourhood, the same rule the view
-    draws by: what lies within two hops of a match along any edge drawn, both ways, a product or a
-    domain drawn where it is reached and never passed through, and a table passed through only when
-    entered as a product's member. The neighbourhood is one stated rule that the view's drawing and
-    the query share; the query reads each hop as a nested level of the terms an edge reaches, the
-    last level with its edges' ends alone, so it reads nothing past the neighbourhood. A search
-    therefore never stops a graph being opened as a query. Before it reads the graph the view counts
-    the terms its query would read at its root, by id; past a budget of 500 the graph is not read.
-    With no search and no domain chosen the view then draws its overview, each domain with the
-    number of terms in it, and picking a domain narrows the view to it; a search or a domain still
-    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn.
-    The product graph and lineage follow the same pattern later.
+  description: 'The Ontology View reads, on the server, the graph it draws, and the query it reads is the
+    one Open as query exports. The page''s search is the query''s root filter: the terms whose name or definition
+    holds any of its items (a quoted phrase is one item), whatever the case, the items'' own wildcards taken
+    literally. Each match is read with its neighbourhood, the same rule the view draws by: what lies within
+    two hops of a match along any edge drawn, both ways, a product or a domain drawn where it is reached
+    and never passed through, and a table passed through only when entered as a product''s member. The neighbourhood
+    is one stated rule that the view''s drawing and the query share; the query reads each hop as a nested
+    level of the terms an edge reaches, the last level with its edges'' ends alone, so it reads nothing
+    past the neighbourhood. A search therefore never stops a graph being opened as a query. Before it reads
+    the graph the view counts the terms its query would read at its root, by id; past a budget of 500 the
+    graph is not read. With no search and no domain chosen the view then draws its overview, each domain
+    with the number of terms in it, and picking a domain narrows the view to it; a search or a domain still
+    past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn. The product
+    graph and lineage follow the same pattern later. [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE WEB-SEARCH
+    SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there is no + mark.
+    Kept here for history; do not implement against it.] (Amended 2026-11-12, A PLUS MARKS A REQUIRED ITEM:)
+    Maintainer 2026-11-12: in every page search (the one rule the page filters, the term list and the Ontology
+    View share), an item written with a leading + is required, and an item without one is one of the at-least-one-of
+    items: a row is kept when it holds every + item and, if there are items without a +, at least one of
+    them. So red +blue green keeps what holds blue and either red or green; +red +blue keeps what holds
+    both; red green keeps what holds either, as before. A + goes before a word or before a quoted phrase.
+    The search field''s hint says so. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE
+    WEB-SEARCH SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there
+    is no + mark. Kept here for history; do not implement against it.] (Amended 2026-11-12, A MINUS MARKS
+    AN ITEM THAT MUST NOT MATCH:) Maintainer 2026-11-12: beside +, an item written with a leading - must
+    not be found: a row is kept when it holds every + item, holds no - item, and, if there are items with
+    neither mark, holds at least one of them. So +red -blue green keeps what holds red, does not hold blue,
+    and holds green. A mark counts only at the start of an item, before a word or a quoted phrase: the hyphen
+    inside pet-store is part of the word. Text that itself begins with + or - is searched by putting it
+    in quotes. [END SUPERSEDED BLOCK] (Amended 2026-11-12, PAGE SEARCH USES THE WEB-SEARCH SYNTAX:) Maintainer
+    2026-11-12: every page search (the one rule the page filters, the term list and the Ontology View share)
+    reads the syntax people type into a web search, the same one the data search takes (REQ-2213): items
+    separated by spaces are all required; the word or between two items means either; an item with a leading
+    - must not be found; a phrase in double quotes is one item. or binds tighter than a space: blue red
+    or green keeps what holds blue and either red or green. So red blue keeps what holds both, where before
+    it kept what held either; red or blue keeps either; red green -blue keeps what holds red and green and
+    not blue. A - counts only at the start of an item (the hyphen in pet-store is part of the word); the
+    word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
+    search field''s hint says so.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -89883,68 +89910,73 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the live group marked live. Clicking a schema property or a quality check opens its detail in the same
     stack, one more breadcrumb level, never a modal. In the buyer view a contract''s panel is read-only.
     (Amended 2026-10-29, A PRODUCT''S CONTRACTS ARE A LIST BENEATH IT:) Maintainer 2026-10-29: every output
-    port other than a command port has exactly one contract. In the data products list, an expanded product
-    shows its contracts as a secondary list beneath its Lineage panel, one row per contract (output port,
-    contract version, status, consumers, SLA headline, last checked, and a warning where one applies), collapsed
-    at first. Expanding a row shows that contract''s details beneath it in the same dense card panels a
-    product uses (details, fields promised, SLAs and freshness, quality promises, consumers, versions and
-    changes); several may be open at once, and a contract''s details are read when its row opens. The contracts
-    are no longer a card in the product''s top panels; the product''s other cards, its output ports among
-    them, are unchanged. A link naming a product and a contract opens that product with that contract expanded.
-    (Amended 2026-10-29, A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29:
-    every saved version of a contract is kept, with when and by whom it was saved. Each version records
-    its differences from the one before it, and a difference that can break a consumer (a field removed
-    or renamed, a type changed incompatibly, a field made required, a promised SLA or quality check weakened)
-    is marked breaking. A contract row in the product''s contracts list warns of a breaking change not yet
-    in force, and its Versions and changes card lists the versions and shows each one''s differences. (Amended
-    2026-10-29, WHAT NOT YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking
-    change is not yet in force while its version''s status is proposed or draft, meaning every version after
-    the last one in neither status. Who saved a version is visible to anyone who can read the data product.
-    (Amended 2026-10-29, A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise
-    means a data quality check a product makes on its output ports, and nothing else. Columns are never
-    called promised, and fields is not a second name for them: a contract declares its columns. The contract
-    view''s card and the contract editor''s field are both Columns, and the quality card is Promises. (Amended
-    2026-10-29, EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no
-    reference to a product''s expectations, the data quality checks on its input ports. They belong to the
-    consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
-    by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
-    2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
-    level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
-    TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
-    tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
-    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-11-01, HOW TO USE:)
-    Maintainer 2026-11-01, on the contract''s servers section: "do this". The contract view''s Servers section
-    becomes How to use, with three columns: Surface, Address and Try it. Try it is a complete URI where
-    one is enough (REST, JSON:API, the OpenAPI description) and a runnable statement using the table''s
-    real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
-    the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
-    a query. The instructions are generated in the contract builder so exported contracts carry them; the
-    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-11-01,
-    HOW TO USE, BY LINK:) Maintainer 2026-11-01: "they could be hyperlinks to show an example on the related
-    provisa ui explore", "just a bit more expanded explanation then the access patterns". This replaces
-    the How to use amendment''s runnable statements and its generation in the contract builder. How to use
-    has Surface, Address, a sentence on how the surface is used, and a link that opens the example in the
-    matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
-    the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
-    who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
-    carries the standard servers field and no instructions. (Amended 2026-11-01, HOW TO USE NEEDS ACCESS:)
-    Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
-    well." How to use says on every surface that it works only once access is granted, and names who grants
-    it, from the contract''s roles and first-level approvers. (Amended 2026-11-01, THE ADDRESS IS THE MOST
-    SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI that points specifically to the requested data
-    set (like openapi for example) that might provide a little more vvalue." The Address column of How to
-    use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
-    the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
-    and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
-    table. (Amended 2026-11-01, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
-    narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
-    specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
-    generated description takes a table filter beside role and domains, and the contract''s address uses
-    it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S COLUMNS:) A contract holds no columns of
-    its own and its editor has no column selection, superseding the 2026-10-30 text that a contract declares
-    its columns. Each saved version snapshots its member table''s columns, and a version''s field differences
-    compare snapshots, so a field removed or renamed, a type changed incompatibly or a field made required
-    is still marked breaking (maintainer 2026-11-08).'
+    port other than a command port has exactly one contract. [SUPERSEDED by REQ-2180, 2026-11-11 -- contracts
+    are derived per offer and shown on each offer''s card (REQ-2180 THE UI SHOWS CONTRACTS PER OFFER); there
+    is no product-wide contracts list and no hand-edited contract. Kept here for history; do not implement
+    against it.] In the data products list, an expanded product shows its contracts as a secondary list
+    beneath its Lineage panel, one row per contract (output port, contract version, status, consumers, SLA
+    headline, last checked, and a warning where one applies), collapsed at first. [END SUPERSEDED BLOCK]
+    [SUPERSEDED by REQ-2180, 2026-11-11 -- contracts are derived per offer and shown on each offer''s card
+    (REQ-2180 THE UI SHOWS CONTRACTS PER OFFER); there is no product-wide contracts list and no hand-edited
+    contract. Kept here for history; do not implement against it.] Expanding a row shows that contract''s
+    details beneath it in the same dense card panels a product uses (details, fields promised, SLAs and
+    freshness, quality promises, consumers, versions and changes); several may be open at once, and a contract''s
+    details are read when its row opens. [END SUPERSEDED BLOCK] The contracts are no longer a card in the
+    product''s top panels; the product''s other cards, its output ports among them, are unchanged. A link
+    naming a product and a contract opens that product with that contract expanded. (Amended 2026-10-29,
+    A CONTRACT KEEPS ITS VERSIONS AND NAMES ITS BREAKING CHANGES:) Maintainer 2026-10-29: every saved version
+    of a contract is kept, with when and by whom it was saved. Each version records its differences from
+    the one before it, and a difference that can break a consumer (a field removed or renamed, a type changed
+    incompatibly, a field made required, a promised SLA or quality check weakened) is marked breaking. A
+    contract row in the product''s contracts list warns of a breaking change not yet in force, and its Versions
+    and changes card lists the versions and shows each one''s differences. (Amended 2026-10-29, WHAT NOT
+    YET IN FORCE MEANS, AND WHO SEES THE SAVER:) Maintainer 2026-10-30: a breaking change is not yet in
+    force while its version''s status is proposed or draft, meaning every version after the last one in
+    neither status. Who saved a version is visible to anyone who can read the data product. (Amended 2026-10-29,
+    A PROMISE IS A DATA QUALITY CHECK, AND ONLY THAT:) Maintainer 2026-10-30: promise means a data quality
+    check a product makes on its output ports, and nothing else. Columns are never called promised, and
+    fields is not a second name for them: a contract declares its columns. The contract view''s card and
+    the contract editor''s field are both Columns, and the quality card is Promises. (Amended 2026-10-29,
+    EXPECTATIONS STAY OUT OF THE CONTRACT:) Maintainer 2026-10-30: an ODCS document holds no reference to
+    a product''s expectations, the data quality checks on its input ports. They belong to the consuming
+    product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried by ODPS
+    outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer 2026-10-30:
+    Support and team, Servers, Pricing, and Custom properties and tags are cards at the same level as Details,
+    Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE TIERS:) Maintainer
+    2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium tables in a two-column
+    flow; large tables, Servers and Columns, full width at the bottom. Fields not declared fold into one
+    quiet line per panel, in place of a row each. (Amended 2026-11-01, HOW TO USE:) Maintainer 2026-11-01,
+    on the contract''s servers section: "do this". The contract view''s Servers section becomes How to use,
+    with three columns: Surface, Address and Try it. Try it is a complete URI where one is enough (REST,
+    JSON:API, the OpenAPI description) and a runnable statement using the table''s real names otherwise
+    (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read the table, Try it shows
+    who to ask, from the contract''s roles and first-level approvers, instead of a query. The instructions
+    are generated in the contract builder so exported contracts carry them; the standard servers field stays
+    as it is, and a token appears only as a placeholder. (Amended 2026-11-01, HOW TO USE, BY LINK:) Maintainer
+    2026-11-01: "they could be hyperlinks to show an example on the related provisa ui explore", "just a
+    bit more expanded explanation then the access patterns". This replaces the How to use amendment''s runnable
+    statements and its generation in the contract builder. How to use has Surface, Address, a sentence on
+    how the surface is used, and a link that opens the example in the matching Explore page, using the handlers
+    Access Patterns uses. A surface with no page of its own opens the page that speaks its language: Flight
+    SQL opens SQL. When the viewing role cannot read the table, who to ask replaces the link, from the contract''s
+    roles and first-level approvers. An exported contract carries the standard servers field and no instructions.
+    (Amended 2026-11-01, HOW TO USE NEEDS ACCESS:) Maintainer 2026-11-01: "they won''t work until access
+    is granted. so instructions should say that as well." How to use says on every surface that it works
+    only once access is granted, and names who grants it, from the contract''s roles and first-level approvers.
+    (Amended 2026-11-01, THE ADDRESS IS THE MOST SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI
+    that points specifically to the requested data set (like openapi for example) that might provide a little
+    more vvalue." The Address column of How to use shows the most specific URI each surface has for the
+    table: the table''s own URI on REST and JSON:API, the OpenAPI description narrowed as far as it can
+    be, and a connection URI with the schema for pgwire and Flight SQL. A surface with one endpoint per
+    server shows that endpoint, and its link carries the table. (Amended 2026-11-01, OPENAPI NARROWS TO
+    THE TABLE:) Maintainer 2026-11-01: "if you couldn''t narrow to a table what exactly would the point
+    be". This replaces "as far as it can be" in the most specific address amendment: the OpenAPI description
+    in How to use is narrowed to the one table. The generated description takes a table filter beside role
+    and domains, and the contract''s address uses it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S
+    COLUMNS:) A contract holds no columns of its own and its editor has no column selection, superseding
+    the 2026-10-30 text that a contract declares its columns. Each saved version snapshots its member table''s
+    columns, and a version''s field differences compare snapshots, so a field removed or renamed, a type
+    changed incompatibly or a field made required is still marked breaking (maintainer 2026-11-08).'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -91119,71 +91151,97 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     page opens it focused on that term (its ancestors and descendants, and the columns, tables and products
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
-    lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    lateral edges are drawn, and 2D or 3D. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 --
+    expanding a term opens on that term alone, as a product does. Kept here for history; do not implement
+    against it.] Expanding a snippet opens the whole ontology with the same focus selected. [END SUPERSEDED
+    BLOCK] The separate term graph and product graph implementations are replaced by these presets. (Amended
     2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
     1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
-    page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
-    with the Data layer on and its own remembered settings. Nothing the product graph showed is lost: the
-    one graph has optional layers for a product''s commands, its quality checks, links to other products
-    and product lineage, off by default in snippets and available in the full view. (Amended 2026-10-28,
-    EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows term edges (the term page''s term graph,
-    the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding
-    under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term''s
-    binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and
-    a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground.
-    (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING LABELS HIDE:) Maintainer 2026-10-29 (labels too
-    small; the 3D graph not round): a label never shrinks below a readable size (11.5px) and grows with
-    zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node''s full name stays
-    in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the
-    layout is drawn as built: no pair is moved apart in the view''s plane, so a force layout keeps its shape;
-    the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:)
-    Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn
-    between 9px and 10px, replacing 11.5px and 20px. (Amended 2026-10-29, A VIEW OPENS IN FORCE:) Maintainer
-    2026-10-31: a view opens in force, unless its preset names its own layout or the reader has saved a
-    choice. Taxonomy keeps its top-down tree (REQ-2130). Layered stays disabled where a cycle makes it impossible.
-    This replaces opening layered when the drawn edges are of one class and form no cycle. (Amended 2026-11-05,
-    ONE GRAPH, RULES PER PRESET:) The one ontology graph is one component whose presets carry their own
-    rules. The Ontology preset, and the Ontology page, follow REQ-2130 (amended 2026-10-29): only what a
-    shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is
-    drawn. The Product map preset and the product panels'' snippets keep the product layers (commands, quality,
-    product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables
-    relationship layer is not offered in the Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:)
-    The graph''s columns are Products, Tables, Columns and Terms, and a hop is one step across them, counted
-    from the focus item alone (a product''s count no longer also starts from its member tables). The hop
-    control is labelled with its focus, ''Hops from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their
-    columns, 3 the terms those columns are tied to, 4 other columns tied to the same terms. A ''Related
-    tables'' checkbox draws the tables directly related to the drawn tables by relationships, named on the
-    link, and the products those tables belong to; it follows one step only, never a related table''s own
-    columns, terms or relationships. The Terms, Domains and Tags filters stay; the filter of term-to-term
-    link types is named ''Term relationships''. A product''s panel opens at 1 hop with Related tables on,
-    matching its Related Tables card; the full graph opens at 2 hops with Related tables off. A table''s
-    columns not tied to a term shown fold into one node labelled ''N columns with no term in this view''.
-    Reset view folds every table back as well as resetting the camera. The 2D view is the simple one: Product,
-    its tables, their columns and the terms those columns are tied to, left to right, with the links between
-    terms (filtered by Term relationships), and nothing else -- no related tables and no lineage. Its hop
-    control, ''Hops from <product>'', counts along that path: 1 the product''s tables, 2 their columns,
-    3 the terms those columns are tied to, and each hop beyond 3 one more step through term-to-term links;
-    a table''s columns not tied to a term fold into one node. Hops, Related tables, Term relationships and
-    every other layer belong to the 3D view, where table relationships and term relationships are told apart
-    by more than colour (a table link solid and named by the relationship, a term link dashed and named
-    by its type). The graph''s Lineage layer is named ''Inputs'' and shows where the product comes from,
-    never who consumes it: the graph is read by a consumer or prospective consumer. Each input links to
-    the member table that reads it (not to the product), an input that is another product''s member stands
-    for that product, and column lineage stays on unfolded tables. A product page''s Lineage panel is titled
-    ''Column lineage: where this product comes from'', its lanes named Inputs and This product''s tables
-    (Upstream hop n beyond the inputs), with no downstream lanes; its hint states what it draws (each published
-    column and the input column it comes from), and the Input Ports card links to it. A product''s Consumers
-    card is shown only to those who own the product: a session acting as the product''s owner_role, or holding
-    data_product_rw with entitlements (REQ-2219) that reach that product, which its creator holds from creation;
-    no one else sees it (maintainer 2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE
-    IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
-    is not drawn as its own box: the input''s column links straight to the table''s column, and the link
-    names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
-    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
-    2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
-    on that product alone, its member tables, their columns and the terms grounded on them, with a control
-    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.'
+    page. Lateral edges are drawn by default, their toggle shown in 3D. [SUPERSEDED by REQ-2174 THE PRODUCT
+    MAP OPENS ON PRODUCTS, 2026-11-12 -- the Product map opens on products, their tables and the links between
+    products, not on the whole ontology. Kept here for history; do not implement against it.] The Product
+    map is the whole ontology with the Data layer on and its own remembered settings. [END SUPERSEDED BLOCK]
+    Nothing the product graph showed is lost: the one graph has optional layers for a product''s commands,
+    its quality checks, links to other products and product lineage, off by default in snippets and available
+    in the full view. (Amended 2026-10-28, EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows
+    term edges (the term page''s term graph, the one ontology graph in 2D and 3D, the lane view and their
+    snippets), an edge that conducts grounding under REQ-1387 (KIND_OF, PART_OF and VALID_VALUE_OF from
+    broader to narrower, SYNONYM_OF, and a term''s binding to a column) is drawn solid, and an edge that
+    does not (RELATED_TO and every other type, and a retired edge) is drawn dotted. The legend says so,
+    and hovering a dotted edge says it does not ground. (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING
+    LABELS HIDE:) Maintainer 2026-10-29 (labels too small; the 3D graph not round): a label never shrinks
+    below a readable size (11.5px) and grows with zoom up to 20px; where labels would overlap, the lower-ranked
+    one is hidden (its node''s full name stays in the hover card) instead of every label being scaled down.
+    Crowded nodes may still shrink. In 3D the layout is drawn as built: no pair is moved apart in the view''s
+    plane, so a force layout keeps its shape; the 2D views may still move a crowded pair apart. (Amended
+    2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:) Maintainer 2026-10-30: the labels are readable but too
+    large, half their drawn size. A label is drawn between 9px and 10px, replacing 11.5px and 20px. (Amended
+    2026-10-29, A VIEW OPENS IN FORCE:) Maintainer 2026-10-31: a view opens in force, unless its preset
+    names its own layout or the reader has saved a choice. Taxonomy keeps its top-down tree (REQ-2130).
+    Layered stays disabled where a cycle makes it impossible. This replaces opening layered when the drawn
+    edges are of one class and form no cycle. (Amended 2026-11-05, ONE GRAPH, RULES PER PRESET:) The one
+    ontology graph is one component whose presets carry their own rules. The Ontology preset, and the Ontology
+    page, follow REQ-2130 (amended 2026-10-29): only what a shown term reaches is drawn, and no relationship,
+    join or lineage edge between tables or columns is drawn. The Product map preset and the product panels''
+    snippets keep the product layers (commands, quality, product links, lineage) and the member tables,
+    so nothing the product graph showed is lost. The owner-tables relationship layer is not offered in the
+    Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) The graph''s columns are Products, Tables,
+    Columns and Terms, and a hop is one step across them, counted from the focus item alone (a product''s
+    count no longer also starts from its member tables). The hop control is labelled with its focus, ''Hops
+    from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their columns, 3 the terms those columns are tied
+    to, 4 other columns tied to the same terms. A ''Related tables'' checkbox draws the tables directly
+    related to the drawn tables by relationships, named on the link, and the products those tables belong
+    to; it follows one step only, never a related table''s own columns, terms or relationships. The Terms,
+    Domains and Tags filters stay; the filter of term-to-term link types is named ''Term relationships''.
+    A product''s panel opens at 1 hop with Related tables on, matching its Related Tables card; the full
+    graph opens at 2 hops with Related tables off. A table''s columns not tied to a term shown fold into
+    one node labelled ''N columns with no term in this view''. Reset view folds every table back as well
+    as resetting the camera. The 2D view is the simple one: Product, its tables, their columns and the terms
+    those columns are tied to, left to right, with the links between terms (filtered by Term relationships),
+    and nothing else -- no related tables and no lineage. Its hop control, ''Hops from <product>'', counts
+    along that path: 1 the product''s tables, 2 their columns, 3 the terms those columns are tied to, and
+    each hop beyond 3 one more step through term-to-term links; a table''s columns not tied to a term fold
+    into one node. Hops, Related tables, Term relationships and every other layer belong to the 3D view,
+    where table relationships and term relationships are told apart by more than colour (a table link solid
+    and named by the relationship, a term link dashed and named by its type). The graph''s Lineage layer
+    is named ''Inputs'' and shows where the product comes from, never who consumes it: the graph is read
+    by a consumer or prospective consumer. Each input links to the member table that reads it (not to the
+    product), an input that is another product''s member stands for that product, and column lineage stays
+    on unfolded tables. A product page''s Lineage panel is titled ''Column lineage: where this product comes
+    from'', its lanes named Inputs and This product''s tables (Upstream hop n beyond the inputs), with no
+    downstream lanes; its hint states what it draws (each published column and the input column it comes
+    from), and the Input Ports card links to it. A product''s Consumers card is shown only to those who
+    own the product: a session acting as the product''s owner_role, or holding data_product_rw with entitlements
+    (REQ-2219) that reach that product, which its creator holds from creation; no one else sees it (maintainer
+    2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE IS ON THE EDGE:) On a product
+    page''s column lineage, a view between an input and the product''s table is not drawn as its own box:
+    the input''s column links straight to the table''s column, and the link names the views it reads through
+    (for example ''via sales.v_customers''). The panel''s lanes stay Inputs and This product''s tables,
+    with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended 2026-11-09, A PRODUCT OPENS
+    ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens on that product alone, its
+    member tables, their columns and the terms grounded on them, with a control that shows the rest of the
+    model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding a term opens on that
+    term alone, as a product does. Kept here for history; do not implement against it.] Expanding a term
+    still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK] (Amended 2026-11-11, EACH
+    SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s term lane, sibling terms
+    (Dog and Cat under Pet) are not drawn side by side, where their edges leave from different positions
+    and cross regardless of order; each term takes its own row, and the rank lines that join a term to its
+    parent run beside the lane, not through its rows, so each lane can be ordered freely to minimise crossings.
+    On the Pet Health graph the diagram has fewer crossings than before the lanes were spread (42). (Amended
+    2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding a term''s graph opens on that
+    term alone, as a product''s does on the product: the term, its ancestors and descendants, and the columns,
+    tables and products it reaches, at full hops, with the same control that shows the rest of the model.
+    The rest of the ontology is not read or drawn until that control asks for it. No expanded snippet opens
+    on the whole ontology; only the Ontology page''s own graph does. (Amended 2026-11-12, THE PRODUCT MAP
+    OPENS ON PRODUCTS:) Maintainer 2026-11-12: opened whole, the Product map was the Ontology page''s graph
+    with product boxes beside it. It opens instead on what its name says: every product, its member tables,
+    and the links between products, with columns and terms folded away until the reader asks for them (the
+    same show-the-rest control and layer choices the graph already has). It is still the one graph and keeps
+    its own remembered settings; a reader who has saved other settings for it opens on those. (Amended 2026-11-12,
+    THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
+    without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
+    with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
+    does is unchanged.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -91873,8 +91931,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     through a role every member holds, which is checked when it is marked open and refused naming what is
     not public; an open offer is no request at all: the requester sees Query now, no hook fires, and if
     the data stops being public the offer is flagged for review. (Amended 2026-11-11, A PROFILE SHOWN IS
-    SANITIZED:) Maintainer 2026-11-11. A product''s page has a Profile tab beside Offers, Quality, Lineage,
-    Related and Requests. Wherever a profile is shown -- on that tab, or as part of an offer that includes
+    SANITIZED:) Maintainer 2026-11-11. [SUPERSEDED by REQ-2180, 2026-11-11 -- the sections are summary rows
+    that expand in place, not tabs (THE PRODUCT PAGE IS SUMMARY ROWS). Kept here for history; do not implement
+    against it.] A product''s page has a Profile tab beside Offers, Quality, Lineage, Related and Requests.
+    [END SUPERSEDED BLOCK] Wherever a profile is shown -- on that tab, or as part of an offer that includes
     profiles -- it is a sanitized profile: computed as the viewer''s role sees the data, so a masked or
     PII-tagged column shows its statistics (type, null rate, distinct count) but none of its values, and
     no profile shows a value its viewer could not read. (Amended 2026-11-11, EXPIRIES GO TO THE SAME HOOK:)
@@ -91889,7 +91949,27 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     identity provider, it decides, and Provisa enforces whatever its claims say. With none, the local default
     applies an expiry cancel at once -- the date was agreed when the grant was made, so it needs no second
     approval -- as the matching ordinary removal, attributed to the expiry; access ends within the run''s
-    interval. Provisa holds no separate read-time check of an expiry date.'
+    interval. Provisa holds no separate read-time check of an expiry date. (Amended 2026-11-11, THE PRODUCT
+    PAGE IS SUMMARY ROWS:) Maintainer 2026-11-11, after reviewing another product''s data product page,
+    which shows every panel open with a header and subtitle each and reads as overwhelming. A product''s
+    detail is a short header (name, owner, domain, at most three facts: consumers, quality, freshness; and
+    its support contact) above one section per subject in a fixed order -- Offers, Quality, Profile, Lineage,
+    Related, Requests (owners only), Access (its ways in), Ask (suggested questions run as the reader''s
+    role) -- each collapsed to a one-line summary computed from its content, never typed, so the reader
+    scans every section''s state at once and expands one in place for detail. Offers is open at first. Sections
+    have no subtitles, and a graph is drawn only inside an expanded section. Each offer carries its terms
+    of use -- purpose, usage and limitations -- in prose, shown on its card and in its contract. (Amended
+    2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS:) Maintainer 2026-11-11. The request form
+    names who will approve it (the product''s owner, or the authority the request hook reaches); asks what
+    kind of consumer the request is for -- a person, a team, another data product, or an agent; asks its
+    purpose, prefilled from the offer''s stated usage and editable; shows the offer''s terms of use; and
+    is sent only once the requester agrees to them. (Amended 2026-11-11, QUALITY IS STATUS AND COUNTS, NOT
+    A SCORE:) Maintainer 2026-11-11: there is no single quality score for a product or dataset; a weighted
+    number hides which check failed and whether it matters for the reader''s use. Quality is summarised
+    per offer as the worst outcome of the checks its contract promises, how many passed and failed, the
+    failing checks named, and when they last ran (for example: 22 checks, 1 failing: customer_id unique,
+    checked 2h ago). Anywhere a sortable figure is wanted it is the plain count of promised checks passing
+    out of those promised.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -92149,50 +92229,52 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
     model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
     which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
-    Maintainer 2026-11-04: the reference library has a retrieval setting, passage or graph, shown and changed
-    on the Admin Reference library page. Passage retrieval is today''s: the passages nearest the question.
-    Graph retrieval also follows the glossary: it finds the in-service glossary terms the question names,
-    walks their relationships out from those terms, and offers the passages the reached terms cite as further
-    candidates, so an answer can draw on a rule whose wording does not resemble the question (the aggregation
-    rule behind a currency transaction report). A candidate''s priority is the weight of the relationship
-    types on its path, multiplied over the path, so it falls with each hop from the initial terms: SYNONYM_OF
-    and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF 0.8; DERIVED_FROM and REPLACES
-    0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The walk stops where the priority
-    falls below 0.25. The passages nearest the question come first; graph candidates fill the rest of the
-    same passage budget in priority order, at most two per reached term, so graph retrieval never displaces
-    what passage retrieval found. Each graph candidate reaches the assistant labelled with its path (from
-    which term, over which relationships), and the assistant cites only the passages it used, so an irrelevant
-    candidate never reaches the answer. Only terms, relationships and documents the role may read are walked
-    or offered. Acceptance: in the bank secrecy demo, asked which cash deposits need a currency transaction
-    report, Polly''s answer with graph retrieval cites the aggregation rule (31 CFR 1010.313), and with
-    passage retrieval the answer is recorded for comparison. (Amended 2026-11-04, THE LIBRARY''S STORE AND
-    RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and egress rules, its document
-    extraction and the org''s embedding model, and keeps its documents and passages in the org''s control
-    plane, each passage with its section, page, position in its document and embedding in a pgvector column
-    under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries pgvector, and the
-    library refuses to start without it (no unindexed search). Retrieval for a question, within the role''s
-    readable documents, in this order of priority within one passage budget: (1) the passages nearest the
-    question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded by the in-service
-    terms the question names, the terms whose embedding (name and definition) is nearest the question, and
-    the terms citing the passages of (1); the reached terms'' definitions are returned as context beside
-    the passages they cite; (3) neighbours of the passages of (1) and (2): the passages just before and
-    after each in its document, and the passages nearest each by embedding. Every item reaches the assistant
-    labelled with how it was reached; the assistant cites only what it used. Glossary terms are the graph''s
-    entities and ontology relationships its relations; Provisa runs no separate entity extraction over the
-    library beyond Find terms. A passage that is repeatedly used in answers but cited by no glossary term
-    is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S BUILD KEEPS ITS SCANNED
-    DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true, and the demo''s build
-    then keeps that document through the same keep a steward uses, so the published bundle carries it kept
-    and an assistant in every sandbox of that demo finds its passages without a visitor keeping it. Without
-    keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05, THE ACCEPTANCE IS THE
-    WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval is accepted on
-    a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
-    graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
-    recorded for comparison, does not. The aggregation question (1010.313), which passage search already
-    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
-    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
-    its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
-    as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
+    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-12 -- retrieval is
+    always what graph retrieval was; there is no setting to choose. Kept here for history; do not implement
+    against it.] the reference library has a retrieval setting, passage or graph, shown and changed on the
+    Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the passages nearest
+    the question. Graph retrieval also follows the glossary: it finds the in-service glossary terms the
+    question names, walks their relationships out from those terms, and offers the passages the reached
+    terms cite as further candidates, so an answer can draw on a rule whose wording does not resemble the
+    question (the aggregation rule behind a currency transaction report). A candidate''s priority is the
+    weight of the relationship types on its path, multiplied over the path, so it falls with each hop from
+    the initial terms: SYNONYM_OF and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF
+    0.8; DERIVED_FROM and REPLACES 0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The
+    walk stops where the priority falls below 0.25. The passages nearest the question come first; graph
+    candidates fill the rest of the same passage budget in priority order, at most two per reached term,
+    so graph retrieval never displaces what passage retrieval found. Each graph candidate reaches the assistant
+    labelled with its path (from which term, over which relationships), and the assistant cites only the
+    passages it used, so an irrelevant candidate never reaches the answer. Only terms, relationships and
+    documents the role may read are walked or offered. Acceptance: in the bank secrecy demo, asked which
+    cash deposits need a currency transaction report, Polly''s answer with graph retrieval cites the aggregation
+    rule (31 CFR 1010.313), and with passage retrieval the answer is recorded for comparison. (Amended 2026-11-04,
+    THE LIBRARY''S STORE AND RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and
+    egress rules, its document extraction and the org''s embedding model, and keeps its documents and passages
+    in the org''s control plane, each passage with its section, page, position in its document and embedding
+    in a pgvector column under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries
+    pgvector, and the library refuses to start without it (no unindexed search). Retrieval for a question,
+    within the role''s readable documents, in this order of priority within one passage budget: (1) the
+    passages nearest the question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded
+    by the in-service terms the question names, the terms whose embedding (name and definition) is nearest
+    the question, and the terms citing the passages of (1); the reached terms'' definitions are returned
+    as context beside the passages they cite; (3) neighbours of the passages of (1) and (2): the passages
+    just before and after each in its document, and the passages nearest each by embedding. Every item reaches
+    the assistant labelled with how it was reached; the assistant cites only what it used. Glossary terms
+    are the graph''s entities and ontology relationships its relations; Provisa runs no separate entity
+    extraction over the library beyond Find terms. A passage that is repeatedly used in answers but cited
+    by no glossary term is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S
+    BUILD KEEPS ITS SCANNED DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true,
+    and the demo''s build then keeps that document through the same keep a steward uses, so the published
+    bundle carries it kept and an assistant in every sandbox of that demo finds its passages without a visitor
+    keeping it. Without keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05,
+    THE ACCEPTANCE IS THE WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval
+    is accepted on a question passage search cannot answer: for a customer who keeps depositing cash just
+    under $10,000, graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage
+    retrieval, recorded for comparison, does not. The aggregation question (1010.313), which passage search
+    already finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads
+    Excel workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed
+    by its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is
+    read as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
     A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
     own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
     is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
@@ -92208,7 +92290,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
     term finding run in a background job; its index status is a property (indexing with progress where known,
     ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07).'
+    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-12, TERMS ARE EMBEDDED AS
+    THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
+    and when its name or definition changes, and its embedding is removed when it leaves service, whatever
+    the library''s retrieval setting, as a document''s passages are embedded when the document is added.
+    The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
+    nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
+    embedding. An org with no vector model embeds nothing. (Amended 2026-11-12, ONE RETRIEVAL, NO SETTING:)
+    Maintainer 2026-11-12: graph retrieval already returns the passages nearest the question first, undisplaced,
+    and only adds the passages the glossary reaches before the neighbours; when the glossary reaches nothing
+    it returns what passage retrieval returns. So there is nothing for a person to choose: the library has
+    one retrieval, the one that was called graph, and the passage-or-graph setting and its control on the
+    Library page are removed. No reranking model is added: the passages nearest the question stay first
+    and each passage still says how it was reached.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
@@ -95197,8 +95291,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     drawn by one component of Provisa''s own, built on the existing graph library (cytoscape), and by nothing
     else. The component owns the library''s setup, one prescriptive visual language (a node shape with a
     type-coloured band, an icon and a two-line label, one edge style with arrows only where direction carries
-    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, a dot-grid
-    canvas, one place for the controls and the legend, one hover and selection state), its layout presets,
+    meaning and dashes for pending or indirect, dashed tinted group boxes labelled on their border, [SUPERSEDED
+    by REQ-2239, 2026-11-11 -- the canvas is plain; a background grid carries no information (A PLAIN CANVAS
+    AND READABLE LANES). Kept here for history; do not implement against it.] a dot-grid canvas, [END SUPERSEDED
+    BLOCK] one place for the controls and the legend, one hover and selection state), its layout presets,
     focus actions, saved layouts and export. A view supplies only its nodes, edges, groups, each node''s
     type and the layout preset; it sets no colour, shape or control of its own. The visual language takes
     its tokens from the detail cards. A test fails any code outside the component that imports the graph
@@ -95215,4 +95311,164 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     associative table that exists to connect others, REQ-1588) is drawn as a diamond, as Chen''s ER notation
     draws a relationship and UML an n-ary association, the form readers already know; it keeps its band
     colour and its legs. Lines whose direction carries meaning (the lane diagram''s term links) are solid
-    with arrows; dashed lines mean pending or indirect.'
+    with arrows; dashed lines mean pending or indirect. (Amended 2026-11-11, A PLAIN CANVAS AND READABLE
+    LANES:) Maintainer 2026-11-11, from the ontology term graph: the canvas is plain, with no background
+    grid. A lane''s group box bounds only its own nodes, with a gap between lanes, so boxes never overlap.
+    A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
+    is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
+    over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
+    and zooming is an explicit gesture. (Amended 2026-11-11, EACH LANE IS SORTED BY THE LANE ON ITS LEFT:)
+    Maintainer 2026-11-11 (Pet Health graph, lines still crossing): the lane diagram is ordered left to
+    right, one lane at a time. The first lane keeps its order; every lane after it is sorted by what its
+    nodes join in the lane on its left: tables in the order of their products, the columns of a table together
+    and in the order of their tables, [SUPERSEDED by REQ-2239 TERMS SIT LEVEL WITH THEIR COLUMNS, 2026-11-11
+    -- the pure sort raised crossings (Pet Health 45 to 68, pet-store 20 to 66); only the term lane is placed
+    to cut crossings. Kept here for history; do not implement against it.] a term by the place of the columns
+    it binds (the mean when it binds several) [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-2239 TERMS SIT
+    LEVEL WITH THEIR COLUMNS, 2026-11-11 -- the pure sort raised crossings (Pet Health 45 to 68, pet-store
+    20 to 66); only the term lane is placed to cut crossings. Kept here for history; do not implement against
+    it.] The order is this sort, not a search scored on crossings, so the same graph always draws the same
+    way. [END SUPERSEDED BLOCK] Lines between a table and its own columns never cross one another. (Amended
+    2026-11-11, FIT MEANS THE WHOLE IMAGE:) Maintainer 2026-11-11: the fit control on a 2D graph fits the
+    entire image into the canvas, however small that makes it. The readable zoom floor applies to how a
+    graph opens and to Reset view, not to fit. A control''s tooltip is drawn on one line beside its button.
+    (Amended 2026-11-11, TERMS SIT LEVEL WITH THEIR COLUMNS:) Maintainer 2026-11-11: products, tables and
+    columns keep the left-to-right sort; where tables tie under one product, tables that share terms are
+    placed next to each other. Only the term lane is placed to cut crossings, in this order. First, horizontal
+    lines are maximised: a term sits level with a column it binds, so a term bound to one column is joined
+    by a horizontal line. [SUPERSEDED by REQ-2239 THE SCORE IS THE ANGLE OF THE LINES, 2026-11-11 -- a term
+    is placed by how far its lines are from horizontal, not by a count of crossings. Kept here for history;
+    do not implement against it.] Then a term bound to several columns is moved up or down among them to
+    the place with the fewest crossings. [END SUPERSEDED BLOCK] Terms with a common parent move together
+    as one group and stay next to each other. The result is the same every time the same graph is drawn.
+    (Amended 2026-11-11, THE SCORE IS THE ANGLE OF THE LINES:) Maintainer 2026-11-11: the term lane is scored
+    by the angle of its lines: the further a line is from horizontal, the worse. A term bound to several
+    columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
+    columns); a group of terms with a common parent is placed where its members'' lines are flattest in
+    total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
+    are reported, not the score. (Amended 2026-11-12, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
+    2026-11-12: the controls that change how a graph is looked at sit in one hover stack inside the canvas,
+    the same on every 2D graph and every 3D view (the ontology graph and the table profile views: terrain,
+    joint cloud, drift strata, relations): reset view (fit, in 2D), full screen and download everywhere;
+    rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
+    tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
+    force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
+    longer toolbar buttons. (Amended 2026-11-12, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
+    while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
+    at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
+    places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
+    and on Reset view when it lays out again.'
+- id: REQ-2240
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-11: a list such as Registered Tables gets long for a developer, so rows
+    can be selected and deleted together. Selection lives in the shared list table, so every list page has
+    it the same way: a checkbox column, shift-click to select a range, and a header checkbox that selects
+    every row the current filter shows; a plain row click still opens the detail panel. Once anything is
+    selected a bar shows the count with Delete and Clear; Delete asks once, naming the rows. The server
+    deletes them in one call through the same guard a single delete runs: what can be deleted is deleted,
+    and each row refused (for example a table a view, relationship or product uses) is named with its reason,
+    as the bulk accept of reviewed terms reports what it decided and what it refused. It is available in
+    every environment to whoever may delete those rows. (Amended 2026-11-11, EACH DEPENDENT IS A LINK:)
+    Maintainer 2026-11-11: when a delete is refused because other objects still refer to the row (the "Cannot
+    delete X yet" dialog, and each refusal of a bulk delete), every object named is itself a link that opens
+    that object''s own detail panel on its page, where it can be changed or deleted; there is no separate
+    per-kind "Open the page" link. (Amended 2026-11-11, A DEPENDENT IS NAMED AS ITS PAGE NAMES IT:) Maintainer
+    2026-11-11: each object named in a refused delete is shown by the label its own page shows (a relationship
+    as its two tables, e.g. users -> inquiries; a view or table by its table name), never by an internal
+    identifier such as users-to-inquiries, so it can be found where the link leads.'
+- id: REQ-2241
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: admin-console-surface
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-11: opening a detail view puts it in the address, so every detail view
+    has a precise link (not a search) and Back returns to it. On every list page, opening a row''s detail
+    panel writes that object''s identity to the URL, and so does choosing a tab in the panel, as a new
+    history entry; closing the panel removes them. Loading the URL, following a link, or going Back or
+    Forward restores the same panel on the same tab. Each page uses one parameter naming its object, read
+    and written in one shared place, so every link into a detail view (for example from a refused delete,
+    REQ-2240) is that same URL.'
+
+- id: REQ-2242
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Protocol Conformance
+  feature: federation-and-routing-governed-pipeline
+  priority: SHOULD
+  type: constraint
+  unit_test: true
+  description: 'Maintainer 2026-11-11: Provisa never changes sqlglot''s own classes at runtime. Every change
+    to how a dialect tokenizes, parses or generates (today five assignments in provisa/transpiler: DuckDB''s
+    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types)
+    is made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses
+    and expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa
+    does not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc),
+    whose classes cannot be patched, can run under the transpiler. The compiled build is adopted when it
+    gives byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise
+    the plain build stays, and the measurement is recorded. (Amended 2026-11-11, DEFERRED: THE COMPILED
+    BUILD FORBIDS SUBCLASSES:) Maintainer 2026-11-11, on job J1210''s findings. sqlglot[c] 30.23.0 (sqlglotc)
+    compiles Parser and Generator without allowing interpreted subclasses: a Provisa subclass of either
+    raises ''interpreted classes cannot inherit from compiled''; Tokenizer subclasses work; entries added
+    to the FUNCTIONS, FUNCTION_PARSERS, TRANSFORMS and FUNC_TOKENS tables take effect, but a method assigned
+    on a compiled class is ignored by compiled callers. So neither runtime patches nor Provisa dialect subclasses
+    run on the compiled build, and moving the patches into subclasses would not let it run. The rule is
+    deferred: today''s patches stay, and this is rechecked when sqlglot allows interpreted subclasses of
+    Parser and Generator. Measured on the 325 golden semantic statements (parse as postgres; generate postgres,
+    duckdb, trino; stock dialects): compiled 1.70-1.72 s median against 3.76-4.84 s interpreted, identical
+    output; wheels exist for cp312 on macOS universal2, manylinux x86_64 and aarch64, and win_amd64. The
+    patched dialects reach past the five first listed: postgres, duckdb, trino, presto, spark, bigquery
+    and clickhouse directly, and redshift, materialize, risingwave, athena, dune and databricks by inheritance.'
+- id: REQ-2243
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Admin UI
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-11: a glossary term may carry its calculation method beside its definition:
+    how the measure or derived value is computed, in business language (for example net revenue is gross
+    order value less refunds and discounts, on the order date, in the order''s currency). It is governed
+    like the definition (approved, versioned, exported with the term, written back on ontology export),
+    and an ontology import maps a term''s calculation annotation onto it. Everyone who can read the term
+    reads its method. [SUPERSEDED by REQ-2243, 2026-11-11 -- a dataset shows the governed metrics it uses
+    with their definitions, not column formulas (A DATASET SHOWS ITS METRICS). Kept here for history; do
+    not implement against it.] A computed column grounded in the term shows the method with its definition;
+    the column''s own formula (its expression) is the implementation and is shown only to a reader who can
+    read every input it uses (REQ-2152). [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2243, 2026-11-11 -- a
+    dataset shows the governed metrics it uses with their definitions, not column formulas (A DATASET SHOWS
+    ITS METRICS). Kept here for history; do not implement against it.] (Amended 2026-11-11, A VIEW''S FORMULA
+    IS ITS SEMANTIC SQL:) Maintainer 2026-11-11: for a computed column of a view or a materialized view,
+    the formula shown is the column''s expression in the view''s semantic SQL definition (over semantic
+    names, as the modeller wrote it), never the physical SQL the view compiles to or the MV''s stored table;
+    the inputs whose read rights decide who sees it are that expression''s semantic columns. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-11, A DATASET SHOWS ITS METRICS:) Maintainer 2026-11-11, correcting the earlier
+    reading of another product: what is shown for a dataset is not a column''s formula but the governed
+    metrics (REQ-1317, REQ-1319) it uses, each with its name, description and AI definition. A view declared
+    from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
+    references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
+    A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
+    are listed as the reader''s role may see them (visible_to). (Amended 2026-11-11, A METRIC NAMES ITS
+    TERM; THE METHOD HAS ITS OWN ANNOTATION:) Maintainer 2026-11-11: a metric is grounded in a glossary
+    term by naming it: a metric optionally carries one term, set in the metric editor and in configuration
+    and versioned with the metric, as a table names its class term. On ontology export the calculation method
+    is written in RDF as the Provisa predicate https://provisa.dev/ns#calculationMethod on the term, and
+    in an Ossie document as a calculation_methods list in its ai_context, as kept statements are carried.
+    An import maps that predicate and that list onto the method; annotations of other vocabularies are not
+    read as a method.'
+  scenario: |
+    Given a glossary term "net revenue" with a calculation method
+    And a computed column grounded in that term whose formula reads a masked column
+    When a reader without rights to the masked column opens the column
+    Then the reader sees the term's definition and calculation method
+    And the reader does not see the column's formula

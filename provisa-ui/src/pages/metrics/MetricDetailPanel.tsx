@@ -94,6 +94,8 @@ export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: Metri
           { label: t("metricsPage.fieldDatatype"), value: m.datatype },
           { label: t("metricsPage.fieldDescription"), value: m.description },
           { label: t("metricsPage.fieldAiContext"), value: m.aiContext },
+          // REQ-2243: the glossary term the metric names.
+          { label: t("metricsPage.fieldTerm"), value: m.term },
           // REQ-2208: a metric carries tags as the model's objects do.
           {
             label: t("metricsPage.fieldTags"),

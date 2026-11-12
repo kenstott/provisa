@@ -312,6 +312,8 @@ def requirements(path: str, body: dict[str, Any], source: Tree) -> set[str]:
         needs.update(edge["to"] for edge in body.get("edges") or [])
     elif kind == "metrics":
         needs.update(_metric_tables(body.get("expression"), source))
+        if body.get("term") is not None:  # REQ-2243: the term the metric names
+            needs.add(body["term"])
     return needs
 
 

@@ -141,7 +141,8 @@ async def test_governance_signals_arrive_as_classification_tags(published, token
     assert {t["tagFQN"] for t in columns["margin"]["tags"]} == {
         f"{CLASSIFICATION}.visibility_restricted"
     }
-    assert not columns["id"].get("tags")
+    # The key carries no governance signal; its Class term (REQ-1389) is a Glossary label.
+    assert not _classified(columns["id"].get("tags") or [])
 
 
 async def test_column_lineage_of_the_derived_view_is_queryable(published, token):
@@ -234,8 +235,9 @@ async def test_each_member_carries_its_odcs_contract(published, token):
 
 
 async def test_provisa_assigns_its_terms_as_automated_glossary_labels(published, token):
-    """REQ-1389 (amended): the Class term labels the table it grounds and the Property term its
-    column, each as an Automated label -- what OpenMetadata shows as a system assignment."""
+    """REQ-1389 (amended): the Class term labels the table it grounds and its key column, the
+    Property term its column, each as an Automated label -- what OpenMetadata shows as a system
+    assignment."""
     table = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}", fields="columns,tags")
     glossary = f"provisa_{ORG}"
 
@@ -244,6 +246,9 @@ async def test_provisa_assigns_its_terms_as_automated_glossary_labels(published,
 
     assert _assigned(table["tags"]) == {(f"{glossary}.Classes.{CLASS_TERM}", "Automated")}
     columns = {c["name"]: c for c in table["columns"]}
+    assert _assigned(columns["id"].get("tags") or []) == {
+        (f"{glossary}.Classes.{CLASS_TERM}", "Automated")
+    }
     assert _assigned(columns["customer_id"].get("tags") or []) == {
         (f"{glossary}.Properties.{GLOSSARY_TERM}", "Automated")
     }

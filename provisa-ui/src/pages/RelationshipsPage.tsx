@@ -10,7 +10,7 @@
 
 import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
@@ -42,6 +42,7 @@ import {
   useTables,
   useUpsertRelationship,
   useDeleteRelationship,
+  useDeleteRelationships,
 } from "../hooks/useAdminQueries";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
@@ -56,6 +57,7 @@ import { AddRelationshipForm } from "../components/relationships/AddRelationship
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -70,6 +72,8 @@ import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 /** A refusal over the tags a re-homed key ref would lose (REQ-2145): each column's change. */
 function tagLossOf(result: MutationResult): ColumnTagChange[] | null {
   return result.code === "tag.move_loses"
@@ -108,14 +112,11 @@ export function RelationshipsPage() {
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  // `?relationship=<id>` (a graph's link, lib/entityHref) opens that relationship's panel.
-  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("relationship"));
-  const linkedRelationship = searchParams.get("relationship");
-  const [seededRelationship, setSeededRelationship] = useState(linkedRelationship);
-  if (linkedRelationship !== seededRelationship) {
-    setSeededRelationship(linkedRelationship);
-    if (linkedRelationship !== null) setExpanded(linkedRelationship);
-  }
+  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
+  const detail = useDetailParam("relationships");
+  const expanded = detail.id;
+  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
+  const { open: openDetail, close: closeDetail } = detail;
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
   // REQ-2145: a save or a delete that re-homes key refs off a tagged term, refused over the tags
   // those columns would lose: what each loses and gains, and what to do again once resolved.
@@ -222,10 +223,10 @@ export function RelationshipsPage() {
       if (!result.success) throw new Error(serverMessage(result, result.message));
       // The list read again without it before the panel closes.
       await refetchRels();
-      setExpanded((prev) => (prev === id ? null : prev));
+      closeDetail({ only: id });
       setEditingRel(null);
     },
-    [deleteRelationship, refusal, refetchRels],
+    [deleteRelationship, refusal, refetchRels, closeDetail],
   );
 
   const handleAdd = useCallback(
@@ -284,12 +285,12 @@ export function RelationshipsPage() {
       }
       // The relationship exists now, with everything else at its defaults: it is selected in the
       // list and its detail opens in edit, where the rest is filled in.
-      setExpanded(form.id);
+      openDetail(form.id);
       setEditingRel({ ...form, originalId: form.id });
       setForm(EMPTY_FORM);
       setShowForm(false);
     },
-    [form, upsertRelationship],
+    [form, upsertRelationship, openDetail],
   );
 
   const handleEditSave = useCallback(
@@ -572,6 +573,10 @@ export function RelationshipsPage() {
     },
   ];
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
+  // REQ-2240: relationships selected and deleted together; a relationship is named by its tables.
+  const shownRelIds = useMemo(() => filteredRels.map((r) => String(r.id)), [filteredRels]);
+  const selection = useListSelection(shownRelIds);
+  const deleteRelationships = useDeleteRelationships();
   const groupBy = sortGroup.groupBy;
 
   // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
@@ -594,7 +599,6 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(null);
-    if (erd.on) erd.setPanel("relationship", null);
   };
   // REQ-2187: a line clicked in the ERD: its panel, in place of whatever the panel held.
   const openFromErd = (id: string) => {
@@ -603,7 +607,6 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(id);
-    erd.setPanel("relationship", id);
   };
   const selectedRel =
     expanded === null
@@ -814,7 +817,17 @@ export function RelationshipsPage() {
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the
                 panel leaves too little room for scrolls sideways. */}
-              <ListTable testId="relationships-list">
+              <ListBulkBar
+                selection={selection}
+                nameOf={(key) => {
+                  const found = rels.find((r) => String(r.id) === key);
+                  if (!found) throw new Error(`relationship ${key} is not listed`);
+                  return `${found.sourceTableName} -> ${found.targetTableName}`;
+                }}
+                onDelete={deleteRelationships}
+                testId="relationships-bulk"
+              />
+              <ListTable testId="relationships-list" selection={selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[

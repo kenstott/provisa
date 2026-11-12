@@ -4,11 +4,13 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on Databricks (dialect `databricks`), as a serving engine or as a source a statement is sent to directly. Each feature has a read polyfill, how its values and operations are computed there, and a write polyfill, how its values reach it; each states its limitations.
 
-This page lists every feature that has a polyfill or a limitation on Databricks. A feature Databricks does natively with no difference from PostgreSQL is left out: 1 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on Databricks. A feature Databricks does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 When Databricks is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 12, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 17, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+
+2 of the grid's 15 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -23,6 +25,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>array_upper</strong><br>The upper bound of a dimension: its length.</td><td><pre><code>array_upper($a::anyarray, $d::integer)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_upper($a::anyarray, $d::integer). <code>0A000</code> array_upper() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, 1)
+=&gt;
+CAST(CASE WHEN SIZE($a) &gt; 0 THEN SIZE($a) END AS INT)</code></pre><pre><code>array_length($a::anyarray, $d::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_length($a::anyarray, $d::integer). <code>0A000</code> array_length() reads only dimension 1 on databricks</li><li>Only the first dimension, written as the number 1: any other dimension, or one not written as a number, is refused, where PostgreSQL answers its length or NULL.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_fill</strong><br>An array of a value repeated to the dimensions given.</td><td><pre><code>array_fill($v::anyelement, $dims::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
@@ -46,4 +53,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li></ul></td><td></td><td></td></tr>
 </tbody></table>

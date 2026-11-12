@@ -5,6 +5,18 @@
     "sortNone": "без сортировки",
     "groupBy": "Группировать по {{label}}",
     "ungroupLevel": "Разгруппировать (уровень {{level}})",
-    "moreValues": "ещё {{count}}"
+    "moreValues": "ещё {{count}}",
+    "selectAll": "Выбрать все показанные строки",
+    "selectRow": "Выбрать строку",
+    "selectedCount_one": "Выбрано: {{count}}",
+    "selectedCount_other": "Выбрано: {{count}}",
+    "bulkDelete": "Удалить",
+    "clearSelection": "Снять выбор",
+    "bulkDeleteTitle_one": "Удалить строки ({{count}})?",
+    "bulkDeleteTitle_other": "Удалить строки ({{count}})?",
+    "bulkDeleteConsequence": "Будут удалены: {{names}}. Те, на которые ещё что-то ссылается, сохранятся, с указанием причины.",
+    "bulkRefused_one": "Не удалено: {{count}}",
+    "bulkRefused_other": "Не удалено: {{count}}",
+    "dismiss": "Закрыть"
   }
 }

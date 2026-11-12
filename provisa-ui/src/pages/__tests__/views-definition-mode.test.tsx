@@ -39,6 +39,7 @@ const METRICS: Metric[] = [
     aiContext: null,
     visibleTo: ["admin"],
     fromFact: null,
+    term: null,
   },
 ];
 

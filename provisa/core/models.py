@@ -379,6 +379,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this source
+    # A source Provisa runs for itself (its control plane, its telemetry, the views' sentinel, a
+    # data-quality checker or profiler whose results land as tables): no one registers tables on
+    # it, so the Register table source picker leaves it out.
+    is_system: bool = False
     allowed_domains: list[str] = Field(
         default_factory=list
     )  # restrict this source to specific domains; empty = unrestricted
@@ -851,6 +855,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
 
     name: str
     definition: str | None = None
+    # REQ-2243: how the measure the term names is computed, in business language.
+    calculation_method: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
     # REQ-1387, REQ-2144: its status, set by people. ``approve`` approves it (it needs a
@@ -1721,6 +1727,8 @@ class Metric(BaseModel):  # REQ-1317
     visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
+    # REQ-2243: the glossary term the metric names, by its name, as a table names its class term.
+    term: str | None = None
 
     @field_validator("name")
     @classmethod

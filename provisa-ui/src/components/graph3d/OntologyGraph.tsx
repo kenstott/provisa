@@ -12,8 +12,10 @@
 // graph -- the model's ontology in lanes: terms, the columns they bind, their tables, the products
 // those tables belong to -- drawn by one component. Every other graph is a snippet of it, named by
 // a focus and a depth: a term's page opens it focused on the term, a product's panel on the
-// product, and the Ontology View (REQ-2130) shows it whole. Expanding a snippet opens the whole
-// ontology with the snippet's focus selected. Its data is read from the ontology schema as the
+// product, and the Ontology View (REQ-2130) shows it whole. (Amended 2026-11-11, A TERM OPENS ON
+// ITSELF:) expanding a snippet opens on its focus alone -- a term's on the term, a product's on the
+// product -- with a control showing the rest of the model, read only once asked for; only the
+// Ontology page's graph opens whole. Its data is read from the ontology schema as the
 // user (ontologyData.ts) once the graph is in view; three.js loads then too.
 
 import { useMemo, useState } from "react";
@@ -32,6 +34,7 @@ import {
   productGraph,
   scopeOf,
   snippetLayers,
+  termGraph,
   type OntologyPreset,
   type SnippetPreset,
 } from "./ontologyPresets";
@@ -46,6 +49,8 @@ const PRODUCT_MAP_LAYERS: LayerId[] = ["ontology", "domains", "columns", "data"]
 const PRODUCT_MAP_SETTINGS: GraphKey = { kind: "product-map", subject: null };
 /** Every product's expanded graph: one set of remembered settings, apart from the Product map's. */
 const PRODUCT_GRAPH_SETTINGS: GraphKey = { kind: "product-graph", subject: null };
+/** Every term's expanded graph: one set of remembered settings, apart from the whole ontology's. */
+const TERM_GRAPH_SETTINGS: GraphKey = { kind: "term-graph", subject: null };
 
 /** A read not yet answered, failed, or the role's to make: said in place of the graph. */
 function ReadState({ read, testId }: { read: Read; testId: string }) {
@@ -64,11 +69,11 @@ function ReadState({ read, testId }: { read: Read; testId: string }) {
   );
 }
 
-/** The whole ontology at 95% of the viewport, read when it opens, with ``selected`` -- the
- * snippet's focus it was expanded from -- selected. ``search`` and ``within`` are the page's, as
- * GraphExplorer takes them. ``preset`` is the whole graph whose rules it draws by: the Ontology
- * page's, or the Product map's. With ``home`` (a product's graph) it opens on that product alone,
- * read for it, and shows the rest of ``preset`` on asking. */
+/** The ontology at 95% of the viewport, read when it opens, with ``selected`` selected.
+ * ``search`` and ``within`` are the page's, as GraphExplorer takes them. ``preset`` is the whole
+ * graph whose rules it draws by: the Ontology page's, or the Product map's. With ``home`` (an
+ * expanded snippet: a term's graph or a product's) it opens on that focus alone, read for it, and
+ * reads and shows the rest of ``preset`` only on asking. */
 export function OntologyModal({
   opened,
   onClose,
@@ -128,7 +133,7 @@ function WholeOntology({
   layers?: LayerId[];
   settingsKey: GraphKey;
 }) {
-  // A product's graph reads that product until the reader asks for the rest of the model.
+  // A term's or a product's graph reads its focus until the reader asks for the rest of the model.
   const [rest, setRest] = useState(false);
   const { read, drawn, query } = useOntology(home && !rest ? home : preset, true);
   if (read.error || read.all === null) return <ReadState read={read} testId="graph3d" />;
@@ -221,7 +226,8 @@ export function OntologyView({ search }: { search: string }) {
 
 /** A snippet of the ontology -- a term's page's (focused on the term), a product's panel's
  * (focused on the product) -- read and drawn once it scrolls into view. Its expand button opens
- * the whole ontology with its focus selected. ``name`` names its exports and its expanded view. */
+ * on its focus alone, the rest of the model on asking. ``name`` names its exports and its expanded
+ * view. */
 export function OntologySnippet({
   preset,
   name,
@@ -269,8 +275,8 @@ export function OntologySnippet({
           </div>
         </div>
       )}
-      {/* Expanded, the whole graph its rules are a snippet of: a term's, the ontology with the term
-          selected; a product's, that product at full hops, with the Product map on asking. */}
+      {/* Expanded, its focus alone at a product graph's depth, the rest on asking: a term's, the
+          rest of the ontology; a product's, the Product map. */}
       <OntologyModal
         opened={open}
         onClose={() => setOpen(false)}
@@ -283,7 +289,12 @@ export function OntologySnippet({
               layers: PRODUCT_GRAPH_LAYERS,
               settingsKey: PRODUCT_GRAPH_SETTINGS,
             }
-          : {})}
+          : {
+              preset: WHOLE,
+              home: termGraph(preset),
+              layers: snippetLayers(preset),
+              settingsKey: TERM_GRAPH_SETTINGS,
+            })}
       />
     </div>
   );

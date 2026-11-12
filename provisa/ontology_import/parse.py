@@ -21,17 +21,28 @@ Two families are read:
 - RDF/OWL (Turtle, RDF/XML, N-Triples, JSON-LD) through rdflib: every named ``owl:Class`` or
   ``rdfs:Class`` is a class, every ``owl:ObjectProperty``, ``owl:DatatypeProperty`` or
   ``rdf:Property`` a property, every ``skos:Concept`` a concept. ``rdfs:subClassOf``,
-  ``rdfs:subPropertyOf`` and ``skos:broader`` are KIND_OF, ``rdfs:domain`` is PART_OF the domain
-  class, ``owl:equivalentClass`` and ``owl:equivalentProperty`` are SYNONYM_OF and ``skos:related``
-  is RELATED_TO -- each only between items of the same file; a statement about a class the file
-  does not declare is left out and counted.
+  ``rdfs:subPropertyOf`` and ``skos:broader`` are KIND_OF, a datatype property's ``rdfs:domain``
+  is PART_OF the domain class, ``owl:equivalentClass`` and ``owl:equivalentProperty`` are
+  SYNONYM_OF and ``skos:related`` is RELATED_TO -- each only between items of the same file. A
+  named individual of a declared class that states nothing of its own beyond its types and
+  annotations (a plain enumerated value) is an item, VALID_VALUE_OF its class.
+- Nothing else about an item is lost (REQ-2237, amended): every other statement the file makes
+  about it -- an object property's domain and range, restrictions, cardinalities, disjointness,
+  characteristics, property chains, datatype ranges, annotations, a statement naming something
+  the file does not declare -- is kept on the item (provisa.ontology_import.kept), and so is a
+  named individual with properties of its own, on its class, and an axiom whose subject is a
+  blank node, on the first item it names. What is about no item (an ontology's own header, a
+  resource the file does not declare) is left out and counted.
+- A whole release, as a zip archive of its module files, is read as one graph
+  (provisa.ontology_import.release).
 
 An item's name is its label as the glossary writes a term: lowercase words, a camelCase or
 snake_case local name split into them, nothing expanded or dropped. Items of one file that share
 a name are one item: one phrase, one term, as the glossary keeps it. Its definition is the
 file's own text for it, never one written here.
 
-Nothing is fetched while reading: Turtle, N-Triples and RDF/XML name no document to load (the
+Nothing is fetched while reading: ``owl:imports`` is never followed (a release's are resolved
+inside its archive), Turtle, N-Triples and RDF/XML name no document to load (the
 XML reader resolves no external entity), and a JSON-LD document that names a remote ``@context``
 or ``@import`` is refused, naming it, rather than letting the parser fetch it.
 """
@@ -52,7 +63,9 @@ TURTLE = "turtle"
 RDF_XML = "xml"
 N_TRIPLES = "nt"
 JSON_LD = "json-ld"
-FORMATS = (OSSIE, TURTLE, RDF_XML, N_TRIPLES, JSON_LD)
+#: A whole release: every module file of it in one archive (provisa.ontology_import.release).
+ARCHIVE = "archive"
+FORMATS = (OSSIE, TURTLE, RDF_XML, N_TRIPLES, JSON_LD, ARCHIVE)
 
 _BY_EXTENSION = {
     ".yaml": OSSIE,
@@ -70,12 +83,15 @@ CLASS = "class"
 PROPERTY = "property"
 VALUE = "value"
 CONCEPT = "concept"
-KINDS = (CLASS, PROPERTY, VALUE, CONCEPT)
+#: A named individual that is a plain enumerated value of a class: it states nothing of its own.
+INDIVIDUAL = "individual"
+KINDS = (CLASS, PROPERTY, VALUE, CONCEPT, INDIVIDUAL)
 
 KIND_OF = "KIND_OF"
 PART_OF = "PART_OF"
 SYNONYM_OF = "SYNONYM_OF"
 RELATED_TO = "RELATED_TO"
+VALID_VALUE_OF = "VALID_VALUE_OF"
 
 #: Ossie's built-in concepts: every ontology holds them, and they are no item of one.
 OSSIE_BUILT_INS = frozenset(
@@ -98,6 +114,11 @@ class Item:
     definition: str | None = None
     iri: str | None = None
     labels: list[str] = field(default_factory=list)
+    #: What the ontology states about it that a term does not model (provisa.ontology_import.kept).
+    statements: list[dict[str, Any]] = field(default_factory=list)
+    #: REQ-2243: how the measure it names is computed (``provisa:calculationMethod``, or an Ossie
+    #: document's ``ai_context.calculation_methods``).
+    calculation_method: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,8 +136,12 @@ class Parsed:
     format: str
     items: list[Item]
     edges: list[Edge]
-    #: What the file held that is no item or edge, counted by why.
+    #: What the file held that is no item, edge or kept statement, counted by why.
     left_out: dict[str, int]
+    #: A release's module files, and each ``owl:imports`` it states with the module it resolved
+    #: to (None: a module outside the archive). Empty for a single file.
+    modules: list[str] = field(default_factory=list)
+    imports: dict[str, str | None] = field(default_factory=dict)
 
 
 _CAMEL_1 = re.compile(r"([A-Z]+)([A-Z][a-z])")  # naming-ok: term words, as glossary._phrase splits
@@ -141,6 +166,8 @@ def format_of(file_name: str, declared: str | None) -> str:
     name = file_name.lower()
     if name.endswith(".json"):
         return JSON_LD
+    if name.endswith(".zip"):
+        return ARCHIVE
     for extension, fmt in _BY_EXTENSION.items():
         if name.endswith(extension):
             return fmt
@@ -159,6 +186,11 @@ def _text(content: bytes, file_name: str) -> str:
 def parse(file_name: str, content: bytes, declared: str | None = None) -> Parsed:
     """The ontology ``content`` holds, read as ``declared`` or as its file name says."""
     fmt = format_of(file_name, declared)
+    if fmt == ARCHIVE:
+        parsed = _archive(content, file_name)
+        if not parsed.items:
+            raise ImportRefused(f"{file_name!r} declares no class, property or concept to import")
+        return parsed
     text = _text(content, file_name)
     if fmt == JSON_LD and declared is None and file_name.lower().endswith(".json"):
         try:
@@ -197,6 +229,8 @@ class _Collector:
         definition: str | None,
         iri: str | None,
         labels: Iterable[str] = (),
+        statements: Iterable[dict[str, Any]] = (),
+        calculation_method: str | None = None,
     ) -> None:
         if not name:
             self.leave_out("no name")
@@ -212,9 +246,18 @@ class _Collector:
             item.definition = item.definition or definition
             item.iri = item.iri or iri
         item = self.items[self._by_name[name]]
+        item.calculation_method = item.calculation_method or calculation_method
         for label in labels:
             if label != name and label not in item.labels:
                 item.labels.append(label)
+        item.statements.extend(statements)
+
+    def holds(self, key: str) -> bool:
+        return key in self._by_key
+
+    def keep(self, key: str, statements: Iterable[dict[str, Any]]) -> None:
+        """Keep ``statements`` on the item ``key`` names."""
+        self.items[self._by_key[key]].statements.extend(statements)
 
     def relate(self, source: str, rel_type: str, target: str) -> None:
         self._edges.append((source, rel_type, target))
@@ -254,6 +297,72 @@ def _expand(iri: Any, prefixes: Mapping[str, Any], where: str) -> str | None:
     return iri
 
 
+#: Where an Ossie document a Provisa export wrote keeps its terms' statements: Ossie's concepts
+#: and relationships take no key of a vendor's, and its ``ai_context`` takes any.
+KEPT_STATEMENTS = "kept_statements"
+#: REQ-2243: where it keeps its terms' calculation methods, each ``{concept, iri, method}``.
+CALCULATION_METHODS = "calculation_methods"
+#: REQ-2243: the predicate a term's calculation method is written and read as, a plain literal.
+#: No other vocabulary's annotation is read as a method.
+PROVISA = "https://provisa.dev/ns#"
+CALCULATION_METHOD = f"{PROVISA}calculationMethod"
+
+
+def _methods(doc: Mapping[str, Any]) -> dict[str, str]:
+    """The calculation method a Provisa export wrote for each concept of an Ossie document, under
+    ``ai_context.calculation_methods`` (REQ-2243)."""
+    context = doc.get("ai_context")
+    entries = context.get(CALCULATION_METHODS) if isinstance(context, dict) else None
+    if entries is None:
+        return {}
+    shape = "ai_context.calculation_methods is a list of a concept and its method"
+    if not isinstance(entries, list):
+        raise ImportRefused(shape)
+    out: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ImportRefused(shape)
+        concept, method = entry.get("concept"), entry.get("method")
+        if not isinstance(concept, str) or not isinstance(method, str) or not method.strip():
+            raise ImportRefused(shape)
+        out[concept] = method.strip()
+    return out
+
+
+def _kept(doc: Mapping[str, Any]) -> dict[str, tuple[str | None, list[dict[str, Any]]]]:
+    """The IRI and the statements a Provisa export kept for each concept (or
+    ``<concept>.<relationship>``) of an Ossie document, under ``ai_context.kept_statements``
+    (provisa.ontology_import.kept). The IRI is the term's own, which Ossie's ``iri`` -- the
+    Provisa URI of the term -- does not carry."""
+    from provisa.ontology_import import kept
+
+    context = doc.get("ai_context")
+    entries = context.get(KEPT_STATEMENTS) if isinstance(context, dict) else None
+    if entries is None:
+        return {}
+    out: dict[str, tuple[str | None, list[dict[str, Any]]]] = {}
+    for entry in entries if isinstance(entries, list) else [None]:
+        if not isinstance(entry, dict):
+            raise ImportRefused(
+                "ai_context.kept_statements is a list of a concept and its kept statements"
+            )
+        concept, statements = entry.get("concept"), entry.get("statements")
+        if (
+            not isinstance(concept, str)
+            or not isinstance(statements, list)
+            or not all(kept.valid(x) for x in statements)
+        ):
+            raise ImportRefused(
+                "ai_context.kept_statements is a list of a concept and its kept statements"
+            )
+        relationship, iri = entry.get("relationship"), entry.get("iri")
+        if iri is not None and (not isinstance(iri, str) or not iri.strip()):
+            raise ImportRefused(f"ai_context.kept_statements' iri of {concept!r} is an IRI")
+        key = concept if relationship is None else f"{concept}.{relationship}"
+        out[key] = (iri, [*out.get(key, (None, []))[1], *statements])
+    return out
+
+
 def _ossie(text: str, file_name: str) -> Parsed:
     import yaml
 
@@ -268,6 +377,8 @@ def _ossie(text: str, file_name: str) -> Parsed:
     prefixes = doc.get("prefixes") or {}
     if not isinstance(prefixes, dict):
         raise ImportRefused("an Ossie ontology's prefixes are a map of prefix to IRI")
+    kept_by = _kept(doc)
+    methods = _methods(doc)
     found = _Collector()
     for entry in doc["ontology"]:
         if not isinstance(entry, dict) or "concept" not in entry:
@@ -285,8 +396,17 @@ def _ossie(text: str, file_name: str) -> Parsed:
         kind = kinds.get(declared_type) if isinstance(declared_type, str) else None
         if kind is None:
             raise ImportRefused(f"concept {concept!r}'s type is EntityType or ValueType")
-        iri = _expand(fields.get("iri"), prefixes, f"concept {concept!r}")
-        found.add(concept, phrase(concept), kind, _description(fields.get("description")), iri)
+        own_iri, statements = kept_by.get(concept, (None, []))
+        iri = own_iri or _expand(fields.get("iri"), prefixes, f"concept {concept!r}")
+        found.add(
+            concept,
+            phrase(concept),
+            kind,
+            _description(fields.get("description")),
+            iri,
+            statements=statements,
+            calculation_method=methods.get(concept),
+        )
         for parent in fields.get("extends") or []:
             if isinstance(parent, str) and parent not in OSSIE_BUILT_INS:
                 found.relate(concept, KIND_OF, parent)
@@ -295,13 +415,15 @@ def _ossie(text: str, file_name: str) -> Parsed:
                 found.leave_out("relationship with no name")
                 continue
             key = f"{concept}.{rel['name']}"
-            rel_iri = _expand(rel.get("iri"), prefixes, f"relationship {key!r}")
+            rel_own_iri, rel_statements = kept_by.get(key, (None, []))
+            rel_iri = rel_own_iri or _expand(rel.get("iri"), prefixes, f"relationship {key!r}")
             found.add(
                 key,
                 f"{phrase(concept)} {phrase(rel['name'])}",
                 PROPERTY,
                 _description(rel.get("description")),
                 rel_iri,
+                statements=rel_statements,
             )
             found.relate(key, PART_OF, concept)
     if doc.get("ontology_mappings"):
@@ -375,12 +497,65 @@ def _local_name(iri: str) -> str:
 
 
 def _rdf(text: str, fmt: str, file_name: str) -> Parsed:
-    from rdflib import OWL, RDF, RDFS, SKOS, URIRef
+    return _read(_graph(text, fmt, file_name), fmt, file_name, {})
+
+
+def _module_format(member: str) -> str | None:
+    """A release member's RDF format, or None for a member that is no module."""
+    name = member.lower()
+    if name.endswith("catalog-v001.xml"):
+        return None
+    if name.endswith(".json"):
+        return JSON_LD
+    for extension, fmt in _BY_EXTENSION.items():
+        if name.endswith(extension):
+            return None if fmt == OSSIE else fmt
+    return None
+
+
+def _archive(content: bytes, file_name: str) -> Parsed:
+    from provisa.ontology_import import release
+
+    found = release.read(file_name, content, _graph, _module_format, ImportRefused)
+    left_out: dict[str, int] = {}
+    outside = sum(1 for path in found.imports.values() if path is None)
+    if outside:
+        left_out["import of a module outside the archive"] = outside
+    for why, n in found.skipped.items():
+        left_out[f"archive {why}"] = n
+    parsed = _read(found.graph, ARCHIVE, file_name, left_out)
+    parsed.modules = found.modules
+    parsed.imports = found.imports
+    return parsed
+
+
+#: The glossary edge a statement between two of the release's items is, by its predicate.
+def _edge_predicates() -> dict[Any, str]:
+    from rdflib import OWL, RDFS, SKOS
+
+    return {
+        RDFS.subClassOf: KIND_OF,
+        RDFS.subPropertyOf: KIND_OF,
+        SKOS.broader: KIND_OF,
+        RDFS.domain: PART_OF,
+        OWL.equivalentClass: SYNONYM_OF,
+        OWL.equivalentProperty: SYNONYM_OF,
+        SKOS.related: RELATED_TO,
+    }
+
+
+def _read(graph: Any, fmt: str, file_name: str, left_out: dict[str, int]) -> Parsed:
+    """The items ``graph`` declares, the edges between them and, on each, what it states that a
+    term does not model (provisa.ontology_import.kept)."""
+    from rdflib import OWL, RDF, RDFS, SKOS, BNode, URIRef
+    from rdflib.collection import Collection
     from rdflib.namespace import DC, DCTERMS
 
-    graph = _graph(text, fmt, file_name)
+    from provisa.ontology_import import kept
+
     reserved = tuple(str(ns) for ns in (RDF, RDFS, OWL, SKOS, "http://www.w3.org/2001/XMLSchema#"))
     declared: dict[str, str] = {}
+    object_properties: set[str] = set()
     blank = 0
     for rdf_type, kind in (
         (OWL.Class, CLASS),
@@ -392,14 +567,20 @@ def _rdf(text: str, fmt: str, file_name: str) -> Parsed:
     ):
         for subject in graph.subjects(RDF.type, rdf_type):
             if not isinstance(subject, URIRef):
+                if rdf_type in (OWL.Class, RDFS.Class):
+                    continue  # a class expression: kept where it is used
                 blank += 1
                 continue
             iri = str(subject)
             if not iri.startswith(reserved):
                 declared.setdefault(iri, kind)
+                if rdf_type == OWL.ObjectProperty:
+                    object_properties.add(iri)
     found = _Collector()
+    for why, n in left_out.items():
+        found.leave_out(why, n)
     if blank:
-        found.leave_out("anonymous class or property", blank)
+        found.leave_out("anonymous property", blank)
 
     def text_of(subject: Any, *predicates: Any) -> str | None:
         for predicate in predicates:
@@ -408,36 +589,173 @@ def _rdf(text: str, fmt: str, file_name: str) -> Parsed:
                 return said
         return None
 
-    for iri in sorted(declared):
+    def described(iri: str) -> tuple[str, str | None]:
         subject = URIRef(iri)
         label = text_of(subject, SKOS.prefLabel, RDFS.label) or _local_name(iri)
-        labels = sorted(
-            {phrase(str(a)) for a in graph.objects(subject, SKOS.altLabel) if str(a).strip()}
-        )
         definition = text_of(
             subject, SKOS.definition, RDFS.comment, DCTERMS.description, DC.description
         )
-        found.add(iri, phrase(label), declared[iri], definition, iri, labels)
-    for predicate, rel_type in (
-        (RDFS.subClassOf, KIND_OF),
-        (RDFS.subPropertyOf, KIND_OF),
-        (SKOS.broader, KIND_OF),
-        (RDFS.domain, PART_OF),
-        (OWL.equivalentClass, SYNONYM_OF),
-        (OWL.equivalentProperty, SYNONYM_OF),
-        (SKOS.related, RELATED_TO),
-    ):
-        for subject, target in graph.subject_objects(predicate):
-            if str(subject) not in declared:
+        return phrase(label), definition
+
+    # Named individuals: those of a class the release declares, by their type or an enumeration.
+    classes_of: dict[str, list[str]] = {}
+    for subject, cls in graph.subject_objects(RDF.type):
+        if (
+            isinstance(subject, URIRef)
+            and str(subject) not in declared
+            and declared.get(str(cls)) == CLASS
+        ):
+            classes_of.setdefault(str(subject), []).append(str(cls))
+    for owner, predicate, expression in graph.triples((None, None, None)):
+        if predicate not in (OWL.equivalentClass, RDFS.subClassOf, OWL.oneOf):
+            continue
+        if declared.get(str(owner)) != CLASS:
+            continue
+        lists = (
+            [expression] if predicate == OWL.oneOf else list(graph.objects(expression, OWL.oneOf))
+        )
+        for members in lists:
+            for member in Collection(graph, members):
+                if isinstance(member, URIRef) and str(member) not in declared:
+                    held = classes_of.setdefault(str(member), [])
+                    if str(owner) not in held:
+                        held.append(str(owner))
+    for subject in graph.subjects(RDF.type, OWL.NamedIndividual):
+        if isinstance(subject, URIRef) and str(subject) not in declared:
+            if str(subject) not in classes_of:
+                found.leave_out("individual of no class the release declares")
+
+    def plain(individual: str) -> bool:
+        """An enumerated value: it states nothing of its own beyond its types and annotations."""
+        return all(
+            predicate == RDF.type or kept.is_annotation(graph, predicate)
+            for predicate in graph.predicates(URIRef(individual))
+        )
+
+    def keep(subject: Any, skip: Any = None) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for predicate, value in sorted(graph.predicate_objects(subject)):
+            if skip is not None and skip(predicate, value):
                 continue
-            if not isinstance(target, URIRef):
-                found.leave_out("statement about an anonymous class")
-                continue
-            if str(target).startswith(reserved):
-                continue
-            found.relate(str(subject), rel_type, str(target))
-    ontology = next(iter(graph.subjects(RDF.type, OWL.Ontology)), None)
+            try:
+                out.append(kept.statement(graph, subject, predicate, value))
+            except kept.BlankNodeCycle:
+                found.leave_out("blank node that reaches itself")
+        return out
+
+    edge_predicates = _edge_predicates()
+
+    def modeled(iri: str) -> Any:
+        """Whether a statement about the item ``iri`` is one of the glossary's edges instead."""
+
+        def skip(predicate: Any, value: Any) -> bool:
+            rel_type = edge_predicates.get(predicate)
+            if rel_type is None or not isinstance(value, URIRef) or str(value) not in declared:
+                return False
+            if rel_type == PART_OF and iri in object_properties:
+                return False  # an object property keeps its domain, as it keeps its range
+            return True
+
+        return skip
+
+    method_predicate = URIRef(CALCULATION_METHOD)
+
+    def method_or_modeled(iri: str) -> Any:
+        """What :func:`modeled` skips, and the calculation method, which the term models
+        (REQ-2243) and so is not kept as a statement too."""
+        edge = modeled(iri)
+        return lambda predicate, value: predicate == method_predicate or edge(predicate, value)
+
+    for iri in sorted(declared):
+        name, definition = described(iri)
+        subject = URIRef(iri)
+        labels = sorted(
+            {phrase(str(a)) for a in graph.objects(subject, SKOS.altLabel) if str(a).strip()}
+        )
+        found.add(
+            iri,
+            name,
+            declared[iri],
+            definition,
+            iri,
+            labels,
+            keep(subject, method_or_modeled(iri)),
+            calculation_method=text_of(subject, method_predicate),
+        )
+    for individual in sorted(classes_of):
+        subject = URIRef(individual)
+        classes = classes_of[individual]
+        if plain(individual):
+            name, definition = described(individual)
+            found.add(
+                individual,
+                name,
+                INDIVIDUAL,
+                definition,
+                individual,
+                (),
+                keep(
+                    subject,
+                    lambda p, v: p == RDF.type and str(v) in classes,
+                ),
+            )
+            for cls in classes:
+                found.relate(individual, VALID_VALUE_OF, cls)
+            continue
+        statements = keep(subject)
+        for statement in statements:
+            statement["kind"] = kept.INDIVIDUAL
+        found.keep(classes[0], statements)
+    for subject, predicate, target in graph.triples((None, None, None)):
+        if str(subject) not in declared or not isinstance(target, URIRef):
+            continue
+        rel_type = edge_predicates.get(predicate)
+        if rel_type is None or str(target) not in declared:
+            continue
+        if rel_type == PART_OF and str(subject) in object_properties:
+            continue
+        found.relate(str(subject), rel_type, str(target))
+    # An axiom whose subject is itself a blank node (owl:AllDisjointClasses, an annotated
+    # owl:Axiom) is kept on the first item it names.
+    for node in sorted({s for s in graph.subjects() if isinstance(s, BNode)}):
+        if next(iter(graph.subject_predicates(node)), None) is not None:
+            continue
+        if (node, RDF.first, None) in graph:
+            continue
+        try:
+            statement = kept.axiom(graph, node)
+        except kept.BlankNodeCycle:
+            found.leave_out("blank node that reaches itself")
+            continue
+        owner = next(
+            (iri for iri in kept.iris_in(statement["axiom"]) if found.holds(iri)),
+            None,
+        )
+        if owner is None:
+            found.leave_out("axiom about nothing the ontology declares")
+            continue
+        found.keep(owner, [statement])
+    covered = set(declared) | set(classes_of)
+    ontologies = {str(o) for o in graph.subjects(RDF.type, OWL.Ontology)}
+    header = 0
+    elsewhere = 0
+    for subject in {s for s in graph.subjects() if isinstance(s, URIRef)}:
+        iri = str(subject)
+        if iri in covered or iri.startswith(reserved):
+            continue
+        n = len(list(graph.predicate_objects(subject)))
+        if iri in ontologies:
+            header += n
+        else:
+            elsewhere += n
+    if header:
+        found.leave_out("statement about an ontology module itself", header)
+    if elsewhere:
+        found.leave_out("statement about something the ontology does not declare", elsewhere)
+    ontology = next(iter(sorted(graph.subjects(RDF.type, OWL.Ontology))), None)
     title = (
-        text_of(ontology, DCTERMS.title, RDFS.label, DC.title) if ontology is not None else None
+        text_of(ontology, DCTERMS.title, RDFS.label, DC.title)
+        if ontology is not None and fmt != ARCHIVE
+        else None
     ) or file_name
     return found.parsed(title, fmt)

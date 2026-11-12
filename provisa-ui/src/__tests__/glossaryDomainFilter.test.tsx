@@ -69,6 +69,7 @@ const ORDER: GlossaryTermSummary = {
   id: 1,
   name: "Order",
   definition: "A customer's request to buy.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 2,

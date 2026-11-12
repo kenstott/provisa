@@ -135,3 +135,73 @@ def test_an_offers_contract_states_the_columns_its_role_reads(monkeypatch):
         ("email", True, "regex", "Where to write"),
         ("salary", False, None, None),
     ]
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("synthetic_needs_profiler", router.REVIEW_PROFILER_GONE),
+        ("synthetic_needs_fake", router.REVIEW_FAKE_GONE),
+    ],
+)
+def test_a_decision_refused_for_a_synthetic_need_lists_the_offer_for_review(
+    monkeypatch, code, reason
+):
+    from provisa.core.repositories.data_product_offer import OfferRefused
+
+    listed: list[tuple[int, str | None]] = []
+
+    async def decide(*_a: Any, **_k: Any) -> dict:
+        raise OfferRefused(code, "refused", status=409)
+
+    async def require_request(_conn: Any, _rid: int) -> dict:
+        return {"offer_id": 7}
+
+    async def set_review(_conn: Any, offer_id: int, why: str | None) -> None:
+        listed.append((offer_id, why))
+
+    class _Tx:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *_exc: Any) -> bool:
+            return False
+
+    conn = SimpleNamespace(transaction=lambda: _Tx())
+    monkeypatch.setattr(router.offer_hooks, "decide", decide)
+    monkeypatch.setattr(router.offer_hooks, "held_by_idp", lambda _a: True)
+    monkeypatch.setattr(router.offers, "require_request", require_request)
+    monkeypatch.setattr(router.offers, "set_review", set_review)
+    decision = SimpleNamespace(request_id=3)
+    with pytest.raises(Exception):  # the ApiError the refusal becomes
+        asyncio.run(router._decide(conn, _state(auth_config={}), decision, None))
+    assert listed == [(7, reason)]
+
+
+def test_a_decision_refused_for_another_reason_does_not_list_the_offer(monkeypatch):
+    from provisa.core.repositories.data_product_offer import OfferRefused
+
+    listed: list[Any] = []
+
+    async def decide(*_a: Any, **_k: Any) -> dict:
+        raise OfferRefused("role_not_found", "refused", status=409)
+
+    async def set_review(*a: Any) -> None:
+        listed.append(a)
+
+    class _Tx:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *_exc: Any) -> bool:
+            return False
+
+    conn = SimpleNamespace(transaction=lambda: _Tx())
+    monkeypatch.setattr(router.offer_hooks, "decide", decide)
+    monkeypatch.setattr(router.offer_hooks, "held_by_idp", lambda _a: True)
+    monkeypatch.setattr(router.offers, "set_review", set_review)
+    with pytest.raises(Exception):
+        asyncio.run(
+            router._decide(conn, _state(auth_config={}), SimpleNamespace(request_id=3), None)
+        )
+    assert listed == []

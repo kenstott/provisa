@@ -5,6 +5,18 @@
     "sortNone": "ソートなし",
     "groupBy": "{{label}}でグループ化",
     "ungroupLevel": "グループ解除（レベル {{level}}）",
-    "moreValues": "他{{count}}件"
+    "moreValues": "他{{count}}件",
+    "selectAll": "表示中のすべての行を選択",
+    "selectRow": "行を選択",
+    "selectedCount_one": "{{count}} 件選択",
+    "selectedCount_other": "{{count}} 件選択",
+    "bulkDelete": "削除",
+    "clearSelection": "選択を解除",
+    "bulkDeleteTitle_one": "{{count}} 行を削除しますか？",
+    "bulkDeleteTitle_other": "{{count}} 行を削除しますか？",
+    "bulkDeleteConsequence": "削除対象: {{names}}。まだ他から参照されているものは残し、理由を示します。",
+    "bulkRefused_one": "{{count}} 件は削除されませんでした:",
+    "bulkRefused_other": "{{count}} 件は削除されませんでした:",
+    "dismiss": "閉じる"
   }
 }

@@ -105,6 +105,7 @@ from provisa.api.admin.types import (
     ReplicaBuildType,
     ReplicaIndexType,
     MetricType,
+    DatasetMetricType,
     MVType,
     RefreshPolicySummaryType,
     RegisteredTableType,
@@ -640,6 +641,32 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    async def table_metrics(
+        self, info: StrawberryInfo, table_id: int
+    ) -> list["DatasetMetricType"]:  # REQ-2243
+        """The governed metrics a dataset uses -- the metrics a view declared from metrics closes,
+        or those whose expression references the table -- each with its name, description, AI
+        definition and the glossary term it names. Listed as the caller's acting role may see them
+        (visible_to, as ``metrics``); no expression is shown."""
+        from provisa.api.admin._metric_views import dataset_metrics
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await dataset_metrics(cast("Connection", conn), table_id)
+        return [
+            DatasetMetricType(
+                name=r["name"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                term=r["term"],
+                term_definition=r["term_definition"],
+                term_calculation_method=r["term_calculation_method"],
+            )
+            for r in rows
+            if _sees_metric(info, r)
+        ]
+
+    @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
         (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
@@ -660,6 +687,7 @@ class Query:  # REQ-021, REQ-042
                 ai_context=r["ai_context"],
                 visible_to=list(r["visible_to"]) if catalog_scope(info).governance else None,
                 from_fact=r["from_fact"],
+                term=r["term"],  # REQ-2243
             )
             for r in rows
         ]

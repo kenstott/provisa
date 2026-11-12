@@ -223,15 +223,63 @@ ARRAY_UPPER = Feature(
     ),
 )
 
+#: The sources a statement goes to directly that hold no array type: array_length is refused there.
+_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift")
+
+#: The first dimension's length, NULL for an empty or NULL array, on each dialect whose own array
+#: length takes no dimension: the source's length, where it is above 0 (BigQuery's answers 0 of a
+#: NULL array, Hive's and Databricks' -1).
+_FIRST_LENGTH: dict[str, str] = {
+    "duckdb": "CAST(CASE WHEN len($a) > 0 THEN len($a) END AS INTEGER)",
+    **_on_trino("CAST(CASE WHEN cardinality($a) > 0 THEN cardinality($a) END AS INTEGER)"),
+    "clickhouse": "CAST(CASE WHEN length($a) > 0 THEN length($a) END AS Nullable(Int32))",
+    "snowflake": "CAST(CASE WHEN ARRAY_SIZE($a) > 0 THEN ARRAY_SIZE($a) END AS INTEGER)",
+    "bigquery": "CASE WHEN ARRAY_LENGTH($a) > 0 THEN ARRAY_LENGTH($a) END",
+    "databricks": "CAST(CASE WHEN SIZE($a) > 0 THEN SIZE($a) END AS INT)",
+    "hive": "CAST(CASE WHEN SIZE($a) > 0 THEN SIZE($a) END AS INT)",
+    "druid": "CASE WHEN ARRAY_LENGTH($a) > 0 THEN ARRAY_LENGTH($a) END",
+}
+
+#: The dialects whose own array length answers the first dimension's only (sqlglot drops a
+#: dimension argument: "Cannot transpile dimension argument"): any other is refused.
+_FIRST_ONLY = ("snowflake", "bigquery", "databricks", "hive", "druid")
+
+
+def _first_only(dialect: str) -> Refusal:
+    return Refusal("0A000", f"array_length() reads only dimension 1 on {dialect}")
+
+
 ARRAY_LENGTH = Feature(
     "array_length",
     FAMILY,
     "The length of a dimension; NULL for a dimension the array does not have.",
     read=Side(
         rules=(
+            # The first dimension, written as the number 1: its length on every dialect with arrays.
+            Rule(
+                "array_length($a::anyarray, 1)",
+                {**_no_form_on("array_length", _ARRAY_LESS), **_FIRST_LENGTH},
+            ),
             # generate_subscripts(a, d) is read as its reverse-false form (pg_functions).
-            Rule("array_length($a::anyarray, $d::integer)", _DIMENSION_LENGTH),
-        )
+            Rule(
+                "array_length($a::anyarray, $d::integer)",
+                {
+                    **_no_form_on("array_length", _ARRAY_LESS),
+                    **_DIMENSION_LENGTH,
+                    **{dialect: _first_only(dialect) for dialect in _FIRST_ONLY},
+                },
+            ),
+        ),
+        limitations={
+            dialect: (
+                Limitation(
+                    "Only the first dimension, written as the number 1: any other dimension, or one"
+                    " not written as a number, is refused, where PostgreSQL answers its length or"
+                    " NULL.",
+                ),
+            )
+            for dialect in _FIRST_ONLY
+        },
     ),
 )
 
@@ -451,6 +499,79 @@ GENERATE_SUBSCRIPTS = Feature(
     ),
 )
 
+#: PostgreSQL 17 (array_userfuncs.c) reads a NULL array given to array_append or array_prepend as
+#: an empty one, and array_cat answers the other argument, NULL only where both are NULL. ClickHouse
+#: has no NULL of an array (an Array is never Nullable): each is written as that answer there.
+
+
+def _no_array_append(function: str) -> Limitation:
+    """ClickHouse has no function of PostgreSQL's name: only a NULL array has a form."""
+    return Limitation(
+        f"Only a NULL array is written: ClickHouse has no {function}, so a call on an array that "
+        "is not NULL fails with ClickHouse's own error."
+    )
+
+
+ARRAY_APPEND = Feature(
+    "array_append",
+    FAMILY,
+    "An array with an element added at its end; a NULL array is read as an empty one.",
+    read=Side(
+        rules=(
+            Rule(
+                "array_append(NULL::anycompatiblearray, $v::anycompatible)", {"clickhouse": "[$v]"}
+            ),
+        ),
+        limitations={"clickhouse": (_no_array_append("array_append"),)},
+    ),
+)
+
+ARRAY_PREPEND = Feature(
+    "array_prepend",
+    FAMILY,
+    "An array with an element added at its start; a NULL array is read as an empty one.",
+    read=Side(
+        rules=(
+            Rule(
+                "array_prepend($v::anycompatible, NULL::anycompatiblearray)", {"clickhouse": "[$v]"}
+            ),
+        ),
+        limitations={"clickhouse": (_no_array_append("array_prepend"),)},
+    ),
+)
+
+#: The dialects with no form of array_cat.
+_NO_ARRAY_CAT = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse"})
+
+ARRAY_CAT = Feature(
+    "array_cat",
+    FAMILY,
+    "Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.",
+    read=Side(
+        rules=(
+            # Both NULL: ClickHouse's NULL, as for a STRICT call of a NULL array
+            # (provisa.transpiler.function_macros), before a rule is read.
+            Rule(
+                "array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)",
+                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$b", "clickhouse": "$b"},
+            ),
+            Rule(
+                "array_cat($a::anycompatiblearray, NULL::anycompatiblearray)",
+                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$a", "clickhouse": "$a"},
+            ),
+            Rule(
+                "array_cat($a::anycompatiblearray, $b::anycompatiblearray)",
+                {
+                    **_no_form_on("array_cat", (*_NO_ARRAY_CAT, "clickhouse")),
+                    # DuckDB's list_concat reads a NULL list as an empty one.
+                    "duckdb": "CASE WHEN $a IS NOT NULL OR $b IS NOT NULL "
+                    "THEN list_concat($a, $b) END",
+                },
+            ),
+        ),
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     ARRAY_NDIMS,
     ARRAY_DIMS,
@@ -464,4 +585,7 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_SHUFFLE,
     TRIM_ARRAY,
     GENERATE_SUBSCRIPTS,
+    ARRAY_APPEND,
+    ARRAY_PREPEND,
+    ARRAY_CAT,
 )

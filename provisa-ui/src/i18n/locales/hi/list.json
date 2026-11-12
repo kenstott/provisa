@@ -5,6 +5,18 @@
     "sortNone": "क्रमबद्ध नहीं",
     "groupBy": "{{label}} के अनुसार समूहित करें",
     "ungroupLevel": "समूह हटाएँ (स्तर {{level}})",
-    "moreValues": "+{{count}} और"
+    "moreValues": "+{{count}} और",
+    "selectAll": "दिखाई गई सभी पंक्तियाँ चुनें",
+    "selectRow": "पंक्ति चुनें",
+    "selectedCount_one": "{{count}} चुनी गई",
+    "selectedCount_other": "{{count}} चुनी गईं",
+    "bulkDelete": "हटाएँ",
+    "clearSelection": "चयन साफ़ करें",
+    "bulkDeleteTitle_one": "{{count}} पंक्ति हटाएँ?",
+    "bulkDeleteTitle_other": "{{count}} पंक्तियाँ हटाएँ?",
+    "bulkDeleteConsequence": "ये हटाई जाएँगी: {{names}}। जिनका अब भी कहीं संदर्भ है, वे रखी जाएँगी और कारण बताया जाएगा।",
+    "bulkRefused_one": "{{count}} नहीं हटाई गई:",
+    "bulkRefused_other": "{{count}} नहीं हटाई गईं:",
+    "dismiss": "बंद करें"
   }
 }

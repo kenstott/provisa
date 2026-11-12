@@ -12,6 +12,7 @@
 // graphElements writes: the kind of element, its type, and the marks the component sets.
 
 import { NODE_TYPES, SIZE, typeIcon, type GraphTokens, type NodeType } from "./tokens";
+import { TEXT_LEFT, TEXT_RIGHT } from "./model";
 
 type Ele = { data(k: string): unknown };
 
@@ -33,7 +34,12 @@ export const MARK = {
 
 const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
-const BAND = `${((SIZE.band / SIZE.nodeWidth) * 100).toFixed(2)}%`;
+/** Where the band ends across a box ``w`` wide. */
+const band = (e: Ele) => `${((SIZE.band / (e.data("w") as number)) * 100).toFixed(2)}%`;
+/** The label's room: the node's own (model.ts sizes the box for its label). */
+const textRoom = (e: Ele) => `${e.data("textW") as number}px`;
+/** The label's room is centred between the icon's right and the box's right edge. */
+const TEXT_SHIFT = (TEXT_LEFT - TEXT_RIGHT) / 2;
 
 export function graphStylesheet(t: GraphTokens) {
   const types = Object.keys(NODE_TYPES) as NodeType[];
@@ -57,12 +63,15 @@ export function graphStylesheet(t: GraphTokens) {
         "font-size": SIZE.name,
         "font-weight": 500,
         color: t.text,
+        // The label runs from past the icon to short of the right edge, and wraps rather than
+        // run past either: at its spaces, or anywhere when a word is wider than its room.
         "text-wrap": "wrap",
-        "text-max-width": `${SIZE.nodeWidth - 44}px`,
+        "text-overflow-wrap": "data(wrap)",
+        "text-max-width": textRoom,
         "text-valign": "center",
         "text-halign": "center",
         "text-justification": "left",
-        "text-margin-x": 10,
+        "text-margin-x": TEXT_SHIFT,
         "line-height": 1.25,
         "background-width": SIZE.icon,
         "background-height": SIZE.icon,
@@ -80,7 +89,7 @@ export function graphStylesheet(t: GraphTokens) {
         "background-fill": "linear-gradient",
         "background-gradient-direction": "to-right",
         "background-gradient-stop-colors": `${NODE_TYPES[type].colour} ${NODE_TYPES[type].colour} ${t.nodeFill} ${t.nodeFill}`,
-        "background-gradient-stop-positions": `0% ${BAND} ${BAND} 100%`,
+        "background-gradient-stop-positions": (e: Ele) => `0% ${band(e)} ${band(e)} 100%`,
         "background-image": typeIcon(type),
       },
     })),
@@ -112,7 +121,6 @@ export function graphStylesheet(t: GraphTokens) {
         "font-family": MONO,
         "font-size": 10,
         "background-position-y": 10,
-        "text-max-width": `${SIZE.nodeWidth - 40}px`,
       },
     },
     {
@@ -161,17 +169,14 @@ export function graphStylesheet(t: GraphTokens) {
       // A lane's box is drawn behind what is in it, and takes no pointer.
       selector: 'node[kind = "lane"]',
       style: {
+        // Its size is the box round its own nodes, as placed (lanes.ts): no padding past it.
         width: "data(w)",
         height: "data(h)",
+        padding: "0px",
         "z-index": 0,
         "z-compound-depth": "bottom",
         events: "no",
       },
-    },
-    {
-      // A compound the layout needs but the reader does not see (the stacked lane).
-      selector: 'node[kind = "frame"]',
-      style: { "background-opacity": 0, "border-width": 0, padding: "8px", events: "no" },
     },
     {
       selector: "edge",
@@ -201,8 +206,14 @@ export function graphStylesheet(t: GraphTokens) {
         },
       },
     },
-    { selector: 'edge[arrow = "target"], edge[arrow = "both"]', style: { "target-arrow-shape": "triangle" } },
-    { selector: 'edge[arrow = "source"], edge[arrow = "both"]', style: { "source-arrow-shape": "triangle" } },
+    {
+      selector: 'edge[arrow = "target"], edge[arrow = "both"]',
+      style: { "target-arrow-shape": "triangle" },
+    },
+    {
+      selector: 'edge[arrow = "source"], edge[arrow = "both"]',
+      style: { "source-arrow-shape": "triangle" },
+    },
     { selector: "edge[?dashed]", style: { "line-style": "dashed", "line-dash-pattern": [5, 3] } },
     {
       selector: 'edge[tone = "via"]',

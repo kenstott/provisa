@@ -13,8 +13,8 @@ diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
   ("+N columns"); clicking it is the view's `onMore`.
 - `edges`: `{ id, source, target, label?, arrow?, dashed?, tone?, data? }`.
 - `groups`: `{ id, label, description?, collapsed? }`.
-- `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (ELK layered in fixed lane
-  partitions, left to right), or `"force"` (fCoSE).
+- `preset`: `"layered"` (ELK layered, groups packed), `"lanes"` (fixed lanes left to right,
+  sorted and placed by the component, no layout library), or `"force"` (fCoSE).
 
 A view sets no colour, shape, size, font or control of its own. `data` carries the view's own
 identifiers (a table id, a relationship id) back to it on a click; it is never styled.
@@ -29,7 +29,6 @@ brand scale (theme.ts).
 | Token | Light | Dark |
 |---|---|---|
 | canvas | `gray-0` | `dark-7` |
-| dot grid | `gray-3` | `dark-5` |
 | node fill | white | `dark-6` |
 | node border | `gray-4` | `dark-4` |
 | node radius | 4px (`radius sm`) | 4px |
@@ -39,8 +38,9 @@ brand scale (theme.ts).
 | edge | `gray-5` | `dark-3` |
 | accent (hover, selection, focus) | brand-6 | brand-4 |
 
-Sizes: a node is 180px wide (an ERD table with columns grows in height, never in width), 44px
-tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
+Sizes: a node is at least 180px wide and as wide as its name and type's line need, up to 360px
+(model.ts `boxWidth`); past that its name wraps and the node grows in height. An ERD table's
+columns wrap inside that width and grow it in height. A node is 44px tall with two lines. The label is 11px, weight 500 (cytoscape draws one font per label: the name
 and the type's line share it; the type's line is uppercase). Edges are 1px. Group label 10px
 uppercase, weight 700.
 
@@ -51,7 +51,11 @@ uppercase, weight 700.
   shade 6 of the type's hue (`NODE_TYPES`).
 - An icon, the type's (lucide's), drawn as the node's background image at the band's right, in
   the type's colour.
-- A two-line label: the name, then the type's name in uppercase. A node with `lines` lists them
+- A two-line label: the name, then the type's name in uppercase. The label runs from 8px past the
+  icon to 10px short of the right edge (`TEXT_LEFT`, `TEXT_RIGHT`), never over the icon: its
+  room is the node's own (`text-max-width` from the node's width), and a label longer than the room
+  wraps at its spaces, or anywhere when one of its words (a dotted name with no space in it) is
+  wider than the room (`labelWrap`, `text-overflow-wrap`). A node with `lines` lists them
   under a rule, left-aligned, in monospace.
 - A fold node (`kind: "more"`) is the same box, dashed, with no band.
 - **The one exception: a junction is a diamond** (REQ-2239, amended 2026-11-11, A JUNCTION IS A
@@ -87,10 +91,21 @@ titled the same way.
 
 ## Canvas
 
-- A dot grid (CSS on the stage, 16px pitch), in the canvas token.
+- A plain canvas in the canvas token: no dot grid (maintainer, 2026-11-11).
+- How a graph opens, and Reset view, fit by the diagram's drawn extent, below the legend
+  (`fitClear`). The whole diagram is fitted while the
+  zoom stays at 0.8 or more (`READABLE_ZOOM`); a bigger diagram is drawn at the readable zoom from
+  its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
+  the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
+  wheel with Ctrl or Cmd held zooms about the pointer.
+- The fit control fits the entire image, below the legend, however small that makes it
+  (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
+- The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
-  the view gives it. Shown on hover or keyboard focus.
+  the view gives it. Shown on hover or keyboard focus. Each control's tooltip is drawn in place
+  (so it shows in full screen), on one line beside its button: an in-place Tip is as wide as its
+  text (`max-content`, up to the tip's 340px), not as wide as the bar.
 - One legend, top-right (clear of the application's floating buttons at the bottom-right): the
   types drawn, each a band swatch, icon and name.
 - Top-left: what the view lays over the canvas (the ERD's tables new since a save), then the hint.
@@ -106,9 +121,27 @@ titled the same way.
 - `layered`: ELK layered, upward, groups laid out with their children; then nodes without edges
   placed in a grid under their group, groups packed to the pane's aspect, related nodes kept
   apart (the ERD's arrangement).
-- `lanes`: ELK layered left to right in fixed lane partitions; one lane may be a compound laid out
-  top-down by its rank edges; a second pass orders each lane by the first's placement; arcs
-  laid over the placed nodes; each lane's title above it.
+- `lanes` (REQ-2239, amended 2026-11-11; REQ-2174, EACH SIBLING TERM ON ITS OWN ROW): no layout
+  library places the diagram. Every lane but the term (`beside`) lane is sorted left to right by a
+  sort, not a search (`sortLanes`): the first lane keeps its order; each lane after it by the mean
+  place of what its nodes join on their left, nodes tied on that key (the tables of one product, or
+  of none) next to the one reaching the most of the same nodes two lanes on (tables sharing terms),
+  ties in the order given. Those lanes stand side by side, each as wide as its widest node, each
+  spread over the height of the tallest of them (its first node at the top, its last at the
+  bottom, a lone node at the middle; `placeLanes`). The term lane is placed, not sorted
+  (`placeRows`), scored by the angle of its lines to the columns (the lanes a fixed distance apart,
+  the summed vertical run): a term bound to one column sits level with it; a term bound to several
+  sits level with the median of them (two tied: fewer crossings, then the higher); the children of
+  one parent, and a parent bound to no column with them, are a block on adjacent rows, in the order
+  of their columns, placed where its lines' summed run is least. Units are placed one at a time,
+  single-column terms first, then multi-column terms, then blocks, then terms bound to nothing
+  (nearest the terms they link to, else below the rest); none takes a row another has taken, so a
+  block moves round the terms already level. Every term has its own row, `NODE_GAP` apart. The
+  lines between two terms (rank lines and the arcs laid over them) run beside the lane, on its
+  right, as right-angled segments, never through a term's row (`besideRoutes`). Crossings that no
+  placement removes are accepted. The same graph is always drawn the same way. Each lane's box
+  bounds its own nodes (and the term lane's lines beside it), its title above them, the boxes
+  `LANE_GAP` apart.
 - `force`: fCoSE.
 
 ## Owned by the component

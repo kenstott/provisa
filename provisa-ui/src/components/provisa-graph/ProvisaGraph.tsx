@@ -40,7 +40,7 @@ import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
 import { GraphControls, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
 import { GroupResize } from "./GroupResize";
-import { laneElements, runLanes, type LanesOptions } from "./lanes";
+import { runLanes, type LanesOptions } from "./lanes";
 import {
   markFilter,
   markFocused,
@@ -56,7 +56,10 @@ import { graphStylesheet } from "./stylesheet";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
 import { tipPlacement, type DrawnGraph } from "./tipPlacement";
 import { graphTokens, type NodeType } from "./tokens";
-import { fitClear } from "./viewport";
+import { fitClear, scrollBy, zoomAbout } from "./viewport";
+
+/** How far a wheel step (or a pinch) zooms, per pixel of its delta. */
+const WHEEL_ZOOM = 0.002;
 import "./provisa-graph.css";
 
 export type LayoutPreset = "layered" | "lanes" | "force";
@@ -231,10 +234,10 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(() => {
-    const els = graphElements(graph, typeName, detail);
-    return preset === "lanes" && lanes ? laneElements(els, lanes) : els;
-  }, [graph, typeName, detail, preset, lanes]);
+  const elements = useMemo(
+    () => graphElements(graph, typeName, detail),
+    [graph, typeName, detail],
+  );
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
@@ -341,9 +344,33 @@ export function ProvisaGraph({
       maxZoom: preset === "lanes" ? 1.6 : 4,
       boxSelectionEnabled: false,
       autoungrabify: preset === "lanes",
+      // The wheel scrolls (below); a pinch, or the wheel with Ctrl or Cmd held, zooms.
+      userZoomingEnabled: false,
     } as unknown as Parameters<typeof cytoscape>[0]) as Core;
     cyRef.current = cy;
     const c = cy as unknown as CyInstance;
+    // A diagram taller or wider than its canvas scrolls under the wheel (across with Shift, or a
+    // trackpad's sideways swipe), at a zoom its labels can be read at; at its end the wheel
+    // scrolls the page.
+    canvas.container.addEventListener(
+      "wheel",
+      (ev: WheelEvent) => {
+        if (ev.ctrlKey || ev.metaKey) {
+          const r = canvas.container.getBoundingClientRect();
+          zoomAbout(c, Math.exp(-ev.deltaY * WHEEL_ZOOM), {
+            x: ev.clientX - r.left,
+            y: ev.clientY - r.top,
+          });
+          ev.preventDefault();
+        } else {
+          // Shift turns a mouse wheel's scroll across, as the browser does for a page.
+          const across = ev.shiftKey && ev.deltaX === 0;
+          if (scrollBy(c, across ? ev.deltaY : ev.deltaX, across ? 0 : ev.deltaY))
+            ev.preventDefault();
+        }
+      },
+      { passive: false },
+    );
 
     cy.on("tap", 'node[kind = "node"]', (evt: EventObject) =>
       latest.current.onNodeClick?.(evt.target.id(), (k) => evt.target.data(k)),
@@ -375,9 +402,7 @@ export function ProvisaGraph({
     const enter = (h: GraphHover) => (evt: EventObject) => {
       // A node's card sits beside the node; a line's beside the pointer on it.
       const b =
-        h.kind === "node"
-          ? (evt.target as unknown as NodeSingular).renderedBoundingBox({})
-          : null;
+        h.kind === "node" ? (evt.target as unknown as NodeSingular).renderedBoundingBox({}) : null;
       const at = evt.renderedPosition as { x: number; y: number };
       keepTip();
       setTip(
@@ -518,7 +543,9 @@ export function ProvisaGraph({
     else if (hover) {
       const e = cy.getElementById(hover.id);
       lit = {
-        nodes: e.empty() ? new Set() : new Set([String(e.data("source")), String(e.data("target"))]),
+        nodes: e.empty()
+          ? new Set()
+          : new Set([String(e.data("source")), String(e.data("target"))]),
         links: new Set([hover.id]),
       };
     }
@@ -588,7 +615,8 @@ export function ProvisaGraph({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || command === null) return;
-    if (command.kind === "reset" || command.target == null) fitClear(cy as unknown as CyInstance, 24);
+    if (command.kind === "reset" || command.target == null)
+      fitClear(cy as unknown as CyInstance, 24);
     else {
       const at = cy.getElementById(command.target);
       if (at.empty()) return;
@@ -618,7 +646,10 @@ export function ProvisaGraph({
           right: stage.left + tip.x + tip.width,
           bottom: stage.top + tip.y + tip.height,
         },
-        { width: Math.max(tipEl.offsetWidth, TIP_MAX_WIDTH), height: tipEl.offsetHeight + TIP_FRAME },
+        {
+          width: Math.max(tipEl.offsetWidth, TIP_MAX_WIDTH),
+          height: tipEl.offsetHeight + TIP_FRAME,
+        },
         drawnGraph(cy, stage),
         { width: window.innerWidth, height: window.innerHeight },
       ),
@@ -639,13 +670,15 @@ export function ProvisaGraph({
   ) : null;
 
   const exports = {
-    svg: () => cyRef.current && exportSvg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
-    png: () => cyRef.current && exportPng(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    svg: () =>
+      cyRef.current && exportSvg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+    png: () =>
+      cyRef.current && exportPng(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
     jpeg: () =>
-      cyRef.current && exportJpeg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
+      cyRef.current &&
+      exportJpeg(cyRef.current as unknown as CyInstance, tokens.canvas, exportName),
     ...(exportData ? { json: () => exportJson(exportData(), exportName) } : {}),
   };
-
 
   return (
     <div className="pg-root" data-testid={testId}>
@@ -653,10 +686,15 @@ export function ProvisaGraph({
       <div
         ref={stageRef}
         className="pg-stage"
-        style={{ ["--pg-canvas" as string]: tokens.canvas, ["--pg-grid" as string]: tokens.grid }}
+        style={{ ["--pg-canvas" as string]: tokens.canvas }}
         onMouseLeave={() => setHoveredGroup(null)}
       >
-        <div ref={setBox} className="pg-canvas" aria-label={ariaLabel} data-scheme={isDark ? "dark" : "light"} />
+        <div
+          ref={setBox}
+          className="pg-canvas"
+          aria-label={ariaLabel}
+          data-scheme={isDark ? "dark" : "light"}
+        />
         {(overlay || (hint && !bare)) && (
           <div className="pg-corner">
             {overlay && <div className="pg-overlay">{overlay}</div>}

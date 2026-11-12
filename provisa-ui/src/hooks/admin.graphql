@@ -142,6 +142,7 @@ query SourcesQuery {
     passwordRef
     changeSignal
     rowFetchByKeys
+    isSystem
     cdc {
       bootstrapServers
       topicPrefix
@@ -675,6 +676,19 @@ query MetricsQuery {
     aiContext
     visibleTo
     fromFact
+    term
+  }
+}
+
+# REQ-2243: the governed metrics a dataset uses, with the glossary term each names.
+query TableMetricsQuery($tableId: Int!) {
+  tableMetrics(tableId: $tableId) {
+    name
+    description
+    aiContext
+    term
+    termDefinition
+    termCalculationMethod
   }
 }
 
@@ -1210,6 +1224,71 @@ mutation UpdateTable($input: TableInput!) {
 mutation DeleteTable($id: Int!) {
   deleteTable(id: $id) {
     ...MutationResult
+  }
+}
+
+# REQ-2240: several tables deleted in one call, each through deleteTable's own guard.
+mutation DeleteTables($ids: [Int!]!) {
+  deleteTables(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+# REQ-2240: rows of each list deleted in one call, each through its single delete's own guard.
+mutation DeleteRelationships($ids: [String!]!) {
+  deleteRelationships(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteMetrics($names: [String!]!) {
+  deleteMetrics(names: $names) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteSources($ids: [String!]!) {
+  deleteSources(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteRoles($ids: [String!]!) {
+  deleteRoles(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDomains($ids: [String!]!) {
+  deleteDomains(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDataProducts($ids: [String!]!) {
+  deleteDataProducts(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteTags($ids: [String!]!) {
+  deleteTags(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteScheduledTasks($taskIds: [String!]!) {
+  deleteScheduledTasks(taskIds: $taskIds) {
+    ...BulkDeleteResult
+  }
+}
+
+fragment BulkDeleteResult on BulkDeleteResult {
+  deleted
+  refused {
+    name
+    reason
+    dependents
   }
 }
 

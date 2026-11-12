@@ -234,6 +234,7 @@ def _model(monkeypatch):
                 "description": None,
                 "ai_context": None,
                 "from_fact": None,
+                "term": None,  # REQ-2243: the real repo read always joins the term name
             }
             for m in _METRICS
         ]

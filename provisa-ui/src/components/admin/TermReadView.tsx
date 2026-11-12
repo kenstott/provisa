@@ -66,6 +66,15 @@ export function TermReadView({
             label: t("glossaryTab.definitionLabel"),
             value: term.definition || t("glossaryTab.hoverNoDefinition"),
           },
+          // REQ-2243: how the measure is computed, when the term says.
+          ...(term.calculation_method
+            ? [
+                {
+                  label: t("glossaryTab.calculationMethodLabel"),
+                  value: term.calculation_method,
+                },
+              ]
+            : []),
           {
             // REQ-1591: derived from the refs for a rooted term, declared for a concept; none
             // means unscoped, which the create form names as the enterprise.
@@ -138,6 +147,26 @@ export function TermReadView({
             ? [{ label: t("glossaryTab.retireOnLabel"), value: term.retire_on ?? "—" }]
             : []),
           { label: t("glossaryTab.excludeFromExportLabel"), value: yesNo(term.export_excluded) },
+          // REQ-2237: the IRI of the imported concept the term was aligned with as the same entity,
+          // or was made from. It is curator work: the term is kept when its columns leave.
+          ...(term.iri
+            ? [
+                {
+                  label: t("ontologyImport.iriLabel"),
+                  testId: "glossary-detail-iri",
+                  value: (
+                    <Stack gap={2}>
+                      <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>
+                        {term.iri}
+                      </Text>
+                      <Text size="xs" c="dimmed" data-testid="glossary-detail-curated-by-iri">
+                        {t("ontologyImport.curatedByIri")}
+                      </Text>
+                    </Stack>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
 

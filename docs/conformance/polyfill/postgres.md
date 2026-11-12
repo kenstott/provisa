@@ -4,12 +4,13 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on PostgreSQL (dialect `postgres`), as a serving engine or as a source a statement is sent to directly. Each feature has a read polyfill, how its values and operations are computed there, and a write polyfill, how its values reach it; each states its limitations.
 
-This page lists every feature that has a polyfill or a limitation on PostgreSQL. A feature PostgreSQL does natively with no difference from PostgreSQL is left out: 12 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on PostgreSQL. A feature PostgreSQL does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 When PostgreSQL is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
 Rules on this page: 0, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+15 of the grid's 15 features are native on PostgreSQL and left out.
 
+<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>

@@ -8,7 +8,7 @@
 
 import pytest
 
-from provisa.compiler.stage2 import GovernanceContext, apply_governance
+from provisa.compiler.stage2 import GovernanceContext, apply_governance, build_governance_context
 from provisa.federation.connector_base import Capability
 from provisa.federation.promote import MaskEval, plan_mask_evaluation
 from provisa.security.masking import MaskType, MaskingRule, apply_mask_to_value
@@ -70,3 +70,71 @@ def test_streaming_mask_evaluates_a_single_row():
     """The streaming stage masks one value at a time (O(1) cleartext resident, no fetchall)."""
     rule = MaskingRule(mask_type=MaskType.constant, value="HIDDEN")
     assert apply_mask_to_value(rule, "secret", "varchar") == "HIDDEN"
+
+
+# --- The governed pipeline: a mask the source cannot evaluate is computed by the engine ---
+
+
+class _EngineOver:
+    """The bound engine as governance reads it: each source's declared connector capability."""
+
+    def __init__(self, cap: Capability) -> None:
+        self._cap = cap
+
+    def connector_pushdown(self, source) -> Capability:
+        return self._cap
+
+
+def test_a_masked_read_on_a_source_that_cannot_push_the_mask_down_is_masked_by_the_engine():
+    """REQ-971, REQ-1494: a SQLite file on DuckDB pushes projections only (REQ-863), so the mask
+    cannot be evaluated at the source. The governed statement carries the mask expression and the
+    engine computes it as it streams the result -- the read is served masked, never refused, and
+    the raw value is never served bare."""
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.federation.connector_duckdb import DuckDBSqliteConnector
+
+    role = {"id": "sandbox", "domain_access": ["*"], "capabilities": ["query_development"]}
+    tables = [
+        {
+            "id": 7,
+            "source_id": "zoo-db",
+            "domain_id": "zoo",
+            "schema_name": "main",
+            "table_name": "animals",
+            "columns": [{"column_name": "name", "visible_to": ["sandbox"], "data_type": "varchar"}],
+        }
+    ]
+    ctx = CompilationContext()
+    ctx.tables = {
+        "animals": TableMeta(
+            table_id=7,
+            field_name="animals",
+            type_name="Animals",
+            source_id="zoo-db",
+            catalog_name="zoo_db",
+            schema_name="main",
+            table_name="animals",
+            domain_id="zoo",
+        )
+    }
+    cap = DuckDBSqliteConnector().capability()
+    assert not cap.predicate_pushdown  # the case: the source cannot evaluate the mask
+    masks = {
+        (7, "sandbox"): {
+            "name": (MaskingRule(mask_type=MaskType.constant, value="HIDDEN"), "varchar")
+        }
+    }
+    gov = build_governance_context(
+        "sandbox",
+        RLSContext.empty(),
+        masks,
+        ctx,
+        tables,
+        role,
+        source_types={"zoo-db": "sqlite"},
+        engine=_EngineOver(cap),
+    )
+    governed = apply_governance('SELECT "a"."name" FROM "main"."animals" "a"', gov)
+    assert "'HIDDEN'" in governed
+    assert '"a"."name" AS "name"' not in governed

@@ -1496,7 +1496,11 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     # upsert_declared_term upserts by name (its unique key); an apply removes nothing.
     for gt in config.glossary_terms:
         await glossary_repo.upsert_declared_term(
-            conn, gt.name, definition=gt.definition, domains=set(gt.domains)
+            conn,
+            gt.name,
+            definition=gt.definition,
+            calculation_method=gt.calculation_method,  # REQ-2243
+            domains=set(gt.domains),
         )
 
     # 4.7 Calendars (REQ-2120): before the tables, whose views name one as their mv_calendar.

@@ -57,8 +57,8 @@
 provisa open    # the UI, in your browser</code></pre></div>
         <h3>2. Connect the sources</h3>
         <p>In the UI, open <strong>Sources</strong> and add the systems the teams read. Provisa reads each source's catalog; pick the tables to register. Nothing is copied. Queries go to the data where it lives.</p>
-        <h3>3. Give each team a role</h3>
-        <p>One role per consuming team, granted the domains and columns its contract covers. Provisa enforces each team's view, so nobody builds a pipeline for it.</p>
+        <h3>3. Publish it as a data product</h3>
+        <p>Group the tables into a data product with the offers teams can ask for. A team finds the product in the catalog and requests an offer; the owner's approval gives that team its role and entitlements in one step. Provisa enforces each team's view, so nobody builds a pipeline for it.</p>
         <h3>4. Deliver a large result as a file</h3>
         <p>Ask for the result to be delivered, and Provisa writes it to the results store and answers with where it is.</p>
         <div class="hero-terminal"><div class="term-bar"><span></span><span></span><span></span></div><pre><code>curl -X POST http://localhost:8001/data/sql \

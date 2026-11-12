@@ -55,19 +55,23 @@ def test_the_previous_rules_stay_in_force_until_the_new_set_is_published(monkeyp
     seen_during_the_read: list[object] = []
 
     class _Conn:
-        async def execute_core(self, _stmt):
+        async def execute_core(self, stmt):
             # What a request on another thread finds while this build reads the control plane.
             seen_during_the_read.append(state.masking_rules)
             result = MagicMock()
-            result.fetchall.return_value = [
-                MagicMock(_mapping=_mask_row("email", unmasked_to=["org_admin"]))
-            ]
+            # The masked columns; no product has a synthetic offer (REQ-2180).
+            offers = "data_product_offers" in str(stmt)
+            result.fetchall.return_value = (
+                []
+                if offers
+                else [MagicMock(_mapping=_mask_row("email", unmasked_to=["org_admin"]))]
+            )
             return result
 
     roles = [{"id": "analyst"}, {"id": "org_admin"}]
     asyncio.run(app_loaders._load_masking_rules(_Conn(), {}, roles))
 
-    assert seen_during_the_read == [previous]
+    assert seen_during_the_read == [previous, previous]
     assert seen_during_the_read[0] == {(7, "analyst"): {"name": ("the previous rule", "varchar")}}
     # The new set replaces the previous one whole: the mask that was removed is gone, the new one
     # applies to the role that is not exempt, and the exempt role has none.

@@ -4,11 +4,13 @@
 
 A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on ClickHouse (dialect `clickhouse`), as a serving engine or as a source a statement is sent to directly. Each feature has a read polyfill, how its values and operations are computed there, and a write polyfill, how its values reach it; each states its limitations.
 
-This page lists every feature that has a polyfill or a limitation on ClickHouse. A feature ClickHouse does natively with no difference from PostgreSQL is left out: 0 of the grid's 12 features are left out as native. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
+This page lists every feature that has a polyfill or a limitation on ClickHouse. A feature ClickHouse does natively with no difference from PostgreSQL is left out and counted. The conformance runs check the omission: a feature left out that answers otherwise than PostgreSQL fails the run.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 13, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 19, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+
+0 of the grid's 15 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -23,7 +25,9 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) &gt; 0 THEN countSubst
 <tr><td><strong>array_upper</strong><br>The upper bound of a dimension: its length.</td><td><pre><code>array_upper($a::anyarray, $d::integer)
 =&gt;
 CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) &gt; 0 THEN countSubstrings(toTypeName($a), &#x27;Array(&#x27;) END AS Nullable(Int32)) THEN CASE $d WHEN 1 THEN JSONLength(toJSONString($a)) WHEN 2 THEN JSONLength(toJSONString($a), 1) WHEN 3 THEN JSONLength(toJSONString($a), 1, 1) WHEN 4 THEN JSONLength(toJSONString($a), 1, 1, 1) WHEN 5 THEN JSONLength(toJSONString($a), 1, 1, 1, 1) WHEN 6 THEN JSONLength(toJSONString($a), 1, 1, 1, 1, 1) END END AS Nullable(Int32))</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, $d::integer)
+<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, 1)
+=&gt;
+CAST(CASE WHEN length($a) &gt; 0 THEN length($a) END AS Nullable(Int32))</code></pre><pre><code>array_length($a::anyarray, $d::integer)
 =&gt;
 CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) &gt; 0 THEN countSubstrings(toTypeName($a), &#x27;Array(&#x27;) END AS Nullable(Int32)) THEN CASE $d WHEN 1 THEN JSONLength(toJSONString($a)) WHEN 2 THEN JSONLength(toJSONString($a), 1) WHEN 3 THEN JSONLength(toJSONString($a), 1, 1) WHEN 4 THEN JSONLength(toJSONString($a), 1, 1, 1) WHEN 5 THEN JSONLength(toJSONString($a), 1, 1, 1, 1) WHEN 6 THEN JSONLength(toJSONString($a), 1, 1, 1, 1, 1) END END AS Nullable(Int32))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_fill</strong><br>An array of a value repeated to the dimensions given.</td><td><pre><code>array_fill($v::anyelement, $dims::integer[])
@@ -49,4 +53,17 @@ arraySlice($a, 1 + throwIf($n IS NULL OR $n &lt; 0 OR $n &gt; length($a), &#x27;
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
+=&gt;
+[$v]</code></pre></td><td><ul><li>Only a NULL array is written: ClickHouse has no array_append, so a call on an array that is not NULL fails with ClickHouse&#x27;s own error.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
+=&gt;
+[$v]</code></pre></td><td><ul><li>Only a NULL array is written: ClickHouse has no array_prepend, so a call on an array that is not NULL fails with ClickHouse&#x27;s own error.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
+=&gt;
+$b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
+=&gt;
+$a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 </tbody></table>

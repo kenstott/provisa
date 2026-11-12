@@ -38,6 +38,7 @@ import {
   useUpdateSource,
   useRenameSource,
   useDeleteSource,
+  useDeleteSources,
   useUpdateSourceCache,
   useUpdateSourceLoadProtection,
   useUpdateSourceAllowedDomains,
@@ -128,6 +129,7 @@ import {
 import { PanelWorking } from "./sources/PanelWorking";
 import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -139,6 +141,8 @@ import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePick
 import { athenaHints } from "./sources/athena";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -154,9 +158,13 @@ export function SourcesPage() {
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
   const { tables: registeredTables } = useTables({ columns: false });
-  // The section of the source's panel in view, the same in its read view and its edit form, and
-  // the form's sections that have fields for the source's kind (reported by the form as drawn).
-  const [section, setSection] = useState<SourceSection>("connection");
+  // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
+  // The section is the same in its read view and its edit form.
+  const detail = useDetailParam("sources");
+  const section = (detail.tab ?? "connection") as SourceSection;
+  const setSection = detail.setTab;
+  const expanded = detail.id;
+  // The form's sections that have fields for the source's kind (reported by the form as drawn).
   const [formSections, setFormSections] = useState<string[]>([]);
   const noteFormSections = (found: string[]) =>
     setFormSections((held) =>
@@ -196,7 +204,6 @@ export function SourcesPage() {
   // The edited source's mapping, so that a field the form shows is saved over it and the rest of
   // it is kept (a files source's Excel hints beside its crawl).
   const [editingSourceMappingJson, setEditingSourceMappingJson] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
@@ -257,6 +264,10 @@ export function SourcesPage() {
     ? { visible: filteredSources, hidden: 0 }
     : filterByRegion(filteredSources, regionSel, connected, (s) => s.region ?? null);
   const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
+  // REQ-2240: sources selected and deleted together.
+  const shownSourceIds = useMemo(() => regionSources.map((s) => s.id), [regionSources]);
+  const selection = useListSelection(shownSourceIds);
+  const deleteSources = useDeleteSources();
   const [form, setForm] = useState<SourceFormState>({
     id: "",
     type: opensKaggle ? "kaggle" : "postgresql",
@@ -337,18 +348,7 @@ export function SourcesPage() {
       { replace: true },
     );
   };
-  const updateExpanded = (v: string | null) => {
-    setExpanded(v);
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (v) n.set("expanded", v);
-        else n.delete("expanded");
-        return n;
-      },
-      { replace: true },
-    );
-  };
+  const updateExpanded = (v: string | null) => (v === null ? detail.close() : detail.open(v));
 
   // A new source's description is filled from what it is until one is typed; a registered source
   // (read or edited) shows the description it has.
@@ -1809,7 +1809,17 @@ export function SourcesPage() {
             {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
                 horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
                 and, growing to its content, would never scroll vertically. */}
-            <ListTable minWidth={860} testId="sources-list">
+            <ListBulkBar
+              selection={selection}
+              nameOf={(id) => id}
+              onDelete={async (ids) => {
+                const result = await deleteSources(ids);
+                await refetchSources();
+                return result;
+              }}
+              testId="sources-bulk"
+            />
+            <ListTable minWidth={860} testId="sources-list" selection={selection}>
               <ListHead
                 sortGroup={sortGroup}
                 columns={[

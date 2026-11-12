@@ -350,6 +350,9 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
     # a column ref does.
     _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
+    # REQ-2243: a metric names a term only for its meaning, so it outlives the term: deleting the
+    # term leaves the metric unnamed (ON DELETE SET NULL) and nothing blocks.
+    _link("metrics", "term_id", "glossary_term"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
@@ -361,6 +364,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_vectors", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
+    _part("glossary_term_statements", "term_id", "glossary_term"),  # REQ-2237
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
     _part("glossary_term_edges", "to_term_id", "glossary_term"),
     # --- to a tag ------------------------------------------------------------------------------

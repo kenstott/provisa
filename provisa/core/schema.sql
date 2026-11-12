@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS sources (
     producer_command JSONB,  -- REQ-861
     cache_catalog   TEXT,
     cache_schema    TEXT NOT NULL DEFAULT 'api_cache',
-    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
+    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE  -- a source Provisa runs for itself; not a target of Register table
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS replicate INTEGER;
@@ -926,6 +927,9 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
+    -- REQ-2243: how the measure or derived value the term names is computed, in business
+    -- language. Curator work governed with the definition: read by everyone who reads the term.
+    calculation_method TEXT,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
     -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
@@ -955,6 +959,7 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     UNIQUE (name)
 );
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1040,6 +1045,22 @@ CREATE TABLE IF NOT EXISTS glossary_term_domains (
     UNIQUE (term_id, domain_id)
 );
 
+-- REQ-2237 (A WHOLE RELEASE IMPORTS, AND NOTHING IS LOST): what an imported ontology states about
+-- the thing a term is that the term does not model -- restrictions and cardinalities,
+-- disjointness, inverse and transitive properties, property chains, named individuals with
+-- properties of their own, datatype ranges, an object property's domain and range, annotations.
+-- One row a statement (provisa/ontology_import/kept.py): ``statement`` is its JSON, ``kind`` what
+-- it is for a reader. Shown on the term's page and written back out on export; never reasoned over.
+CREATE TABLE IF NOT EXISTS glossary_term_statements (
+    id        SERIAL PRIMARY KEY,
+    term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    ordinal   INTEGER NOT NULL,
+    kind      TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    tenant_id UUID,
+    UNIQUE (term_id, ordinal)
+);
+
 -- People who can answer questions about the term or who authored its definition.
 CREATE TABLE IF NOT EXISTS glossary_term_experts (
     id        SERIAL PRIMARY KEY,
@@ -1109,6 +1130,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
     from_fact   TEXT
 );
+-- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
+-- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
 
 -- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
 -- metric goes with the metric.
@@ -2636,7 +2661,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_imports (
     title       TEXT NOT NULL,
     file_name   TEXT NOT NULL,
     format      TEXT NOT NULL CONSTRAINT glossary_ontology_imports_format_check
-                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')),
+                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')),
     domains     TEXT NOT NULL,
     summary     TEXT NOT NULL,
     imported_by TEXT,
@@ -2652,7 +2677,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_items (
     ordinal     INTEGER NOT NULL,
     name        TEXT NOT NULL,
     kind        TEXT NOT NULL CONSTRAINT glossary_ontology_items_kind_check
-                    CHECK (kind IN ('class', 'property', 'value', 'concept')),
+                    CHECK (kind IN ('class', 'property', 'value', 'concept', 'individual')),
     definition  TEXT,
     iri         TEXT,
     payload     TEXT NOT NULL,

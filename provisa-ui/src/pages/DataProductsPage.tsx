@@ -21,6 +21,7 @@ import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
+  useDeleteDataProducts,
   useSetDataProductMembers,
   useDataProductFindings,
   useDataProductStatus,
@@ -43,8 +44,11 @@ import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
@@ -141,25 +145,24 @@ export function DataProductsPage() {
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
-  // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
-  // documentation box, Analytics Hub) carries back to this page; it names the product to open and
-  // wins over the last-expanded row remembered in localStorage.
-  const [expanded, setExpandedState] = useState<string | null>(() => {
-    const linked = searchParams.get("product");
-    if (linked) return linked;
+  // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
+  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page. A
+  // visit without one reopens the last-expanded row remembered in localStorage.
+  const detail = useDetailParam("products");
+  const expanded = detail.id;
+  const [remembered] = useState(() => {
+    if (detail.id !== null) return null;
     try {
       return getStored(EXPANDED_STORAGE_KEY);
     } catch {
       return null;
     }
   });
-  // A link decides the page again whenever it changes while the page stays open.
-  const productParam = searchParams.get("product");
-  const [seededProduct, setSeededProduct] = useState(productParam);
-  if (productParam !== seededProduct) {
-    setSeededProduct(productParam);
-    if (productParam !== null) setExpandedState(productParam);
-  }
+  const reopen = detail.open;
+  useEffect(() => {
+    if (remembered) reopen(remembered, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
+  }, []);
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
@@ -170,16 +173,9 @@ export function DataProductsPage() {
     editing: editingId,
   });
   const setExpanded = (id: string | null) => {
-    setExpandedState(id);
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (id) n.set("product", id);
-        else n.delete("product");
-        return n;
-      },
-      { replace: true },
-    );
+    // REQ-2241: opening and closing a product are history entries; Back undoes them.
+    if (id) detail.open(id);
+    else detail.close();
     try {
       if (id) setStored(EXPANDED_STORAGE_KEY, id);
       else removeStored(EXPANDED_STORAGE_KEY);
@@ -366,6 +362,8 @@ export function DataProductsPage() {
     const result = await deleteDataProduct(id);
     if (refusal.refused(result, id)) return false;
     if (!result.success) throw new Error(result.message || t("dataProductsTab.deleteFailed"));
+    // The deleted product's panel closes with it, unless another has been opened meanwhile.
+    detail.close({ only: id, replace: true });
     await products.reload();
   };
 
@@ -427,6 +425,10 @@ export function DataProductsPage() {
     [t],
   );
   const sortGroup = useListSortGroup(filteredProducts, productColumns, "data-products");
+  // REQ-2240: data products selected and deleted together.
+  const shownProductIds = useMemo(() => filteredProducts.map((p) => p.id), [filteredProducts]);
+  const selection = useListSelection(shownProductIds);
+  const deleteDataProducts = useDeleteDataProducts();
 
   // The products sharing a dataset with the open one, each with the datasets they share.
   const sharingOf = (id: string): SharingProduct[] => {
@@ -583,86 +585,94 @@ export function DataProductsPage() {
               backToList: t("tablesPage.backToList"),
             }}
             list={
-              <ListTable testId="data-products-table">
-                <ListHead
-                  sortGroup={sortGroup}
-                  columns={[
-                    { col: "id" },
-                    { col: "domain" },
-                    { col: "name" },
-                    { col: "owner" },
-                    { col: "status" },
-                    { col: "purpose" },
-                  ]}
+              <>
+                <ListBulkBar
+                  selection={selection}
+                  nameOf={(id) => id}
+                  onDelete={deleteDataProducts}
+                  testId="data-products-bulk"
                 />
-                <Table.Tbody>
-                  {filteredProducts.length === 0 && (
-                    <ListEmpty colSpan={6} testId="data-products-empty">
-                      {t("dataProductsTab.empty")}
-                    </ListEmpty>
-                  )}
-                  <ListItems
-                    state={sortGroup}
-                    colSpan={6}
-                    rowKey={(p) => p.id}
-                    render={(p) => {
-                      const isExpanded = expanded === p.id;
-                      return (
-                        <ListRow
-                          key={p.id}
-                          testId={`data-products-row-${p.id}`}
-                          // The row whose detail the right-hand panel is showing.
-                          selected={isExpanded}
-                          aria-expanded={isExpanded}
-                          onClick={() => {
-                            // The row opens its detail in the panel, swaps it, or closes it.
-                            closeForm();
-                            setExpanded(isExpanded ? null : p.id);
-                          }}
-                        >
-                          <Table.Td>
-                            <Text size="sm" fw={600} ff="monospace" truncate="end">
-                              {p.id}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" truncate="end">
-                              {p.domainId}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs">{p.name}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap={4} wrap="nowrap">
-                              <Text size="xs" truncate="end">
-                                {p.ownerRole ?? ""}
-                              </Text>
-                              {p.ownerRole && (
-                                <OwnerResolutionIcon
-                                  refs={[p.ownerRole]}
-                                  ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
-                                />
-                              )}
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            <ProductStatusBadge
-                              status={p.status}
-                              testId={`data-products-status-${p.id}`}
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="xs" c="var(--text-muted)" lineClamp={3}>
-                              {p.purpose}
-                            </Text>
-                          </Table.Td>
-                        </ListRow>
-                      );
-                    }}
+                <ListTable testId="data-products-table" selection={selection}>
+                  <ListHead
+                    sortGroup={sortGroup}
+                    columns={[
+                      { col: "id" },
+                      { col: "domain" },
+                      { col: "name" },
+                      { col: "owner" },
+                      { col: "status" },
+                      { col: "purpose" },
+                    ]}
                   />
-                </Table.Tbody>
-              </ListTable>
+                  <Table.Tbody>
+                    {filteredProducts.length === 0 && (
+                      <ListEmpty colSpan={6} testId="data-products-empty">
+                        {t("dataProductsTab.empty")}
+                      </ListEmpty>
+                    )}
+                    <ListItems
+                      state={sortGroup}
+                      colSpan={6}
+                      rowKey={(p) => p.id}
+                      render={(p) => {
+                        const isExpanded = expanded === p.id;
+                        return (
+                          <ListRow
+                            key={p.id}
+                            testId={`data-products-row-${p.id}`}
+                            // The row whose detail the right-hand panel is showing.
+                            selected={isExpanded}
+                            aria-expanded={isExpanded}
+                            onClick={() => {
+                              // The row opens its detail in the panel, swaps it, or closes it.
+                              closeForm();
+                              setExpanded(isExpanded ? null : p.id);
+                            }}
+                          >
+                            <Table.Td>
+                              <Text size="sm" fw={600} ff="monospace" truncate="end">
+                                {p.id}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" truncate="end">
+                                {p.domainId}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs">{p.name}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap={4} wrap="nowrap">
+                                <Text size="xs" truncate="end">
+                                  {p.ownerRole ?? ""}
+                                </Text>
+                                {p.ownerRole && (
+                                  <OwnerResolutionIcon
+                                    refs={[p.ownerRole]}
+                                    ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+                                  />
+                                )}
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <ProductStatusBadge
+                                status={p.status}
+                                testId={`data-products-status-${p.id}`}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" c="var(--text-muted)" lineClamp={3}>
+                                {p.purpose}
+                              </Text>
+                            </Table.Td>
+                          </ListRow>
+                        );
+                      }}
+                    />
+                  </Table.Tbody>
+                </ListTable>
+              </>
             }
           >
             {panelBody}

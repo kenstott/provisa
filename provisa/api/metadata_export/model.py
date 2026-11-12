@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from provisa.core.models import OfferContract
 
@@ -499,6 +500,12 @@ class GroundedTerm:  # REQ-2238
     refs: tuple[AssetRef, ...] = ()
     tables: tuple[AssetRef, ...] = ()
     paths: tuple[tuple[int, ...], ...] = ()
+    # REQ-2237: the IRI of the imported concept the term is, and what that ontology stated about
+    # it that a term does not model (provisa/ontology_import/kept.py); a hop carries neither.
+    iri: str | None = None
+    statements: tuple[dict[str, Any], ...] = ()
+    # REQ-2243: how the measure the term names is computed; a hop carries none.
+    calculation_method: str | None = None
 
     @property
     def named(self) -> bool:

@@ -50,6 +50,8 @@ export interface GlossaryTermSummary {
   id: number;
   name: string;
   definition: string | null;
+  // REQ-2243: how the measure the term names is computed, in business language.
+  calculation_method: string | null;
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
@@ -111,6 +113,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   tags: { tag_id: string; reason: string | null }[];
   // REQ-1387: for a grounded_pending term, the drafts whose approval alone grounds it.
   pending_on: { term_id: number; name: string }[];
+  // REQ-2237: the IRI of an imported concept the term is, set when an ontology import is applied.
+  iri: string | null;
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
@@ -210,6 +214,7 @@ export async function updateGlossaryTerm(
   body: {
     name?: string;
     definition?: string | null;
+    calculation_method?: string | null;
     export_excluded?: boolean;
     // REQ-1591: an abstract term's declared domains; a rooted term's come from its refs.
     domains?: string[];

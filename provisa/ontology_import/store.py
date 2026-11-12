@@ -69,7 +69,9 @@ class ItemRow:
     kind: str
     definition: str | None
     iri: str | None
-    #: ``keys`` (its identifiers in the file) and ``labels`` (its alternative labels).
+    #: ``keys`` (its identifiers in the file), ``labels`` (its alternative labels),
+    #: ``statements`` (what the file states about it that a term does not model) and
+    #: ``calculation_method`` (REQ-2243; null when the file states none).
     payload: dict[str, Any]
     status: str
     term_id: int | None
@@ -129,8 +131,12 @@ async def create(
     summary = {
         "items": len(parsed.items),
         "statements": len(parsed.edges),
+        "kept": sum(len(item.statements) for item in parsed.items),
         "left_out": parsed.left_out,
     }
+    if parsed.modules:
+        summary["modules"] = parsed.modules
+        summary["imports"] = parsed.imports
     result = await conn.execute_core(
         insert(imports_t)
         .values(
@@ -154,7 +160,15 @@ async def create(
                 "kind": item.kind,
                 "definition": item.definition,
                 "iri": item.iri,
-                "payload": json.dumps({"keys": item.keys, "labels": item.labels}),
+                "payload": json.dumps(
+                    {
+                        "keys": item.keys,
+                        "labels": item.labels,
+                        "statements": item.statements,
+                        # REQ-2243: the method the ontology states for it.
+                        "calculation_method": item.calculation_method,
+                    }
+                ),
                 "status": PENDING,
             }
             for ordinal, item in enumerate(parsed.items)

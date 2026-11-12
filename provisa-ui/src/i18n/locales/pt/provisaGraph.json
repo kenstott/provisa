@@ -1,6 +1,7 @@
 {
   "provisaGraph": {
     "legend": "Legenda",
+    "hint": "Arraste para mover · role para percorrer · Ctrl/⌘ + rolagem para ampliar",
     "type": {
       "product": "Produto de dados",
       "source": "Origem",

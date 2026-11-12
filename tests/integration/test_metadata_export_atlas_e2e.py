@@ -200,8 +200,8 @@ async def test_republishing_lands_the_same_catalog_state(published):
     (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
     assert again["ok"], refused(again)
     # Entities are upserted and counted on every publish; a term assignment is counted when it
-    # is added, so the second publish, finding all three in place, adds none.
-    assert first["published"]["term_assignment"] == 3
+    # is added, so the second publish, finding all four in place, adds none.
+    assert first["published"]["term_assignment"] == 4
     assert again["published"] == {
         k: v for k, v in first["published"].items() if k != "term_assignment"
     }
@@ -233,12 +233,17 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published):
 
 
 async def test_provisa_assigns_its_terms_as_semantic_assignments_it_sourced(published):
-    """REQ-1389 (amended): the Class term is assigned to the table it grounds and the Property
-    term to its columns, each an AtlasGlossarySemanticAssignment whose source is Provisa."""
+    """REQ-1389 (amended): the Class term is assigned to the table it grounds and to its key
+    column, the Property term to its columns, each an AtlasGlossarySemanticAssignment whose
+    source is Provisa."""
     orders = await _entity("provisa_table", ORDERS)
+    orders_id = await _entity("provisa_column", f"{_ORDERS}.id@{CLUSTER}")
     customer_id = await _entity("provisa_column", f"{_ORDERS}.customer_id@{CLUSTER}")
     customers_id = await _entity("provisa_column", f"{SOURCE}.{SCHEMA}.customers.id@{CLUSTER}")
-    for term, entities in ((CLASS_TERM, [orders]), (GLOSSARY_TERM, [customer_id, customers_id])):
+    for term, entities in (
+        (CLASS_TERM, [orders, orders_id]),
+        (GLOSSARY_TERM, [customer_id, customers_id]),
+    ):
         found = await _entity("AtlasGlossaryTerm", f"{term}@{_glossary_qn(ORG)}")
         assigned = found["relationshipAttributes"]["assignedEntities"]
         assert sorted(
