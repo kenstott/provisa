@@ -15,6 +15,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
+import i18n from "../../../i18n";
 import type { GlossaryTermDetail } from "../../../api/glossary";
 
 vi.mock("../../graph3d/OntologyGraph", () => ({
@@ -56,9 +57,11 @@ const term: GlossaryTermDetail = {
   iri: null,
 };
 
-const view = () => (
+const t = i18n.getFixedT("en");
+
+const view = (shown: GlossaryTermDetail = term) => (
   <TermReadView
-    term={term}
+    term={shown}
     relTypeOptions={[]}
     otherTermOptions={[]}
     relLabel={(_o, relType) => relType}
@@ -129,5 +132,83 @@ describe("a term's page sections", () => {
       "aria-expanded",
       "true",
     );
+  });
+});
+
+// The read view's cells, as [label, size class].
+function cells(): [string, string][] {
+  const read = screen.getByTestId("glossary-read-fields");
+  return [...read.querySelectorAll<HTMLElement>(":scope > .form-field")].map((c) => [
+    c.querySelector("dt")?.textContent ?? "",
+    [...c.classList].find((k) => k.startsWith("form-field--")) ?? "",
+  ]);
+}
+
+describe("a term's page fields", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("reads through the form layout's read form, in the edit form's order", () => {
+    render(view({ ...term, calculation_method: "Sum of orders." }));
+    const read = screen.getByTestId("glossary-read-fields");
+    expect(read).toHaveClass("form-layout", "form-read");
+    expect(cells()).toEqual([
+      ["Name", "form-field--full"],
+      ["Definition", "form-field--full"],
+      ["Calculation method", "form-field--full"],
+      [t("glossaryTab.excludeFromExportLabel"), "form-field--short"],
+      ["Domains", "form-field--medium"],
+      ["Role", "form-field--short"],
+      ["Tags", "form-field--medium"],
+      ["Status", "form-field--medium"],
+      ["Grounding", "form-field--medium"],
+    ]);
+  });
+
+  it("says beside Status and Grounding what a draft, ungrounded term lacks, in no banner", () => {
+    render(view());
+    const status = screen.getByTestId("glossary-draft");
+    expect(status).toHaveTextContent(t("glossaryTab.draftDefined"));
+    expect(status).toHaveClass("form-read__hint");
+    expect(status.closest(".form-field")?.querySelector("dt")).toHaveTextContent("Status");
+    const grounding = screen.getByTestId("glossary-ungrounded");
+    expect(grounding).toHaveTextContent(t("glossaryTab.draftUngrounded"));
+    expect(grounding).toHaveClass("form-read__hint");
+    expect(grounding.closest(".form-field")?.querySelector("dt")).toHaveTextContent("Grounding");
+    expect(document.querySelector(".mantine-Alert-root")).toBeNull();
+  });
+
+  it("says a draft with no definition needs one", () => {
+    render(view({ ...term, definition: null }));
+    expect(screen.getByTestId("glossary-draft")).toHaveTextContent(t("glossaryTab.draftUndefined"));
+  });
+
+  it("says beside Grounding which drafts a term waits on", () => {
+    render(
+      view({
+        ...term,
+        status: "approved",
+        grounding: "grounded_pending",
+        pending_on: [{ term_id: 4, name: "Order" }],
+      }),
+    );
+    const pending = screen.getByTestId("glossary-pending-on");
+    expect(pending).toHaveTextContent(t("glossaryTab.pendingOn", { terms: "Order" }));
+    expect(pending.closest(".form-field")?.querySelector("dt")).toHaveTextContent("Grounding");
+    expect(screen.queryByTestId("glossary-ungrounded")).toBeNull();
+  });
+
+  it("says nothing more of an approved, grounded term", () => {
+    render(
+      view({
+        ...term,
+        status: "approved",
+        grounding: "grounded",
+        ref_count: 1,
+      }),
+    );
+    expect(screen.queryByTestId("glossary-draft")).toBeNull();
+    expect(screen.queryByTestId("glossary-ungrounded")).toBeNull();
+    expect(screen.queryByTestId("glossary-pending-on")).toBeNull();
+    expect(document.querySelector(".form-read__hint")).toBeNull();
   });
 });

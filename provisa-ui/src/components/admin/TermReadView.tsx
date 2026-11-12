@@ -14,6 +14,7 @@
 // relationships and its experts.
 
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { Badge, Group, Stack, Table, Text } from "@mantine/core";
 import {
@@ -23,7 +24,7 @@ import {
   retypeGlossaryEdge,
   type GlossaryTermDetail,
 } from "../../api/glossary";
-import { DetailFields } from "../detail/DetailFields";
+import { FormRead, ReadRow } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
@@ -64,6 +65,21 @@ function TermSection({
   );
 }
 
+/** What keeps a term from reaching data, or from reaching it cleanly, beside its Grounding. */
+function groundingHint(
+  term: GlossaryTermDetail,
+  t: TFunction,
+): { hint?: string; hintTestId?: string } {
+  if (term.grounding === "not_grounded" && (term.status === "draft" || term.status === "approved"))
+    return { hint: t("glossaryTab.draftUngrounded"), hintTestId: "glossary-ungrounded" };
+  if (term.grounding === "grounded_pending" && term.pending_on.length > 0)
+    return {
+      hint: t("glossaryTab.pendingOn", { terms: term.pending_on.map((p) => p.name).join(", ") }),
+      hintTestId: "glossary-pending-on",
+    };
+  return {};
+}
+
 export function TermReadView({
   term,
   relTypeOptions,
@@ -87,117 +103,150 @@ export function TermReadView({
   const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
   return (
     <Stack gap="md" pb="md">
-      <DetailFields
-        testId="glossary-read-fields"
-        fields={[
-          { label: t("glossaryTab.nameLabel"), value: term.name },
-          {
-            label: t("glossaryTab.definitionLabel"),
-            value: term.definition || t("glossaryTab.hoverNoDefinition"),
-          },
-          // REQ-2243: how the measure is computed, when the term says.
-          ...(term.calculation_method
-            ? [
-                {
-                  label: t("glossaryTab.calculationMethodLabel"),
-                  value: term.calculation_method,
-                },
-              ]
-            : []),
-          {
-            // REQ-1591: derived from the refs for a rooted term, declared for a concept; none
-            // means unscoped, which the create form names as the enterprise.
-            label: t("glossaryTab.domainsLabel"),
-            value: term.domains.length
-              ? term.domains.join(", ")
-              : t("glossaryTab.enterpriseDomainLabel"),
-          },
-          {
-            label: t("glossaryTab.roleLabel"),
-            value: <TermRoleBadge term={term} testId="glossary-detail-role" />,
-          },
-          // REQ-2145: pii on a Property, which every column it means carries.
-          ...(termRole(term) === "property"
-            ? [
-                {
-                  label: t("glossaryTab.piiLabel"),
-                  value: term.tags.some((g) => g.tag_id === "pii") ? (
-                    <Group gap={6} data-testid="glossary-detail-pii">
-                      <Badge size="xs" color="red" variant="light">
-                        {t("glossaryTab.piiLabel")}
-                      </Badge>
-                      <Text size="sm">{t("glossaryTab.piiMarks", { count: term.ref_count })}</Text>
-                    </Group>
-                  ) : (
-                    yesNo(false)
-                  ),
-                },
-              ]
-            : []),
-          // REQ-2145, REQ-2208: the term's registry tags, with the chip every taggable object
-          // has. Which tags a term may take, the server says.
-          {
-            label: t("glossaryTab.tagsLabel"),
-            value: (
-              <TagControl
-                objectType="term"
-                termId={term.id}
-                readOnly={!canEdit}
-                onChanged={onTagsChanged}
+      {/* REQ-1968: the form layout's read form, the fields in the edit form's order
+          (TermEditForm.tsx) and then what the term has that the form does not set. The name and
+          what it means take the panel's width; the rest flow. A state's hint sits under the value
+          it explains. */}
+      <FormRead testId="glossary-read-fields">
+        <ReadRow label={t("glossaryTab.nameLabel")} value={term.name} size="full" />
+        <ReadRow
+          label={t("glossaryTab.definitionLabel")}
+          value={term.definition || t("glossaryTab.hoverNoDefinition")}
+          size="full"
+        />
+        {/* REQ-2243: how the measure is computed, when the term says. */}
+        {term.calculation_method && (
+          <ReadRow
+            label={t("glossaryTab.calculationMethodLabel")}
+            value={term.calculation_method}
+            size="full"
+          />
+        )}
+        <ReadRow
+          label={t("glossaryTab.excludeFromExportLabel")}
+          value={yesNo(term.export_excluded)}
+          size="short"
+        />
+        {/* REQ-2145: pii on a Property, which every column it means carries. */}
+        {termRole(term) === "property" && (
+          <ReadRow
+            label={t("glossaryTab.piiLabel")}
+            size="short"
+            value={
+              term.tags.some((g) => g.tag_id === "pii") ? (
+                <Group gap={6} data-testid="glossary-detail-pii">
+                  <Badge size="xs" color="red" variant="light">
+                    {t("glossaryTab.piiLabel")}
+                  </Badge>
+                  <Text size="sm">{t("glossaryTab.piiMarks", { count: term.ref_count })}</Text>
+                </Group>
+              ) : (
+                yesNo(false)
+              )
+            }
+          />
+        )}
+        {/* REQ-1591: derived from the refs for a rooted term, declared for a concept; none means
+            unscoped, which the create form names as the enterprise. */}
+        <ReadRow
+          label={t("glossaryTab.domainsLabel")}
+          size="medium"
+          value={
+            term.domains.length ? term.domains.join(", ") : t("glossaryTab.enterpriseDomainLabel")
+          }
+        />
+        <ReadRow
+          label={t("glossaryTab.roleLabel")}
+          size="short"
+          value={<TermRoleBadge term={term} testId="glossary-detail-role" />}
+        />
+        {/* REQ-2145, REQ-2208: the term's registry tags, with the chip every taggable object has.
+            Which tags a term may take, the server says. */}
+        <ReadRow
+          label={t("glossaryTab.tagsLabel")}
+          size="medium"
+          value={
+            <TagControl
+              objectType="term"
+              termId={term.id}
+              readOnly={!canEdit}
+              onChanged={onTagsChanged}
+            />
+          }
+        />
+        {/* A draft says which of the two admission tests it still fails. */}
+        <ReadRow
+          label={t("glossaryTab.statusLabel")}
+          size="medium"
+          value={<TermStatusBadge status={term.status} testId="glossary-detail-status" />}
+          hint={
+            term.status === "draft"
+              ? (term.definition ?? "").trim()
+                ? t("glossaryTab.draftDefined")
+                : t("glossaryTab.draftUndefined")
+              : undefined
+          }
+          hintTestId="glossary-draft"
+        />
+        {/* REQ-1387: computed, beside the status a person set and never with it; what keeps it
+            from reaching data, or from reaching it cleanly. */}
+        <ReadRow
+          label={t("glossaryTab.groundingLabel")}
+          size="medium"
+          value={
+            <Group gap={6} data-testid="glossary-detail-grounding">
+              <TermGroundingChip
+                grounding={term.grounding}
+                columns={term.ref_count}
+                tables={term.table_count}
               />
-            ),
-          },
-          {
-            label: t("glossaryTab.statusLabel"),
-            value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
-          },
-          // REQ-1387: computed, beside the status a person set and never with it.
-          {
-            label: t("glossaryTab.groundingLabel"),
-            value: (
-              <Group gap={6} data-testid="glossary-detail-grounding">
-                <TermGroundingChip
-                  grounding={term.grounding}
-                  columns={term.ref_count}
-                  tables={term.table_count}
-                />
-                <Text size="sm">{t(`glossaryTab.groundingValue_${term.grounding}`)}</Text>
-              </Group>
-            ),
-          },
-          // A deprecation or a retirement says why, who said so, and a deprecation when it ends.
-          ...(term.status === "deprecated" || term.status === "retired"
-            ? [
-                { label: t("glossaryTab.statusReasonLabel"), value: term.status_reason ?? "—" },
-                { label: t("glossaryTab.statusByLabel"), value: term.status_by ?? "—" },
-              ]
-            : []),
-          ...(term.status === "deprecated"
-            ? [{ label: t("glossaryTab.retireOnLabel"), value: term.retire_on ?? "—" }]
-            : []),
-          { label: t("glossaryTab.excludeFromExportLabel"), value: yesNo(term.export_excluded) },
-          // REQ-2237: the IRI of the imported concept the term was aligned with as the same entity,
-          // or was made from. It is curator work: the term is kept when its columns leave.
-          ...(term.iri
-            ? [
-                {
-                  label: t("ontologyImport.iriLabel"),
-                  testId: "glossary-detail-iri",
-                  value: (
-                    <Stack gap={2}>
-                      <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>
-                        {term.iri}
-                      </Text>
-                      <Text size="xs" c="dimmed" data-testid="glossary-detail-curated-by-iri">
-                        {t("ontologyImport.curatedByIri")}
-                      </Text>
-                    </Stack>
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
+              <Text size="sm">{t(`glossaryTab.groundingValue_${term.grounding}`)}</Text>
+            </Group>
+          }
+          {...groundingHint(term, t)}
+        />
+        {/* A deprecation or a retirement says why, who said so, and a deprecation when it ends. */}
+        {(term.status === "deprecated" || term.status === "retired") && (
+          <>
+            <ReadRow
+              label={t("glossaryTab.statusReasonLabel")}
+              size="medium"
+              value={term.status_reason ?? "—"}
+            />
+            <ReadRow
+              label={t("glossaryTab.statusByLabel")}
+              size="short"
+              value={term.status_by ?? "—"}
+            />
+          </>
+        )}
+        {term.status === "deprecated" && (
+          <ReadRow
+            label={t("glossaryTab.retireOnLabel")}
+            size="short"
+            value={term.retire_on ?? "—"}
+          />
+        )}
+        {/* REQ-2237: the IRI of the imported concept the term was aligned with as the same entity,
+            or was made from. It is curator work: the term is kept when its columns leave. */}
+        {term.iri && (
+          <ReadRow
+            label={t("ontologyImport.iriLabel")}
+            size="full"
+            testId="glossary-detail-iri"
+            value={
+              <Stack gap={2}>
+                <Text size="sm" ff="monospace" style={{ wordBreak: "break-all" }}>
+                  {term.iri}
+                </Text>
+                <Text size="xs" c="dimmed" data-testid="glossary-detail-curated-by-iri">
+                  {t("ontologyImport.curatedByIri")}
+                </Text>
+              </Stack>
+            }
+          />
+        )}
+      </FormRead>
 
       {term.status === "retired" && (
         <RetiredTermRecord term={term} navigateToTerm={navigateToTerm} />
