@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filteren",
-    "clear": "Wissen"
+    "clear": "Wissen",
+    "syntaxHint": "Gebruikt de zoeksyntaxis van Google: elk woord moet overeenkomen; typ or (het Engelse woord, letterlijk) tussen alternatieven; -woord sluit uit; \"aanhalingstekens\" houden een zinsdeel bij elkaar."
   }
 }

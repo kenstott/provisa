@@ -48,6 +48,7 @@ import { DetailFields } from "../../detail/DetailFields";
 import { PanelActions } from "../../list/SplitPane";
 import { PanelDelete } from "../../list/PanelDelete";
 import { FilterInput } from "../FilterInput";
+import { matchesQuery } from "../../../lib/searchItems";
 import { AlignmentRow } from "./AlignmentRow";
 import { AddAlignmentDialog, EditItemDialog } from "./ItemDialogs";
 import { ApplyImportDialog } from "./ApplyImportDialog";
@@ -170,13 +171,10 @@ export function ImportReviewPanel({
   }, [review]);
 
   const shown = useMemo(() => {
-    const words = query.trim().toLowerCase();
     return (review?.items ?? []).filter(
       (item) =>
         item.kind === kind &&
-        (!words ||
-          item.name.toLowerCase().includes(words) ||
-          (item.iri ?? "").toLowerCase().includes(words)) &&
+        matchesQuery([item.name, item.iri], query) &&
         (!undecidedOnly || item.alignments.some((a) => a.status === "proposed")),
     );
   }, [review, kind, query, undecidedOnly]);

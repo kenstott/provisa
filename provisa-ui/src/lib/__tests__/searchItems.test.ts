@@ -8,48 +8,77 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The glossary search's items, the same as the server's (test_glossary_repository.py).
+// REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): the page search, answering the cases the
+// server answers too (tests/fixtures/page_search_cases.json, test_glossary_repository.py).
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { matchesQuery, matchesSearch, searchItems } from "../searchItems";
 
-describe("a search's items", () => {
-  it("are its quoted phrases and its words, lower-cased", () => {
-    expect(searchItems('"shift coverage" clinic')).toEqual(["shift coverage", "clinic"]);
-    expect(searchItems("  Shift   CLINIC ")).toEqual(["shift", "clinic"]);
-    expect(searchItems('shift" "" clinic')).toEqual(["shift", "clinic"]);
-    expect(searchItems("")).toEqual([]);
-  });
+interface Case {
+  query: string;
+  texts: (string | null)[];
+  kept: boolean;
+  was_kept?: boolean;
+}
 
-  it("match a text holding any one of them", () => {
-    const items = searchItems('"shift coverage" clinic');
-    expect(matchesSearch(["Shift coverage"], items)).toBe(true);
-    expect(matchesSearch(["referral clinic"], items)).toBe(true);
-    expect(matchesSearch(["shift start"], items)).toBe(false);
-    expect(matchesSearch([undefined, "a clinic visit"], items)).toBe(true);
+const CASES = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, "../../../../tests/fixtures/page_search_cases.json"), "utf8"),
+  ) as { cases: Case[] }
+).cases;
+
+describe("a page's search, the cases the server shares", () => {
+  it.each(CASES.map((c) => [c.query, JSON.stringify(c.texts), c.kept, c] as const))(
+    "%s over %s keeps it: %s",
+    (_q, _t, _k, c) => {
+      expect(matchesQuery(c.texts, c.query)).toBe(c.kept);
+    },
+  );
+
+  it("changes what several searches keep from the any-of rule", () => {
+    expect(CASES.filter((c) => c.was_kept !== undefined).length).toBeGreaterThan(0);
   });
 });
 
-describe("a page's search", () => {
-  it("keeps every row when empty or only spaces and stray quotes", () => {
-    for (const q of ["", "   ", '""', '" "']) expect(matchesQuery(["anything"], q)).toBe(true);
+describe("a search's items", () => {
+  const item = (text: string, excluded = false) => ({ text, excluded });
+
+  it("are its quoted phrases and its words, lower-cased, each required", () => {
+    expect(searchItems('"shift coverage" clinic')).toEqual([
+      [item("shift coverage")],
+      [item("clinic")],
+    ]);
+    expect(searchItems("  Shift   CLINIC ")).toEqual([[item("shift")], [item("clinic")]]);
+    expect(searchItems('shift" "" clinic')).toEqual([[item("shift")], [item("clinic")]]);
+    expect(searchItems("")).toEqual([]);
   });
 
-  it("keeps a row when any word is in any of its texts, case aside", () => {
-    expect(matchesQuery(["orders", "sales"], "ORDERS invoices")).toBe(true);
-    expect(matchesQuery(["orders", "sales"], "invoices SALES")).toBe(true);
-    expect(matchesQuery(["orders", "sales"], "invoices refunds")).toBe(false);
+  it("joins the items either side of or, which binds tighter than a space", () => {
+    expect(searchItems("blue red OR green")).toEqual([
+      [item("blue")],
+      [item("red"), item("green")],
+    ]);
+    expect(searchItems("or a or or b or")).toEqual([[item("a"), item("b")]]);
   });
 
-  it("reads a quoted phrase as one item, spaces and all", () => {
-    expect(matchesQuery(["shift coverage"], '"shift coverage"')).toBe(true);
-    expect(matchesQuery(["shift start", "coverage map"], '"shift coverage"')).toBe(false);
-    expect(matchesQuery(["clinic"], '"shift coverage" clinic')).toBe(true);
+  it("excludes an item with a leading -, a word or a phrase, and drops a lone -", () => {
+    expect(searchItems('red -blue -"pet store" - pet-store')).toEqual([
+      [item("red")],
+      [item("blue", true)],
+      [item("pet store", true)],
+      [item("pet-store")],
+    ]);
   });
 
-  it("matches inside a word, and skips a text that is absent", () => {
-    expect(matchesQuery(["pet_store.pets"], "store")).toBe(true);
-    expect(matchesQuery([null, undefined, "x"], "x")).toBe(true);
-    expect(matchesQuery([null, undefined], "x")).toBe(false);
+  it("reads a quoted or and a quoted -x as text, and + as text", () => {
+    expect(searchItems('"or" "-x" +red')).toEqual([[item("or")], [item("-x")], [item("+red")]]);
+  });
+
+  it("matches a text that is absent as holding nothing", () => {
+    expect(matchesSearch([undefined, null, "a clinic visit"], searchItems("clinic"))).toBe(true);
+    expect(matchesSearch([null, undefined], searchItems("x"))).toBe(false);
+    expect(matchesSearch([null, undefined], searchItems("-x"))).toBe(true);
   });
 });

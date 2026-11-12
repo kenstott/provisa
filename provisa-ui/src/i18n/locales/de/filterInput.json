@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filtern",
-    "clear": "Zurücksetzen"
+    "clear": "Zurücksetzen",
+    "syntaxHint": "Verwendet die Google-Suchsyntax: Jedes Wort muss vorkommen; or (das englische Wort, so getippt) zwischen Alternativen setzen; -Wort schließt aus; \"Anführungszeichen\" halten eine Wortgruppe zusammen."
   }
 }

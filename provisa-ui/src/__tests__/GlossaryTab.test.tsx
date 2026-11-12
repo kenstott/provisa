@@ -548,9 +548,11 @@ describe("GlossaryTab", () => {
     const fields = within(read)
       .getAllByRole("term")
       .map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    // The edit form's fields in its order, then what the term has that the form does not set.
     expect(fields).toEqual([
       ["Name", "Margin"],
       ["Definition", t("glossaryTab.hoverNoDefinition")],
+      [t("glossaryTab.excludeFromExportLabel"), "No"],
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
@@ -564,7 +566,6 @@ describe("GlossaryTab", () => {
       ["Reason", "—"],
       ["By", "—"],
       ["Planned retirement", "—"],
-      [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
     const tags = within(read).getByText("Tags").nextElementSibling as HTMLElement;
     expect(within(tags).getByTestId("tag-control-term-3")).toBeInTheDocument();
@@ -574,7 +575,7 @@ describe("GlossaryTab", () => {
     fireEvent.click(screen.getByTestId("glossary-item-1"));
     await waitFor(() =>
       expect(
-        within(screen.getByTestId("glossary-read-fields")).getAllByRole("definition")[2],
+        within(screen.getByTestId("glossary-read-fields")).getByText("Domains").nextElementSibling,
       ).toHaveTextContent("All domains (enterprise)"),
     );
   });

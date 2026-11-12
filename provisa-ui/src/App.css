@@ -2840,14 +2840,29 @@ main {
 .detail-fields > dd {
   overflow-wrap: anywhere;
 }
-/* A form read (FormRead): only its fields' label and value rows and its folds' headings are drawn;
+/* A form read (FormRead): the form's own flow (.form-layout), each field a cell of its size with its
+ * label above its value and its hint below. Only its fields and its folds' headings are drawn;
  * its notes, buttons and other furniture are not. */
-.form-read > :not(dt, dd, .form-read__heading) {
+.form-read {
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+.form-read > :not(.form-field, .form-read__heading) {
   display: none;
+}
+.form-read > .form-field {
+  margin: 0;
+}
+.form-read > .form-field > dd {
+  overflow-wrap: anywhere;
+}
+.form-read__hint {
+  margin: 0.15rem 0 0;
+  color: var(--mantine-color-dimmed);
 }
 /* A group's heading, as the other read views head theirs (RoleRead, RelationshipRead). */
 .form-read__heading {
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
   margin-top: 0.75rem;
   color: var(--mantine-color-dimmed);
   font-weight: 700;
@@ -2904,11 +2919,12 @@ main {
   outline-offset: 2px;
   border-radius: 50%;
 }
-/* Field labels stay on one line; a checkbox or switch sentence wraps. Below phone width the
+/* Field labels, read or edited, stay on one line; a checkbox or switch sentence wraps. Below phone width the
  * container can be narrower than a label, so there a label may wrap. */
 @media (min-width: 30em) {
   .form-field:not(.form-field--full) .mantine-InputWrapper-label,
-  .form-field:not(.form-field--full) > label {
+  .form-field:not(.form-field--full) > label,
+  .form-field:not(.form-field--full) > dt {
     white-space: nowrap;
   }
 }
