@@ -34,6 +34,7 @@ from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from provisa.transpiler.transpile import transpile_to_duckdb
 from tests.unit.test_cypher_find_paths_by_mapping import _node as _bare_node
+from tests.unit.test_cypher_expr_context import _sql as expr_sql
 from tests.unit.test_cypher_find_paths_by_mapping import _rel
 from tests.unit.test_table_parameters_required import _STEPS, _openapi_state, _param, _read
 
@@ -131,6 +132,18 @@ _FREE = {
         "MATCH (e:E {id: 10}) MATCH (x) RETURN x.name ORDER BY x.name",
         [("a1",), ("e10",), ("e11",)],
     ),
+    "pattern-comprehension": (
+        "MATCH (y:E) RETURN y.name, [(y)<-[:T]-(x) | x.name] AS xs ORDER BY y.name",
+        [("e10", ["a1"]), ("e11", [])],
+    ),
+    "exists-subquery": (
+        "MATCH (y:E) WHERE EXISTS { MATCH (y)<-[:T]-(x) } RETURN y.name",
+        [("e10",)],
+    ),
+    "count-subquery": (
+        "MATCH (y:E) RETURN y.name, COUNT { MATCH (y)<-[:T]-(x) } AS c ORDER BY y.name",
+        [("e10", 1), ("e11", 0)],
+    ),
     "property-key-chip": (
         'MATCH (n)\nWHERE n.name IS NOT NULL\nRETURN DISTINCT "node" AS entity, n.name AS name\n'
         "LIMIT 25\nUNION ALL\nMATCH ()-[r]-()\nWHERE r.name IS NOT NULL\n"
@@ -150,19 +163,44 @@ def test_a_free_node_never_reads_a_parameterized_table(model, cypher, answer):
 # REQ-2135, PATHS SKIP PARAMETERIZED TABLES: a type only parameterized tables carry joins nothing
 # a free end may read, so a hop of it between ends no label names to one is no path: no rows.
 _ONLY_PARAMETERIZED = {
-    "both-free": "MATCH ()-[r:U]->() RETURN r LIMIT 25",
-    "free-left": "MATCH (x)-[r:U]->(y:A) RETURN x.name",
-    "free-right": "MATCH (y:A)<-[r:U]-(x) RETURN x.name",
-    "undirected": "MATCH (x)-[r:U]-(y) RETURN x.name",
-    "optional": "MATCH (y:A) OPTIONAL MATCH (x)-[r:U]->(y) RETURN y.name, x.name",
+    "both-free": ("MATCH ()-[r:U]->() RETURN r LIMIT 25", []),
+    "free-left": ("MATCH (x)-[r:U]->(y:A) RETURN x.name", []),
+    "free-right": ("MATCH (y:A)<-[r:U]-(x) RETURN x.name", []),
+    "undirected": ("MATCH (x)-[r:U]-(y) RETURN x.name", []),
+    "optional": (
+        "MATCH (y:A) OPTIONAL MATCH (x)-[r:U]->(y) RETURN y.name, x.name",
+        [("a1", None)],
+    ),
+    "pattern-comprehension": (
+        "MATCH (a:A) RETURN a.name, [(a)<-[:U]-(x) | x.name] AS xs",
+        [("a1", [])],
+    ),
 }
 
 
-@pytest.mark.parametrize("cypher", _ONLY_PARAMETERIZED.values(), ids=_ONLY_PARAMETERIZED.keys())
-def test_a_type_only_parameterized_tables_carry_answers_nothing_between_free_ends(model, cypher):
+@pytest.mark.parametrize(
+    "cypher, answer", _ONLY_PARAMETERIZED.values(), ids=_ONLY_PARAMETERIZED.keys()
+)
+def test_a_type_only_parameterized_tables_carry_answers_nothing_between_free_ends(
+    model, cypher, answer
+):
     assert not _reads_parameterized(_sql(model, cypher))
-    rows = _rows(model, cypher)
-    assert rows in ([], [("a1", None)])
+    assert _rows(model, cypher) == answer
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[(n)-[:KNOWS]->(m) | m.name]",
+        "EXISTS { MATCH (n)-[:KNOWS]->(m) }",
+        "COUNT { MATCH (n)-[:KNOWS]->(m) }",
+    ],
+    ids=["pattern-comprehension", "exists", "count"],
+)
+def test_a_one_hop_read_from_the_outer_row_to_a_free_end_reads_no_parameterized_table(text):
+    # Person, the outer row's table, is parameterized: the hop's free end m is no Person.
+    assert "persons" not in expr_sql(text)
+    assert "persons" in expr_sql(text.replace("(m)", "(m:Person)"))
 
 
 @pytest.mark.parametrize(

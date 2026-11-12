@@ -1464,6 +1464,11 @@ class TranslatorExprContext:
             raise NotImplementedError(
                 f"unresolved target node in pattern comprehension: {src_var}-[{rel_type or ''}]->{tgt_var}"
             )
+        named = t._resolve_node_type([tgt_label])[0] if tgt_label else None
+        if not t._lm.end_reads(rel.target_label, named):
+            # REQ-2135: an end no label names is no parameterized table; the embedded statement
+            # reads what such an end may be.
+            return self._comprehension_as_collect(node)
 
         src_alias, src_nm = t._var_table.get(src_var, (src_var, None))
         # Lower the projection (and predicate) with the target var -- and the path var, of the
