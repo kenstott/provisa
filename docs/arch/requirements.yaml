@@ -88155,7 +88155,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
     Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
     Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
-    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-11, THE TERM PAGE SAYS
+    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-12, THE TERM PAGE SAYS
     GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
     way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
     in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
@@ -89008,18 +89008,32 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     graph is not read. With no search and no domain chosen the view then draws its overview, each domain
     with the number of terms in it, and picking a domain narrows the view to it; a search or a domain still
     past the budget is said ("N match; narrow the search or pick a domain") and nothing is drawn. The product
-    graph and lineage follow the same pattern later. (Amended 2026-11-11, A PLUS MARKS A REQUIRED ITEM:)
+    graph and lineage follow the same pattern later. [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE WEB-SEARCH
+    SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there is no + mark.
+    Kept here for history; do not implement against it.] (Amended 2026-11-12, A PLUS MARKS A REQUIRED ITEM:)
     Maintainer 2026-11-12: in every page search (the one rule the page filters, the term list and the Ontology
     View share), an item written with a leading + is required, and an item without one is one of the at-least-one-of
     items: a row is kept when it holds every + item and, if there are items without a +, at least one of
     them. So red +blue green keeps what holds blue and either red or green; +red +blue keeps what holds
     both; red green keeps what holds either, as before. A + goes before a word or before a quoted phrase.
-    The search field''s hint says so. (Amended 2026-11-11, A MINUS MARKS AN ITEM THAT MUST NOT MATCH:) Maintainer
-    2026-11-12: beside +, an item written with a leading - must not be found: a row is kept when it holds
-    every + item, holds no - item, and, if there are items with neither mark, holds at least one of them.
-    So +red -blue green keeps what holds red, does not hold blue, and holds green. A mark counts only at
-    the start of an item, before a word or a quoted phrase: the hyphen inside pet-store is part of the word.
-    Text that itself begins with + or - is searched by putting it in quotes.'
+    The search field''s hint says so. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2143 PAGE SEARCH USES THE
+    WEB-SEARCH SYNTAX, 2026-11-12 -- items are all required, or joins alternatives and - excludes; there
+    is no + mark. Kept here for history; do not implement against it.] (Amended 2026-11-12, A MINUS MARKS
+    AN ITEM THAT MUST NOT MATCH:) Maintainer 2026-11-12: beside +, an item written with a leading - must
+    not be found: a row is kept when it holds every + item, holds no - item, and, if there are items with
+    neither mark, holds at least one of them. So +red -blue green keeps what holds red, does not hold blue,
+    and holds green. A mark counts only at the start of an item, before a word or a quoted phrase: the hyphen
+    inside pet-store is part of the word. Text that itself begins with + or - is searched by putting it
+    in quotes. [END SUPERSEDED BLOCK] (Amended 2026-11-12, PAGE SEARCH USES THE WEB-SEARCH SYNTAX:) Maintainer
+    2026-11-12: every page search (the one rule the page filters, the term list and the Ontology View share)
+    reads the syntax people type into a web search, the same one the data search takes (REQ-2213): items
+    separated by spaces are all required; the word or between two items means either; an item with a leading
+    - must not be found; a phrase in double quotes is one item. or binds tighter than a space: blue red
+    or green keeps what holds blue and either red or green. So red blue keeps what holds both, where before
+    it kept what held either; red or blue keeps either; red green -blue keeps what holds red and green and
+    not blue. A - counts only at the start of an item (the hyphen in pet-store is part of the word); the
+    word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
+    search field''s hint says so.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -92203,7 +92217,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
     model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
     which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
-    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-11 -- retrieval is
+    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-12 -- retrieval is
     always what graph retrieval was; there is no setting to choose. Kept here for history; do not implement
     against it.] the reference library has a retrieval setting, passage or graph, shown and changed on the
     Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the passages nearest
@@ -92264,13 +92278,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
     term finding run in a background job; its index status is a property (indexing with progress where known,
     ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-11, TERMS ARE EMBEDDED AS
+    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-12, TERMS ARE EMBEDDED AS
     THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
     and when its name or definition changes, and its embedding is removed when it leaves service, whatever
     the library''s retrieval setting, as a document''s passages are embedded when the document is added.
     The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
     nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
-    embedding. An org with no vector model embeds nothing. (Amended 2026-11-11, ONE RETRIEVAL, NO SETTING:)
+    embedding. An org with no vector model embeds nothing. (Amended 2026-11-12, ONE RETRIEVAL, NO SETTING:)
     Maintainer 2026-11-12: graph retrieval already returns the passages nearest the question first, undisplaced,
     and only adds the passages the glossary reaches before the neighbours; when the glossary reaches nothing
     it returns what passage retrieval returns. So there is nothing for a person to choose: the library has
@@ -95320,14 +95334,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
     columns); a group of terms with a common parent is placed where its members'' lines are flattest in
     total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
-    are reported, not the score. (Amended 2026-11-11, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
+    are reported, not the score. (Amended 2026-11-12, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
     2026-11-12: the controls that change how a graph is looked at sit in one hover stack inside the canvas,
     the same on every 2D graph and every 3D view (the ontology graph and the table profile views: terrain,
     joint cloud, drift strata, relations): reset view (fit, in 2D), full screen and download everywhere;
     rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
     tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
     force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
-    longer toolbar buttons. (Amended 2026-11-11, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
+    longer toolbar buttons. (Amended 2026-11-12, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
     while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
     at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
     places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
