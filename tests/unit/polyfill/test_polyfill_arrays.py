@@ -38,8 +38,9 @@ _RULES = [
 ]
 
 
-def _call(rule_pattern: str) -> str:
+def _call(rule_pattern: str | None) -> str:
     """A call of the rule's function with a column for each hole."""
+    assert rule_pattern is not None  # every array rule has a pattern
     tree = pattern(rule_pattern).copy()
     for cast in list(tree.find_all(exp.Cast)):
         cast.replace(exp.column(cast.this.this.name))
@@ -70,12 +71,22 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
         plain = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
         assert type(written) is type(sqlglot.parse_one(plain, read=dialect).expressions[0].this)
         return
-    assert isinstance(form, str)
-    bindings = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
+    assert isinstance(form, str) and rule.pattern is not None
+    bindings: dict[str, exp.Expr] = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
     expected = graft(replacement(form, written_in(dialect), rule.pattern), bindings)
     if dialect == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
-    assert written.sql(dialect) == expected.sql(dialect)
+    # A dialect that quotes every identifier (Snowflake) writes the same column quoted.
+    assert _unquoted(written).sql(dialect) == _unquoted(expected).sql(dialect)
+
+
+def _unquoted(tree: exp.Expr) -> exp.Expr:
+    def plain(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Identifier) and node.quoted:
+            return exp.to_identifier(node.name)
+        return node
+
+    return tree.copy().transform(plain)
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -135,6 +146,63 @@ def test_array_length_reads_the_dimension_it_is_given(dialect: str):
     assert "d" in columns, out
 
 
+#: The sources a statement goes to directly that hold no array type.
+_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift")
+#: The sources whose own array length takes no dimension (sqlglot drops it).
+_FIRST_DIMENSION_ONLY = ("snowflake", "bigquery", "databricks", "hive", "druid")
+
+
+@pytest.mark.parametrize("dialect", _ARRAY_LESS)
+@pytest.mark.parametrize("call", ["array_length(a, 1)", "array_length(a, d)"])
+def test_array_length_is_refused_by_name_where_there_is_no_array(dialect: str, call: str):
+    with pytest.raises(RowRefused) as refused:
+        transpile(f"SELECT {call} AS v FROM t", dialect)
+    assert str(refused.value) == f"array_length() has no form on {dialect}"
+    assert refused.value.sqlstate == "0A000"
+
+
+@pytest.mark.parametrize("dialect", _FIRST_DIMENSION_ONLY)
+@pytest.mark.parametrize("call", ["array_length(a, 2)", "array_length(a, d)", "array_length(a, 0)"])
+def test_array_length_of_another_dimension_than_the_first_is_refused(dialect: str, call: str):
+    """The source's own length answers the first dimension's for any: the dimension is not
+    dropped, as sqlglot drops it, but refused."""
+    with pytest.raises(RowRefused) as refused:
+        transpile(f"SELECT {call} AS v FROM t", dialect)
+    assert str(refused.value) == f"array_length() reads only dimension 1 on {dialect}"
+    assert refused.value.sqlstate == "0A000"
+
+
+@pytest.mark.parametrize(
+    ("dialect", "length"),
+    [
+        ("snowflake", "ARRAY_SIZE"),
+        ("bigquery", "ARRAY_LENGTH"),
+        ("databricks", "SIZE"),
+        ("hive", "SIZE"),
+        ("druid", "ARRAY_LENGTH"),
+    ],
+)
+def test_array_length_of_the_first_dimension_is_null_for_an_empty_array(dialect: str, length: str):
+    """PostgreSQL answers NULL for an empty or NULL array, where the source's length answers 0
+    (or -1): the form answers the length only where it is above 0."""
+    out = transpile("SELECT array_length(a, 1) AS v FROM t", dialect)
+    case = sqlglot.parse_one(out, read=dialect).expressions[0].find(exp.Case)
+    assert case is not None, out
+    assert f"{length}(" in out.upper() and "> 0" in out, out
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 1)", [(2,)]),
+        ("SELECT array_length(CAST(ARRAY[] AS INTEGER[]), 1)", [(None,)]),
+        ("SELECT array_length(CAST(NULL AS INTEGER[]), 1)", [(None,)]),
+    ],
+)
+def test_the_duckdb_form_of_the_first_dimension_answers_as_postgresql_does(sql: str, expected):
+    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchall() == expected
+
+
 def _on_clickhouse(sql: str) -> list[str | None]:
     held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
     return [None if line == "\\N" else line for line in held.splitlines()]
@@ -147,6 +215,7 @@ def _on_clickhouse(sql: str) -> list[str | None]:
         ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 1)", "2"),
         ("SELECT array_length(ARRAY[1,2,3], 2)", None),
         ("SELECT array_length(ARRAY[1,2,3], 0)", None),
+        ("SELECT array_length(CAST(ARRAY[] AS INTEGER[]), 1)", None),
     ],
 )
 def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str, expected):
@@ -154,7 +223,7 @@ def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str
 
 
 def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
-    out = transpile('SELECT pg_catalog."array_length"(ARRAY[1, 2], 1) AS v', "duckdb")
+    out = transpile('SELECT pg_catalog."array_length"(ARRAY[[1, 2]], 2) AS v', "duckdb")
     assert "JSON_ARRAY_LENGTH" in out.upper(), out
 
 
