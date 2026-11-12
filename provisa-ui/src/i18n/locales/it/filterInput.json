@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filtra",
-    "clear": "Cancella"
+    "clear": "Cancella",
+    "syntaxHint": "Usa la sintassi di ricerca di Google: ogni parola deve corrispondere; scrivi or (la parola inglese, così com'è) tra le alternative; -parola esclude; le \"virgolette\" tengono unita una frase."
   }
 }

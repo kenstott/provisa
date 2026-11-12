@@ -582,11 +582,28 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
     Trino has no to_json; its CAST(x AS JSON) already ENCODES a scalar/struct as a JSON value (the
     same semantics to_json gives on Postgres/DuckDB). The Cypher map-literal path emits to_json so the
     parse-semantics engines (Postgres/DuckDB) encode bare strings correctly; here it maps back to the
-    Trino spelling."""
+    Trino spelling.
+
+    A to_json that is a JSON object's value is its JSON text marked FORMAT JSON: Trino's
+    JSON_OBJECT casts a value of type JSON to varchar, which no array or object survives, and reads
+    text marked FORMAT JSON as the JSON it holds (REQ-2176: a session node's labels)."""
     # Parse failure must fail loud: returning input skips the required Trino rewrite.
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        value = node.expression if isinstance(node, exp.JSONKeyValue) else None
+        if (
+            isinstance(value, exp.Anonymous)
+            and value.name.upper() == "TO_JSON"
+            and len(value.expressions) == 1
+        ):
+            encoded = exp.Cast(
+                this=value.expressions[0].transform(_transform),
+                to=exp.DataType(this=exp.DataType.Type.JSON),
+            )
+            return exp.JSONKeyValue(
+                this=node.this, expression=exp.FormatJson(this=exp.JSONFormat(this=encoded))
+            )
         if isinstance(node, exp.Anonymous) and node.name.upper() == "TO_JSON":
             if len(node.expressions) == 1:
                 # Recurse into the argument: sqlglot's transform walks pre-order and does not

@@ -336,8 +336,8 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(ids(drawn())).not.toContain("term:6"));
   });
 
-  it("focuses on what the page's search matches, any of its items, with their neighbourhoods", async () => {
-    const { rerender } = render(<OntologyView search="shift clinic" />);
+  it("focuses on what the page's search matches, every item or either side of or, with their neighbourhoods", async () => {
+    const { rerender } = render(<OntologyView search="shift or clinic" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Both shift terms and the clinic, each with what it reaches; nothing else.
     await waitFor(() =>
@@ -350,13 +350,18 @@ describe("the Glossary page's Ontology View", () => {
     );
     expect(screen.queryByTestId("ontology-filter-focus")).toBeNull();
     // A quoted phrase is one item beside a bare word.
-    rerender(<OntologyView search={'"shift coverage" clinic'} />);
+    rerender(<OntologyView search={'"shift coverage" or clinic'} />);
     await waitFor(() =>
       expect(ids(drawn()).filter((id) => id.startsWith("term:"))).toEqual([
         "term:10",
         "term:7",
         "term:9",
       ]),
+    );
+    // Every item is required, and an item with a leading - must not be found.
+    rerender(<OntologyView search="shift -start" />);
+    await waitFor(() =>
+      expect(ids(drawn()).filter((id) => id.startsWith("term:"))).toEqual(["term:7"]),
     );
     // An empty search is the whole graph.
     rerender(<OntologyView search="" />);

@@ -150,6 +150,34 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         ("SELECT dcbrt(x) AS v FROM t", "trino", "SELECT CBRT(x) AS v FROM t"),
         ("SELECT dtrunc(x) AS v FROM t", "trino", "SELECT TRUNCATE(CAST(x AS DOUBLE)) AS v FROM t"),
         ("SELECT unicode_version() AS v", "mysql", "SELECT '15.1' AS v"),
+        # array_cat (its grid row, provisa.transpiler.polyfill.arrays): PostgreSQL's NULL with an
+        # array is the array, NULL with NULL is NULL.
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "duckdb",
+            "SELECT CASE WHEN NOT a IS NULL OR NOT b IS NULL THEN LIST_CONCAT(a, b) END AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE CONCAT(a, b) END AS v "
+            "FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, b) AS v FROM t",
+            "trino",
+            "SELECT b AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, NULL) AS v FROM t",
+            "trino",
+            "SELECT a AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, NULL) AS v FROM t",
+            "trino",
+            "SELECT NULL AS v FROM t",
+        ),
     ],
 )
 def test_a_form_is_written_for_its_dialect(sql, dialect, expected):
@@ -158,6 +186,44 @@ def test_a_form_is_written_for_its_dialect(sql, dialect, expected):
 
 def test_a_form_survives_the_engines_own_rewrites():
     assert "BOOL_AND(a)" in transpile_to_trino("SELECT every(a) AS v FROM t")
+
+
+#: arraycontains on Trino, as PostgreSQL answers it: NULL of a NULL array, false where the second
+#: holds a NULL (equal to nothing), and otherwise whether the first holds each of its elements.
+_ARRAYCONTAINS_ON_TRINO = (
+    "CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE ALL_MATCH({b}, _x -> NOT _x IS NULL "
+    "AND COALESCE(CONTAINS({a}, _x), FALSE)) END"
+)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT arraycontains(a, b) AS v FROM t",
+        "SELECT a @> b AS v FROM t",
+    ],
+)
+def test_an_arrays_containment_has_postgresqls_answers_on_trino(sql):
+    assert transpile(sql, "trino") == (
+        f"SELECT {_ARRAYCONTAINS_ON_TRINO.format(a='a', b='b')} AS v FROM t"
+    )
+
+
+def test_an_arrays_containment_reaches_trino_as_trinos_own_sql():
+    """REQ-2176: a session hop's label filter (``__labels @> ARRAY[...]``) is PostgreSQL's operator
+    in the semantic statement; the statement Trino is sent carries no ``@>``, and Trino's own
+    rewrites, which read it back as Trino's SQL, read it."""
+    written = transpile_to_trino("SELECT k FROM t AS _hs WHERE _hs.\"__labels\" @> ARRAY['Big']")
+    assert "@>" not in written
+    tree = sqlglot.parse_one(written, read="trino")
+    assert tree.find(sqlglot.exp.ArrayContainsAll) is None
+    assert written == "SELECT k FROM t AS _hs WHERE " + _ARRAYCONTAINS_ON_TRINO.format(
+        a='_hs."__labels"', b="ARRAY['Big']"
+    )
+
+
+def test_an_arrays_containment_stays_postgresqls_operator_on_postgresql():
+    assert transpile("SELECT a @> b AS v FROM t", "postgres") == "SELECT a @> b AS v FROM t"
 
 
 @pytest.mark.parametrize(

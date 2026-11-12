@@ -202,7 +202,12 @@ def _node_value(nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportP
         kv.append(
             exp.JSONKeyValue(
                 this=exp.Literal.string("labels"),
-                expression=exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True)),
+                # As JSON: a list is no value Trino's JSON_OBJECT takes (to_json is CAST AS JSON
+                # there).
+                expression=exp.Anonymous(
+                    this="to_json",
+                    expressions=[exp.Column(this=exp.Identifier(this=LABELS_COLUMN, quoted=True))],
+                ),
             )
         )
     return exp.JSONObject(expressions=kv)
