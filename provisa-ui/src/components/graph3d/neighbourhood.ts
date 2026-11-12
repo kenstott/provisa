@@ -33,8 +33,5 @@ export const NEIGHBOURHOOD: Neighbourhood = {
   tableEnteredBy: "member",
 };
 
-/** The depths a focus can be read to, in hops: the hops control's choices. */
-export const DEPTHS: readonly number[] = [1, 2, 3, 4];
-
 /** The most nodes a graph draws; past it the count is said instead. */
 export const NODE_BUDGET = 500;

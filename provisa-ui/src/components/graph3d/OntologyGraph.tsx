@@ -275,8 +275,8 @@ export function OntologySnippet({
           </div>
         </div>
       )}
-      {/* Expanded, its focus alone at full hops, the rest on asking: a term's, the rest of the
-          ontology; a product's, the Product map. */}
+      {/* Expanded, its focus alone at a product graph's depth, the rest on asking: a term's, the
+          rest of the ontology; a product's, the Product map. */}
       <OntologyModal
         opened={open}
         onClose={() => setOpen(false)}

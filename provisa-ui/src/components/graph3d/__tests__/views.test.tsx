@@ -414,11 +414,11 @@ describe("a term's graph, expanded from its page", () => {
       {},
     );
 
-  it("reads the term at full hops, not the whole ontology", async () => {
+  it("reads the term at the product graph's depth, not the whole ontology", async () => {
     await open();
     await waitFor(() => expect(reads.scopes.length).toBeGreaterThan(0));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
-    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,4"]));
+    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,3"]));
   });
 
   it("draws the term's reach alone, and says only that it shows", async () => {
@@ -451,7 +451,7 @@ describe("a term's graph, expanded from its page", () => {
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("Customer");
     fireEvent.click(screen.getByTestId("graph3d-rest"));
     await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
-    expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:customer", depth: 4 });
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:customer", depth: 3 });
   });
 });
 
