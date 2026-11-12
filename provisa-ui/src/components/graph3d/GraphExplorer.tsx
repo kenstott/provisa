@@ -24,6 +24,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
+import { Tip } from "../Tip";
 import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
 import {
   chosenNow,
@@ -677,14 +678,17 @@ export function GraphExplorer({
               onChange={(l) => save("layout", l)}
               testId={testId}
             />
-            <Chip
-              size="xs"
-              checked={lateral}
-              onChange={(on) => save("lateral", on)}
-              data-testid={`${testId}-lateral`}
-            >
-              {t("graph3d.lateral")}
-            </Chip>
+            {/* REQ-2174 (THE TOGGLE IS CALLED ASSOCIATIONS): the term links that rank nothing. */}
+            <Tip text={t("graph3d.lateralHelp")}>
+              <Chip
+                size="xs"
+                checked={lateral}
+                onChange={(on) => save("lateral", on)}
+                data-testid={`${testId}-lateral`}
+              >
+                {t("graph3d.lateral")}
+              </Chip>
+            </Tip>
           </>
         )}
         {/* REQ-2239: in 3D, Reset view is in the canvas's controls (Stage3D). The lane diagram's
@@ -960,7 +964,8 @@ function GraphDetail({
                   data-testid={`${testId}-link-${e.id}`}
                 >
                   <span className="p3d-row-name is-wrap">
-                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    {e.a === node.id ? "→" : "←"}
+                    {"\u00a0"}
                     <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>

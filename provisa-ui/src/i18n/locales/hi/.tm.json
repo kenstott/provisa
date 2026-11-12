@@ -2694,7 +2694,7 @@
   "hi/graph3d.json::graph3d.lane_table": "Tables",
   "hi/graph3d.json::graph3d.lane_term": "Terms",
   "hi/graph3d.json::graph3d.lanesLabel": "Lane diagram: terms, the columns they bind, their tables and products",
-  "hi/graph3d.json::graph3d.lateral": "Lateral edges",
+  "hi/graph3d.json::graph3d.lateral": "Associations",
   "hi/graph3d.json::graph3d.layer_commands": "Commands",
   "hi/graph3d.json::graph3d.layer_data": "Data",
   "hi/graph3d.json::graph3d.layer_domains": "Domains",
@@ -10229,5 +10229,6 @@
   "hi/ontologyImport.json::ontologyImport.useDefinitionHelp": "The term takes the imported definition in place of its own. A term with no definition takes it anyway.",
   "hi/ontologyImport.json::ontologyImport.withItem": "With another item",
   "hi/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
-  "hi/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom"
+  "hi/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
+  "hi/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
 }

@@ -314,3 +314,43 @@ describe.each(VIEWS.filter((v) => v.grid))("$name's Grid toggle", (v) => {
     );
   });
 });
+
+// REQ-2174 (amended 2026-11-12, THE TOGGLE IS CALLED ASSOCIATIONS): the ontology graph's chip that
+// draws or hides the term links that rank nothing is called Associations, and its tooltip says
+// which links those are. It stays in the toolbar: it chooses what is drawn.
+describe("the ontology graph's Associations chip", () => {
+  const explorer = VIEWS.find((v) => v.kind === "graph") as View;
+
+  it("is named Associations in the toolbar, with no word lateral", async () => {
+    const { container } = render(explorer.draw());
+    await waitFor(() => expect(made.scenes.some((s) => s.kind === "graph")).toBe(true));
+    const bar = container.querySelector<HTMLElement>(".p3d-toolbar") as HTMLElement;
+    const chip = within(bar).getByRole("checkbox", { name: "Associations" });
+    expect(chip).toBeChecked();
+    expect(screen.getByTestId("x-lateral")).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toMatch(/lateral/i);
+  });
+
+  it("says in its tooltip which links it shows", async () => {
+    render(explorer.draw());
+    await waitFor(() => expect(made.scenes.some((s) => s.kind === "graph")).toBe(true));
+    // The Tip's target is the element its handlers land on (the chip's input).
+    const target = screen
+      .getByRole("checkbox", { name: "Associations" })
+      .closest("[data-tip-target]") as HTMLElement;
+    fireEvent.mouseEnter(target);
+    const tip = await screen.findByText(/without ranking them/);
+    for (const kind of ["related", "synonym", "preferred term", "translation", "antonym"])
+      expect(tip.textContent).toContain(kind);
+    expect(tip.textContent).not.toMatch(/lateral|edge/i);
+  });
+
+  it("still hides and draws the same links, remembered as before", async () => {
+    const view = render(explorer.draw());
+    await waitFor(() => expect(made.scenes.some((s) => s.kind === "graph")).toBe(true));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Associations" }));
+    view.unmount();
+    render(explorer.draw());
+    expect(screen.getByRole("checkbox", { name: "Associations" })).not.toBeChecked();
+  });
+});
