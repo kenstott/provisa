@@ -9,10 +9,11 @@
 // permission from the copyright holder.
 
 // REQ-2174 (amended 2026-10-28; 2026-11-07): the graph's 2D view, the lane diagram (laneDiagram.ts),
-// drawn by the one graph (REQ-2239) in its lanes preset: products to terms left to right; the term
-// lane laid out top-down by its rank links, its other links laid over it once placed and named by
-// their type. A click picks a node (the detail panel), a hover shows its card, a "+N columns" node
-// expands in place; the diagram copies as Mermaid text. A card holds the node's facts with links to
+// drawn by the one graph (REQ-2239) in its lanes preset: products to terms left to right, products,
+// tables and columns sorted by the lane on their left, each term level with its column (amended
+// 2026-11-11); each term on its own row, the links between terms (rank links and the others, named
+// by their type) run beside the term lane. A click picks a node (the detail panel), a hover shows
+// its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A card holds the node's facts with links to
 // their pages, and stays while the pointer is on it.
 
 import { useCallback, useMemo } from "react";
@@ -21,15 +22,7 @@ import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import type { GraphHover } from "./graphScene";
 import { hoverBody } from "./hoverBody";
 import { MoreFacts } from "./nodeFacts";
-import {
-  LANES,
-  connectedTo,
-  laneMermaid,
-  placedLaneOrder,
-  stackTerms,
-  type Lane,
-  type LaneDiagram,
-} from "./laneDiagram";
+import { LANES, connectedTo, laneMermaid, type Lane, type LaneDiagram } from "./laneDiagram";
 import { ProvisaGraph } from "../provisa-graph/ProvisaGraph";
 import type { LanesOptions } from "../provisa-graph/lanes";
 import { laneGraph } from "./laneGraph";
@@ -64,12 +57,10 @@ export function LaneStage({
   const lanes = useMemo<LanesOptions>(
     () => ({
       lanes: LANES.map((l) => ({ id: l, title: laneTitle(l) })),
-      stacked: "term",
+      beside: "term",
       tight: bare,
-      order: (at) => placedLaneOrder(diagram, at),
-      settle: (order, at, widthOf) => stackTerms(diagram, order, at, widthOf),
     }),
-    [diagram, laneTitle, bare],
+    [laneTitle, bare],
   );
   const neighbourhood = useCallback((id: string) => connectedTo(diagram, id), [diagram]);
   // A "+N columns" node's line is no edge of the graph: it has no card.

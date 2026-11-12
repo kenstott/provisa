@@ -88155,7 +88155,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
     Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
     Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
-    managed, so a term is made a Class or a Property in one place.'
+    managed, so a term is made a Class or a Property in one place. (Amended 2026-11-11, THE TERM PAGE SAYS
+    GROUNDED IN COLUMNS:) Maintainer 2026-11-12: a term''s page names its two kinds of grounding the same
+    way: the section listing the columns the term is bound to is titled Grounded in columns, beside Grounded
+    in tables; it is not titled Refs. Its empty text is Grounded in no column, and the term hover card labels
+    the same list Columns.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -95293,7 +95297,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
     columns); a group of terms with a common parent is placed where its members'' lines are flattest in
     total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
-    are reported, not the score.'
+    are reported, not the score. (Amended 2026-11-11, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
+    2026-11-12: the controls that change how a graph is looked at sit in one hover stack inside the canvas,
+    the same on every 2D graph and every 3D view (the ontology graph and the table profile views: terrain,
+    joint cloud, drift strata, relations): reset view (fit, in 2D), full screen and download everywhere;
+    rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
+    tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
+    force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
+    longer toolbar buttons. (Amended 2026-11-11, A GRAPH BEING LAID OUT SAYS SO:) Maintainer 2026-11-12:
+    while a 2D graph''s layout is being computed, the canvas does not draw the nodes stacked on one another
+    at one point; it shows that it is laying the graph out, and draws the nodes only once they have their
+    places. This holds every time a layout runs: on open, on a change of preset, filter, depth or layout,
+    and on Reset view when it lays out again.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4

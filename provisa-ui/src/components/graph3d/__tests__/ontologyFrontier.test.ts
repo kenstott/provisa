@@ -17,11 +17,24 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../../api/metaGraph";
 import { ontologyGraph, type OntologyRows } from "../ontologyData";
 import { readOntology } from "../ontologyRead";
+import { loadOntology } from "../useOntology";
+import { snippetLayers, termGraph, termPreset } from "../ontologyPresets";
 import type { GraphData, LayerId, QueryScope } from "../graphModel";
+
+// loadOntology reads through the fixture's server (wired below), as the meta model's schema.
+const wire = vi.hoisted(() => ({
+  read: null as null | ((q: string) => Promise<unknown>),
+  reader: null as null | (() => unknown),
+}));
+vi.mock("../../../api/metaGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async () => wire.reader!(),
+  dataGraphql: async (q: string) => wire.read!(q),
+}));
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
 
@@ -72,8 +85,13 @@ const table = (id: number): Row => ({
   sourceId: "pg",
   description: null,
   checkedBy: null,
-  dataProductTables: [{ dataProduct: product(id) }],
+  dataProductTables: [{ productId: `p${id}`, dataProduct: product(id) }],
 });
+// Each product holds its term's table.
+const products = TERM_IDS.map((id) => ({
+  ...product(id),
+  dataProductTables: [{ productId: `p${id}`, registeredTable: table(id) }],
+}));
 
 const terms = new Map<number, Row>();
 const edge = (i: number, [from, to, relType]: [number, number, string]): Row => ({
@@ -199,8 +217,10 @@ function server() {
   const read = async (query: string): Promise<OntologyRows> => {
     const out: Row = {};
     for (const f of parse(query)) {
-      if (f.name !== "on_terms") throw new Error(`unexpected root ${f.name}`);
-      out[f.key] = [...terms.values()]
+      const rows: Row[] =
+        f.name === "on_terms" ? [...terms.values()] : f.name === "m__dataProducts" ? products : [];
+      if (rows.length === 0) throw new Error(`unexpected root ${f.name}`);
+      out[f.key] = rows
         .filter((r) => !f.where || meets(r, f.where))
         .map((r) => project(r, f.fields));
     }
@@ -337,5 +357,106 @@ describe("a term's snippet, read a hop at a time", () => {
     const got = await readOntology(reader(), s, srv.read);
     expect(srv.sent).toHaveLength(1);
     expect(sorted(ontologyGraph(got.rows, s)).nodes).toContain("term:9");
+  });
+});
+
+/** The terms a query's roots name by id: the focus's, and each hop's frontier. */
+function namedTerms(query: string): number[] {
+  const ids: number[] = [];
+  const walk = (w: unknown) => {
+    if (Array.isArray(w)) return w.forEach(walk);
+    if (w === null || typeof w !== "object") return;
+    for (const [k, v] of Object.entries(w as Row)) {
+      const c = v as Row;
+      if (k === "id" && "eq" in c) ids.push(c.eq as number);
+      else if (k === "id" && "in" in c) ids.push(...(c.in as number[]));
+      else walk(v);
+    }
+  };
+  for (const f of parse(query)) if (f.name === "on_terms") walk(f.where);
+  return [...new Set(ids)].sort((a, b) => a - b);
+}
+
+/** What running ``query`` once answers, as the view draws it: every root of the terms is terms. */
+async function ran(query: string, s: QueryScope) {
+  const out = (await server().read(query)) as Record<string, unknown>;
+  const termsRead = Object.entries(out)
+    .filter(([k]) => k.startsWith("_terms"))
+    .flatMap(([, v]) => v as Row[]);
+  const rows = { ...out, _terms: termsRead } as unknown as OntologyRows;
+  return sorted(ontologyGraph(rows, s));
+}
+
+const drawnTerms = (g: { nodes: string[] }) =>
+  g.nodes
+    .filter((n) => n.startsWith("term:"))
+    .map((n) => Number(n.slice("term:".length)))
+    .sort((a, b) => a - b);
+
+/** A product's snippet, as a product's panel and graph read it (the Product map's rules). */
+const productSnippet = (depth: number): QueryScope => ({
+  ...snippet(depth),
+  layers: new Set<LayerId>(snippetLayers({ products: true })),
+  products: true,
+  focus: "p:p1",
+});
+
+describe("a snippet opened as a query: every hop the snippet drew, in one query", () => {
+  for (const depth of [1, 2, 3])
+    it(`a term's snippet at depth ${depth}`, async () => {
+      const s = snippet(depth);
+      const got = await readOntology(reader(), s, server().read);
+      const graph = sorted(ontologyGraph(got.rows, s));
+      const opened = got.opened as string;
+      expect(opened.startsWith("query Ontology {")).toBe(true);
+      // It names every term drawn and nothing past them; run, it draws what the snippet drew.
+      expect(namedTerms(opened)).toEqual(drawnTerms(graph));
+      expect(await ran(opened, s)).toEqual(graph);
+      // Each hop's read once, not a level nested under each path: no bigger than the reads sent.
+      const sent = got.queries.reduce((n, q) => n + q.length, 0);
+      expect(opened.length).toBeLessThan(sent);
+      expect(opened.length).toBeLessThan(NESTED.query / 2);
+    });
+
+  it("draws at depth 3 what the nested read drew", async () => {
+    const s = snippet(3);
+    const got = await readOntology(reader(), s, server().read);
+    expect(await ran(got.opened as string, s)).toEqual(AT_DEPTH_3);
+  });
+
+  it("a term's expanded graph (termGraph) opens as what it drew", async () => {
+    const p = termGraph(termPreset(7));
+    const s: QueryScope = {
+      ...snippet(p.depth),
+      layers: new Set<LayerId>(snippetLayers(p)),
+      focus: p.focus,
+    };
+    const got = await readOntology(reader(), s, server().read);
+    const graph = sorted(ontologyGraph(got.rows, s));
+    expect(got.queries.length).toBeGreaterThan(1);
+    expect(namedTerms(got.opened as string)).toEqual(drawnTerms(graph));
+    expect(await ran(got.opened as string, s)).toEqual(graph);
+  });
+
+  for (const depth of [1, 2, 3, 4])
+    it(`a product's snippet at depth ${depth}`, async () => {
+      const s = productSnippet(depth);
+      const got = await readOntology(reader(), s, server().read);
+      const graph = sorted(ontologyGraph(got.rows, s));
+      expect(graph.nodes).toContain("p:p1");
+      // A product's own terms are its root: only past PRODUCT_TERM_HOPS does a hop step out.
+      expect(got.queries).toHaveLength(depth > 3 ? 2 : 1);
+      if (depth <= 3) expect(got.opened).toBe(got.queries[0]);
+      expect(await ran(got.opened as string, s)).toEqual(graph);
+    });
+
+  it("is what the view hands Open as query", async () => {
+    wire.reader = reader;
+    wire.read = server().read;
+    const s = snippet(3);
+    const loaded = await loadOntology("analyst", s);
+    if (loaded === null || loaded.over !== undefined) throw new Error("not read");
+    expect(await ran(loaded.query, s)).toEqual(sorted(loaded.data));
+    expect(namedTerms(loaded.query)).toEqual([1, 2, 3, 4, 6, 7]);
   });
 });

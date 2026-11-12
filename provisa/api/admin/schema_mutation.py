@@ -79,6 +79,7 @@ from provisa.api.admin.types import (
     SourceInput,
     TableInput,
     TableRegistrationOutcome,
+    BulkDeleteResult,
     ColumnInput,
     TagAssignmentInput,
     TagInput,
@@ -2359,6 +2360,12 @@ async def _register_draft_table(
     table = default_table_input(input.id, input.table_domain_id, "main", input.id, columns)
     result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
     return None if result.success else _without(result.message)
+
+
+def _single(mutation: "Mutation") -> Any:  # REQ-2240
+    """The mutation as its resolvers are called from Python: a strawberry field's declared
+    signature hides the plain method a bulk delete calls for each row."""
+    return mutation
 
 
 @strawberry.type
@@ -4726,6 +4733,117 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Table {id} not found",
             code="schema.table_not_found",
             params={"table": id},
+        )
+
+    @strawberry.mutation
+    async def delete_tables(
+        self, info: StrawberryInfo, ids: list[int]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several tables deleted in one call, each by deleteTable."""
+        from provisa.api.admin._bulk_delete import delete_each
+        from provisa.core.repositories import table as table_repo
+
+        # The right deleteTable needs, asked once before any table is attempted.
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+
+        async def _name(table_id: int) -> str:
+            async with pool.acquire() as conn:
+                found = await table_repo.get(cast("Connection", conn), table_id)
+            # A table that is not registered has no name but the id it was asked by; its own
+            # delete then refuses it as not found.
+            return str(table_id) if found is None else found["table_name"]
+
+        return await delete_each(
+            ids, _name, lambda table_id: _single(self).delete_table(info, table_id)
+        )
+
+    @strawberry.mutation
+    async def delete_relationships(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several relationships deleted in one call, each by deleteRelationship."""
+        from provisa.api.admin._bulk_delete import delete_each, relationship_name
+
+        require_capability(info, "create_relationship")
+        return await delete_each(
+            ids, relationship_name, lambda i: _single(self).delete_relationship(info, i)
+        )
+
+    @strawberry.mutation
+    async def delete_metrics(
+        self, info: StrawberryInfo, names: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several metrics deleted in one call, each by deleteMetric."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "table_registration")
+        return await delete_each(names, same_name, lambda n: _single(self).delete_metric(info, n))
+
+    @strawberry.mutation
+    async def delete_sources(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several sources deleted in one call, each by deleteSource."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "source_registration")
+        return await delete_each(ids, same_name, lambda i: _single(self).delete_source(info, i))
+
+    @strawberry.mutation
+    async def delete_roles(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several roles deleted in one call, each by deleteRole."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "user_management")
+        return await delete_each(ids, same_name, lambda i: _single(self).delete_role(info, i))
+
+    @strawberry.mutation
+    async def delete_domains(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several domains deleted in one call, each by deleteDomain."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "org_settings")
+        return await delete_each(ids, same_name, lambda i: _single(self).delete_domain(info, i))
+
+    @strawberry.mutation
+    async def delete_data_products(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several data products deleted in one call, each by deleteDataProduct."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "data_product_rw")
+        return await delete_each(
+            ids, same_name, lambda i: _single(self).delete_data_product(info, i)
+        )
+
+    @strawberry.mutation
+    async def delete_tags(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several tags deleted in one call, each by deleteTag."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        _require_tag_editor(info)
+        return await delete_each(ids, same_name, lambda i: _single(self).delete_tag(info, i))
+
+    @strawberry.mutation
+    async def delete_scheduled_tasks(
+        self, info: StrawberryInfo, task_ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several scheduled tasks deleted in one call, each by deleteScheduledTask."""
+        from provisa.api.admin._bulk_delete import delete_each, scheduled_task_name
+
+        require_capability(info, "org_settings")
+        return await delete_each(
+            task_ids,
+            scheduled_task_name,
+            lambda i: _single(self).delete_scheduled_task(info, i),
         )
 
     @strawberry.mutation

@@ -17,6 +17,7 @@ import type { MetaReader } from "../../api/metaGraph";
 import type { QueryScope } from "./graphModel";
 import {
   ontologyHopQuery,
+  ontologyOpenedQuery,
   ontologyQuery,
   termLevels,
   type OntologyRows,
@@ -29,10 +30,18 @@ const reached = (t: TermRow): number[] => [
   ...(t.edgesIn ?? []).flatMap((e) => (e.sourceTerm ? [e.sourceTerm.id] : [])),
 ];
 
-/** What a read of the ontology answered, and the queries it sent, in order. */
+/** What a read opens as: with no hop read, the root's query, its terms whatever the count found;
+ * else that root with each hop's terms (ontologyOpenedQuery). */
+const opened = (m: MetaReader, s: QueryScope, hops: number[][]): string | null =>
+  hops.length === 0 ? ontologyQuery(m, s) : ontologyOpenedQuery(m, s, hops);
+
+/** What a read of the ontology answered, the queries it sent, in order, and the one query it
+ * opens as (ontologyOpenedQuery): its root and every hop it read, null when the role cannot read
+ * the terms. */
 export interface OntologyRead {
   rows: OntologyRows;
   queries: string[];
+  opened: string | null;
 }
 
 /** REQ-2174: the ontology as ``s`` reads it, through ``read`` (one query's answer). The root --
@@ -47,11 +56,12 @@ export async function readOntology(
   terms = true,
 ): Promise<OntologyRead> {
   const root = ontologyQuery(m, s, terms);
-  if (root === null) return { rows: { _terms: [] }, queries: [] };
+  if (root === null) return { rows: { _terms: [] }, queries: [], opened: opened(m, s, []) };
   const rows = await read(root);
   const got = [...(rows._terms ?? [])];
   const seen = new Set(got.map((t) => t.id));
   const queries = [root];
+  const hops: number[][] = [];
   let frontier = got;
   for (let hop = 1; hop <= termLevels(s); hop++) {
     const ids = [...new Set(frontier.flatMap(reached))].filter((id) => !seen.has(id));
@@ -63,6 +73,7 @@ export async function readOntology(
     frontier = (await read(query))._terms ?? [];
     got.push(...frontier);
     queries.push(query);
+    hops.push(ids);
   }
-  return { rows: { ...rows, _terms: got }, queries };
+  return { rows: { ...rows, _terms: got }, queries, opened: opened(m, s, hops) };
 }

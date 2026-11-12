@@ -5,6 +5,18 @@
     "sortNone": "nicht sortiert",
     "groupBy": "Nach {{label}} gruppieren",
     "ungroupLevel": "Gruppierung aufheben (Ebene {{level}})",
-    "moreValues": "+{{count}} weitere"
+    "moreValues": "+{{count}} weitere",
+    "selectAll": "Alle angezeigten Zeilen auswählen",
+    "selectRow": "Zeile auswählen",
+    "selectedCount_one": "{{count}} ausgewählt",
+    "selectedCount_other": "{{count}} ausgewählt",
+    "bulkDelete": "Löschen",
+    "clearSelection": "Auswahl aufheben",
+    "bulkDeleteTitle_one": "{{count}} Zeile löschen?",
+    "bulkDeleteTitle_other": "{{count}} Zeilen löschen?",
+    "bulkDeleteConsequence": "Diese werden gelöscht: {{names}}. Alle, auf die noch etwas verweist, bleiben erhalten und werden mit Grund genannt.",
+    "bulkRefused_one": "{{count}} wurde nicht gelöscht:",
+    "bulkRefused_other": "{{count}} wurden nicht gelöscht:",
+    "dismiss": "Schließen"
   }
 }

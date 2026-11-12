@@ -1233,6 +1233,71 @@ mutation DeleteTable($id: Int!) {
   }
 }
 
+# REQ-2240: several tables deleted in one call, each through deleteTable's own guard.
+mutation DeleteTables($ids: [Int!]!) {
+  deleteTables(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+# REQ-2240: rows of each list deleted in one call, each through its single delete's own guard.
+mutation DeleteRelationships($ids: [String!]!) {
+  deleteRelationships(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteMetrics($names: [String!]!) {
+  deleteMetrics(names: $names) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteSources($ids: [String!]!) {
+  deleteSources(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteRoles($ids: [String!]!) {
+  deleteRoles(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDomains($ids: [String!]!) {
+  deleteDomains(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDataProducts($ids: [String!]!) {
+  deleteDataProducts(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteTags($ids: [String!]!) {
+  deleteTags(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteScheduledTasks($taskIds: [String!]!) {
+  deleteScheduledTasks(taskIds: $taskIds) {
+    ...BulkDeleteResult
+  }
+}
+
+fragment BulkDeleteResult on BulkDeleteResult {
+  deleted
+  refused {
+    name
+    reason
+    dependents
+  }
+}
+
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
 # REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
 query HoldOnFailingChecksSource {

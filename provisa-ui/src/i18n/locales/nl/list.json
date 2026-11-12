@@ -5,6 +5,18 @@
     "sortNone": "niet gesorteerd",
     "groupBy": "Groeperen op {{label}}",
     "ungroupLevel": "Groepering opheffen (niveau {{level}})",
-    "moreValues": "+{{count}} meer"
+    "moreValues": "+{{count}} meer",
+    "selectAll": "Alle getoonde rijen selecteren",
+    "selectRow": "Rij selecteren",
+    "selectedCount_one": "{{count}} geselecteerd",
+    "selectedCount_other": "{{count}} geselecteerd",
+    "bulkDelete": "Verwijderen",
+    "clearSelection": "Selectie wissen",
+    "bulkDeleteTitle_one": "{{count}} rij verwijderen?",
+    "bulkDeleteTitle_other": "{{count}} rijen verwijderen?",
+    "bulkDeleteConsequence": "Deze worden verwijderd: {{names}}. Alles waar nog iets naar verwijst blijft behouden, met de reden.",
+    "bulkRefused_one": "{{count}} is niet verwijderd:",
+    "bulkRefused_other": "{{count}} zijn niet verwijderd:",
+    "dismiss": "Sluiten"
   }
 }

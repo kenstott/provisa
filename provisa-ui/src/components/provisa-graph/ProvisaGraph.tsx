@@ -40,7 +40,7 @@ import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
 import { GraphControls, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
 import { GroupResize } from "./GroupResize";
-import { laneElements, runLanes, type LanesOptions } from "./lanes";
+import { runLanes, type LanesOptions } from "./lanes";
 import {
   markFilter,
   markFocused,
@@ -234,10 +234,10 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(() => {
-    const els = graphElements(graph, typeName, detail);
-    return preset === "lanes" && lanes ? laneElements(els, lanes) : els;
-  }, [graph, typeName, detail, preset, lanes]);
+  const elements = useMemo(
+    () => graphElements(graph, typeName, detail),
+    [graph, typeName, detail],
+  );
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
