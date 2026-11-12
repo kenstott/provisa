@@ -507,6 +507,8 @@ class GroundedTerm:  # REQ-2238
     # it that a term does not model (provisa/ontology_import/kept.py); a hop carries neither.
     iri: str | None = None
     statements: tuple[dict[str, Any], ...] = ()
+    # REQ-2243: how the measure the term names is computed; a hop carries none.
+    calculation_method: str | None = None
 
     @property
     def named(self) -> bool:

@@ -1776,6 +1776,8 @@ class Metric(BaseModel):  # REQ-1317
     visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
+    # REQ-2243: the glossary term the metric names, by its name, as a table names its class term.
+    term: str | None = None
 
     @field_validator("name")
     @classmethod

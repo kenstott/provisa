@@ -498,6 +498,8 @@ metrics = Table(
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
     Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
+    # REQ-2243: the glossary term the metric names (schema.sql).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
 )
 
 roles = Table(

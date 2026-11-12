@@ -1081,6 +1081,7 @@ async def _save_metric(
             datatype=input.datatype,
             description=input.description,
             ai_context=input.ai_context,
+            term=input.term,  # REQ-2243
             visible_to=named
             if named is not None
             else (default_read_grant(acting_role_of(info)) if creating else []),

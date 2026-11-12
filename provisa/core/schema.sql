@@ -963,6 +963,7 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     UNIQUE (name)
 );
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1133,6 +1134,10 @@ CREATE TABLE IF NOT EXISTS metrics (
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
     from_fact   TEXT
 );
+-- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
+-- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
 
 -- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
 -- metric goes with the metric.
