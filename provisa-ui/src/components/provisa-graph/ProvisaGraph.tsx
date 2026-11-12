@@ -234,10 +234,7 @@ export function ProvisaGraph({
 
   const detail = options?.detail ?? "all";
   const typeName = useCallback((type: NodeType) => t(`provisaGraph.type.${type}`), [t]);
-  const elements = useMemo(
-    () => graphElements(graph, typeName, detail),
-    [graph, typeName, detail],
-  );
+  const elements = useMemo(() => graphElements(graph, typeName, detail), [graph, typeName, detail]);
 
   // Read when an event comes, so the drawing is not rebuilt when a handler changes.
   const latest = useRef({
@@ -493,63 +490,70 @@ export function ProvisaGraph({
       setDrawnAt((n) => n + 1);
     };
 
-    if (preset === "lanes" && lanes) {
-      runLanes(
-        cy,
-        laying,
-        lanes,
-        graph.edges.filter((e) => e.overlay),
-        finish,
-      );
-    } else if (preset === "force") {
-      laying.run(
-        cy.layout({ name: "fcose", animate: false, padding: 24 } as Parameters<
-          typeof cy.layout
-        >[0]),
-        () => {
-          fitClear(cy as unknown as CyInstance);
-          finish();
-        },
-      );
-    } else {
-      cy.on("dragfree", 'node[kind = "node"]', (evt: EventObject) => {
-        latest.current.onArrange?.();
-        const target = evt.target as unknown as {
-          id(): string;
-          position(): Pt;
-          position(p: Pt): void;
-        };
-        const raw = target.position();
-        const g = latest.current.options?.gridSnap ?? 0;
-        const at = g > 0 ? { x: Math.round(raw.x / g) * g, y: Math.round(raw.y / g) * g } : raw;
-        if (g > 0) target.position(at);
-        movedRef.current.set(target.id(), at);
-        // A move can swap a line's dominant axis, which decides which way its lanes spread.
-        if (latest.current.options?.routing === "taxi") applyTaxiLanes(c);
-      });
-      // Nodes with no lines are hidden while ELK places the rest; the arrangement after it puts
-      // them in a grid under their group.
-      const connected = nodesWithEdges(c);
-      cy.nodes('[kind = "node"]').forEach((n) => {
-        if (!connected.has(n.id())) n.style("display", "none");
-      });
-      laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
-        const opts = latest.current.options;
-        const rect = box.getBoundingClientRect();
-        const arranged = arrangeLayered(c, {
-          gridSnap: opts?.gridSnap ?? 0,
-          showOrphans: opts?.showOrphans ?? true,
-          aspectRatio: rect.height > 0 ? rect.width / rect.height : null,
+    // The layout starts once the frame saying so has been painted: a placement that takes a
+    // while (a large lane diagram's is one long task) is seen to be under way, not a still canvas.
+    const layOut = () => {
+      if (preset === "lanes" && lanes) {
+        runLanes(
+          cy,
+          laying,
+          lanes,
+          graph.edges.filter((e) => e.overlay),
+          finish,
+        );
+      } else if (preset === "force") {
+        laying.run(
+          cy.layout({ name: "fcose", animate: false, padding: 24 } as Parameters<
+            typeof cy.layout
+          >[0]),
+          () => {
+            fitClear(cy as unknown as CyInstance);
+            finish();
+          },
+        );
+      } else {
+        cy.on("dragfree", 'node[kind = "node"]', (evt: EventObject) => {
+          latest.current.onArrange?.();
+          const target = evt.target as unknown as {
+            id(): string;
+            position(): Pt;
+            position(p: Pt): void;
+          };
+          const raw = target.position();
+          const g = latest.current.options?.gridSnap ?? 0;
+          const at = g > 0 ? { x: Math.round(raw.x / g) * g, y: Math.round(raw.y / g) * g } : raw;
+          if (g > 0) target.position(at);
+          movedRef.current.set(target.id(), at);
+          // A move can swap a line's dominant axis, which decides which way its lanes spread.
+          if (latest.current.options?.routing === "taxi") applyTaxiLanes(c);
         });
-        isolatedRef.current = arranged.isolatedIds;
-        if (latest.current.places) standPlaces(c, latest.current.places, movedRef.current);
-        fitClear(cy as unknown as CyInstance);
-        const routing = opts?.routing ?? "bezier";
-        cy.$(".pg-edge").style("curve-style", routing);
-        if (routing === "taxi") applyTaxiLanes(c);
-        finish();
-      });
-    }
+        // Nodes with no lines are hidden while ELK places the rest; the arrangement after it puts
+        // them in a grid under their group.
+        const connected = nodesWithEdges(c);
+        cy.nodes('[kind = "node"]').forEach((n) => {
+          if (!connected.has(n.id())) n.style("display", "none");
+        });
+        laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
+          const opts = latest.current.options;
+          const rect = box.getBoundingClientRect();
+          const arranged = arrangeLayered(c, {
+            gridSnap: opts?.gridSnap ?? 0,
+            showOrphans: opts?.showOrphans ?? true,
+            aspectRatio: rect.height > 0 ? rect.width / rect.height : null,
+          });
+          isolatedRef.current = arranged.isolatedIds;
+          if (latest.current.places) standPlaces(c, latest.current.places, movedRef.current);
+          fitClear(cy as unknown as CyInstance);
+          const routing = opts?.routing ?? "bezier";
+          cy.$(".pg-edge").style("curve-style", routing);
+          if (routing === "taxi") applyTaxiLanes(c);
+          finish();
+        });
+      }
+    };
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(layOut);
+    });
 
     // The canvas narrows beside a detail panel and widens when it closes: the graph follows.
     const observer = new ResizeObserver(() => {
@@ -563,6 +567,7 @@ export function ProvisaGraph({
     observer.observe(box);
     return () => {
       live = false;
+      cancelAnimationFrame(frame);
       observer.disconnect();
       cyRef.current = null;
       placedRef.current = null;

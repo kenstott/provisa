@@ -34,6 +34,8 @@ const held = vi.hoisted(() => ({
   runs: [] as (() => void)[],
   /** The cores made, in order. */
   cores: [] as unknown[],
+  /** How many layouts were asked to start. */
+  asked: 0,
   /** A layout asked while this is set throws as it starts. */
   failStart: null as Error | null,
 }));
@@ -53,6 +55,7 @@ vi.mock("cytoscape", async (importOriginal) => {
       const l = layout(opts);
       const run = l.run.bind(l);
       l.run = () => {
+        held.asked += 1;
         if (held.failStart) throw held.failStart;
         held.runs.push(() => run());
         return l;
@@ -66,6 +69,12 @@ vi.mock("cytoscape", async (importOriginal) => {
 });
 
 import { ProvisaGraph, type LayoutPreset } from "../ProvisaGraph";
+
+/** The ``nth`` layout asked: each starts once the frame saying so has been painted. */
+const started = (nth = 1) =>
+  act(async () => {
+    await vi.waitFor(() => expect(held.asked).toBeGreaterThanOrEqual(nth));
+  });
 
 /** Answers every layout asked so far (and those their answers ask). */
 const answerAll = () => {
@@ -138,6 +147,7 @@ const indicator = () => screen.queryByTestId("g-laying-out");
 
 beforeEach(() => {
   held.runs = [];
+  held.asked = 0;
   held.cores = [];
   held.failStart = null;
   vi.stubGlobal(
@@ -150,55 +160,70 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe.each<LayoutPreset>(["force", "layered", "lanes"])("a %s graph being laid out", (preset) => {
-  it("shows no node and says it is laying the graph out until the layout answers", () => {
-    render(graphOf(GRAPH, preset));
-    expect(held.runs.length).toBeGreaterThan(0);
-    expect(drawing()).not.toBeVisible();
-    expect(indicator()).toBeInTheDocument();
-    expect(indicator()).toHaveTextContent("Laying out…");
-  });
+describe.each<LayoutPreset>(["force", "layered", "lanes"])(
+  "a %s graph being laid out",
+  (preset) => {
+    it("says it is laying the graph out, showing no node, before the layout starts", () => {
+      render(graphOf(GRAPH, preset));
+      expect(held.runs).toHaveLength(0);
+      expect(drawing()).not.toBeVisible();
+      expect(indicator()).toHaveTextContent("Laying out…");
+    });
 
-  it("shows the nodes at their places, and no indicator, once it answers", async () => {
-    render(graphOf(GRAPH, preset));
-    await act(async () => answerAll());
-    // ELK answers in a promise of its own; the lanes and fCoSE at once.
-    await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
-    expect(drawing()).toBeVisible();
-    const places = placesOf(lastCore());
-    expect(places).toHaveLength(4);
-    // Not stacked: no two nodes share a place.
-    const at = new Set(places.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
-    expect(at.size).toBe(4);
-  });
+    it("shows no node and says it is laying the graph out until the layout answers", async () => {
+      render(graphOf(GRAPH, preset));
+      await started();
+      expect(drawing()).not.toBeVisible();
+      expect(indicator()).toBeInTheDocument();
+      expect(indicator()).toHaveTextContent("Laying out…");
+    });
 
-  it("hides the drawing and says so again when a filter lays it out again", async () => {
-    const { rerender } = render(graphOf(GRAPH, preset));
-    await act(async () => answerAll());
-    await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
-    rerender(graphOf(FILTERED, preset));
-    expect(drawing()).not.toBeVisible();
-    expect(indicator()).toHaveTextContent("Laying out…");
-    await act(async () => answerAll());
-    await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
-    expect(drawing()).toBeVisible();
-    expect(placesOf(lastCore())).toHaveLength(3);
-  });
+    it("shows the nodes at their places, and no indicator, once it answers", async () => {
+      render(graphOf(GRAPH, preset));
+      await started();
+      await act(async () => answerAll());
+      // ELK answers in a promise of its own; the lanes and fCoSE at once.
+      await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
+      expect(drawing()).toBeVisible();
+      const places = placesOf(lastCore());
+      expect(places).toHaveLength(4);
+      // Not stacked: no two nodes share a place.
+      const at = new Set(places.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+      expect(at.size).toBe(4);
+    });
 
-  it("drops the indicator and shows the page's error when the layout fails to start", () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    held.failStart = new Error("layout refused the graph");
-    render(graphOf(GRAPH, preset));
-    expect(indicator()).not.toBeInTheDocument();
-    expect(screen.getByTestId("page-error")).toHaveTextContent("layout refused the graph");
-  });
-});
+    it("hides the drawing and says so again when a filter lays it out again", async () => {
+      const { rerender } = render(graphOf(GRAPH, preset));
+      await started();
+      await act(async () => answerAll());
+      await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
+      rerender(graphOf(FILTERED, preset));
+      expect(drawing()).not.toBeVisible();
+      expect(indicator()).toHaveTextContent("Laying out…");
+      await started(2);
+      await act(async () => answerAll());
+      await vi.waitFor(() => expect(indicator()).not.toBeInTheDocument());
+      expect(drawing()).toBeVisible();
+      expect(placesOf(lastCore())).toHaveLength(3);
+    });
+
+    it("drops the indicator and shows the page's error when the layout fails to start", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      held.failStart = new Error("layout refused the graph");
+      render(graphOf(GRAPH, preset));
+      await started();
+      expect(indicator()).not.toBeInTheDocument();
+      expect(screen.getByTestId("page-error")).toHaveTextContent("layout refused the graph");
+    });
+  },
+);
 
 describe("a graph whose placement fails once the layout answers", () => {
   it("drops the indicator and shows the page's error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     // The lanes' layout places nothing itself (no fit of its own): their placement, after it, does.
     render(graphOf(GRAPH, "lanes"));
+    await started();
     expect(indicator()).toBeInTheDocument();
     // The placement after the layout (its opening fit) throws.
     lastCore().fit = () => {

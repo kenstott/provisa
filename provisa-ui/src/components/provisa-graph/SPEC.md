@@ -105,7 +105,8 @@ titled the same way.
   depth, saved places, Reset view's relayout) until every node has its place and the opening fit
   has run, the core's div is held hidden, so the frame of unplaced nodes stacked at one point is
   never painted, and the canvas shows the graph views' loader (ReadState's `Loader`) with
-  `provisaGraph.layingOut`. The controls and legend stay; the controls, downloads, the camera and
+  `provisaGraph.layingOut`. The layout starts once that frame has been painted, so a placement
+  that runs as one long task (a large lane diagram's) is seen to be under way. The controls and legend stay; the controls, downloads, the camera and
   a save act only on a placed drawing. A layout that throws as it starts, or whose placement throws
   once it answers, ends the laying out and is thrown to the page's error boundary.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.

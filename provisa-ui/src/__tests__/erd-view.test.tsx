@@ -818,7 +818,9 @@ describe("the diagram's image controls", () => {
       fit(eles?: unknown, padding?: number): void;
       getElementById(id: string): { style(k: string): string };
     };
-    // Laid out: the layout has shown the orphans, and fits nothing more of its own.
+    // Laid out: the layout has ended (the controls act on a placed drawing only) and shown the
+    // orphans, and fits nothing more of its own.
+    await waitFor(() => expect(screen.queryByTestId("erd-laying-out")).not.toBeInTheDocument());
     await waitFor(() => expect(cy.getElementById("t:5").style("display")).toBe("element"));
     // jsdom's canvas has no size, so a fit leaves no zoom to compare against: start from 1.
     cy.zoom(1);
