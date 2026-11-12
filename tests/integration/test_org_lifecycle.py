@@ -64,6 +64,7 @@ from provisa.core.schema_org import (
     user_attributes,
     user_directory,
     user_idp_attributes,
+    user_idp_roles,
 )
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
@@ -730,6 +731,10 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
             conn.execute(
                 insert(user_idp_attributes).values(user_id=who, name="email", value=f"{who}@x")
             )
+            # REQ-2219: the role claims his identity provider sent at sign-in.
+            conn.execute(
+                insert(user_idp_roles).values(user_id=who, role_id="analyst", domain_id="*")
+            )
         conn.execute(
             insert(query_audit_log).values(
                 user_id="bob",
@@ -797,9 +802,9 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
     assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(query_audit_log.c.user_id)) == [
         (tombstone,)
     ]
-    # Nothing in the org still says who he was (REQ-1312): his directory entry, attributes and
-    # provider claims are gone with him; alice's are untouched.
-    for table in (user_directory, user_attributes, user_idp_attributes):
+    # Nothing in the org still says who he was (REQ-1312): his directory entry, attributes,
+    # provider claims and provider role claims are gone with him; alice's are untouched.
+    for table in (user_directory, user_attributes, user_idp_attributes, user_idp_roles):
         assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(table.c.user_id)) == [("alice",)]
 
 
