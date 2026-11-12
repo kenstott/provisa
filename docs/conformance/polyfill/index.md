@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-17 of the grid's 17 features are native on PostgreSQL and left out.
+25 of the grid's 25 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-2 of the grid's 17 features are native on DuckDB and left out.
+5 of the grid's 25 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -63,6 +63,21 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NOT NULL OR $b IS NOT NULL THEN list_concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s zones each read now: abbreviation, offset and daylight flag.</code></pre></td><td></td><td></td><td></td></tr>
@@ -73,7 +88,7 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 
 ## [Trino](trino.md)
 
-3 of the grid's 17 features are native on Trino and left out.
+3 of the grid's 25 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -123,6 +138,34 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on trino</li></ul></td><td></td><td></td></tr>
@@ -130,7 +173,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Presto](presto.md)
 
-3 of the grid's 17 features are native on Presto and left out.
+3 of the grid's 25 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -180,6 +223,34 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on presto</li></ul></td><td></td><td></td></tr>
@@ -187,7 +258,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Athena](athena.md)
 
-3 of the grid's 17 features are native on Athena and left out.
+3 of the grid's 25 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -237,6 +308,34 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on athena</li></ul></td><td></td><td></td></tr>
@@ -244,7 +343,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [ClickHouse](clickhouse.md)
 
-1 of the grid's 17 features are native on ClickHouse and left out.
+1 of the grid's 25 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -300,6 +399,34 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -307,7 +434,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Snowflake](snowflake.md)
 
-3 of the grid's 17 features are native on Snowflake and left out.
+3 of the grid's 25 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -357,6 +484,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which snowflake neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on snowflake</li></ul></td><td></td><td></td></tr>
@@ -364,7 +519,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Databricks](databricks.md)
 
-3 of the grid's 17 features are native on Databricks and left out.
+3 of the grid's 25 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -414,6 +569,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which databricks neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on databricks</li></ul></td><td></td><td></td></tr>
@@ -421,7 +604,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [BigQuery](bigquery.md)
 
-3 of the grid's 17 features are native on BigQuery and left out.
+3 of the grid's 25 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -471,6 +654,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which bigquery neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on bigquery</li></ul></td><td></td><td></td></tr>
@@ -478,7 +689,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-3 of the grid's 17 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+3 of the grid's 25 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -528,6 +739,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which tsql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on tsql</li></ul></td><td></td><td></td></tr>
@@ -535,7 +774,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Redshift](redshift.md)
 
-3 of the grid's 17 features are native on Redshift and left out.
+3 of the grid's 25 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -585,6 +824,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which redshift neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on redshift</li></ul></td><td></td><td></td></tr>
@@ -592,7 +859,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [MySQL](mysql.md)
 
-3 of the grid's 17 features are native on MySQL and left out.
+3 of the grid's 25 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -642,6 +909,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which mysql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -649,7 +944,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SingleStore](singlestore.md)
 
-3 of the grid's 17 features are native on SingleStore and left out.
+3 of the grid's 25 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -699,6 +994,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which singlestore neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on singlestore</li></ul></td><td></td><td></td></tr>
@@ -706,7 +1029,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SQLite](sqlite.md)
 
-3 of the grid's 17 features are native on SQLite and left out.
+3 of the grid's 25 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -756,6 +1079,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which sqlite neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on sqlite</li></ul></td><td></td><td></td></tr>
@@ -763,7 +1114,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Oracle](oracle.md)
 
-3 of the grid's 17 features are native on Oracle and left out.
+3 of the grid's 25 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -813,6 +1164,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which oracle neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on oracle</li></ul></td><td></td><td></td></tr>
@@ -820,7 +1199,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Hive](hive.md)
 
-3 of the grid's 17 features are native on Hive and left out.
+3 of the grid's 25 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -870,6 +1249,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which hive neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on hive</li></ul></td><td></td><td></td></tr>
@@ -877,7 +1284,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Exasol](exasol.md)
 
-3 of the grid's 17 features are native on Exasol and left out.
+3 of the grid's 25 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -927,6 +1334,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which exasol neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on exasol</li></ul></td><td></td><td></td></tr>
@@ -934,7 +1369,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Druid](druid.md)
 
-3 of the grid's 17 features are native on Druid and left out.
+3 of the grid's 25 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -984,6 +1419,34 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which druid neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on druid</li></ul></td><td></td><td></td></tr>
