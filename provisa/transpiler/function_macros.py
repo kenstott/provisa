@@ -716,6 +716,22 @@ _MONEY: tuple[Macro, ...] = (
 )
 
 
+#: The array operators' forms on Trino, which has none of PostgreSQL's: arraycontains (``@>``) is
+#: NULL of a NULL array, false where the second holds a NULL (a NULL element is equal to nothing),
+#: and otherwise whether the first holds each of the second's elements (a NULL of the first is
+#: equal to none of them, so CONTAINS' NULL there is false).
+_ARRAY_OPERATORS_ON_TRINO: dict[str, Forms] = {
+    "arraycontains": {
+        _TRINO: "CASE WHEN a IS NULL OR b IS NULL THEN NULL "
+        "ELSE all_match(b, _x -> _x IS NOT NULL AND coalesce(contains(a, _x), FALSE)) END"
+    },
+}
+#: An array operator the semantic statement writes as PostgreSQL's operator, read on Trino as the
+#: row of the table it is: a range's, a jsonb's and a subtyped column's were written before the
+#: functions (transpile), so what is left is an array's.
+_ARRAY_OPERATOR_ROWS: dict[type[exp.Expr], str] = {exp.ArrayContainsAll: "arraycontains"}
+
+
 def _operator(form: pg_forms_types.Form) -> Macro:
     """A row of the generated rule: a form that raises on the dialects that can raise it (REQ-2171,
     AN ANSWER THAT DIFFERS IS REFUSED)."""
@@ -1611,7 +1627,11 @@ _ROWS: tuple[Macro, ...] = (
     *_DIGESTS,
     *map(_operator, pg_forms_types.OPERATORS),
     *(
-        Macro(form.name, tuple(form.params.split(", ")), operators={_DUCKDB: Pg(form.sql)})
+        Macro(
+            form.name,
+            tuple(form.params.split(", ")),
+            operators={_DUCKDB: Pg(form.sql), **_ARRAY_OPERATORS_ON_TRINO.get(form.name, {})},
+        )
         for form in pg_forms_types.ARRAY_OPERATORS
     ),
 )
@@ -2971,6 +2991,9 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         polyfilled = _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
+        if type(node) in _ARRAY_OPERATOR_ROWS and dialect in _TRINO:
+            row = _ARRAY_OPERATOR_ROWS[type(node)]
+            target = exp.Anonymous(this=row, expressions=[node.this, node.expression])
         call = _call(target)
         if call is None:
             return node

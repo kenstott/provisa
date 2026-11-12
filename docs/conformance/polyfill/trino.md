@@ -55,9 +55,9 @@ CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; cardinali
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
+$b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
+$a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on trino</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on trino</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on trino</li></ul></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
