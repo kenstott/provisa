@@ -290,6 +290,13 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
         '{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }, ' +
         '{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] })',
     );
+    // An item with a leading - is in neither: a term with no definition is not found in it.
+    expect(searched("-cust")).toContain(
+      "{ _not: { _or: [" +
+        '{ name: { ilike: "%cust%" } }, ' +
+        '{ _and: [{ definition: { is_null: false } }, { definition: { ilike: "%cust%" } }] }' +
+        "] } }",
+    );
     // A pattern's own wildcards are the text's: 50% matches "50%", not "50" and anything.
     expect(searched("50%_x")).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
   });
@@ -318,7 +325,9 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
   });
 
   it("counts what its root would read, by id with each term's domains", () => {
-    const q = squash(ontologyCountQuery(reader(), scope(["ontology"], { search: searchItems("cust") })));
+    const q = squash(
+      ontologyCountQuery(reader(), scope(["ontology"], { search: searchItems("cust") })),
+    );
     expect(q).toContain("query OntologyCount");
     expect(q).toContain('{ name: { ilike: "%cust%" } }');
     expect(q).toContain("{ id domains { domainId } }");

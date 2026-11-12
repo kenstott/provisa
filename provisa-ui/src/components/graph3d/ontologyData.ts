@@ -32,7 +32,7 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { MaskEntry } from "../../lib/masks";
-import type { SearchGroups, SearchItem } from "../../lib/searchItems";
+import { searchWhere } from "./ontologySearch";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
 import { TERM_STATUSES } from "./graphModel";
@@ -262,19 +262,6 @@ function related(s: QueryScope): Where {
       ...(s.layers.has("columns") ? [{ refs: inDomains(s.domains) ?? {} }] : []),
     ],
   };
-}
-
-/** A search item as an ILIKE pattern: anywhere in the text, its own % _ and \\ taken literally. */
-const anywhere = (item: string) => `%${item.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-/** REQ-2143: the terms the page's search matches, searchItems' rule -- every group, each by any
- * of its items, an item in the name or the definition whatever its case. */
-export const searchWhere = (groups: SearchGroups): Where | undefined =>
-  all(groups.map((g) => ({ _or: g.flatMap(itemWhere) })));
-
-function itemWhere(i: SearchItem): Where[] {
-  if (i.excluded) throw new Error(`the Ontology View's query cannot exclude ${i.text}`);
-  return [{ name: { ilike: anywhere(i.text) } }, { definition: { ilike: anywhere(i.text) } }];
 }
 
 const TERM_FIELDS = [
