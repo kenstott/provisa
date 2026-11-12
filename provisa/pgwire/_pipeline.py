@@ -541,7 +541,7 @@ async def _optimize_and_route(
         decision = RouteDecision(
             route=Route.DIRECT,
             source_id="provisa-admin",
-            dialect=state.source_dialects.get("provisa-admin", "postgres"),
+            dialect=state.source_dialects["provisa-admin"],
             reason="a catalog statement reads the control plane",
         )
     if "provisa-admin" in routed and (
