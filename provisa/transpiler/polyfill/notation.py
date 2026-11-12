@@ -73,6 +73,16 @@ class Rewrite:
         return doc.splitlines()[0] if doc else ""
 
 
+class Refused(Exception):  # noqa: N818 -- a refusal, as Refusal names what it carries
+    """A rewrite function's refusal of a call its rule matched, where what refuses it is a value
+    and not the call's shape: the client receives ``refusal``, which the row lists as a
+    limitation."""
+
+    def __init__(self, refusal: Refusal) -> None:
+        super().__init__(refusal.message)
+        self.refusal = refusal
+
+
 #: A replacement: an engine's SQL with the pattern's holes, a refusal, or a rewrite function.
 Form = str | Refusal | Rewrite
 

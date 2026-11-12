@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-17 of the grid's 17 features are native on PostgreSQL and left out.
+31 of the grid's 31 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-2 of the grid's 17 features are native on DuckDB and left out.
+6 of the grid's 31 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -38,6 +38,15 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp
 CASE WHEN $dims IS NULL THEN error(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27;) WHEN len($dims) = 1 THEN list_transform(range($dims[1]), _i -&gt; $v) ELSE error(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27;) END</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN error(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27;) WHEN len($dims) = 1 AND list_filter($lower_bounds, _b -&gt; _b &lt;&gt; 1) = [] THEN list_transform(range($dims[1]), _i -&gt; $v) ELSE error(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27;) END</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CAST(list_filter(range(1, len($a) + 1), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS INTEGER[])</code></pre></td><td></td><td></td><td></td></tr>
@@ -69,11 +78,86 @@ function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s
 <tr><td><strong>timezone</strong><br>A value at a zone; a zone written as a POSIX offset (&#x27;+05:30&#x27;) is that many hours west of UTC.</td><td><pre><code>timezone($z::text, $v)
 =&gt;
 function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text PostgreSQL reads as a POSIX zone of a fixed offset, as the ICU zone of it.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-3 of the grid's 17 features are native on Trino and left out.
+3 of the grid's 31 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -98,6 +182,17 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN lengt
 CASE WHEN $dims IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 AND all_match($lower_bounds, _b -&gt; _b = 1) THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -126,11 +221,106 @@ CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</co
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
+=&gt;
+function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-3 of the grid's 17 features are native on Presto and left out.
+3 of the grid's 31 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -155,6 +345,17 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN lengt
 CASE WHEN $dims IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 AND all_match($lower_bounds, _b -&gt; _b = 1) THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -183,11 +384,106 @@ CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</co
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
+=&gt;
+function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-3 of the grid's 17 features are native on Athena and left out.
+3 of the grid's 31 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -212,6 +508,17 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN cardinality($a) &gt; 0 THEN lengt
 CASE WHEN $dims IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 CASE WHEN $dims IS NULL OR $lower_bounds IS NULL THEN fail(&#x27;postgresql-error 22004: &#x27; || &#x27;dimension array or low bound array cannot be null&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) WHEN cardinality($dims) = 1 AND all_match($lower_bounds, _b -&gt; _b = 1) THEN repeat($v, $dims[1]) ELSE fail(&#x27;postgresql-error 0A000: &#x27; || &#x27;array_fill does not read this value&#x27; || &#x27; &lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -240,11 +547,106 @@ CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</co
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
+=&gt;
+function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-1 of the grid's 17 features are native on ClickHouse and left out.
+1 of the grid's 31 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -269,6 +671,15 @@ CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN length($a) &gt; 0 THEN countSubst
 arrayWithConstant(throwIf(length($dims) &lt;&gt; 1, &#x27;postgresql-error 0A000: array_fill does not read this value &lt;end of postgresql-error&gt;&#x27;) + assumeNotNull($dims[1]), $v)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 arrayWithConstant(throwIf(length($dims) &lt;&gt; 1 OR NOT arrayAll(_b -&gt; _b = 1, $lower_bounds), &#x27;postgresql-error 0A000: array_fill does not read this value &lt;end of postgresql-error&gt;&#x27;) + assumeNotNull($dims[1]), $v)</code></pre></td><td><ul><li>Only one dimension with a lower bound of 1: any other shape is refused. <code>0A000</code> array_fill does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 arrayMap(_p -&gt; toInt32(_p.2), arrayFilter(_p -&gt; ((_p.1 IS NULL AND $v IS NULL) OR _p.1 = $v), arrayZip($a, arrayEnumerate($a))))</code></pre></td><td></td><td></td><td></td></tr>
@@ -303,11 +714,106 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
+=&gt;
+function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
+=&gt;
+CASE WHEN $v IS NULL THEN NULL ELSE if(throwIf(coalesce(NOT match($v, &#x27;\\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\\z&#x27;), false), &#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, arrayStringConcat(arrayFilter(_t -&gt; NOT has($x, replace(replace(extract(_t, &#x27;\\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\\\&#x27;, &#x27;\\&#x27;)), extractAll(ifNull($v, &#x27;&#x27;), &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;)), &#x27; &#x27;), NULL) END</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-3 of the grid's 17 features are native on Snowflake and left out.
+5 of the grid's 31 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -332,6 +838,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on snowflake</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on snowflake</li></ul></td><td></td><td></td></tr>
@@ -360,11 +875,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which snowflake neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-3 of the grid's 17 features are native on Databricks and left out.
+5 of the grid's 31 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -389,6 +993,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on databricks</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on databricks</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on databricks</li></ul></td><td></td><td></td></tr>
@@ -417,11 +1030,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which databricks neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-3 of the grid's 17 features are native on BigQuery and left out.
+5 of the grid's 31 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -446,6 +1148,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on bigquery</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on bigquery</li></ul></td><td></td><td></td></tr>
@@ -474,11 +1185,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which bigquery neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-3 of the grid's 17 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+5 of the grid's 31 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -503,6 +1303,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on tsql</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on tsql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on tsql</li></ul></td><td></td><td></td></tr>
@@ -531,11 +1340,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which tsql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-3 of the grid's 17 features are native on Redshift and left out.
+5 of the grid's 31 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -560,6 +1458,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on redshift</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on redshift</li></ul></td><td></td><td></td></tr>
@@ -588,11 +1495,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which redshift neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-3 of the grid's 17 features are native on MySQL and left out.
+5 of the grid's 31 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -617,6 +1613,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on mysql</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -645,11 +1650,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which mysql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-3 of the grid's 17 features are native on SingleStore and left out.
+5 of the grid's 31 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -674,6 +1768,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on singlestore</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on singlestore</li></ul></td><td></td><td></td></tr>
@@ -702,11 +1805,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which singlestore neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-3 of the grid's 17 features are native on SQLite and left out.
+5 of the grid's 31 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -731,6 +1923,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on sqlite</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on sqlite</li></ul></td><td></td><td></td></tr>
@@ -759,11 +1960,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which sqlite neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-3 of the grid's 17 features are native on Oracle and left out.
+5 of the grid's 31 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -788,6 +2078,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on oracle</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on oracle</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on oracle</li></ul></td><td></td><td></td></tr>
@@ -816,11 +2115,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which oracle neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-3 of the grid's 17 features are native on Hive and left out.
+5 of the grid's 31 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -845,6 +2233,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on hive</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on hive</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on hive</li></ul></td><td></td><td></td></tr>
@@ -873,11 +2270,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which hive neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-3 of the grid's 17 features are native on Exasol and left out.
+5 of the grid's 31 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -902,6 +2388,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on exasol</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on exasol</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on exasol</li></ul></td><td></td><td></td></tr>
@@ -930,11 +2425,100 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which exasol neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-3 of the grid's 17 features are native on Druid and left out.
+5 of the grid's 31 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -959,6 +2543,15 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on druid</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
+=&gt;
+$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -987,4 +2580,93 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which druid neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_in</strong><br>interval_in of a NULL: PostgreSQL&#x27;s NULL of interval; of a constant, its interval.</td><td><pre><code>interval_in(NULL, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, NULL, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;default&quot;)
+=&gt;
+&#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;C&quot;)
+=&gt;
+&#x27;&quot;C&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;POSIX&quot;)
+=&gt;
+&#x27;&quot;POSIX&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;ucs_basic&quot;)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE ucs_basic)
+=&gt;
+&#x27;ucs_basic&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;unicode&quot;)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE unicode)
+=&gt;
+&#x27;unicode&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE &quot;pg_c_utf8&quot;)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::text COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v::name COLLATE pg_c_utf8)
+=&gt;
+&#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>

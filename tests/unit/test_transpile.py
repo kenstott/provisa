@@ -571,7 +571,10 @@ def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
     # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1. The 'g' flag is every match,
     # which is what Trino's own replaces.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
-    assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') AS regexp_replace FROM t"
+    )
 
 
 def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
@@ -580,7 +583,7 @@ def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
     assert transpile_to_trino(pg) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
-        "'${before}$3-$2${after}') FROM t"
+        "'${before}$3-$2${after}') AS regexp_replace FROM t"
     )
 
 
@@ -589,7 +592,7 @@ def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
     assert transpile_to_trino(pg) == (
         r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
-        "'${before}[]${after}') FROM t"
+        "'${before}[]${after}') AS regexp_replace FROM t"
     )
 
 
@@ -598,13 +601,16 @@ def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
     assert transpile_to_trino(pg) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
-        r"'${before}$2\$\\1${after}') FROM t"
+        r"'${before}$2\$\\1${after}') AS regexp_replace FROM t"
     )
 
 
 def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
-    assert transpile_to_trino(pg) == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') AS regexp_replace FROM t"
+    )
 
 
 @pytest.mark.parametrize(
