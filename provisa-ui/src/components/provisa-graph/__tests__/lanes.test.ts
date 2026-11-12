@@ -31,6 +31,7 @@ import type { GraphData } from "../../graph3d/graphModel";
 import { NODE_MAX_WIDTH, TEXT_LEFT, TEXT_RIGHT, graphElements, textWidth } from "../model";
 import { graphStylesheet } from "../stylesheet";
 import { SIZE, graphTokens } from "../tokens";
+import { GLOSSARY_REL_TYPES } from "../../../api/glossary";
 import { besideRoutes, runLanes, LANE_GAP, NODE_GAP, type LanesOptions } from "../lanes";
 import type { Core } from "../core";
 import type { CyCanvas } from "../cyCanvas";
@@ -399,6 +400,175 @@ describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () =
         for (const t of terms) expect(path[1].x > t.b.x2, `${id} clear of ${t.id}`).toBe(true);
       }
     });
+});
+
+/** J1227: a term page's graph, as the maintainer's 2026-11-12 screenshots drew it: ``a`` joined to
+ * ``b`` by a line named ``label``, ``b`` bound to a column. */
+function twoTerms(label: string): GraphData {
+  return {
+    nodes: [
+      { id: "term:test", type: "term", label: "test" },
+      { id: "term:breed", type: "term", label: "animal breed name" },
+      { id: "t:animals", type: "table", label: "shelter.animals" },
+      {
+        id: "c:animals.breed",
+        type: "column",
+        label: "shelter.animals.breed",
+        parent: "t:animals",
+      },
+    ],
+    edges: [
+      { id: "term_edge:test>breed", a: "term:test", b: "term:breed", kind: "term_edge", label },
+      { id: "term_binding:breed", a: "term:breed", b: "c:animals.breed", kind: "term_binding" },
+    ],
+  };
+}
+
+/** Three terms in a PART_OF chain (test3 of test2 of test1), the middle one bound to a column. */
+function partOfChain(): GraphData {
+  const g = twoTerms("PART_OF");
+  return {
+    nodes: [
+      { id: "term:test1", type: "term", label: "test1" },
+      { id: "term:test2", type: "term", label: "test2" },
+      { id: "term:test3", type: "term", label: "test3" },
+      ...g.nodes.filter((n) => !n.id.startsWith("term:")),
+    ],
+    edges: [
+      {
+        id: "term_edge:3>2",
+        a: "term:test3",
+        b: "term:test2",
+        kind: "term_edge",
+        label: "PART_OF",
+      },
+      {
+        id: "term_edge:2>1",
+        a: "term:test2",
+        b: "term:test1",
+        kind: "term_edge",
+        label: "PART_OF",
+      },
+      { id: "term_binding:2", a: "term:test2", b: "c:animals.breed", kind: "term_binding" },
+    ],
+  };
+}
+
+/** A hub term joined to one term by each edge type a glossary has (a comb on one track), and a
+ * chain under the first of them (stacked segments). */
+function everyType(): GraphData {
+  const g = twoTerms("RELATED_TO");
+  const nodes: GraphData["nodes"] = [
+    { id: "term:hub", type: "term", label: "hub" },
+    ...g.nodes.filter((n) => !n.id.startsWith("term:")),
+  ];
+  const edges: GraphData["edges"] = [
+    { id: "term_binding:hub", a: "term:hub", b: "c:animals.breed", kind: "term_binding" },
+  ];
+  GLOSSARY_REL_TYPES.forEach((type, i) => {
+    nodes.push({ id: `term:k${i}`, type: "term", label: `kin ${i}` });
+    edges.push({
+      id: `term_edge:k${i}`,
+      a: `term:k${i}`,
+      b: "term:hub",
+      kind: "term_edge",
+      label: type,
+    });
+  });
+  nodes.push({ id: "term:deep", type: "term", label: "deep" });
+  edges.push({
+    id: "term_edge:deep",
+    a: "term:deep",
+    b: "term:k0",
+    kind: "term_edge",
+    label: "PREFERRED_TERM_FOR",
+  });
+  return { nodes, edges };
+}
+
+/** The box each line beside the term lane draws its name in: centred on its anchor (cytoscape's
+ * middle of a two-bend segments edge, the middle of its run down the track) moved by its text
+ * margins, as wide as its text and as tall as its font, its background's padding round both. */
+function besideLabels(cy: Core) {
+  const routes = besideRoutes(cy, "term");
+  const out: { id: string; text: string; b: ReturnType<typeof box> }[] = [];
+  routes.forEach((path, id) => {
+    const e = cy.getElementById(id);
+    const text = String(e.data("label") ?? "");
+    if (text === "") return;
+    const pad = px(e.style("text-background-padding"));
+    const size = px(e.style("font-size"));
+    const x = (path[1].x + path[2].x) / 2 + px(e.style("text-margin-x"));
+    const y = (path[1].y + path[2].y) / 2 + px(e.style("text-margin-y"));
+    const w = textWidth(text, size) + 2 * pad;
+    const h = size * 1.25 + 2 * pad;
+    out.push({ id, text, b: { x1: x - w / 2, x2: x + w / 2, y1: y - h / 2, y2: y + h / 2 } });
+  });
+  return out;
+}
+
+/** A style's length in px. */
+const px = (v: unknown) => parseFloat(String(v));
+
+const meets = (p: ReturnType<typeof box>, q: ReturnType<typeof box>) =>
+  p.x1 < q.x2 && q.x1 < p.x2 && p.y1 < q.y2 && q.y1 < p.y2;
+
+describe("the name of a line beside the term lane (J1227)", () => {
+  const fixtures: Record<string, () => GraphData> = {
+    relatedTo: () => twoTerms("RELATED_TO"),
+    preferredTermFor: () => twoTerms("PREFERRED_TERM_FOR"),
+    partOfChain,
+    everyType,
+    petHealth: petHealthOntology,
+    petStore: petStoreOntology,
+  };
+  for (const [name, fixture] of Object.entries(fixtures))
+    it(`is drawn clear of every node, of every other name, and inside the term lane (${name})`, async () => {
+      const { cy } = await laidOut(fixture());
+      const labels = besideLabels(cy);
+      const nodes = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => ({
+        id: n.id(),
+        b: box(cy, n.id()),
+      }));
+      const lane = box(cy, "lane:term");
+      const starts = labels.map((l) => {
+        const path = besideRoutes(cy, "term").get(l.id) as At[];
+        return {
+          id: l.id,
+          track: path[1].x,
+          lo: Math.min(path[1].y, path[2].y),
+          hi: Math.max(path[1].y, path[2].y),
+        };
+      });
+      cy.destroy();
+      expect(labels.length, "lines beside the lane with names").toBeGreaterThan(0);
+      for (const l of labels) {
+        for (const n of nodes)
+          expect(meets(l.b, n.b), `${l.text} (${l.id}) over ${n.id}`).toBe(false);
+        expect(
+          l.b.x1 >= lane.x1 && l.b.x2 <= lane.x2 && l.b.y1 >= lane.y1 && l.b.y2 <= lane.y2,
+          `${l.text} (${l.id}) inside the term lane's box`,
+        ).toBe(true);
+        // On the outer side of its own track, beside its run down it.
+        const s = starts.find((x) => x.id === l.id)!;
+        expect(l.b.x1, `${l.id} right of its track`).toBeGreaterThan(s.track);
+        const mid = (l.b.y1 + l.b.y2) / 2;
+        expect(mid >= s.lo - 1e-9 && mid <= s.hi + 1e-9, `${l.id} beside its run`).toBe(true);
+      }
+      for (let i = 0; i < labels.length; i++)
+        for (let j = i + 1; j < labels.length; j++)
+          expect(meets(labels[i].b, labels[j].b), `${labels[i].id} | ${labels[j].id}`).toBe(false);
+    });
+
+  it("keeps the names of lines that do not run beside the lane where they were", async () => {
+    const { cy } = await laidOut(petHealthOntology());
+    const routes = besideRoutes(cy, "term");
+    const others = cy.edges().filter((e) => !routes.has(e.id()));
+    const margins = others.map((e) => px(e.style("text-margin-x")));
+    cy.destroy();
+    expect(margins.length).toBeGreaterThan(0);
+    for (const m of margins) expect(m).toBe(0);
+  });
 });
 
 describe("the lanes preset on the pet-store Ontology graph", () => {

@@ -157,10 +157,15 @@ titled the same way.
   (nearest the terms they link to, else below the rest); none takes a row another has taken, so a
   block moves round the terms already level. Every term has its own row, `NODE_GAP` apart. The
   lines between two terms (rank lines and the arcs laid over them) run beside the lane, on its
-  right, as right-angled segments, never through a term's row (`besideRoutes`). Crossings that no
-  placement removes are accepted. The same graph is always drawn the same way. Each lane's box
-  bounds its own nodes (and the term lane's lines beside it), its title above them, the boxes
-  `LANE_GAP` apart.
+  right, as right-angled segments, never through a term's row (`besideRoutes`). Each such line's
+  name (J1227) is drawn right of its run down its track, growing away from the lane, centred on
+  the middle of that run (`besideNames`); a name never lies on a node, another name or any line's
+  route: it moves along its own run a name's height at a time (nearest the middle first, above
+  before below) to the first clear place, and where its run has none it moves right past what it
+  meets. Names are placed from the track nearest the lane outward, each track top to bottom. Other
+  lines keep the generic edge label. Crossings that no placement removes are accepted. The same
+  graph is always drawn the same way. Each lane's box bounds its own nodes (and the term lane's
+  lines beside it and their names), its title above them, the boxes `LANE_GAP` apart.
 - `force`: fCoSE.
 
 ## Owned by the component
