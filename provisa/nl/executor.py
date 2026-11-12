@@ -25,7 +25,9 @@ import re
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from provisa.compiler.sql_types import CompiledQuery
     from provisa.executor.redirect import Delivery
+    from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
 
@@ -135,10 +137,10 @@ async def _execute_cypher(
 
 async def _compile_and_execute_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> list[tuple]:
+) -> "list[tuple[CompiledQuery, QueryResult]]":
     """Compile ``query`` and run each root field through the ONE compiled pipeline
-    (``_govern_and_route_compiled`` → ``_execute_plan``), returning the raw (compiled_query, result,
-    nodes_result) tuples — the step both ``_execute_graphql`` (GraphQL-shaped merge) and the
+    (``_govern_and_route_compiled`` → ``_execute_plan``), returning the raw (compiled_query, result)
+    pairs — the step both ``_execute_graphql`` (GraphQL-shaped merge) and the
     gRPC/JSON:API/OpenAPI aggregate branches (protocol-shaped envelopes, REQ-1359) build on.
     Governance, API-table hydration, the response cache and the terminal are the pipeline's, exactly
     as for REST and JSON:API reading the same compiled SQL."""
@@ -158,7 +160,7 @@ async def _compile_and_execute_graphql(
     if not compiled_queries:
         raise RuntimeError("No query fields found")
 
-    out: list[tuple] = []
+    out: list[tuple[CompiledQuery, QueryResult]] = []
     for cq in compiled_queries:
         plan = await _govern_and_route_compiled(
             cq.sql,
@@ -181,7 +183,7 @@ async def _compile_and_execute_graphql(
 
 async def _run_single_compiled_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> tuple:
+) -> "tuple[CompiledQuery, QueryResult]":
     """The single-root-field case (gRPC/JSON:API/OpenAPI aggregate/group-by NL query text always
     targets exactly one root field) — returns (compiled_query, result)."""
     return (await _compile_and_execute_graphql(query, role, app_state, deliver))[0]
@@ -301,7 +303,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
     if lowered is None:
         raise RuntimeError(f"No table matches gRPC type: {type_name}")
     graphql_text, _no_variables = lowered  # no filter or parameter is passed
-    _cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+    _cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
     columns = list(result.column_names)
     return {"columns": columns, "rows": [dict(zip(columns, row)) for row in result.rows]}
 
