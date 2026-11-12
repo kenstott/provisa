@@ -60,6 +60,7 @@ _ANONYMOUS = "anonymous"
 GRANTING = frozenset({Capability.ASSIGN_ENTITLEMENTS.value, Capability.USER_MANAGEMENT.value})
 #: Why an offer is listed for review.
 REVIEW_PROFILER_GONE = "a dataset of this synthetic offer has no profiler"
+REVIEW_FAKE_GONE = "a column of a dataset of this synthetic offer has no fake"
 
 
 class BidBody(BaseModel):
@@ -573,16 +574,24 @@ def _grants(state: Any) -> Any:
     return grants
 
 
+#: The refusals of a synthetic offer's acceptance that list it for review, and why.
+_SYNTHETIC_REVIEWS = {
+    "synthetic_needs_profiler": REVIEW_PROFILER_GONE,
+    "synthetic_needs_fake": REVIEW_FAKE_GONE,
+}
+
+
 async def _decide(conn: Any, state: Any, decision: offer_hooks.Decision, may: Any) -> dict:
     """Apply ``decision`` through the decision hook, in one transaction."""
     try:
         async with conn.transaction():
             row = await offer_hooks.decide(conn, decision, may_grant=may, grants=_grants(state))
     except OfferRefused as refused:
-        if refused.code == "synthetic_needs_profiler":
+        why = _SYNTHETIC_REVIEWS.get(refused.code)
+        if why is not None:
             held = await offers.require_request(conn, decision.request_id)
             if held["offer_id"] is not None:
-                await offers.set_review(conn, held["offer_id"], REVIEW_PROFILER_GONE)
+                await offers.set_review(conn, held["offer_id"], why)
         raise _refused(refused) from refused
     await _reload_held(conn, state)
     return _bid_view(row)
