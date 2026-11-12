@@ -42,10 +42,10 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
+from provisa.core.schema_org import roles, user_role_assignments
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The app serves 'root' as its own org, re-pointed and bound by the harness (REQ-1266).
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
@@ -81,9 +81,7 @@ def _prepare_sync():
 
         # The bootstrap slot starts UNCLAIMED — claiming is the explicit POST under test (REQ-1290).
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         for role_id, caps in _ROLE_CAPS.items():
             conn.execute(insert(roles).values(id=role_id, capabilities=caps))
     return engine

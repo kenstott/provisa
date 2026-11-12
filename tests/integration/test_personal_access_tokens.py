@@ -37,10 +37,8 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
-from provisa.core.schema_org import user_directory
-from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The app serves acme as its own org, so a request acting in acme binds the runtime the boot
 # built rather than building one (this app is assembled from its routers; it has no boot).
@@ -67,9 +65,7 @@ def _prepare_sync():
         conn.execute(text(f"CREATE SCHEMA {_ADMIN_SCHEMA}"))
         conn.execute(text(f"CREATE SCHEMA {_TENANT_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         conn.execute(insert(orgs).values(id=_ORG, name="Acme", created_by="super"))
