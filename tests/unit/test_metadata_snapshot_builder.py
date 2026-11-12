@@ -31,6 +31,7 @@ from provisa.core.models import (
     Domain,
     ProvisaConfig,
     Relationship,
+    RLSRule,
     Role,
     Source,
     SourceType,
@@ -338,6 +339,68 @@ def test_unknown_relationship_table_is_refused():
         build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert exc.value.name == "ghost"
     assert "dangling" in str(exc.value)
+
+
+def _naming_a_seeded_table(**kwargs) -> ProvisaConfig:
+    """A config whose relationship and row rule name ``meta_tables``, a seeded table: the store
+    holds it, the export model leaves it out of ``tables`` and lists its names as seeded
+    (REQ-1634), as publishing._model_for_export builds it."""
+    config = _config(
+        tables=[_table(table_name="orders")],
+        relationships=[
+            Relationship(
+                id="meta-tables-to-columns",
+                source_table_id="meta_tables",
+                target_table_id="meta_columns",
+                source_column="id",
+                target_column="table_id",
+                cardinality=Cardinality.one_to_many,
+            ),
+            Relationship(
+                id="orders-to-meta",
+                source_table_id="orders",
+                target_table_id="meta_tables",
+                source_column="id",
+                target_column="id",
+                cardinality=Cardinality.many_to_one,
+            ),
+        ],
+        rls_rules=[RLSRule(table_id="meta_tables", role_id="analyst", filter="1 = 1")],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
+        **kwargs,
+    )
+    config._seeded_table_names = frozenset({"meta_tables", "meta_columns"})
+    return config
+
+
+def test_a_relationship_or_row_rule_naming_a_seeded_table_publishes_nothing():
+    """A seeded table publishes nowhere, so an edge or a rule on it has nothing to anchor to and
+    is left out; the snapshot is still built (REQ-1634)."""
+    snapshot = build_snapshot(
+        _naming_a_seeded_table(), org_id="acme", dialect="postgres", contexts={}
+    )
+
+    assert snapshot.relationships == []
+    assert {tag.asset.parts[:3] for tag in snapshot.governance_tags} <= {("wh", "public", "orders")}
+
+
+def test_an_unknown_table_beside_a_seeded_one_is_still_refused():
+    """Knowing the seeded names excuses those names only."""
+    config = _naming_a_seeded_table()
+    config.relationships.append(
+        Relationship(
+            id="dangling",
+            source_table_id="orders",
+            target_table_id="ghost",
+            source_column="id",
+            target_column="id",
+            cardinality=Cardinality.many_to_one,
+        )
+    )
+
+    with pytest.raises(UnknownTableError) as exc:
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    assert exc.value.name == "ghost"
 
 
 def test_ambiguous_bare_table_name_is_refused_not_guessed():

@@ -70,6 +70,7 @@ from provisa.core.schema_org import roles, user_role_assignments
 from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.served_config import served_config
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
@@ -87,17 +88,7 @@ _ORG_SCHEMAS = {
     "sandbox": "test_orglife_sandbox",
 }
 
-# user_directory and user_idp_attributes: every authenticated request mirrors the caller's identity,
-# and what its identity provider said, into the bound org's tenant plane (REQ-1439, REQ-1383) before
-# it is handled (AuthMiddleware._upsert_profile).
-_TENANT_TABLES = [
-    roles,
-    user_role_assignments,
-    admin_audit_log,
-    user_directory,
-    user_attributes,
-    user_idp_attributes,
-]
+_TENANT_TABLES = [*SIGN_IN_TABLES, admin_audit_log, user_attributes]
 
 
 def _lay_out_query_audit_log(conn) -> None:

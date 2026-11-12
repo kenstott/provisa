@@ -35,9 +35,9 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
+from provisa.core.schema_org import roles
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -95,9 +95,7 @@ def _prepare_sync():
         )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         conn.execute(insert(roles).values(id="org_admin"))
     return engine
 
