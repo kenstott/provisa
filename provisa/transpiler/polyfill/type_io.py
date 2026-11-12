@@ -16,9 +16,8 @@ interval, jsonb or xid8. Only DuckDB holds a NULL that pgwire describes as that 
 before the grid (provisa.transpiler.pg_forms_type_io folds a strict call of a NULL). Any other
 dialect's NULL would be described as text, an answer that differs, so the call is refused by name,
 with the message a call of a value it does not read gets. interval_in of a constant text is folded to
-the text interval_out writes, which pgwire describes as interval (provisa.pgwire.cast_types); one
-the fold leaves (infinity, which pgwire has no interval value of, or a text that is no constant) is
-refused so too."""
+the text interval_out writes, which pgwire describes as interval (provisa.pgwire.cast_types);
+infinity, which pgwire has no interval value of, is refused so too."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -72,9 +71,10 @@ INTERVAL_IN = Feature(
                 "interval_in(NULL, $o, $t)",
                 "interval_in($v, NULL, $t)",
                 "interval_in($v, $o, NULL)",
-                # Any other call the fold leaves (provisa.transpiler.pg_forms_type_io): a text
-                # that is no constant, and infinity, which pgwire has no interval value of.
-                "interval_in($v, $o, $t)",
+                # infinity, which pgwire has no interval value of: the fold leaves the call of the
+                # text it reads as (provisa.transpiler.pg_forms_type_io).
+                "interval_in('infinity', $o, $t)",
+                "interval_in('-infinity', $o, $t)",
             )
         ),
         limitations={
@@ -84,8 +84,8 @@ INTERVAL_IN = Feature(
                     _INTERVAL_IN_REFUSED,
                 ),
                 Limitation(
-                    "A finite constant is folded to its text, which pgwire describes as interval; "
-                    "infinity, and a text that is no constant, are refused.",
+                    "A constant is folded to its text, which pgwire describes as interval; "
+                    "infinity, which pgwire has no interval value of, is refused.",
                     _INTERVAL_IN_REFUSED,
                 ),
             )

@@ -1318,11 +1318,6 @@ _ROWS: tuple[Macro, ...] = (
         "THEN uuid_extract_version(value) END",
     ),
     _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
-    _macro(
-        "array_position",
-        "a, v, start",
-        "list_position(a[greatest(start, 1):], v) + greatest(start, 1) - 1",
-    ),
     _pg("like", "a, b", _LIKE, _NO_CASE_SENSITIVE_LIKE),
     _pg("notlike", "a, b", f"NOT {_LIKE}", _NO_CASE_SENSITIVE_LIKE),
     _pg("textcat", "a, b", "CAST(a || b AS TEXT)"),
@@ -2540,9 +2535,6 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
         return "array_remove", [node.this, node.expression]
-    if isinstance(node, exp.ArrayPosition) and isinstance(node.args.get("zero_based"), exp.Expr):
-        if not isinstance(node.args["zero_based"], exp.Boolean):  # sqlglot's reading of its start
-            return "array_position", [node.this, node.expression, node.args["zero_based"]]
     if isinstance(node, exp.Substring) and not _counts_from_the_first(node.args.get("start")):
         length = node.args.get("length")
         return "substr", [node.this, node.args["start"], *([] if length is None else [length])]

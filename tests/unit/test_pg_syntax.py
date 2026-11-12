@@ -157,8 +157,8 @@ def test_negative_inner_product_reads_and_writes_back() -> None:
     [
         ("postgres", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1', 'g') FROM t"),
         ("duckdb", "SELECT pg_catalog.regexp_replace(s, 'a(b)', '\\1', 'g') FROM t"),
-        ("trino", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1') FROM t"),
-        ("clickhouse", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\\\1') FROM t"),
+        ("trino", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1') AS regexp_replace FROM t"),
+        ("clickhouse", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\\\1') AS regexp_replace FROM t"),
     ],
 )
 def test_pg_catalog_regexp_replace_is_the_bare_call(dialect: str, written: str) -> None:

@@ -639,6 +639,17 @@ ARRAY_POSITION = Feature(
                     "cardinality($a)), _i -> $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)"
                 ),
             ),
+            # From a start (sqlglot reads it as ArrayPosition's zero_based): DuckDB's from its
+            # slice; any other dialect refuses it by name.
+            Rule(
+                "array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)",
+                {
+                    **_no_form_on(
+                        "array_position", tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb"})
+                    ),
+                    "duckdb": "list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1",
+                },
+            ),
         )
     ),
 )

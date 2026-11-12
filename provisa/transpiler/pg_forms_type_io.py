@@ -1703,7 +1703,10 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
         folded = _folded(name, arguments)
         if folded is not None and name == "interval_in":
             if _infinite_unheld(folded, dialect):
-                return node  # left for the polyfill grid's row to refuse (polyfill.type_io)
+                # pgwire has no interval value of it: the call of the text it reads as, for the
+                # polyfill grid's row to refuse by name (polyfill.type_io).
+                target.set("expressions", [folded, *arguments[1:]])
+                return node
             folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded

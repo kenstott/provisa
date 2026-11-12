@@ -13,7 +13,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [DuckDB](duckdb.md)
 
-7 of the grid's 31 features are native on DuckDB and left out.
+6 of the grid's 31 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -44,6 +44,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CAST(list_filter(range(1, len($a) + 1), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS INTEGER[])</code></pre></td><td></td><td></td><td></td></tr>
@@ -187,7 +190,9 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -237,9 +242,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -346,7 +353,9 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -396,9 +405,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -505,7 +516,9 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -555,9 +568,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -631,7 +646,7 @@ CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like
 
 ## [ClickHouse](clickhouse.md)
 
-2 of the grid's 31 features are native on ClickHouse and left out.
+1 of the grid's 31 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -662,6 +677,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 arrayMap(_p -&gt; toInt32(_p.2), arrayFilter(_p -&gt; ((_p.1 IS NULL AND $v IS NULL) OR _p.1 = $v), arrayZip($a, arrayEnumerate($a))))</code></pre></td><td></td><td></td><td></td></tr>
@@ -717,9 +735,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -793,7 +813,7 @@ CASE WHEN $v IS NULL THEN NULL ELSE if(throwIf(coalesce(NOT match($v, &#x27;\\A(
 
 ## [Snowflake](snowflake.md)
 
-6 of the grid's 31 features are native on Snowflake and left out.
+5 of the grid's 31 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -824,6 +844,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on snowflake</li></ul></td><td></td><td></td></tr>
@@ -873,9 +896,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -943,7 +968,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Databricks](databricks.md)
 
-6 of the grid's 31 features are native on Databricks and left out.
+5 of the grid's 31 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -974,6 +999,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on databricks</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on databricks</li></ul></td><td></td><td></td></tr>
@@ -1023,9 +1051,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1093,7 +1123,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [BigQuery](bigquery.md)
 
-6 of the grid's 31 features are native on BigQuery and left out.
+5 of the grid's 31 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1124,6 +1154,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on bigquery</li></ul></td><td></td><td></td></tr>
@@ -1173,9 +1206,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1243,7 +1278,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-6 of the grid's 31 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+5 of the grid's 31 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1274,6 +1309,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on tsql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on tsql</li></ul></td><td></td><td></td></tr>
@@ -1323,9 +1361,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1393,7 +1433,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Redshift](redshift.md)
 
-6 of the grid's 31 features are native on Redshift and left out.
+5 of the grid's 31 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1424,6 +1464,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on redshift</li></ul></td><td></td><td></td></tr>
@@ -1473,9 +1516,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1543,7 +1588,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [MySQL](mysql.md)
 
-6 of the grid's 31 features are native on MySQL and left out.
+5 of the grid's 31 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1574,6 +1619,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -1623,9 +1671,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1693,7 +1743,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SingleStore](singlestore.md)
 
-6 of the grid's 31 features are native on SingleStore and left out.
+5 of the grid's 31 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1724,6 +1774,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on singlestore</li></ul></td><td></td><td></td></tr>
@@ -1773,9 +1826,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1843,7 +1898,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SQLite](sqlite.md)
 
-6 of the grid's 31 features are native on SQLite and left out.
+5 of the grid's 31 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1874,6 +1929,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on sqlite</li></ul></td><td></td><td></td></tr>
@@ -1923,9 +1981,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -1993,7 +2053,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Oracle](oracle.md)
 
-6 of the grid's 31 features are native on Oracle and left out.
+5 of the grid's 31 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2024,6 +2084,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on oracle</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on oracle</li></ul></td><td></td><td></td></tr>
@@ -2073,9 +2136,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2143,7 +2208,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Hive](hive.md)
 
-6 of the grid's 31 features are native on Hive and left out.
+5 of the grid's 31 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2174,6 +2239,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on hive</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on hive</li></ul></td><td></td><td></td></tr>
@@ -2223,9 +2291,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2293,7 +2363,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Exasol](exasol.md)
 
-6 of the grid's 31 features are native on Exasol and left out.
+5 of the grid's 31 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2324,6 +2394,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on exasol</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on exasol</li></ul></td><td></td><td></td></tr>
@@ -2373,9 +2446,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
@@ -2443,7 +2518,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Druid](druid.md)
 
-6 of the grid's 31 features are native on Druid and left out.
+5 of the grid's 31 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2474,6 +2549,9 @@ $a = $b</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
 $a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -2523,9 +2601,11 @@ refused (its error is under the limitations)</code></pre><pre><code>interval_in(
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, NULL)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>interval_in($v, $o, $t)
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;infinity&#x27;, $o, $t)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A finite constant is folded to its text, which pgwire describes as interval; infinity, and a text that is no constant, are refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>interval_in(&#x27;-infinity&#x27;, $o, $t)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: interval_in(NULL, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, NULL, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in($v, $o, NULL). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>Refused: interval_in(&#x27;-infinity&#x27;, $o, $t). <code>0A000</code> interval_in does not read this value</li><li>A NULL of interval would be described as text: the call is refused. <code>0A000</code> interval_in does not read this value</li><li>A constant is folded to its text, which pgwire describes as interval; infinity, which pgwire has no interval value of, is refused. <code>0A000</code> interval_in does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_in</strong><br>jsonb_in of a NULL: PostgreSQL&#x27;s NULL of jsonb.</td><td><pre><code>jsonb_in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_in(NULL). <code>0A000</code> jsonb_in does not read this value</li><li>A NULL of jsonb would be described as text: the call is refused. <code>0A000</code> jsonb_in does not read this value</li></ul></td><td></td><td></td></tr>
