@@ -123,6 +123,9 @@ class Dependent:
     # column grant is revoked per table) and an assignment's ``user_id`` (it is removed from its
     # holder). Empty for every other kind.
     owner: tuple[tuple[str, Any], ...] = ()
+    # REQ-2240: what its own page shows it as, so it is found where its link leads: a
+    # relationship as its two tables, a table or view by its table name.
+    label: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """The dependent as a refusal reports it, with its ``owner`` keys when it has any."""
@@ -130,6 +133,7 @@ class Dependent:
             "kind": self.ref.kind,
             "id": self.ref.id,
             "name": self.name,
+            "label": self.label,
             "via": list(self.via),
             **dict(self.owner),
         }
@@ -526,14 +530,49 @@ async def _name_of(conn: "Connection", ref: ObjectRef) -> str:
     return str(ref.id)
 
 
+async def _label_of(conn: "Connection", ref: ObjectRef, name: str) -> str:
+    """What ``ref``'s own page shows it as (REQ-2240), given its ``name`` (:func:`_name_of`): a
+    relationship as its two tables (``users -> inquiries``), a remote registration by the table
+    it registers; every other kind as it is named."""
+    if ref.kind == "relationship":
+        rel = metadata.tables["relationships"]
+        found = (
+            await conn.execute_core(
+                select(
+                    rel.c.source_table_id, rel.c.target_table_id, rel.c.target_function_name
+                ).where(rel.c.id == ref.id)
+            )
+        ).fetchone()
+        if found is None:
+            return name
+        source_id, target_id, function = found
+        source = await _name_of(conn, ObjectRef("table", source_id))
+        target = (
+            await _name_of(conn, ObjectRef("table", target_id))
+            if target_id is not None
+            else function
+        )
+        return f"{source} -> {target}"
+    if ref.kind == "remote_registration":
+        reg = metadata.tables["provisa_sources"]
+        found = (
+            await conn.execute_core(select(reg.c.table_name).where(reg.c.id == ref.id))
+        ).fetchone()
+        return found[0] if found else name
+    return name
+
+
 _OWNER_OF: dict[str, tuple[str, str]] = {
     "column": ("table_columns", "table_id"),
     "role_assignment": ("user_role_assignments", "user_id"),
+    # REQ-2240: a remote registration is opened on its source's panel.
+    "remote_registration": ("provisa_sources", "source_id"),
 }
 
 
 async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any], ...]:
-    """What a column or a role assignment is changed through (see :class:`Dependent`)."""
+    """What a column or a role assignment is changed through, and the source a remote
+    registration is opened on (see :class:`Dependent`)."""
     if ref.kind not in _OWNER_OF:
         return ()
     table, column = _OWNER_OF[ref.kind]
@@ -544,15 +583,18 @@ async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any]
 
 async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
     """``blocking`` (object → the columns it refers through) as the sorted, named list."""
-    named = [
-        Dependent(
-            referrer,
-            tuple(sorted(via)),
-            await _name_of(conn, referrer),
-            await _owner_of(conn, referrer),
+    named = []
+    for referrer, via in blocking.items():
+        name = await _name_of(conn, referrer)
+        named.append(
+            Dependent(
+                referrer,
+                tuple(sorted(via)),
+                name,
+                await _owner_of(conn, referrer),
+                await _label_of(conn, referrer, name),
+            )
         )
-        for referrer, via in blocking.items()
-    ]
     return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))
 
 

@@ -268,6 +268,7 @@ async def test_the_mutation_refuses_with_the_list_and_removes_nothing(plane, ser
                 "kind": "table",
                 "id": view,
                 "name": "open_orders",
+                "label": "open_orders",
                 "via": ["registered_tables.view_sql"],
             }
         ],
