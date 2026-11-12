@@ -796,7 +796,9 @@ def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
             zones.append((call.expressions[at[0]], at[2]))
     for zone, posix in zones:
         written = zone
-        while isinstance(written, exp.Cast):
+        # Through casts to text alone: timezone(interval, ...) is given an interval, not a zone's
+        # text ('-05:30'::interval is minus five and a half hours, as written).
+        while isinstance(written, exp.Cast) and written.to.is_type(*exp.DataType.TEXT_TYPES):
             written = written.this
         if isinstance(written, exp.Literal) and written.is_string:
             # On a zone's text alone: pg_zones reads every pinned zone's abbreviations at import.

@@ -24,7 +24,9 @@ taught to its parser here:
   array, not SQL's JSON_OBJECT of key and value pairs.
 - a keyword after ``AS`` is a column label (``AS select``): sqlglot refuses the reserved ones; the
   label is read as a quoted identifier, so the statement writes back as PostgreSQL reads it.
-- pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``."""
+- pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``.
+- to_date's and to_timestamp's template is read whole (``TEMPLATE``): sqlglot's own reading leaves
+  a month's or a day's name (``Mon``, ``Month``, ``Dy``), ``HH`` and the meridiem as literal text."""
 
 # Requirements: REQ-2167, REQ-423
 
@@ -34,7 +36,9 @@ from typing import Any
 
 from sqlglot import exp
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.time import format_time
 from sqlglot.tokens import TokenType
+from sqlglot.trie import new_trie
 
 #: The routine pg_proc names for overlaps: what a call of it reads as (function_macros' form).
 OVERLAPS = "overlaps_timestamp"
@@ -177,6 +181,48 @@ def _reads_keyword_labels(parser: type) -> None:
     parser._parse_alias = _parse_alias
 
 
+#: PostgreSQL's template patterns, as to_date and to_timestamp read them, by the strptime
+#: specifier of each (formatting.c's keywords): sqlglot's own, with the names, HH and the meridiem
+#: it lacks, and its day names for parsing (its lower-case ones are to_char's).
+TEMPLATE: dict[str, str] = {
+    **Postgres.TIME_MAPPING,
+    **{name: "%b" for name in ("Mon", "MON", "mon")},
+    **{name: "%B" for name in ("Month", "MONTH", "month")},
+    **{name: "%a" for name in ("Dy", "DY", "dy")},
+    **{name: "%A" for name in ("Day", "DAY", "day")},
+    **{name: "%I" for name in ("HH", "hh", "hh12")},
+    "hh24": "%H",
+    "us": "%f",
+    **{name: "%p" for name in ("AM", "PM", "am", "pm")},
+}
+_TEMPLATE_TRIE = new_trie(TEMPLATE)
+
+
+def template(written: str) -> str:
+    """PostgreSQL's template ``written``, as the strptime format of it."""
+    return format_time(written, TEMPLATE, _TEMPLATE_TRIE) or written
+
+
+def _formatted(kind: type[exp.StrToDate] | type[exp.StrToTime]) -> Any:
+    def build(args: list[exp.Expr]) -> exp.Expr:
+        value, format_ = args[0], args[1] if len(args) > 1 else None
+        if isinstance(format_, exp.Literal) and format_.is_string:
+            format_ = exp.Literal.string(template(format_.this))
+        return kind(this=value, format=format_)
+
+    return build
+
+
+_TO_TIMESTAMP = Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"]
+
+
+def _to_timestamp(args: list[exp.Expr], dialect: Any) -> exp.Expr:
+    """to_timestamp: of one argument, the epoch's; of two, a text read by its template."""
+    if len(args) == 1:
+        return _TO_TIMESTAMP(args, dialect)
+    return _formatted(exp.StrToTime)(args)
+
+
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
 
 _reads_types(Postgres.Parser)
@@ -185,6 +231,8 @@ _reads_negative_inner_product(Postgres.Parser)
 _reads_keyword_labels(Postgres.Parser)
 Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
+Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)
+Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"] = _to_timestamp
 Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)
 Postgres.Parser.FUNCTIONS["CONVERT"] = lambda args: exp.Anonymous(this="convert", expressions=args)
 Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object
