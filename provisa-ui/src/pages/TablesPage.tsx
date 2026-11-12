@@ -53,6 +53,7 @@ import {
   useColumnDependents,
   useUpdateTable,
   useDeleteTable,
+  useDeleteTables,
   useDeployViewToDb,
   useSuggestTableAlias,
   useForceRegen,
@@ -116,6 +117,8 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
@@ -290,6 +293,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     ? { visible: filteredTables, hidden: 0 }
     : filterByRegion(filteredTables, regionSel, connected, (t) => t.region ?? null);
   const sortGroup = useListSortGroup(regionTables, listColumns, "tables");
+  // REQ-2240: tables selected and deleted together; the header's box takes every table shown.
+  const shownTableIds = useMemo(() => regionTables.map((tbl) => tbl.id), [regionTables]);
+  const selection = useListSelection(shownTableIds);
+  const deleteTables = useDeleteTables();
   const groupBy = sortGroup.groupBy;
   const { domainAccess } = useAuth();
   // REQ-1620: the rows are read as the roles the user acts as -- one role, or under "Role: All"
@@ -1291,7 +1298,21 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             />
           ) : (
             <>
-              <ListTable testId="tables-list">
+              <ListBulkBar
+                selection={selection}
+                nameOf={(key) => {
+                  const found = tables.find((tbl) => String(tbl.id) === key);
+                  if (!found) throw new Error(`table ${key} is not listed`);
+                  return found.tableName;
+                }}
+                onDelete={async (keys) => {
+                  const result = await deleteTables(keys.map(Number));
+                  await reload();
+                  return result;
+                }}
+                testId="tables-bulk"
+              />
+              <ListTable testId="tables-list" selection={selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[

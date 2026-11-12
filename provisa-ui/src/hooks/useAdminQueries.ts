@@ -107,6 +107,7 @@ import { useShownTableQueries } from "./useTableQueries";
 export { firstLoad } from "./firstLoad";
 export {
   useDeleteTable,
+  useDeleteTables,
   useReadTableDetails,
   useRegisterEntity,
   useRegisterFact,

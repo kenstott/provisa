@@ -1219,6 +1219,22 @@ mutation DeleteTable($id: Int!) {
   }
 }
 
+# REQ-2240: several tables deleted in one call, each through deleteTable's own guard.
+mutation DeleteTables($ids: [Int!]!) {
+  deleteTables(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+fragment BulkDeleteResult on BulkDeleteResult {
+  deleted
+  refused {
+    name
+    reason
+    dependents
+  }
+}
+
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
 # REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
 query HoldOnFailingChecksSource {

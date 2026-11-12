@@ -14,6 +14,7 @@ import type { ErrorLike } from "@apollo/client";
 import type { ListedTable, MutationResult, RegisteredTable, TableRow } from "../types/admin";
 import {
   DeleteTable,
+  DeleteTables,
   RegisterEntity,
   RegisterFact,
   RegisterTable,
@@ -25,6 +26,7 @@ import {
   TablesQuery as TABLES_QUERY,
 } from "./admin.graphql";
 import { firstLoad } from "./firstLoad";
+import type { BulkDeleteResult } from "../components/list/listSelection";
 
 const NO_TABLES: RegisteredTable[] = [];
 const NO_LISTED_TABLES: ListedTable[] = [];
@@ -201,6 +203,22 @@ export function useUpdateTable() {
       return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
+  };
+}
+
+/** REQ-2240: several tables deleted in one call; what went and each one refused. */
+export function useDeleteTables() {
+  const refetchTables = useShownTableQueries();
+  const [deleteTables] = useMutation<{ deleteTables: BulkDeleteResult }>(DeleteTables, {
+    refetchQueries: refetchTables,
+    awaitRefetchQueries: true,
+  });
+  return async (ids: number[]): Promise<BulkDeleteResult> => {
+    const result = await deleteTables({ variables: { ids } });
+    // A GraphQL error is thrown by the mutation itself (errorPolicy "none"); an answer without
+    // data is not one the server gives.
+    if (!result.data) throw new Error("deleteTables answered without data");
+    return result.data.deleteTables;
   };
 }
 

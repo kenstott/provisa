@@ -80,6 +80,7 @@ declare module "*.graphql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const DeleteTables: DocumentNode;
   export const Calendars: DocumentNode;
   export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;
@@ -222,6 +223,7 @@ declare module "*.gql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const DeleteTables: DocumentNode;
   export const Calendars: DocumentNode;
   export const HoldOnFailingChecksSource: DocumentNode;
   export const CreateCalendar: DocumentNode;
