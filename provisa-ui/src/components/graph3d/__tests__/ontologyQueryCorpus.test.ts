@@ -27,6 +27,7 @@ import {
   termLevels,
 } from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
+import { searchItems } from "../../../lib/searchItems";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
 
@@ -53,7 +54,7 @@ function subsets<T>(items: T[]): T[][] {
 }
 
 const LAYERS: LayerId[] = ["domains", "data", "columns"];
-const SEARCHES = [[], ["party"]];
+const SEARCHES = ["", "party"];
 const STATUSES: QueryScope["hiddenStatuses"][] = [
   [],
   ["retired"],
@@ -74,7 +75,7 @@ function ontologyScopes(): [string, QueryScope][] {
           for (const domains of DOMAINS) {
             const key = [
               ["ontology", ...layers].join("+"),
-              `search=${search.join(",")}`,
+              `search=${search}`,
               `hidden=${hiddenStatuses.join(",")}`,
               `edges=${edgeTypes.join(",")}`,
               `domains=${domains.join(",")}`,
@@ -83,7 +84,7 @@ function ontologyScopes(): [string, QueryScope][] {
               key,
               {
                 layers: new Set<LayerId>(["ontology", ...layers]),
-                search,
+                search: searchItems(search),
                 hiddenStatuses,
                 edgeTypes,
                 domains,
@@ -282,5 +283,37 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
     for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts/);
+  });
+});
+
+/** REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): the Ontology View's root under each search
+ * the shared cases hold (tests/fixtures/page_search_cases.json), as test_ontology_search.py runs
+ * it on DuckDB: the terms it keeps are the ones the page's own filter keeps. */
+describe("the Ontology View's root under each shared search case", () => {
+  it("is the query the builder produces now", () => {
+    const cases = (
+      JSON.parse(readFileSync(resolve(GOLDEN, "../page_search_cases.json"), "utf8")) as {
+        cases: { query: string }[];
+      }
+    ).cases;
+    const m = reader();
+    const produced: Record<string, string | null> = {};
+    for (const { query } of cases)
+      produced[query] = ontologyCountQuery(m, {
+        layers: new Set<LayerId>(["ontology"]),
+        search: searchItems(query),
+        hiddenStatuses: [],
+        edgeTypes: [],
+        domains: [],
+        orphans: true,
+        tags: [],
+        sensitivities: [],
+        focus: null,
+        depth: 0,
+      });
+    const path = resolve(GOLDEN, "ontology_search_queries.json");
+    if (process.env.PROVISA_GRAPHQL_GOLDEN_CAPTURE)
+      writeFileSync(path, `${JSON.stringify(produced, null, 1)}\n`);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 });

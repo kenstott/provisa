@@ -10235,6 +10235,7 @@
   "pt/ontologyImport.json::ontologyImport.withItem": "With another item",
   "pt/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "pt/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
+  "pt/filterInput.json::filterInput.syntaxHint": "Uses Google search syntax: every word must match; put or between alternatives; -word excludes; \"quotes\" keep a phrase together.",
   "pt/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
   "pt/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "pt/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",

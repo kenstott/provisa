@@ -15,6 +15,7 @@
 
 import type { TermGrounding, TermRole } from "../../api/glossary";
 import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
+import type { SearchGroups } from "../../lib/searchItems";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 import { layeredFit, layeredLayout } from "./layeredLayout";
 
@@ -309,9 +310,9 @@ export interface QueryScope {
   /** Whether a term with no relationship drawn (no edge of the types kept to a term kept, and no
    * column it IS under Columns) is drawn: the Ontology View's Orphans. */
   orphans: boolean;
-  /** The page's search, as searchItems splits it: the terms it matches and their neighbourhood
+  /** The page's search, as searchItems reads it: the terms it matches and their neighbourhood
    * (neighbourhood.ts) are read; none, the whole graph. */
-  search: string[];
+  search: SearchGroups;
   /** REQ-2174: drawn as the 2D lane diagram, whose product lane names the product each table
    * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
   lanes?: boolean;

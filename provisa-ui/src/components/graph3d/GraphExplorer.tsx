@@ -32,7 +32,7 @@ import {
   useGraphSettings,
   type GraphKey,
 } from "../../pages/tables/profile3d/graphSettings";
-import { matchesSearch, searchItems } from "../../lib/searchItems";
+import { matchesSearch, searchItems, type SearchGroups } from "../../lib/searchItems";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
@@ -387,7 +387,7 @@ export function GraphExplorer({
       boolean,
       string[],
       string[],
-      string[],
+      SearchGroups,
       boolean,
       string,
     ];

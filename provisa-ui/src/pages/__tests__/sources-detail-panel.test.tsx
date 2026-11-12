@@ -141,14 +141,14 @@ beforeEach(() => {
 });
 
 describe("the Sources list's search", () => {
-  it("lists the sources matching any word of the search", async () => {
+  it("lists the sources matching every word of the search, or either side of or", async () => {
     SOURCES = [
       ...SOURCES,
       source({ id: "shop-api", type: "openapi", host: "", port: 0, database: "" }),
     ];
     render(<SourcesPage />);
     await screen.findByTestId("sources-row-shop-api");
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "kafka sales" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "kafka or sales" } });
     await waitFor(() => expect(screen.queryByTestId("sources-row-shop-api")).toBeNull());
     expect(screen.getByTestId("sources-row-sales-pg")).toBeInTheDocument();
     expect(screen.getByTestId("sources-row-events")).toBeInTheDocument();

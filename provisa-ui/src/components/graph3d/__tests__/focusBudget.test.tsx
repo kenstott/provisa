@@ -15,6 +15,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../../test-utils/render";
 import type { GraphData } from "../graphModel";
+import { matchesSearch, searchItems, type SearchGroups } from "../../../lib/searchItems";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
 type Callbacks = { onSelect: (h: { kind: string; id: string }) => void };
@@ -80,12 +81,12 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
   metaReader: async () => ({ schema: null, roots: new Map() }),
   dataGraphql: async (query: string) => {
-    const s = JSON.parse(query) as { domains: string[]; search: string[]; count?: boolean };
+    const s = JSON.parse(query) as { domains: string[]; search: SearchGroups; count?: boolean };
     if (!s.count) asked.scopes.push(s);
     const terms = TERMS.filter(
       (t) =>
         (s.domains.length === 0 || s.domains.includes(t.domains[0].domainId)) &&
-        (s.search.length === 0 || s.search.some((i) => t.name.includes(i))),
+        matchesSearch([t.name], s.search),
     );
     return {
       _terms: s.count ? terms.map((t) => ({ id: t.id, domains: t.domains })) : terms,
@@ -123,7 +124,7 @@ describe("the Ontology View past its budget", () => {
   });
 
   it("says how many a search matches when they are past it, and draws none", async () => {
-    render(<OntologyView search="order invoice refund customer" />);
+    render(<OntologyView search="order or invoice or refund or customer" />);
     expect(await screen.findByTestId("ontology-over-budget")).toHaveTextContent(
       "5 match; narrow the search or pick a domain",
     );
@@ -132,7 +133,7 @@ describe("the Ontology View past its budget", () => {
   it("draws a search within it, and opens it as a query", async () => {
     render(<OntologyView search="ledger" />);
     await waitFor(() => expect(drawn()?.nodes.map((n) => n.id)).toContain("term:6"));
-    expect(asked.scopes.at(-1)?.search).toEqual(["ledger"]);
+    expect(asked.scopes.at(-1)?.search).toEqual(searchItems("ledger"));
     fireEvent.click(screen.getByTestId("ontology-open-as-query"));
     expect(await screen.findByTestId("ontology-open-as-graphql")).not.toHaveAttribute(
       "data-disabled",

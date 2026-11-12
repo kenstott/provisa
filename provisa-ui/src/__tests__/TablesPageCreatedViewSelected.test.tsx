@@ -217,7 +217,7 @@ const REGISTRATION: Registration = {
 };
 
 describe("the Tables list's search", () => {
-  it("lists the tables matching any word of the search", async () => {
+  it("lists the tables matching every word of the search, or either side of or", async () => {
     const before = TABLES.tables;
     TABLES.tables = ["orders", "customers", "invoices"].map((name, i) =>
       view(20 + i, name, {
@@ -233,13 +233,22 @@ describe("the Tables list's search", () => {
         expect(document.querySelector('[data-table-row="sales-pg.customers"]')).not.toBeNull(),
       );
       fireEvent.change(screen.getByTestId("filter-input"), {
-        target: { value: "orders invoices" },
+        target: { value: "orders or invoices" },
       });
       await waitFor(() =>
         expect(document.querySelector('[data-table-row="sales-pg.customers"]')).toBeNull(),
       );
       expect(document.querySelector('[data-table-row="sales-pg.orders"]')).not.toBeNull();
       expect(document.querySelector('[data-table-row="sales-pg.invoices"]')).not.toBeNull();
+      // Every word is required, and a word with a leading - must not be found.
+      fireEvent.change(screen.getByTestId("filter-input"), {
+        target: { value: "sales -invoices" },
+      });
+      await waitFor(() =>
+        expect(document.querySelector('[data-table-row="sales-pg.invoices"]')).toBeNull(),
+      );
+      expect(document.querySelector('[data-table-row="sales-pg.orders"]')).not.toBeNull();
+      expect(document.querySelector('[data-table-row="sales-pg.customers"]')).not.toBeNull();
     } finally {
       TABLES.tables = before;
     }
