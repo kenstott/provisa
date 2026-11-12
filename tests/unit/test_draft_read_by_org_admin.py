@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN, on the SQL surfaces (pgwire, /data/sql, MCP run_sql,
-which all reach the pipeline's top): a statement of a role holding org_admin -- org_admin, a role
-inheriting from it, or a meta role one of whose members does -- that names a draft reads it as a
-served table is, through the one path a draft is read by (admin/table_read.plan_reading_drafts):
+"""REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN (decided 2026-11-12), on the SQL surfaces (pgwire,
+/data/sql, MCP run_sql, which all reach the pipeline's top): a statement of a role holding table
+registration in the draft's domain -- org_admin, a domain steward, a role inheriting the right, or
+a meta role one of whose members carries it there -- that names a draft reads it as a served
+table is, through the one path a draft is read by (admin/table_read.plan_reading_drafts):
 governed under that role's masks, row rules and limits, nothing of it kept, and recorded as a
 draft preview. Every other role's statement naming it is refused as a draft, as before.
 
@@ -38,16 +39,22 @@ from tests.unit.test_table_read_as_caller import (
     routing,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
 
-_READERS = ["org_admin", "steward", "r", "s"]
+_READERS = ["org_admin", "steward", "sales_steward", "r", "s"]
+_REG = "table_registration"
 
 
-def _role(role_id: str, parents: list[str]) -> dict:
+def _role(
+    role_id: str,
+    parents: list[str],
+    capabilities: tuple[str, ...] = (),
+    domains: tuple[str, ...] = ("sales",),
+) -> dict:
     return {
         "id": role_id,
         "description": "Test role.",
-        "capabilities": ["usage"],
-        "domain_access": ["sales"],
-        "own_domain_access": ["sales"],
+        "capabilities": ["usage", *capabilities],
+        "domain_access": list(domains),
+        "own_domain_access": list(domains),
         "parents": parents,
     }
 
@@ -77,8 +84,14 @@ def state(multi_domain, monkeypatch):  # noqa: F811
     monkeypatch.setattr(built, "source_catalogs", {"pg": "pg"}, raising=False)
     _build_and_register_schemas(
         roles=[
-            _role("org_admin", []),
+            # The right a draft is read by, in every domain (as org_admin is seeded with it)...
+            _role("org_admin", [], (_REG,), ("*",)),
+            # ...inherited from it,
             _role("steward", ["org_admin"]),
+            # ...held in the draft's own domain alone,
+            _role("sales_steward", [], (_REG,)),
+            # ...and held in another domain only, by a role reaching no data of its own.
+            _role("finance_registrar", [], (_REG,), ("finance",)),
             _role("r", []),
             _role("s", []),
         ],
@@ -112,15 +125,19 @@ async def _sent(sql: str, role_id: str) -> Any:
     return await _pipeline._govern_and_route(sql, role_id)
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward"])
-async def test_a_role_holding_org_admin_reads_a_draft_it_names(state, routing, role_id):  # noqa: F811
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
+async def test_a_role_registering_tables_in_its_domain_reads_a_draft_it_names(  # noqa: F811
+    state,
+    routing,  # noqa: F811
+    role_id,
+):
     with pytest.raises(_Routed) as routed:
         await _sent(_STATEMENT, role_id)
     routing.assert_awaited_once()
     assert "refunds" in routed.value.sql
 
 
-async def test_a_meta_role_with_org_admin_among_its_members_reads_it(state, routing):  # noqa: F811
+async def test_a_meta_role_with_the_right_among_its_members_reads_it(state, routing):  # noqa: F811
     from provisa.security.meta_role import ensure_meta_role
 
     with pytest.raises(_Routed):
@@ -135,6 +152,9 @@ async def test_every_other_role_is_refused_naming_the_draft(state, routing):  # 
         await _sent(_STATEMENT, "r")
     with pytest.raises(PermissionError, match="draft"):
         await _sent(_STATEMENT, ensure_meta_role(state, ["r", "s"]))
+    # The right in another domain, beside a role reaching sales: paired with its own domain.
+    with pytest.raises(PermissionError, match="draft"):
+        await _sent(_STATEMENT, ensure_meta_role(state, ["finance_registrar", "r"]))
     routing.assert_not_awaited()
 
 

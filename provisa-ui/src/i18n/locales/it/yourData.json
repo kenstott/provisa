@@ -12,6 +12,6 @@
     "copy": "Copia {{what}}",
     "close": "Chiudi",
     "draft": "Bozza",
-    "draftNote": "Questa tabella è una bozza: finché non viene rilasciata, solo i ruoli che detengono org_admin la raggiungono in questi modi."
+    "draftNote": "Questa tabella è una bozza: finché non viene rilasciata, solo i ruoli che possono registrare tabelle nel suo dominio la raggiungono in questi modi."
   }
 }

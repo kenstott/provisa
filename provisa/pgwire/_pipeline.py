@@ -1586,8 +1586,8 @@ async def _govern_and_route_planned(
     from provisa.api.app import state
     from provisa.api.admin.table_read import drafts_a_statement_names, plan_reading_drafts
 
-    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a statement of a role holding org_admin that names
-    # drafts reads them as served tables, through the one path a draft is read by.
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a statement naming drafts served to its role
+    # (table registration in their domains) reads them as served tables, through the one path a draft is read by.
     drafts = drafts_a_statement_names(state, sql, role_id)
     if drafts:
         plan, seen = await plan_reading_drafts(

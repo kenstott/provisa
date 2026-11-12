@@ -23,8 +23,8 @@ the caller's role *with that one table added*, as the role would see it once rel
 read live, in the table's own region, and no plan or response of it is kept. The table is still
 in no schema, and the same words sent as an ordinary statement are refused as before.
 
-A role holding org_admin (A DRAFT IS SERVED TO ORG_ADMIN, security.rights.holds_org_admin) reads a
-draft as a served table is read: a statement of its own on a SQL surface that names drafts is
+A role holding table registration in a draft's domain (A DRAFT IS SERVED TO ORG_ADMIN, decided
+2026-11-12: security.rights.registers_tables_in) reads the draft as a served table is read: a statement of its own on a SQL surface that names drafts is
 governed and run here, through the same path, with those drafts added (:func:`plan_reading_drafts`).
 Every such read is recorded as a draft preview naming the drafts it read.
 
@@ -131,9 +131,9 @@ def _in_service(state: Any, table_id: int) -> dict | None:
 
 def _surface_with(state: Any, role_id: str, drafts: list[dict]) -> RoleSurface:
     """The role's surface with ``drafts`` in its compilation context — built as the role build
-    builds it (app_loaders.schema_input_with_drafts). Its schema is the published one: a role
-    holding org_admin is offered the drafts there already, and no other role reads a draft by a
-    document of its own."""
+    builds it (app_loaders.schema_input_with_drafts). Its schema is the published one: a role is
+    offered there already the drafts it is served (security.rights.registers_tables_in), and no
+    other role reads a draft by a document of its own."""
     from provisa.api.app_loaders import build_context, schema_input_with_drafts
 
     surface = role_surface(state, role_id)
@@ -278,20 +278,32 @@ async def read_as_caller(
     return await _execute_plan(plan, seen)
 
 
-def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
-    """The drafts ``sql`` names, each once, when ``role_id`` holds org_admin (A DRAFT IS SERVED TO
-    ORG_ADMIN, security.rights.holds_org_admin); none otherwise, and the statement goes on to be
-    refused naming a draft as before. A draft is named by any name the role's context records for
-    it (compiler/context._register_draft_names), read as the statement's validation reads a
-    table's name."""
-    from provisa.security.rights import holds_org_admin
+def _served_draft_names(state: Any, role_id: str) -> dict[str, int]:
+    """Each name ``role_id``'s context gives a draft that is served to it, with the draft's id: a
+    draft of a domain the role holds table registration in (A DRAFT IS SERVED TO ORG_ADMIN,
+    security.rights.registers_tables_in)."""
+    from provisa.security.rights import registers_tables_in
 
     surface = role_surface(state, role_id)
     if surface is None or not surface.context.draft_ids:
+        return {}
+    role = state.roles[role_id]
+    domains = {t["id"]: t["domain_id"] for t in state.role_build_inputs["draft_tables"]}
+    return {
+        name: table_id
+        for name, table_id in surface.context.draft_ids.items()
+        if registers_tables_in(role, state.roles, domains[table_id])
+    }
+
+
+def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
+    """The drafts ``sql`` names that are served to ``role_id`` (:func:`_served_draft_names`), each
+    once; any other draft it names goes on to be refused naming it as a draft, as before. A draft
+    is named by any name the role's context records for it (compiler/context._register_draft_names),
+    read as the statement's validation reads a table's name."""
+    named = _served_draft_names(state, role_id)
+    if not named:
         return []
-    if not holds_org_admin(state.roles[role_id]):
-        return []
-    named = surface.context.draft_ids
     # Parsed only when a draft's name is in the text: no other statement pays for it here.
     text = sql.lower()
     if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
@@ -315,22 +327,18 @@ def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
 
 
 def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
-    """The drafts the root fields of GraphQL ``query`` name, each once, when every operation in it
-    is a query and ``role_id`` holds org_admin; none otherwise, and the document goes on to be
-    refused naming a draft as before (a mutation or subscription of a draft is refused, for a
-    role holding org_admin too). A document that does not parse names none: its parse refuses it
+    """The drafts served to ``role_id`` (:func:`_served_draft_names`) the root fields of GraphQL
+    ``query`` name, each once, when every operation in it is a query; none otherwise, and the
+    document goes on to be refused naming a draft as before (a mutation or subscription of a
+    draft is refused, for a role it is served to too). A document that does not parse names none: its parse refuses it
     where every document is parsed."""
     from graphql import GraphQLSyntaxError, OperationDefinitionNode, OperationType, parse
 
     from provisa.compiler.parser import table_field_candidates
-    from provisa.security.rights import holds_org_admin
 
-    surface = role_surface(state, role_id)
-    if surface is None or not surface.context.draft_ids:
+    named = _served_draft_names(state, role_id)
+    if not named:
         return []
-    if not holds_org_admin(state.roles[role_id]):
-        return []
-    named = surface.context.draft_ids
     # Parsed only when a draft's name is in the text: no other document pays for it here.
     text = query.lower()
     if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
@@ -370,7 +378,7 @@ async def plan_reading_drafts(
 ) -> tuple[Any, _WithDrafts]:
     """``sql`` governed and routed as ``role_id`` with ``drafts`` added to what it reads, and the
     view of the state it was governed in, which is the one it runs in: the one path a draft is
-    read by, a steward's preview and an org_admin's statement alike (REQ-1921). Nothing of it is
+    read by, a steward's preview and a statement of a role it is served to alike (REQ-1921). Nothing of it is
     kept: no plan, no response."""
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
@@ -401,15 +409,10 @@ def surface_with_drafts(state: Any, role_id: str, drafts: list[dict]) -> RoleSur
 
 
 def draft_served_to(state: Any, role_id: str, table_id: int) -> dict | None:
-    """The draft ``table_id`` when it is served to ``role_id``: the role holds org_admin (A DRAFT
-    IS SERVED TO ORG_ADMIN) and its context names the draft (a column of it is the role's). None
-    otherwise: to that role the table is not served, draft or not."""
-    from provisa.security.rights import holds_org_admin
-
-    surface = role_surface(state, role_id)
-    if surface is None or table_id not in surface.context.draft_ids.values():
-        return None
-    if not holds_org_admin(state.roles[role_id]):
+    """The draft ``table_id`` when it is served to ``role_id`` (:func:`_served_draft_names`: its
+    context names it and the role holds table registration in its domain). None otherwise: to
+    that role the table is not served, draft or not."""
+    if table_id not in _served_draft_names(state, role_id).values():
         return None
     return _draft(state, table_id)
 

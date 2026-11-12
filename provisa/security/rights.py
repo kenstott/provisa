@@ -230,14 +230,33 @@ def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
     return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
-def holds_org_admin(role: dict) -> bool:  # REQ-1921
-    """Whether ``role`` holds org_admin: org_admin itself, a role inheriting from it through its
-    parents (REQ-2155), or a meta-role one of whose members does. A draft is served to such a role
-    (A DRAFT IS SERVED TO ORG_ADMIN); this is the one place that answers it.
+def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
+    """The domains ``role`` holds the right a draft is read by: table registration, the right a
+    draft's preview needs (A DRAFT IS SERVED TO ORG_ADMIN, decided 2026-11-12). Held as every
+    right is: by the role, a role it inherits from, or a member of a meta role (``acting_chain``,
+    REQ-2188), each paired with the domains of the role carrying it (REQ-1944,
+    :func:`domain_access_for_capability`). The one place the right is named."""
+    return domain_access_for_capability(
+        role["acting_chain"], roles, Capability.TABLE_REGISTRATION.value
+    )
 
-    ``role`` is a built role (state.roles): its ``acting_chain`` is the role and its ancestors, or
-    a meta-role's members and theirs (REQ-2188)."""
-    return ORG_ADMIN_ROLE in role["acting_chain"]
+
+def registers_tables_in(role: dict, roles: dict[str, dict], domain_id: str) -> bool:  # REQ-1921
+    """Whether ``role`` (a built role, state.roles) holds table registration reaching
+    ``domain_id``: a draft of that domain is served to it."""
+    reach = _draft_right_reach(role, roles)
+    return bool(reach) and reaches_domain(sorted(reach), domain_id)
+
+
+def draft_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
+    """The domains whose drafts are served to ``role``: those it holds table registration in
+    (:func:`registers_tables_in`); None for every data domain, empty for none."""
+    reach = _draft_right_reach(role, roles)
+    if not reach:
+        return frozenset()
+    if reaches_all_domains(sorted(reach)):
+        return None
+    return frozenset(reach)
 
 
 DEVELOPER_ROLE = "developer"
@@ -761,8 +780,9 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
-#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding org_admin
-#: reads and no other role does (compiler/stage2; security/meta_role.holds_org_admin).
+#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding table
+#: registration in the draft's domain reads and no other role does (compiler/stage2;
+#: :func:`draft_reach`).
 DRAFT_ROWS_VIEW = "registered_tables_meta"
 
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {

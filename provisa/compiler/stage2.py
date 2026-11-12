@@ -255,8 +255,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     source_types: dict[str, str] | None = None,
     engine=None,
     source_hints: dict[str, dict[str, str]] | None = None,
+    draft_reach: frozenset[str] | None = frozenset(),
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
+
+    ``draft_reach``: the domains whose drafts' rows of the model table the role reads
+    (security.rights.draft_reach): None for every domain, empty -- the default -- for none.
 
     Args:
         role_id: The requesting role.
@@ -336,7 +340,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         DRAFT_ROWS_VIEW,
         compute_meta_row_scope,
         has_capability,
-        holds_org_admin,
         reaches_domain,
         served_across_domains,
         unlisted_columns,
@@ -499,15 +502,25 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # two described-table meta views (registered_tables_meta.id / table_columns_meta.table_id), so it
     # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
     meta_scope = compute_meta_row_scope(role, tables, relationships)
-    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: read only where the model table is in this
-    # compilation, the one table it decides.
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a draft's row is read by a role holding table
+    # registration in its domain (draft_reach), and by no other; decided only where the model
+    # table is in this compilation, the one table it is about.
     _draft_rows = [
         tm
         for tm in {tm.table_id: tm for tm in ctx.tables.values()}.values()
         if getattr(tm, "domain_id", None) == META_DOMAIN_ID
         and getattr(tm, "table_name", "") == DRAFT_ROWS_VIEW
     ]
-    sees_drafts = bool(_draft_rows) and holds_org_admin(role)
+    if draft_reach is None:
+        drafts_read: exp.Expr = exp.column("draft")  # pyright: ignore[reportPrivateImportUsage]
+    elif draft_reach:
+        drafts_read = exp.and_(
+            exp.column("draft"),
+            _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(draft_reach)]),
+            copy=False,
+        )
+    else:
+        drafts_read = exp.false()
     if meta_scope is not None:
         ids = sorted(meta_scope) or [-1]  # empty → matches no row
         # A setting's value, told to the statement's catalog views: an array, not SQL.
@@ -541,16 +554,16 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             else:
                 continue
             scoped = exp.and_(*terms, copy=False)
-            if tm.table_name == DRAFT_ROWS_VIEW and sees_drafts:
-                # A draft's row is in no role's reach (it is in no role's tables): to a role
-                # holding org_admin it is read beside the rows of its scope.
-                scoped = exp.or_(scoped, exp.column("draft"), copy=False)
+            if tm.table_name == DRAFT_ROWS_VIEW and draft_reach != frozenset():
+                # A draft's row is in no role's reach (it is in no role's tables): the drafts
+                # the role is served are read beside the rows of its scope.
+                scoped = exp.or_(scoped, drafts_read.copy(), copy=False)
             _and_rule(gov, tm.table_id, scoped)
-    if not sees_drafts:
-        # REQ-1921: the model table's draft rows are read by a role holding org_admin, and by
-        # no other, whatever its scope (the whole catalog's included).
+    # REQ-1921: of the model table's draft rows, only those the role is served, whatever its
+    # scope (the whole catalog's included).
+    if draft_reach is not None:
         for tm in _draft_rows:
-            _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
+            _and_rule(gov, tm.table_id, exp.or_(exp.not_(exp.column("draft")), drafts_read.copy()))
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.

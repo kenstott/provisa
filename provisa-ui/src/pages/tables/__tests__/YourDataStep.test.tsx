@@ -144,7 +144,7 @@ describe("Your data, right after registering", () => {
     await userEvent.click(screen.getByTestId("your-data-tab-customers"));
     expect(screen.getByTestId("your-data-draft")).toHaveTextContent("Draft");
     expect(screen.getByTestId("your-data-draft-note")).toHaveTextContent(
-      "This table is a draft: only roles holding org_admin reach it these ways until it is released.",
+      "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways.",
     );
   });
 

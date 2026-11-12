@@ -758,7 +758,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         table, gql_query, variables = read.table, read.gql_query, read.variables
         is_group_by, is_aggregate = read.is_group_by, read.is_aggregate
 
-        # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a read of a draft by a role holding org_admin
+        # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a read of a draft by a role it is served to
         # is compiled, governed and run in the drafts' own view of the state (admin/table_read),
         # as the same read sent as GraphQL is.
         from provisa.api.admin.table_read import drafts_a_document_reads, reading_drafts

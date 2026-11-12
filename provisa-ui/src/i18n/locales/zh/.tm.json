@@ -10349,5 +10349,5 @@
   "zh/tableSections.json::tableSections.classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
   "zh/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of.",
   "zh/yourData.json::yourData.draft": "Draft",
-  "zh/yourData.json::yourData.draftNote": "This table is a draft: only roles holding org_admin reach it these ways until it is released."
+  "zh/yourData.json::yourData.draftNote": "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways."
 }

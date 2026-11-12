@@ -38,7 +38,7 @@ async def table_access(
 ) -> TableAccessType:
     """How ``role`` reaches table ``table_id``. Refused when the role's schema does not serve it.
 
-    A draft is served to a role holding org_admin (REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN): its
+    A draft is served to a role holding table registration in its domain (REQ-1921): its
     ways are named as that role's surface names it -- the field its schema offers, the REST path
     its path map answers, the name its statements read it by -- and marked as a draft."""
     from provisa.api.mcp.tools import graphql_field_names
@@ -69,8 +69,8 @@ def _served(ctx: Any, table_id: int) -> Any:
 def _draft_access(
     state: Any, role: str, table_id: int, endpoints: "ServingEndpoints | None"
 ) -> TableAccessType:
-    """The ways ``role`` reaches the draft ``table_id``, when it is served it (a role holding
-    org_admin); refused as a table not served otherwise. The catalog the MCP tools name a table
+    """The ways ``role`` reaches the draft ``table_id``, when it is served it (table registration
+    in its domain); refused as a table not served otherwise. The catalog the MCP tools name a table
     from lists no draft, so the names are read off the role's own surface, which offers it."""
     from provisa.api.admin.table_read import draft_served_to, surface_with_drafts
     from provisa.api.role_surface import role_surface

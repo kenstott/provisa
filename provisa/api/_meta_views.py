@@ -827,9 +827,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_run_at,
-               -- REQ-1921: a draft's row is here; who reads it is the statement's governance
-               -- (compiler/stage2: a role holding org_admin, and no other). Last, so an
-               -- existing view is replaced in place.
+               -- A draft's row is here; who reads it is the statement's governance
+               -- (compiler/stage2: a role holding table registration in its domain, and no
+               -- other). Last, so an existing view is replaced in place.
                rt.draft
         FROM registered_tables rt
     """,

@@ -1873,7 +1873,7 @@ def schema_input_for(
     )
 
 
-#: REQ-1921: how a draft is marked where a role holding org_admin is offered it (its type's
+#: REQ-1921: how a draft is marked where a role it is served to is offered it (its type's
 #: description in the schema and the paths built from it).
 DRAFT_MARK = "Draft: not released."
 
@@ -1982,21 +1982,27 @@ class _RoleParts:
         from provisa.compiler.schema_gen import build_table_path_map
         from provisa.grpc.proto_gen import generate_proto
 
-        from provisa.security.rights import holds_org_admin
+        from provisa.security.rights import registers_tables_in
 
         si, ctx = self._schema_input_and_context()
         with serving(self._runtime):
-            # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a role holding org_admin is offered every
-            # draft in its GraphQL schema and REST paths, marked as a draft. Its context keeps
-            # them as drafts: a request naming one is read through the drafts' own view
-            # (admin/table_read.reading_drafts), as a statement naming one is.
+            # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a role is offered, in its GraphQL schema
+            # and REST paths and marked as a draft, every draft of a domain it holds table
+            # registration in. Its context keeps them as drafts: a request naming one is read
+            # through the drafts' own view (admin/table_read.reading_drafts), as a statement
+            # naming one is.
+            served = (
+                [
+                    d
+                    for d in self._inputs["draft_tables"]
+                    if registers_tables_in(self._role, self._state.roles, d["domain_id"])
+                ]
+                if reads_data(self._role.get("capabilities"))
+                else []
+            )
             offered = (
-                schema_input_with_drafts(
-                    self._state, self._role, self._inputs["draft_tables"], marked=True
-                )
-                if self._inputs["draft_tables"]
-                and reads_data(self._role.get("capabilities"))
-                and holds_org_admin(self._role)
+                schema_input_with_drafts(self._state, self._role, served, marked=True)
+                if served
                 else si
             )
             # No swallow: a role whose schema or proto cannot be built raises here, and the lazy

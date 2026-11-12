@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN, on the GraphQL and REST surfaces: the schema and REST
-paths of a role holding org_admin -- org_admin, a role inheriting from it, or a meta role one of
-whose members does -- offer every draft, marked as a draft; a request of that role naming one is
+"""REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN (decided 2026-11-12), on the GraphQL and REST surfaces:
+the schema and REST paths of a role holding table registration in a draft's domain -- org_admin, a
+domain steward, a role inheriting the right, or a meta role one of whose members carries it
+there -- offer that draft, marked as a draft; a request of that role naming one is
 compiled and governed in the drafts' own view (admin/table_read.reading_drafts), the path a SQL
 statement naming one takes, nothing of it kept and recorded as a draft preview. Every other role's
 schema holds no draft and its request naming one is refused as a draft, as before.
@@ -53,7 +54,7 @@ def _offered(state_: Any, role_id: str) -> bool:
     return "refunds" in surface.schema.query_type.fields
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward"])
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
 def test_the_schema_of_a_role_holding_org_admin_offers_the_draft_marked(state, role_id):  # noqa: F811
     surface = role_surface(state, role_id)
     assert surface is not None
@@ -71,7 +72,7 @@ def test_a_meta_role_with_org_admin_among_its_members_is_offered_it(state):  # n
 
 
 def test_no_other_role_is_offered_a_draft(state):  # noqa: F811
-    for role_id in ("r", "s", _meta(state, ["r", "s"])):
+    for role_id in ("r", "s", _meta(state, ["r", "s"]), _meta(state, ["finance_registrar", "r"])):
         surface = role_surface(state, role_id)
         assert surface is not None
         assert not _offered(state, role_id)
@@ -109,7 +110,7 @@ def _graphql(state_: Any, role_id: str, query: str, monkeypatch) -> Any:
     return asyncio.run(_ask())
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward"])
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
 def test_a_graphql_query_of_a_role_holding_org_admin_reads_the_draft(
     state,  # noqa: F811
     routing,  # noqa: F811
@@ -167,7 +168,7 @@ def test_every_other_roles_graphql_query_naming_it_is_refused_as_a_draft(
 ):
     from provisa.compiler.definitions import TableIsDraft
 
-    for role_id in ("r", _meta(state, ["r", "s"])):
+    for role_id in ("r", _meta(state, ["r", "s"]), _meta(state, ["finance_registrar", "r"])):
         with pytest.raises(TableIsDraft):
             _graphql(state, role_id, _QUERY, monkeypatch)
     routing.assert_not_awaited()
@@ -223,7 +224,7 @@ def _rest(state_: Any, role_id: str) -> Any:
     return TestClient(app).get("/data/rest/sales/refunds", params={"limit": 5})
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward"])
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
 def test_a_rest_read_of_a_role_holding_org_admin_reads_the_draft(
     state,  # noqa: F811
     monkeypatch,
@@ -303,7 +304,7 @@ def _access(state_: Any, role_id: str) -> Any:
     return asyncio.run(table_access(state_, role_id, _REFUNDS, _endpoints()))
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward", "meta"])
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward", "meta"])
 def test_a_role_holding_org_admin_is_told_how_to_reach_the_draft_marked_draft(state, role_id):  # noqa: F811
     """Named as its surface names it: the field its schema offers, the REST path that answers it,
     and the SQL its statements name it by -- each of which reads the draft (above)."""
@@ -319,6 +320,6 @@ def test_a_role_holding_org_admin_is_told_how_to_reach_the_draft_marked_draft(st
 
 
 def test_every_other_role_is_not_told_how_to_reach_a_draft(state):  # noqa: F811
-    for role_id in ("r", _meta(state, ["r", "s"])):
+    for role_id in ("r", _meta(state, ["r", "s"]), _meta(state, ["finance_registrar", "r"])):
         with pytest.raises(ValueError, match=f"table {_REFUNDS} is not served to role"):
             _access(state, role_id)
