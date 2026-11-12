@@ -620,6 +620,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "MAP": BVType.JSON,
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
+    # Trino's bytes: a send function's, byteain's and sha256's answer, which PostgreSQL types bytea.
+    "VARBINARY": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
     # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
     # timestamp with time zone

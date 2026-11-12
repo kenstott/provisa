@@ -81011,12 +81011,18 @@
     a brief explanation (one short sentence) sits below the field, and a longer explanation is reached from
     a help icon immediately to the right of the label. Controls in one row share a baseline. A form takes
     its natural height; it never scrolls inside a box that hides its first or last row. (Amended 2026-11-12,
-    ONE SAVE AND CANCEL PAIR, IN A HEAD AS IN A FOOT:) Maintainer 2026-11-12: a detail panel''s head in
-    edit mode shows the same pair a form''s foot shows: the filled Save and the bordered Cancel, the same
-    size. Save is drawn the same in every position. (Amended 2026-11-12, A DESTRUCTIVE CONFIRM IS FILLED
-    RED:) Maintainer 2026-11-12: the button that confirms a destructive action is filled red with white
-    letters, the same size as the Cancel beside it, in every confirm dialog; one component holds the look,
-    beside Save and Cancel. It names the action where the dialog knows it (Delete), and says Confirm otherwise.'
+    ONE SAVE AND CANCEL PAIR, IN A HEAD AS IN A FOOT:) Maintainer 2026-11-12: [SUPERSEDED by REQ-1968, 2026-11-12
+    -- no button in a panel head has a border (amendment of 2026-11-12). Kept here for history; do not implement
+    against it.] a detail panel''s head in edit mode shows the same pair a form''s foot shows: the filled
+    Save and the bordered Cancel, the same size. [END SUPERSEDED BLOCK] Save is drawn the same in every
+    position. (Amended 2026-11-12, A DESTRUCTIVE CONFIRM IS FILLED RED:) Maintainer 2026-11-12: the button
+    that confirms a destructive action is filled red with white letters, the same size as the Cancel beside
+    it, in every confirm dialog; one component holds the look, beside Save and Cancel. It names the action
+    where the dialog knows it (Delete), and says Confirm otherwise. (Amended 2026-11-12, NO BUTTON IN A
+    PANEL HEAD HAS A BORDER:) Maintainer 2026-11-12, revising the rule of earlier the same day: no button
+    in a detail panel''s action bar (its head) has a border. Save and Cancel there are drawn as the head''s
+    other actions are: no border and no fill, the icon and the word. The filled Save and the bordered Cancel
+    stay where a form ends: a page form''s foot and a dialog. One component still holds each look.'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
@@ -95306,7 +95312,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     button counts the tables picked. The Schema field is absent, not disabled, when the source has one schema
     or its configuration fixes it to one. The form holds only Source, Domain, Schema when it applies, and
     Tables: the SQL alias and every other setting of one table are edited in the table''s detail panel after
-    it is registered.'
+    it is registered. (Amended 2026-11-12, EDITORS FIRST: NOTHING THE FORM DROPS IS LEFT WITHOUT AN EDITOR:)
+    Maintainer 2026-11-12, chosen over keeping source-specific fields in the form and over shortening the
+    form with gaps left open: before the form is cut to Source, Domain, Schema and Tables, every setting
+    it holds today has an editor in the table''s detail panel: the ServiceNow import set, the file glob
+    and the source-file column, and discovering columns from the live source, which until now could be set
+    only while registering. A table that needs input (declared columns, untyped columns, no columns) and
+    a table of a source that needs a Cache TTL for each table are registered one at a time by a Register
+    action on that table in the picker''s list, which registers it as a draft and opens its detail panel
+    in edit, where the input is given before it is released. So no setting is stranded and every table has
+    a way to be registered.'
   scenario: 'Given a source with tables orders, customers and invoices discovered; when a person with
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
