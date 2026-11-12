@@ -95297,7 +95297,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
     columns); a group of terms with a common parent is placed where its members'' lines are flattest in
     total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
-    are reported, not the score.'
+    are reported, not the score. (Amended 2026-11-11, VIEW CONTROLS SIT IN THE CANVAS, IN 2D AND 3D:) Maintainer
+    2026-11-12: the controls that change how a graph is looked at sit in one hover stack inside the canvas,
+    the same on every 2D graph and every 3D view (the ontology graph and the table profile views: terrain,
+    joint cloud, drift strata, relations): reset view (fit, in 2D), full screen and download everywhere;
+    rotate and grid, as toggles that show their state, on a 3D view. Same corner, same icons, same one-line
+    tooltips. What is drawn and how it is arranged stays in the toolbar: ontology or taxonomy, 2D or 3D,
+    force or layered, lateral edges, layers, filters and Set Defaults. Rotate, Grid and Reset view are no
+    longer toolbar buttons.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
