@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
+import { DEPTHS } from "./neighbourhood";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
 import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
@@ -86,9 +87,6 @@ const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "related"]);
 /** Layers the 2D view never draws: it is products, tables, columns and terms alone (REQ-2174,
  * amended 2026-11-07), so neither is read for it. */
 const NOT_IN_2D: ReadonlySet<LayerId> = new Set(["related", "lineage"]);
-
-/** The depths a focus can be read to, in hops. */
-const DEPTHS = [1, 2, 3, 4];
 
 export function GraphExplorer({
   data,
@@ -957,7 +955,8 @@ function GraphDetail({
                   data-testid={`${testId}-link-${e.id}`}
                 >
                   <span className="p3d-row-name is-wrap">
-                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    {e.a === node.id ? "→" : "←"}
+                    {"\u00a0"}
                     <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>

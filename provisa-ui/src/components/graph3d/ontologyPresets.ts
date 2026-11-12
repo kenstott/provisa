@@ -12,16 +12,13 @@
 // presets of the one graph, each named by a focus and a depth. (Amended 2026-11-05, ONE GRAPH,
 // RULES PER PRESET:) each carries its rules: the Ontology page's and a term's page's draw only what
 // a shown term reaches (REQ-2130); the Product map's and a product's panel's keep the product
-// layers and the member tables.
+// layers and the member tables. (Amended 2026-11-11, A TERM OPENS ON ITSELF:) an expanded snippet
+// opens on its own focus -- a product's at what it delivers, a term's at full hops -- and only the
+// Ontology page's graph opens whole.
 
-import { NEIGHBOURHOOD } from "./neighbourhood";
+import { DEPTHS, NEIGHBOURHOOD } from "./neighbourhood";
 import { productNode, termNode } from "./ontologyData";
-import {
-  ONTOLOGY_SCOPE,
-  PRODUCT_MAP_SCOPE,
-  type GraphScope,
-  type LayerId,
-} from "./graphModel";
+import { ONTOLOGY_SCOPE, PRODUCT_MAP_SCOPE, type GraphScope, type LayerId } from "./graphModel";
 
 /** A snippet of the ontology: the term or product it is focused on (its node id) and how many
  * hops around it are drawn; a null focus is the whole ontology. ``products``: read and drawn by
@@ -53,6 +50,16 @@ export const termPreset = (term: number): SnippetPreset => ({
   depth: TERM_GRAPH_DEPTH,
   products: false,
   flat: true,
+});
+
+/** A term's graph, expanded from its page, opens at full hops: the hops control's last. */
+export const TERM_GRAPH_DEPTH_EXPANDED = DEPTHS[DEPTHS.length - 1];
+
+/** The expanded term graph's preset, for a term's page preset: the term, its ancestors and
+ * descendants, and the columns, tables and products it reaches. */
+export const termGraph = (p: SnippetPreset): SnippetPreset => ({
+  ...p,
+  depth: TERM_GRAPH_DEPTH_EXPANDED,
 });
 
 /** REQ-2174 (amended 2026-11-07): a product's panel opens at its tables, matching its Related
