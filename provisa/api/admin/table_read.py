@@ -115,7 +115,9 @@ def table_sql_ref(table: dict) -> str:
     return f"{_quoted(domain_to_sql_name(table['domain_id']))}.{_quoted(own)}"
 
 
-def _draft(state: Any, table_id: int) -> dict | None:
+def draft_table(state: Any, table_id: int) -> dict | None:
+    """The draft ``table_id``, or None when no draft has that id. Whom it is served to is asked
+    elsewhere (:func:`table_for_steward`, :func:`draft_served_to`)."""
     for table in state.role_build_inputs["draft_tables"]:
         if table["id"] == table_id:
             return table
@@ -269,7 +271,7 @@ async def read_as_caller(
         )
         return await _execute_plan(plan, state)
 
-    draft = _draft(state, table_id)
+    draft = draft_table(state, table_id)
     if draft is None:
         raise ApiError(404, "schema.table_not_found", f"Table {table_id} not found", table=table_id)
     # Refused by name before any statement is built: a column or operator the table has not.
@@ -414,7 +416,7 @@ def draft_served_to(state: Any, role_id: str, table_id: int) -> dict | None:
     that role the table is not served, draft or not."""
     if table_id not in _served_draft_names(state, role_id).values():
         return None
-    return _draft(state, table_id)
+    return draft_table(state, table_id)
 
 
 async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithDrafts:
@@ -447,7 +449,7 @@ def table_for_steward(request: Any, state: Any, table_id: int) -> dict:
     Refused otherwise, as the release would be."""
     from provisa.api.admin.capabilities import require_capability_request, require_domain_request
 
-    table = _in_service(state, table_id) or _draft(state, table_id)
+    table = _in_service(state, table_id) or draft_table(state, table_id)
     if table is None:
         raise ApiError(404, "schema.table_not_found", f"Table {table_id} not found", table=table_id)
     require_capability_request(request, "table_registration")

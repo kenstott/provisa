@@ -10349,5 +10349,6 @@
   "ru/tableSections.json::tableSections.classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
   "ru/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of.",
   "ru/yourData.json::yourData.draft": "Draft",
-  "ru/yourData.json::yourData.draftNote": "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways."
+  "ru/yourData.json::yourData.draftNote": "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways.",
+  "ru/roleRights.json::roleRights.draft": "Draft"
 }
