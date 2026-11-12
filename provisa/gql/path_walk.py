@@ -202,7 +202,8 @@ def _node_object(walk: SessionWalk, nm: NodeMapping) -> exp.Expression:  # pyrig
             # reads in the statement (expr_context._session_labels); the answer's own come from
             # ephemeral.seam.answered.
             exp.Literal.string("labels"),
-            _labels_of(nm),
+            # As JSON: a list is no value Trino's JSON_OBJECT takes (to_json is CAST AS JSON there).
+            exp.Anonymous(this="to_json", expressions=[_labels_of(nm)]),
             # Its graph identity, which a walk from it reads (_walk_end).
             exp.Literal.string("graphId"),
             graph_identity(walk, nm, None),

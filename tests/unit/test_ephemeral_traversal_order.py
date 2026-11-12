@@ -92,3 +92,17 @@ def test_an_optional_paths_label_filters_reach_trino_as_trinos_sql(session):
     assert sqlglot.parse_one(semantic, read="postgres").find(sqlglot.exp.ArrayContainsAll)
     written = transpile_to_trino(semantic)
     assert sqlglot.parse_one(written, read="trino").find(sqlglot.exp.ArrayContainsAll) is None
+
+
+def test_a_session_nodes_labels_reach_trino_as_a_json_value(session):
+    """A session node's object names its every label, a list; Trino's JSON_OBJECT takes no array
+    value, so each object it is sent holds the labels cast to JSON, as to_json's are."""
+    query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
+    written = transpile_to_trino(session.sql(query))
+    labels = [
+        pair.expression
+        for pair in sqlglot.parse_one(written, read="trino").find_all(sqlglot.exp.JSONKeyValue)
+        if pair.this.name == "labels"
+    ]
+    assert labels
+    assert all(value.is_type("json") for value in labels), [v.sql("trino") for v in labels]
