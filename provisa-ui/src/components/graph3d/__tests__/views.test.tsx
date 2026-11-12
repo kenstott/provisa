@@ -422,6 +422,26 @@ describe("expanding a snippet", () => {
   });
 });
 
+describe("a term's page snippet", () => {
+  // REQ-2174 (amended 2026-11-12): every term drawn brings its grounding, so each hop's read asks
+  // for the columns and products whatever the term's own opening read found.
+  it("reads its terms' grounding at every depth, though the term itself grounds nothing", async () => {
+    reads.data = {
+      nodes: [
+        { id: "term:3", type: "term", label: "test3" },
+        { id: "term:2", type: "term", label: "test2" },
+      ],
+      edges: [{ id: "e", a: "term:3", b: "term:2", kind: "term_edge", label: "PART_OF" }],
+    };
+    setStored("graph3d.ontology-snippet.term:3", JSON.stringify({ flat: false }));
+    snippet(termPreset(3), "test3");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
+    await waitFor(() => expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:3", depth: 3 }));
+    expect(reads.scopes.at(-1)?.layers).toEqual(expect.arrayContaining(["columns", "data"]));
+  });
+});
+
 describe("a term's graph, expanded from its page", () => {
   // REQ-2174 (amended 2026-11-11, A TERM OPENS ON ITSELF): the term's reach -- its ancestor, the
   // column it binds, that column's table and the product holding it -- read for the term; the

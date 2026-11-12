@@ -87,6 +87,10 @@ const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "related"]);
  * amended 2026-11-07), so neither is read for it. */
 const NOT_IN_2D: ReadonlySet<LayerId> = new Set(["related", "lineage"]);
 
+/** The layers a term drawn brings with it, whatever the hop (REQ-2174, amended 2026-11-12): read
+ * while chosen though the opening read, nearer the focus, found nothing in them. */
+const GROUNDING: ReadonlySet<LayerId> = new Set(["columns", "data"]);
+
 /** The depths a focus can be read to, in steps between terms; Infinity is All, the connected part
  * to its end (REQ-2174, amended 2026-11-12). */
 const DEPTHS = [1, 2, 3, 4, Infinity];
@@ -335,7 +339,7 @@ export function GraphExplorer({
       new Set(
         [...layers].filter(
           (l) =>
-            offered.has(l) &&
+            (offered.has(l) || GROUNDING.has(l)) &&
             (l !== "ownerTables" || layers.has("columns")) &&
             !(flat && NOT_IN_2D.has(l)),
         ),
