@@ -24,6 +24,7 @@ import sqlglot
 from provisa.cypher.parser import parse_cypher
 from provisa.ephemeral import seam
 from provisa.gql.traversal_order import reordered
+from provisa.transpiler.transpile import transpile_to_trino
 from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
@@ -80,3 +81,14 @@ def test_an_optional_or_bound_path_is_as_written(session):
     ):
         ast = parse_cypher(query, lm)
         assert reordered(ast, lm) is ast, query
+
+
+def test_an_optional_paths_label_filters_reach_trino_as_trinos_sql(session):
+    """The semantic statement filters a session hop's ends by their labels with PostgreSQL's
+    ``@>``; Trino, reading the session's scratch, is sent the statement in its own SQL, which its
+    rewrites read back as Trino's (tests/integration/test_ephemeral_traversal_order_engines.py)."""
+    query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
+    semantic = session.sql(query)
+    assert sqlglot.parse_one(semantic, read="postgres").find(sqlglot.exp.ArrayContainsAll)
+    written = transpile_to_trino(semantic)
+    assert sqlglot.parse_one(written, read="trino").find(sqlglot.exp.ArrayContainsAll) is None
