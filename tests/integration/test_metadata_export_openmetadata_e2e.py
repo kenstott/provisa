@@ -229,7 +229,9 @@ async def test_each_member_carries_its_odcs_contract(published, token):
     }
     (schema,) = odcs["schema"]
     columns = {p["name"]: p for p in schema["properties"]}
-    assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}
+    # REQ-2180: the default offer's contract is the member as its role (viewer) reads it, so the
+    # restricted column (margin: admins only) is no field of it, while the table above has it.
+    assert set(columns) == {"id", "customer_id", "amount", "region", "ssn"}
     assert columns["amount"]["description"] == ORDERS_AMOUNT_DESCRIPTION
     assert MASK_PATTERN not in httpx.Response(200, json=odcs).text
 
