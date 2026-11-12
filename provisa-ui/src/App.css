@@ -871,10 +871,6 @@ main {
 .form-footer.form-footer--head {
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  gap: 0.25rem;
-}
-.form-footer.form-footer--head .mantine-Button-root {
-  min-width: 0;
 }
 /* What a form in the panel says of a save that did not go through: one line under the head. */
 .split-pane__notice {
