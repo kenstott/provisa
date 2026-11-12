@@ -334,9 +334,7 @@ class _UnionMixin:  # mixin for _Translator
                 if tgt_type_set is not None and far not in tgt_type_set:
                     continue
                 # REQ-2135: an open hop never reads a parameterized table a label did not name.
-                if self._lm.nodes[near].parameterized and near != src_type:
-                    continue
-                if self._lm.nodes[far].parameterized and far != tgt_type:
+                if not (self._lm.end_reads(near, src_type) and self._lm.end_reads(far, tgt_type)):
                     continue
                 if src_type is not None and near != src_type:
                     continue
@@ -570,11 +568,23 @@ class _UnionMixin:  # mixin for _Translator
                 null = exp.Cast(this=exp.Null(), to=exp.DataType.build("JSON"))
                 return exp.alias_(null, name)  # pyright: ignore[reportReturnType]
 
+            # An end held as a row of one table is joined on its key columns, which the read
+            # of none has too.
+            held_keys = [
+                exp.alias_(exp.null(), f"{col}__key{i}")
+                for wanted, col, of in (
+                    (src_keys, src_col, src_type),
+                    (tgt_keys, tgt_col, tgt_type),
+                )
+                if wanted and of is not None
+                for i, _ in enumerate(key_names(self._lm.nodes[of]))
+            ]
             nothing = exp.select(
                 _none(src_col),
                 _none(rel_col),
                 _none(tgt_col),
                 _none(edge_properties_column(rel_col)),
+                *held_keys,
             ).where(exp.false())
             return exp.alias_(exp.Subquery(this=nothing), alias=alias)  # pyright: ignore[reportReturnType]
 
@@ -607,7 +617,8 @@ class _UnionMixin:  # mixin for _Translator
             nm = self._lm.nodes.get(label)
             if nm is None:
                 continue
-            if nm.native_filter_columns:
+            # REQ-2135: a free node, or one a domain label names, is no parameterized table.
+            if not self._lm.end_reads(label):
                 continue
             # REQ-1132: a bare MATCH (n) roots only on directly-queryable nodes. Traversal-only nodes
             # (e.g. the meta/catalog domain for a role without a meta grant) are reachable only by
