@@ -80,7 +80,7 @@ export function DependentsDialog({ subject, dependents, onClose, itemAction }: D
                   <List.Item key={`${d.kind}:${d.id}:${d.label}`}>
                     <Group gap="xs" wrap="nowrap">
                       {linkOf ? (
-                        <Anchor component={Link} to={linkOf(d)} onClick={onClose}>
+                        <Anchor component={Link} to={linkOf(d)} onClick={onClose} inherit>
                           {d.label}
                         </Anchor>
                       ) : (
