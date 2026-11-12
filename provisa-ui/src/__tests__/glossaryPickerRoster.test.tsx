@@ -77,6 +77,7 @@ const DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const json = (status: number, body: unknown) =>

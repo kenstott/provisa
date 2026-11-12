@@ -12,7 +12,6 @@ import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -53,6 +52,7 @@ import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { commandId, readCommandId, useDetailParam } from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -101,12 +101,16 @@ export function CommandsPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-  // `?command=<name>` opens that command's detail -- a lineage edge links to the command it names.
-  const [searchParams] = useSearchParams();
-  const [expandedFn, setExpandedFn] = useState<string | null>(() => searchParams.get("command"));
-  const [expandedWh, setExpandedWh] = useState<string | null>(null);
-  // REQ-2168: the open function's section, the same tab in its read view and its form.
-  const [fnSection, setFnSection] = useState<CommandSection>("command");
+  // REQ-2241: `?command=` is the open command's panel -- a lineage edge links to the command it
+  // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
+  // share a name; commandId).
+  // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
+  const detail = useDetailParam("commands");
+  const fnSection = (detail.tab ?? "command") as CommandSection;
+  const setFnSection = detail.setTab;
+  const openCommand = (kind: ActionType, name: string | null) =>
+    name === null ? detail.close() : detail.open(commandId(kind, name));
+  const opened = detail.id === null ? null : readCommandId(detail.id);
   const [fnPage, setFnPage] = useState(1);
   const [whPage, setWhPage] = useState(1);
   const PAGE_SIZE = 50;
@@ -196,7 +200,7 @@ export function CommandsPage() {
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
       });
-      setExpandedFn(name);
+      openCommand("function", name);
     } else {
       const wh = held.webhooks.find((w) => w.name === name);
       if (!wh) return;
@@ -225,7 +229,7 @@ export function CommandsPage() {
         outputColumns: [],
         languageBindings: {},
       });
-      setExpandedWh(name);
+      openCommand("webhook", name);
     }
     setEditingName(name);
     setShowForm(false);
@@ -303,8 +307,7 @@ export function CommandsPage() {
       setEditingName(null);
       const held = await load();
       if (created && held) {
-        setExpandedFn(created.type === "function" ? created.name : null);
-        setExpandedWh(created.type === "webhook" ? created.name : null);
+        openCommand(created.type, created.name);
         handleEdit(created.type, created.name, held);
       }
     } catch (e) {
@@ -439,8 +442,10 @@ export function CommandsPage() {
 
   // What the right-hand panel shows: the result of a test run (with a way back to the command),
   // the short step that creates a command, or the selected command -- being edited, or read.
-  const selectedFn = expandedFn ? (functions.find((f) => f.name === expandedFn) ?? null) : null;
-  const selectedWh = expandedWh ? (webhooks.find((w) => w.name === expandedWh) ?? null) : null;
+  const selectedFn =
+    opened?.kind === "function" ? (functions.find((f) => f.name === opened.name) ?? null) : null;
+  const selectedWh =
+    opened?.kind === "webhook" ? (webhooks.find((w) => w.name === opened.name) ?? null) : null;
   // Whom a test run is made as: chosen where the run is started, in the command's own panel.
   const testAs = (
     <Group gap="sm" align="center" mt="sm">
@@ -599,7 +604,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteFunction(fn.name);
                     await load();
-                    setExpandedFn(null);
+                    detail.close({ only: commandId("function", fn.name) });
                   }}
                 />
               </Group>
@@ -657,7 +662,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteWebhook(wh.name);
                     await load();
-                    setExpandedWh(null);
+                    detail.close({ only: commandId("webhook", wh.name) });
                   }}
                 />
               </Group>
@@ -675,8 +680,7 @@ export function CommandsPage() {
   const closePanel = () => {
     setTestResult(null);
     if (showForm || editingName) handleCancel();
-    setExpandedFn(null);
-    setExpandedWh(null);
+    detail.close();
   };
 
   if (loading) return <PageLoading message={t("commandsPage.loading")} />;
@@ -763,7 +767,7 @@ export function CommandsPage() {
                   colSpan={7}
                   rowKey={(fn) => `fn:${fn.name}`}
                   render={(fn) => {
-                    const isExpanded = expandedFn === fn.name;
+                    const isExpanded = selectedFn?.name === fn.name;
                     const isEditing = editingName === fn.name;
                     return (
                       <React.Fragment key={fn.name}>
@@ -772,8 +776,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            setExpandedWh(null);
-                            setExpandedFn(isExpanded ? null : fn.name);
+                            openCommand("function", isExpanded ? null : fn.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >
@@ -837,7 +840,7 @@ export function CommandsPage() {
                   colSpan={9}
                   rowKey={(wh) => `wh:${wh.name}`}
                   render={(wh) => {
-                    const isExpanded = expandedWh === wh.name;
+                    const isExpanded = selectedWh?.name === wh.name;
                     const isEditing = editingName === wh.name;
                     return (
                       <React.Fragment key={wh.name}>
@@ -846,8 +849,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            setExpandedFn(null);
-                            setExpandedWh(isExpanded ? null : wh.name);
+                            openCommand("webhook", isExpanded ? null : wh.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >

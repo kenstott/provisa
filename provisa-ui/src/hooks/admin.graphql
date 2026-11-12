@@ -142,6 +142,7 @@ query SourcesQuery {
     passwordRef
     changeSignal
     rowFetchByKeys
+    isSystem
     cdc {
       bootstrapServers
       topicPrefix

@@ -379,6 +379,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this source
+    # A source Provisa runs for itself (its control plane, its telemetry, the views' sentinel, a
+    # data-quality checker or profiler whose results land as tables): no one registers tables on
+    # it, so the Register table source picker leaves it out.
+    is_system: bool = False
     allowed_domains: list[str] = Field(
         default_factory=list
     )  # restrict this source to specific domains; empty = unrestricted

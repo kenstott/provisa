@@ -14,6 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const rebind = vi.fn(async () => {});
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => ({ rebind }) }));
@@ -124,6 +125,47 @@ describe("derived roles on the Roles page", () => {
     });
     expect(screen.getByTestId("role-description-input")).toHaveValue(
       "Interns read the sales domain.",
+    );
+  });
+});
+
+// REQ-2241: a derived role's panel is in the URL as ?derived=<attribute>:<value>.
+describe("a derived role's panel is in the URL", () => {
+  function Where() {
+    const location = useLocation();
+    const navigate = useNavigate();
+    return (
+      <>
+        <output data-testid="where">{location.pathname + location.search}</output>
+        <button onClick={() => navigate(-1)}>history-back</button>
+      </>
+    );
+  }
+  const where = () => screen.getByTestId("where").textContent;
+
+  it("writes the value picked, closes the role it replaces, and Back reopens it", async () => {
+    render(
+      <>
+        <Where />
+        <SecurityRolesPage />
+      </>,
+      { initialEntries: ["/security/roles?role=analyst"] },
+    );
+    fireEvent.click(await screen.findByTestId("derived-value-row-region__eu"));
+    await waitFor(() => expect(where()).toBe("/security/roles?derived=region%3Aeu"));
+    expect(
+      within(screen.getByTestId("roles-split-panel")).getByTestId("value-role-read-region__eu"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("history-back"));
+    await waitFor(() => expect(where()).toBe("/security/roles?role=analyst"));
+    expect(screen.getByTestId("roles-split-title")).toHaveTextContent("analyst");
+  });
+
+  it("loads a link on that derived role's panel", async () => {
+    render(<SecurityRolesPage />, { initialEntries: ["/security/roles?derived=region"] });
+    const panel = within(await screen.findByTestId("roles-split-panel"));
+    expect(await panel.findByTestId("derived-uses-region")).toHaveTextContent(
+      "Column customers.email",
     );
   });
 });

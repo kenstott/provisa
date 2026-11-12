@@ -184,6 +184,7 @@ sources = Table(
     Column("cache_catalog", Text),
     Column("cache_schema", Text, nullable=False, server_default="api_cache"),
     Column("approval_hook", Boolean, nullable=False, server_default=false()),
+    Column("is_system", Boolean, nullable=False, server_default=false()),
 )
 
 domains = Table(
@@ -839,6 +840,20 @@ glossary_term_domains = Table(
     Column("domain_id", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "domain_id"),
+)
+
+# REQ-2237: what an imported ontology states about a term that the term does not model, one row a
+# statement (provisa/ontology_import/kept.py). See schema.sql.
+glossary_term_statements = Table(
+    "glossary_term_statements",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("statement", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "ordinal"),
 )
 
 # People who can answer questions about the term or who authored its definition.
@@ -2625,7 +2640,7 @@ glossary_ontology_imports = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("title", Text, nullable=False),
     Column("file_name", Text, nullable=False),
-    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld
+    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld | archive
     Column("domains", Text, nullable=False),
     Column("summary", Text, nullable=False),
     Column("imported_by", Text, nullable=True),
@@ -2634,7 +2649,7 @@ glossary_ontology_imports = Table(
     Column("applied_at", DateTime(timezone=True), nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
-        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')",
+        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')",
         name="glossary_ontology_imports_format_check",
     ),
 )
@@ -2654,7 +2669,7 @@ glossary_ontology_items = Table(
     ),
     Column("ordinal", Integer, nullable=False),
     Column("name", Text, nullable=False),
-    Column("kind", Text, nullable=False),  # class | property | value | concept
+    Column("kind", Text, nullable=False),  # class | property | value | concept | individual
     Column("definition", Text, nullable=True),
     Column("iri", Text, nullable=True),
     Column("payload", Text, nullable=False),
@@ -2668,7 +2683,7 @@ glossary_ontology_items = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("import_id", "ordinal"),
     CheckConstraint(
-        "kind IN ('class', 'property', 'value', 'concept')",
+        "kind IN ('class', 'property', 'value', 'concept', 'individual')",
         name="glossary_ontology_items_kind_check",
     ),
     CheckConstraint(

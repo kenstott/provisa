@@ -246,14 +246,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes de que termine una asignación de rol",
-        "help": "Cuántos días antes de que una asignación de rol caduque, o se elimine por falta de uso, se avisa por correo a su titular y a los administradores de la organización."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Aviso de vencimiento próximo de los derechos de acceso",
-        "help": "Cuántos días antes de la fecha de una regla de vencimiento de derechos de acceso se emite el evento de vencimiento próximo y se envía un correo a la persona y a los administradores de la organización. Las pantallas de derechos de acceso resaltan las reglas tan cercanas a su fecha."
+        "label": "Aviso antes de que termine una asignación de rol o sus entradas",
+        "help": "Cuántos días antes de que termine una asignación de rol, o una de sus entradas de derechos, o de que la asignación se elimine por falta de uso, se envía un correo a su titular y a los administradores de la organización."
       }
     },
     "server": {

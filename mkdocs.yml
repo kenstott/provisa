@@ -169,7 +169,7 @@ nav:
       - gRPC: conformance/grpc.md
       - MCP: conformance/mcp.md
       - Polyfills:
-          - Across the dialects: conformance/polyfill/index.md
+          - By dialect: conformance/polyfill/index.md
           - "PostgreSQL": conformance/polyfill/postgres.md
           - "DuckDB": conformance/polyfill/duckdb.md
           - "Trino": conformance/polyfill/trino.md

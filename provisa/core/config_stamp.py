@@ -71,6 +71,8 @@ TENANT_TABLES: dict[str, str] = {
     "data_products": MODEL,
     "data_product_tables": MODEL,  # REQ-1634
     "data_product_commands": MODEL,  # REQ-1634
+    # REQ-2180: a synthetic offer's role reads its product's datasets through their fakes.
+    "data_product_offers": MODEL,
     "naming_rules": MODEL,
     "registered_tables": MODEL,
     "table_columns": MODEL,
@@ -119,6 +121,21 @@ NOT_READ_BY_THE_BUILD: dict[str, tuple[str, ...]] = {
         "status_by",
         "status_at",
         "successor_id",
+    ),
+    # REQ-2180: the build reads an offer's product, role and data level (its synthetic masks);
+    # the rest of its terms are read from the store when asked.
+    "data_product_offers": (
+        "name",
+        "sample_views",
+        "dq_results",
+        "profiles",
+        "open",
+        "duration_days",
+        "version",
+        "published_by",
+        "review",
+        "created_at",
+        "updated_at",
     ),
 }
 

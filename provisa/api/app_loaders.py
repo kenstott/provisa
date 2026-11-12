@@ -1449,6 +1449,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
             if entry["mask"] is not None:
                 validate_masking_rule(rule_of(entry["mask"]), col_name, data_type, is_nullable)
         masked.append((table_id, col_name, masks, data_type))
+    masked = await _with_synthetic_masks(conn, masked, col_types_converted, rules)
     for role in roles:
         for key, cols in reader_masks(masked, role["id"], chains[role["id"]]).items():
             rules.setdefault(key, {}).update(cols)
@@ -1456,6 +1457,65 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     # published here, in the same assignment as their members'.
     state.masked_columns = masked
     state.masking_rules = with_meta_masks(state, rules, masked, chains)
+
+
+async def _with_synthetic_masks(  # REQ-2180, REQ-1494
+    conn: Any,
+    masked: list[tuple[int, str, list[dict], str]],
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    faked: dict[Any, dict[str, Any]],
+) -> list[tuple[int, str, list[dict], str]]:
+    """``masked`` with a role-wide fake mask on every column of every dataset of a product with
+    a synthetic offer, for that offer's role (REQ-2180, AN OFFER'S DATA IS FULL, A SAMPLE VIEW, OR
+    SYNTHETIC): the role reads each column through its declared fake (REQ-1494), computed by the
+    serving engine at the read, or completely masked where the column declares none -- never a
+    real value. A column a Test (fake) environment fakes for every role (``faked``) is left as it
+    is: every role reads its fake already."""
+    from provisa.core.repositories.data_product_offer import synthetic_readers
+    from provisa.security.masking import synthetic_masks
+
+    readers = await synthetic_readers(conn)
+    if not readers:
+        return masked
+    rows = (
+        await conn.execute_core(
+            select(
+                _table_columns_t.c.table_id,
+                _table_columns_t.c.column_name,
+                _table_columns_t.c.fake,
+                _table_columns_t.c.fake_stable,
+                _table_columns_t.c.fake_stable_version,
+            ).where(_table_columns_t.c.table_id.in_(list(readers)))
+        )
+    ).fetchall()
+    fakes = {
+        (r.table_id, r.column_name): {
+            "fake": r.fake,
+            "fake_stable": bool(r.fake_stable),
+            "fake_stable_version": r.fake_stable_version,
+        }
+        for r in rows
+        if r.fake is not None
+    }
+    everyone = {(table_id, column) for (table_id, _role), cols in faked.items() for column in cols}
+    own = {(t, c): (masks, dtype) for t, c, masks, dtype in masked}
+    columns = {(t, c.column_name) for t in readers for c in col_types_converted.get(t, [])}
+    out = [m for m in masked if (m[0], m[1]) not in columns]
+    for table_id, roles in readers.items():
+        for col in col_types_converted.get(table_id, []):
+            key = (table_id, col.column_name)
+            if key in everyone:
+                continue
+            masks, data_type = own.get(key, ([], col.data_type))
+            out.append(
+                (
+                    table_id,
+                    col.column_name,
+                    synthetic_masks(masks, roles, data_type, fakes.get(key)),
+                    data_type,
+                )
+            )
+    return out
 
 
 async def _load_kept(conn: Any) -> None:  # REQ-1942

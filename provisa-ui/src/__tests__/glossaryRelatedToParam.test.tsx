@@ -101,6 +101,7 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),

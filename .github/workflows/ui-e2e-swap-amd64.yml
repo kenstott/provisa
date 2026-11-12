@@ -46,7 +46,7 @@ jobs:
       timeout: 90
       # saphana (hdbcli + sqlalchemy-hana) is demo/sources/saphana/prime.py's own dependency.
       python-extras: dev saphana
-      ui: chromium-with-deps
+      ui: chromium
       # CI: every webServer is started by the harness. PROVISA_E2E_LANE=trino declares the Trino
       # webServer and keeps the control plane on the compose Postgres. PG_PORT / TRINO_PORT pin
       # what docker-compose.core.yml publishes so playwright.config.ts's `docker compose port`

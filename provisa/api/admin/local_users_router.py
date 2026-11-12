@@ -25,6 +25,7 @@ from sqlalchemy import delete as _delete, func, insert, select, update
 from provisa.api.admin._platform_guard import require_role_grantable
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
+from provisa.auth.role_grants import regrant
 from provisa.auth.scram_store import write_verifier
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
@@ -389,20 +390,9 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
-        # Idempotent assignment, then read the row back. REQ-2077: a grant given again states its
-        # expiry anew, and its holder is told again before the new one.
-        await conn.upsert(
-            t,
-            {
-                "user_id": user_id,
-                "role_id": body.role_id,
-                "domain_id": body.domain_id,
-                "expires_at": body.expires_at,
-                "expiry_notified_at": None,
-            },
-            index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=["expires_at", "expiry_notified_at"],
-        )
+        # Idempotent assignment, then read the row back. REQ-2077: a grant given again keeps the
+        # latest of its expiries, and no expiry is later than any date.
+        await regrant(conn, user_id, body.role_id, body.domain_id, body.expires_at)
         result = await conn.execute_core(
             select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at).where(
                 t.c.user_id == user_id,

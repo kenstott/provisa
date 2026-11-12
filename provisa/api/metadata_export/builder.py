@@ -798,6 +798,8 @@ def _grounded_terms(
     )
     roles = _roles(glossary)
     by_id = {term["id"]: term for term in terms}
+    # REQ-2237: what an imported ontology stated about each term, written back out with it.
+    kept = {row["term_id"]: tuple(row["statements"]) for row in glossary.get("statements", [])}
     grounded = []
     for term_id in sorted(view.seen()):
         term = by_id[term_id]
@@ -813,6 +815,8 @@ def _grounded_terms(
                 refs=tuple(refs_by_term.get(term_id, [])),
                 tables=tuple(tables_by_term.get(term_id, [])),
                 paths=tuple(tuple(path) for path in agent_paths(view, roots, term_id)),
+                iri=term.get("iri") if named else None,
+                statements=kept.get(term_id, ()) if named else (),
             )
         )
     edges = [GlossaryTermEdge(from_term_id=a, to_term_id=b, rel_type=r) for a, b, r in view.edges]

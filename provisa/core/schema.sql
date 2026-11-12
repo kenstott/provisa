@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS sources (
     producer_command JSONB,  -- REQ-861
     cache_catalog   TEXT,
     cache_schema    TEXT NOT NULL DEFAULT 'api_cache',
-    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
+    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE  -- a source Provisa runs for itself; not a target of Register table
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS replicate INTEGER;
@@ -1042,6 +1043,22 @@ CREATE TABLE IF NOT EXISTS glossary_term_domains (
     domain_id TEXT NOT NULL,
     tenant_id UUID,
     UNIQUE (term_id, domain_id)
+);
+
+-- REQ-2237 (A WHOLE RELEASE IMPORTS, AND NOTHING IS LOST): what an imported ontology states about
+-- the thing a term is that the term does not model -- restrictions and cardinalities,
+-- disjointness, inverse and transitive properties, property chains, named individuals with
+-- properties of their own, datatype ranges, an object property's domain and range, annotations.
+-- One row a statement (provisa/ontology_import/kept.py): ``statement`` is its JSON, ``kind`` what
+-- it is for a reader. Shown on the term's page and written back out on export; never reasoned over.
+CREATE TABLE IF NOT EXISTS glossary_term_statements (
+    id        SERIAL PRIMARY KEY,
+    term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    ordinal   INTEGER NOT NULL,
+    kind      TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    tenant_id UUID,
+    UNIQUE (term_id, ordinal)
 );
 
 -- People who can answer questions about the term or who authored its definition.
@@ -2640,7 +2657,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_imports (
     title       TEXT NOT NULL,
     file_name   TEXT NOT NULL,
     format      TEXT NOT NULL CONSTRAINT glossary_ontology_imports_format_check
-                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')),
+                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')),
     domains     TEXT NOT NULL,
     summary     TEXT NOT NULL,
     imported_by TEXT,
@@ -2656,7 +2673,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_items (
     ordinal     INTEGER NOT NULL,
     name        TEXT NOT NULL,
     kind        TEXT NOT NULL CONSTRAINT glossary_ontology_items_kind_check
-                    CHECK (kind IN ('class', 'property', 'value', 'concept')),
+                    CHECK (kind IN ('class', 'property', 'value', 'concept', 'individual')),
     definition  TEXT,
     iri         TEXT,
     payload     TEXT NOT NULL,

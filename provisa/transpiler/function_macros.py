@@ -2654,6 +2654,63 @@ def _strict_null(name: str, arity: int, dialect: str) -> exp.Expr | None:
     return exp.null() if dialect == "clickhouse" and name in _ARRAY_INPUT else None
 
 
+#: The functions not STRICT in pg_proc that answer NULL of a NULL array all the same: each tests
+#: its array argument for NULL first (PostgreSQL 17's array_userfuncs.c and arrayfuncs.c).
+_NULL_OF_A_NULL_ARRAY = frozenset(
+    {"array_position", "array_positions", "array_remove", "array_replace", "array_to_string"}
+)
+
+
+@functools.cache
+def _strict_arities() -> frozenset[tuple[str, int]]:
+    """Each (name, argument count) whose every overload pg_proc lists as STRICT: a NULL argument
+    is answered NULL without the function running."""
+    from provisa.pgwire.catalog_pg17_procs import PROCS
+
+    strict: dict[tuple[str, int], bool] = {}
+    for row in PROCS:
+        key = (row[1], row[15])
+        strict[key] = strict.get(key, True) and bool(row[11])
+    return frozenset(key for key, every in strict.items() if every)
+
+
+def _is_null_array(value: exp.Expr) -> bool:
+    """Whether an argument is a NULL cast to an array type."""
+    node = value.unnest()
+    return (
+        isinstance(node, exp.Cast)
+        and node.to.is_type(exp.DataType.Type.ARRAY)
+        and isinstance(node.this.unnest(), exp.Null)
+    )
+
+
+def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None:
+    """The name and arguments of ``target``, a call: as the table reads it, or as the polyfill
+    grid's rule it matches binds them (array_length is sqlglot's ArraySize)."""
+    call = _call(target)
+    if call is not None:
+        return call
+    applied = polyfill.GRID.read(target, dialect)
+    if applied is None or applied.rule.pattern is None:
+        return None
+    return applied.feature.name, [applied.bindings[p] for p in applied.rule.holes()]
+
+
+def _of_a_null_array(target: exp.Expr, dialect: str) -> str | None:
+    """The name of ``target`` where it is a call PostgreSQL answers NULL for its NULL array
+    argument: of a function STRICT at its argument count, or one of ``_NULL_OF_A_NULL_ARRAY``
+    with the NULL its first argument; None for any other node. ClickHouse has no NULL of an array
+    (an Array is never Nullable), so such a call is the NULL it answers."""
+    call = _called(target, dialect)
+    if call is None:
+        return None
+    name, args = call
+    if name in _NULL_OF_A_NULL_ARRAY:
+        return name if args and _is_null_array(args[0]) else None
+    strict = (name, len(args)) in _strict_arities()
+    return name if strict and any(_is_null_array(a) for a in args) else None
+
+
 def _is_null(value: exp.Expr) -> bool:
     """Whether an argument is a NULL, of any type the statement says."""
     node = value.unnest()
@@ -2905,6 +2962,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
+        nulled = _of_a_null_array(target, dialect) if dialect == "clickhouse" else None
+        if nulled is not None:
+            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+            return exp.alias_(exp.null(), nulled) if in_select else exp.null()
         polyfilled = _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled

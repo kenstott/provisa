@@ -60,11 +60,5 @@ export function useErdView() {
       }),
     /** REQ-2189: the focus a saved layout holds, taking the link's place as the layout loads. */
     takeFocus: (held: ErdFocus) => write((next) => writeErdFocus(next, held), true),
-    /** The item whose panel is open, in the link so that a copy of it opens the same. */
-    setPanel: (key: "table" | "relationship", id: string | null) =>
-      write((next) => {
-        if (id === null) next.delete(key);
-        else next.set(key, id);
-      }, true),
   };
 }
