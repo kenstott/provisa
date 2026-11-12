@@ -16,6 +16,7 @@ against a Cypher endpoint, the report, and a conformance page filled from an art
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 import sys
 from pathlib import Path
@@ -1237,3 +1238,143 @@ def test_main_prints_the_log_lines_after_writing_the_result(tmp_path, monkeypatc
     assert out.exists()
     printed = capsys.readouterr().out.splitlines()
     assert printed == by_design.log_lines(_LOG_DOC)
+
+
+# --- progress, timings and the deadline (release .509, run 43237881207) -------------------------
+
+
+def _main_in_a_thread(tmp_path, bound: float) -> tuple[list[int], Path, Path]:
+    """Run main on its own thread, bounded: a runner with no deadline never returns from a
+    scenario that never returns, and this says so instead of hanging the test session."""
+    import threading
+
+    features = tmp_path / "tck" / "features"
+    features.mkdir(parents=True)
+    # One file for main to find; the test's parse_feature gives its scenarios.
+    (features / "literals.feature").write_text(_FEATURE)
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    status: list[int] = []
+    t = threading.Thread(
+        target=lambda: status.append(
+            tck.main([str(features), "1", "http://x", "r", "Bearer t", str(out), str(md)])
+        ),
+        daemon=True,
+    )
+    t.start()
+    t.join(bound)
+    assert not t.is_alive(), (
+        f"main did not return within {bound}s of a scenario that never returns: "
+        "the runner has no deadline, so the step's timeout kills it without naming the scenario"
+    )
+    return status, out, md
+
+
+def test_a_scenario_that_never_returns_is_named_when_the_run_passes_its_deadline(
+    scenarios, tmp_path, monkeypatch, capsys
+):
+    import threading
+
+    release = threading.Event()
+    stuck = scenarios[1]
+
+    def run(scenario, _base, _role):
+        if scenario is stuck:
+            release.wait(30)
+        return tck.Outcome(scenario.feature, scenario.name, "passed")
+
+    monkeypatch.setattr(tck, "parse_feature", lambda path: scenarios)
+    monkeypatch.setattr(tck, "run", run)
+    monkeypatch.setattr(tck, "POLL_SECONDS", 0.05, raising=False)
+    monkeypatch.setenv("CONFORMANCE_DEADLINE_SECONDS", "0.5")
+    try:
+        status, out, md = _main_in_a_thread(tmp_path, 10)
+    finally:
+        release.set()
+    assert status == [1]
+    printed = capsys.readouterr().out
+    named = f"{stuck.feature} :: {stuck.name}"
+    error = next(line for line in printed.splitlines() if line.startswith("::error::"))
+    assert "passed its deadline of 0s with 1 of 5 scenarios run" in error
+    assert named in error and "in progress for" in error
+    # No score from an unfinished run: no JSON; the summary says why.
+    assert not out.exists()
+    assert named in md.read_text()
+
+
+def test_a_run_inside_its_deadline_writes_its_result(scenarios, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tck, "parse_feature", lambda path: scenarios)
+    monkeypatch.setattr(tck, "run", lambda s, _b, _r: tck.Outcome(s.feature, s.name, "passed"))
+    monkeypatch.setenv("CONFORMANCE_DEADLINE_SECONDS", "60")
+    status, out, _md = _main_in_a_thread(tmp_path, 10)
+    assert status == [0]
+    assert json.loads(out.read_text())["passed"] == 5
+    assert not any(line.startswith("::") for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_scenario_running_past_the_stall_bound_is_warned_while_it_runs(
+    scenarios, monkeypatch, capsys
+):
+    import time as _time
+
+    slow = scenarios[0]
+
+    def run(scenario, _base, _role):
+        if scenario is slow:
+            _time.sleep(0.5)
+        return tck.Outcome(scenario.feature, scenario.name, "passed")
+
+    monkeypatch.setattr(tck, "run", run)
+    monkeypatch.setattr(tck, "POLL_SECONDS", 0.05)
+    monkeypatch.setattr(tck, "STALL_SECONDS", 0.2)
+    outcomes: list = [None] * len(scenarios)
+    assert tck.run_within(scenarios, "http://x", "r", outcomes, tck.Progress(len(scenarios)), 0)
+    warnings = [line for line in capsys.readouterr().out.splitlines() if "::warning::" in line]
+    assert len(warnings) == 1
+    assert f"{slow.feature} :: {slow.name}" in warnings[0]
+
+
+def test_each_kind_s_time_and_the_slowest_scenarios_are_printed(scenarios, monkeypatch, capsys):
+    import time as _time
+
+    slow = scenarios[3]
+
+    def run(scenario, _base, _role):
+        if scenario is slow:
+            _time.sleep(0.2)
+        return tck.Outcome(scenario.feature, scenario.name, "passed")
+
+    monkeypatch.setattr(tck, "run", run)
+    monkeypatch.setattr(tck, "SLOW_SECONDS", 0.1)
+    progress = tck.Progress(len(scenarios))
+    assert tck.run_within(scenarios, "http://x", "r", [None] * len(scenarios), progress, 0)
+    lines = progress.timing_lines()
+    assert lines[0].startswith("timings: 5 scenarios in ")
+    # No Bolt session is configured here, so every scenario runs over HTTP.
+    assert lines[1].startswith("timings: http: 5 scenarios, ")
+    assert lines[2].endswith(f"(http) {slow.feature} :: {slow.name}")
+    err = capsys.readouterr().err
+    assert f"(http) {slow.feature} :: {slow.name}" in err and err.startswith("slow: ")
+
+
+def test_an_unexpected_error_in_a_scenario_still_stops_the_run(scenarios, monkeypatch):
+    def run(_scenario, _base, _role):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(tck, "run", run)
+    with pytest.raises(RuntimeError, match="boom"):
+        tck.run_within(scenarios, "http://x", "r", [None] * len(scenarios), tck.Progress(5), 0)
+
+
+def test_the_tck_step_stops_itself_inside_its_bound_and_past_the_suite_s_longest_run():
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/conformance-cypher.yml").read_text())
+    job = workflow["jobs"]["cypher"]
+    step = next(s for s in job["steps"] if s.get("name") == "Run the TCK")
+    bound = int(step["timeout-minutes"]) * 60
+    deadline = float(step["env"]["CONFORMANCE_DEADLINE_SECONDS"])
+    # Room inside the bound to write the summary and print the timings.
+    assert 120 <= bound - deadline <= 900
+    # The full suite took up to 40 minutes on hosted runners with no scenario hung (.509).
+    assert deadline >= 50 * 60
+    assert int(job["timeout-minutes"]) * 60 >= bound + 10 * 60
