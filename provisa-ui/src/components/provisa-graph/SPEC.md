@@ -92,15 +92,20 @@ titled the same way.
 ## Canvas
 
 - A plain canvas in the canvas token: no dot grid (maintainer, 2026-11-11).
-- A fit is by the diagram's drawn extent, below the legend. The whole diagram is fitted while the
+- How a graph opens, and Reset view, fit by the diagram's drawn extent, below the legend
+  (`fitClear`). The whole diagram is fitted while the
   zoom stays at 0.8 or more (`READABLE_ZOOM`); a bigger diagram is drawn at the readable zoom from
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
+- The fit control fits the entire image, below the legend, however small that makes it
+  (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
-  the view gives it. Shown on hover or keyboard focus.
+  the view gives it. Shown on hover or keyboard focus. Each control's tooltip is drawn in place
+  (so it shows in full screen), on one line beside its button: an in-place Tip is as wide as its
+  text (`max-content`, up to the tip's 340px), not as wide as the bar.
 - One legend, top-right (clear of the application's floating buttons at the bottom-right): the
   types drawn, each a band swatch, icon and name.
 - Top-left: what the view lays over the canvas (the ERD's tables new since a save), then the hint.

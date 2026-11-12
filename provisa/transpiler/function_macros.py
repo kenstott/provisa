@@ -1302,9 +1302,6 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN substr(CAST(value AS VARCHAR), 20, 1) IN ('8', '9', 'a', 'b') "
         "THEN uuid_extract_version(value) END",
     ),
-    _macro(
-        "array_cat", "a, b", "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END"
-    ),
     _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
     _macro(
         "array_position",
@@ -2659,6 +2656,9 @@ def _strict_null(name: str, arity: int, dialect: str) -> exp.Expr | None:
 _NULL_OF_A_NULL_ARRAY = frozenset(
     {"array_position", "array_positions", "array_remove", "array_replace", "array_to_string"}
 )
+#: The functions not STRICT in pg_proc that answer NULL where every argument is a NULL array:
+#: array_cat answers the other argument where one is not (array_userfuncs.c, and its grid row).
+_NULL_OF_NULL_ARRAYS = frozenset({"array_cat"})
 
 
 @functools.cache
@@ -2707,6 +2707,8 @@ def _of_a_null_array(target: exp.Expr, dialect: str) -> str | None:
     name, args = call
     if name in _NULL_OF_A_NULL_ARRAY:
         return name if args and _is_null_array(args[0]) else None
+    if name in _NULL_OF_NULL_ARRAYS:
+        return name if args and all(_is_null_array(a) for a in args) else None
     strict = (name, len(args)) in _strict_arities()
     return name if strict and any(_is_null_array(a) for a in args) else None
 

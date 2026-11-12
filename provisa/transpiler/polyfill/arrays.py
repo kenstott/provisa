@@ -499,6 +499,79 @@ GENERATE_SUBSCRIPTS = Feature(
     ),
 )
 
+#: PostgreSQL 17 (array_userfuncs.c) reads a NULL array given to array_append or array_prepend as
+#: an empty one, and array_cat answers the other argument, NULL only where both are NULL. ClickHouse
+#: has no NULL of an array (an Array is never Nullable): each is written as that answer there.
+
+
+def _no_array_append(function: str) -> Limitation:
+    """ClickHouse has no function of PostgreSQL's name: only a NULL array has a form."""
+    return Limitation(
+        f"Only a NULL array is written: ClickHouse has no {function}, so a call on an array that "
+        "is not NULL fails with ClickHouse's own error."
+    )
+
+
+ARRAY_APPEND = Feature(
+    "array_append",
+    FAMILY,
+    "An array with an element added at its end; a NULL array is read as an empty one.",
+    read=Side(
+        rules=(
+            Rule(
+                "array_append(NULL::anycompatiblearray, $v::anycompatible)", {"clickhouse": "[$v]"}
+            ),
+        ),
+        limitations={"clickhouse": (_no_array_append("array_append"),)},
+    ),
+)
+
+ARRAY_PREPEND = Feature(
+    "array_prepend",
+    FAMILY,
+    "An array with an element added at its start; a NULL array is read as an empty one.",
+    read=Side(
+        rules=(
+            Rule(
+                "array_prepend($v::anycompatible, NULL::anycompatiblearray)", {"clickhouse": "[$v]"}
+            ),
+        ),
+        limitations={"clickhouse": (_no_array_append("array_prepend"),)},
+    ),
+)
+
+#: The dialects with no form of array_cat.
+_NO_ARRAY_CAT = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse"})
+
+ARRAY_CAT = Feature(
+    "array_cat",
+    FAMILY,
+    "Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.",
+    read=Side(
+        rules=(
+            # Both NULL: ClickHouse's NULL, as for a STRICT call of a NULL array
+            # (provisa.transpiler.function_macros), before a rule is read.
+            Rule(
+                "array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)",
+                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$b", "clickhouse": "$b"},
+            ),
+            Rule(
+                "array_cat($a::anycompatiblearray, NULL::anycompatiblearray)",
+                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$a", "clickhouse": "$a"},
+            ),
+            Rule(
+                "array_cat($a::anycompatiblearray, $b::anycompatiblearray)",
+                {
+                    **_no_form_on("array_cat", (*_NO_ARRAY_CAT, "clickhouse")),
+                    # DuckDB's list_concat reads a NULL list as an empty one.
+                    "duckdb": "CASE WHEN $a IS NOT NULL OR $b IS NOT NULL "
+                    "THEN list_concat($a, $b) END",
+                },
+            ),
+        ),
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     ARRAY_NDIMS,
     ARRAY_DIMS,
@@ -512,4 +585,7 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_SHUFFLE,
     TRIM_ARRAY,
     GENERATE_SUBSCRIPTS,
+    ARRAY_APPEND,
+    ARRAY_PREPEND,
+    ARRAY_CAT,
 )

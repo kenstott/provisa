@@ -2009,8 +2009,9 @@ def transpile(
     # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
     # functions, so what they write of their own text is not read as a statement's.
     lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
-    if target_dialect in _ARRAY_TEXT_UNREAD and "{" in pg_sql:
-        # REQ-2171: an array's text form as its elements, before a function's form reads it.
+    if target_dialect in _ARRAY_TEXT_UNREAD:
+        # REQ-2171: an array's text form as its elements, before a function's form reads it. Each
+        # cast is read on the tree (REQ-913), never by a substring of the statement.
         lowered = array_inputs(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
