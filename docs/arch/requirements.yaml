@@ -91237,7 +91237,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     with product boxes beside it. It opens instead on what its name says: every product, its member tables,
     and the links between products, with columns and terms folded away until the reader asks for them (the
     same show-the-rest control and layer choices the graph already has). It is still the one graph and keeps
-    its own remembered settings; a reader who has saved other settings for it opens on those.'
+    its own remembered settings; a reader who has saved other settings for it opens on those. (Amended 2026-11-12,
+    THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things
+    without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations,
+    with a tooltip naming them. Lateral is the layout''s word and is not shown to a reader. What the toggle
+    does is unchanged.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
