@@ -12,8 +12,10 @@
 tree, and the subtrees its holes matched grafted into a replacement's tree.
 
 A node matches a pattern when it is the same kind of node with the same arguments, a hole matching
-any subtree and a typed hole a subtree whose said type fits its type. A hole written twice matches
-the same subtree twice. A node that does not match is not the rule's: nothing is guessed."""
+any subtree and a typed hole a subtree whose said type fits its type. A NULL cast to a type in a
+pattern (``NULL::anycompatiblearray``) matches a NULL whose said type fits that type. A hole written
+twice matches the same subtree twice. A node that does not match is not the rule's: nothing is
+guessed."""
 
 # Requirements: REQ-2236
 
@@ -73,6 +75,11 @@ def _matches(pattern: exp.Expr, node: exp.Expr, bindings: Bindings) -> bool:
     name = hole_name(pattern)
     if name is not None:
         return _bound(name, node, bindings)
+    if isinstance(pattern, exp.Cast) and isinstance(pattern.this, exp.Null):
+        said = function_types.argument_type(pattern)
+        if said is None:
+            raise RuleError(f"the type {pattern.to.sql('postgres')} is not one PostgreSQL has")
+        return _is_null(node) and fits(node.unnest(), said)
     if type(pattern) is not type(node):
         return False
     if isinstance(pattern, exp.Anonymous):
@@ -90,6 +97,14 @@ def _matches(pattern: exp.Expr, node: exp.Expr, bindings: Bindings) -> bool:
     if keys != {k for k, v in node.args.items() if not _absent(v)}:
         return False
     return all(_value_matches(pattern.args[k], node.args[k], bindings) for k in keys)
+
+
+def _is_null(node: exp.Expr) -> bool:
+    """Whether ``node`` is a NULL, of a type said or not."""
+    node = node.unnest()
+    if isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    return isinstance(node, exp.Null)
 
 
 def _absent(value: Any) -> bool:
