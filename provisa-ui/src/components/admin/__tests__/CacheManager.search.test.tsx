@@ -78,10 +78,10 @@ vi.mock("../CacheStorageTab", () => ({
 import { CacheManager } from "../CacheManager";
 
 describe("the response cache's table search", () => {
-  it("lists the tables matching any word of the search", async () => {
+  it("lists the tables matching every word of the search, or either side of or", async () => {
     render(<CacheManager />);
     await screen.findByTestId("purge-table-btn-2");
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "orders finance" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "orders or finance" } });
     expect(screen.getByTestId("purge-table-btn-1")).toBeInTheDocument();
     expect(screen.getByTestId("purge-table-btn-3")).toBeInTheDocument();
     expect(screen.queryByTestId("purge-table-btn-2")).toBeNull();

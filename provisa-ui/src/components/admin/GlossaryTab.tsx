@@ -730,34 +730,11 @@ export function GlossaryTab() {
                     </Alert>
                   )}
 
-                  {/* A term nothing consumes is the normal state of a freshly derived glossary, so
-                    the panel says which of the two admission tests it still fails rather than
-                    leaving the curator to infer it from a badge. */}
-                  {detail.status === "draft" && (
-                    <Alert color="yellow" data-testid="glossary-draft">
-                      {(detail.definition ?? "").trim()
-                        ? t("glossaryTab.draftDefined")
-                        : t("glossaryTab.draftUndefined")}
-                    </Alert>
-                  )}
-                  {/* REQ-1387: what keeps it from reaching data, or from reaching it cleanly. */}
-                  {detail.grounding === "not_grounded" &&
-                    (detail.status === "draft" || detail.status === "approved") && (
-                      <Alert color="orange" data-testid="glossary-ungrounded">
-                        {t("glossaryTab.draftUngrounded")}
-                      </Alert>
-                    )}
+                  {/* A draft's and a term's grounding's state hints sit beside their values
+                    (TermReadView): Status, Grounding. */}
                   {/* REQ-1387 (RELATED_TO IS THE LAST RESORT): held only by RELATED_TO, which does
                     not ground, so the pair may want a term between. Guidance, never a block. */}
                   {onlyRelatedTo(detail) && <RelatedToHint />}
-                  {detail.grounding === "grounded_pending" && detail.pending_on.length > 0 && (
-                    <Alert color="yellow" variant="outline" data-testid="glossary-pending-on">
-                      {t("glossaryTab.groundingValue_grounded_pending")} —{" "}
-                      {t("glossaryTab.pendingOn", {
-                        terms: detail.pending_on.map((p) => p.name).join(", "),
-                      })}
-                    </Alert>
-                  )}
 
                   {canEdit && !editing && (
                     // Edit opens the whole term as one form; Retire and Delete act at once.

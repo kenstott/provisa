@@ -32,6 +32,7 @@ import {
 } from "../ontologyData";
 import { readOntology } from "../ontologyRead";
 import type { LayerId, QueryScope } from "../graphModel";
+import { searchItems } from "../../../lib/searchItems";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
 const list = (name: string): GraphqlType => ({
@@ -268,27 +269,40 @@ describe("the Ontology View's query", () => {
 });
 
 describe("REQ-2143: the Ontology View's query under a search", () => {
-  const searched = (items: string[], over: Partial<QueryScope> = {}) =>
+  const searched = (query: string, over: Partial<QueryScope> = {}) =>
     squash(
       ontologyQuery(
         reader(),
-        scope(["ontology", "domains", "columns"], { search: items, ...over }),
+        scope(["ontology", "domains", "columns"], { search: searchItems(query), ...over }),
       ),
     );
 
-  it("reads at its root the terms the search matches, by name or definition, any case", () => {
-    const q = searched(["cust", "lost order"]);
-    expect(q).toContain(
+  it("reads at its root the terms holding every item, by name or definition, any case", () => {
+    expect(searched('cust "lost order"')).toContain(
+      "on_terms(where: { _and: [" +
+        '{ _or: [{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }] }, ' +
+        '{ _or: [{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] }' +
+        "] })",
+    );
+    // or joins the items either side of it: a term holding either.
+    expect(searched('cust OR "lost order"')).toContain(
       "on_terms(where: { _or: [" +
         '{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }, ' +
         '{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] })',
     );
+    // An item with a leading - is in neither: a term with no definition is not found in it.
+    expect(searched("-cust")).toContain(
+      "{ _not: { _or: [" +
+        '{ name: { ilike: "%cust%" } }, ' +
+        '{ _and: [{ definition: { is_null: false } }, { definition: { ilike: "%cust%" } }] }' +
+        "] } }",
+    );
     // A pattern's own wildcards are the text's: 50% matches "50%", not "50" and anything.
-    expect(searched(["50%_x"])).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
+    expect(searched("50%_x")).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
   });
 
   it("reads each match's neighbourhood both ways, two hops deep and no further", () => {
-    const q = searched(["cust"]);
+    const q = searched("cust");
     // A match is read with what it touches, and its edges both ways, each end by its id: the
     // next hop reads the ends.
     expect(q.match(/refs \{/g)).toHaveLength(1);
@@ -297,7 +311,7 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     expect(q).toContain("sourceTerm { id }");
     expect(q).toContain("targetTerm { id }");
     // The terms a hop off are read with what they touch; those two hops off with their edges alone.
-    const s = scope(["ontology", "domains", "columns"], { search: ["cust"] });
+    const s = scope(["ontology", "domains", "columns"], { search: searchItems("cust") });
     const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [3, 4]));
     expect(hop(1)).toContain("on_terms(where: { id: { in: [3,4] } })");
     expect(hop(1).match(/refs \{/g)).toHaveLength(1);
@@ -311,7 +325,9 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
   });
 
   it("counts what its root would read, by id with each term's domains", () => {
-    const q = squash(ontologyCountQuery(reader(), scope(["ontology"], { search: ["cust"] })));
+    const q = squash(
+      ontologyCountQuery(reader(), scope(["ontology"], { search: searchItems("cust") })),
+    );
     expect(q).toContain("query OntologyCount");
     expect(q).toContain('{ name: { ilike: "%cust%" } }');
     expect(q).toContain("{ id domains { domainId } }");
@@ -336,7 +352,7 @@ describe("REQ-2174: a focus's hops, read as steps across the term links", () => 
   it("counts a term's hops from the term: each hop a step", () => {
     for (const depth of [1, 2, 3, 4])
       expect(termLevels({ search: [], focus: "term:7", depth })).toBe(depth);
-    expect(termLevels({ search: ["cust"], focus: null, depth: 2 })).toBe(2);
+    expect(termLevels({ search: searchItems("cust"), focus: null, depth: 2 })).toBe(2);
     expect(termLevels({ search: [], focus: null, depth: 2 })).toBe(0);
   });
 
@@ -467,7 +483,7 @@ describe("REQ-2143: a neighbourhood read a hop at a time", () => {
     const sent: string[] = [];
     const got = await readOntology(
       reader(),
-      scope(["ontology", "columns"], { search: ["t1"] }),
+      scope(["ontology", "columns"], { search: searchItems("t1") }),
       async (q) => {
         sent.push(q);
         return answers[/^query (\w+)/.exec(q)![1]];

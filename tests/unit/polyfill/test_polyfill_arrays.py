@@ -347,3 +347,31 @@ def test_a_refusal_raised_on_duckdb_carries_postgresqls_sqlstate():
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == "2202E"
     assert "number of elements to trim must be between 0 and 3" in str(error)
+
+
+#: array_cat of two arrays on Trino, as release v0.1.0-alpha.509 (R509-K) wrote it: a column can be
+#: NULL at run time, and Trino's concat of a NULL array is NULL, so the other array is answered.
+_ARRAY_CAT_ON_TRINO = "CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE CONCAT(a, b) END"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+@pytest.mark.parametrize(
+    ("call", "rule", "written"),
+    [
+        ("array_cat(a, b)", 2, _ARRAY_CAT_ON_TRINO),
+        ("array_cat(NULL, b)", 0, "b"),
+        ("array_cat(a, NULL)", 1, "a"),
+    ],
+)
+def test_array_cat_on_trino_is_written_by_its_grid_row(dialect: str, call: str, rule: int, written):
+    row = arrays.ARRAY_CAT.read.rules[rule]
+    assert row.matched(sqlglot.parse_one(call, read="postgres")) is not None
+    assert isinstance(row.forms[dialect], str)
+    assert transpile(f"SELECT {call} AS v FROM t", dialect) == f"SELECT {written} AS v FROM t"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+def test_array_cat_of_two_null_arrays_on_trino_is_null(dialect: str):
+    assert (
+        transpile("SELECT array_cat(NULL, NULL) AS v FROM t", dialect) == "SELECT NULL AS v FROM t"
+    )

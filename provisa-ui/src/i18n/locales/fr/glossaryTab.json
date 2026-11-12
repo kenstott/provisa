@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "Déplacer {{count}} colonne ?",
     "moveManyUnnamed_other": "Déplacer {{count}} colonnes ?",
     "moveCarryUnnamed": "Déplacer et marquer leurs nouveaux termes {{tags}}",
-    "termGraphTitle": "Graphe des termes",
+    "termGraphTitle": "Graphe",
     "status_approved": "Approuvé",
     "draftDefined": "Brouillon : approuvez-le quand sa définition est juste. Les agents et les catalogues trouvent et citent les données au moyen des termes approuvés.",
     "grounding_grounded": "ancré",

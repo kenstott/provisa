@@ -541,7 +541,7 @@ ARRAY_PREPEND = Feature(
 )
 
 #: The dialects with no form of array_cat.
-_NO_ARRAY_CAT = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse"})
+_NO_ARRAY_CAT = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse", *_TRINO})
 
 ARRAY_CAT = Feature(
     "array_cat",
@@ -553,11 +553,21 @@ ARRAY_CAT = Feature(
             # (provisa.transpiler.function_macros), before a rule is read.
             Rule(
                 "array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)",
-                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$b", "clickhouse": "$b"},
+                {
+                    **_no_form_on("array_cat", _NO_ARRAY_CAT),
+                    "duckdb": "$b",
+                    **_on_trino("$b"),
+                    "clickhouse": "$b",
+                },
             ),
             Rule(
                 "array_cat($a::anycompatiblearray, NULL::anycompatiblearray)",
-                {**_no_form_on("array_cat", _NO_ARRAY_CAT), "duckdb": "$a", "clickhouse": "$a"},
+                {
+                    **_no_form_on("array_cat", _NO_ARRAY_CAT),
+                    "duckdb": "$a",
+                    **_on_trino("$a"),
+                    "clickhouse": "$a",
+                },
             ),
             Rule(
                 "array_cat($a::anycompatiblearray, $b::anycompatiblearray)",
@@ -566,6 +576,11 @@ ARRAY_CAT = Feature(
                     # DuckDB's list_concat reads a NULL list as an empty one.
                     "duckdb": "CASE WHEN $a IS NOT NULL OR $b IS NOT NULL "
                     "THEN list_concat($a, $b) END",
+                    # Trino's concat of arrays is NULL where either is: a column can be NULL at run
+                    # time, so a NULL array is the other one before concat is reached.
+                    **_on_trino(
+                        "CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END"
+                    ),
                 },
             ),
         ),

@@ -116,7 +116,7 @@ describe("ObservabilityTab subsystem trace switches", () => {
 });
 
 describe("the trace feed's search", () => {
-  it("lists the traces matching any word of the search", async () => {
+  it("lists the traces matching every word of the search, or either side of or", async () => {
     const trace = (span: string, name: string, status: string) => ({
       ts: 1,
       trace_id: `t-${span}`,
@@ -144,9 +144,14 @@ describe("the trace feed's search", () => {
     try {
       render(<OrgObservabilityTab />);
       await screen.findByTestId("trace-row-c");
-      fireEvent.change(screen.getByTestId("trace-filter"), { target: { value: "orders error" } });
+      fireEvent.change(screen.getByTestId("trace-filter"), { target: { value: "orders or error" } });
       expect(screen.getByTestId("trace-row-a")).toBeInTheDocument();
       expect(screen.getByTestId("trace-row-b")).toBeInTheDocument();
+      expect(screen.queryByTestId("trace-row-c")).toBeNull();
+      // Every word is required, and a word with a leading - must not be found.
+      fireEvent.change(screen.getByTestId("trace-filter"), { target: { value: "query -error" } });
+      expect(screen.getByTestId("trace-row-a")).toBeInTheDocument();
+      expect(screen.queryByTestId("trace-row-b")).toBeNull();
       expect(screen.queryByTestId("trace-row-c")).toBeNull();
     } finally {
       vi.unstubAllGlobals();
