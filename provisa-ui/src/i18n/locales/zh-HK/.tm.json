@@ -2634,7 +2634,7 @@
   "zh-HK/glossaryTab.json::glossaryTab.stewardshipHint": "Stewardship summary: what agents can see, and what is waiting on a steward.",
   "zh-HK/glossaryTab.json::glossaryTab.stewardshipTitle": "Stewardship summary",
   "zh-HK/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "zh-HK/glossaryTab.json::glossaryTab.termGraphTitle": "Term graph",
+  "zh-HK/glossaryTab.json::glossaryTab.termGraphTitle": "Graph",
   "zh-HK/glossaryTab.json::glossaryTab.title": "Ontology",
   "zh-HK/glossaryTab.json::glossaryTab.toReview": "To review",
   "zh-HK/glossaryTab.json::glossaryTab.unretire": "Restore",

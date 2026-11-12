@@ -166,9 +166,12 @@ function editLabels(root: HTMLElement): string[] {
     .sort();
 }
 
-/** The read rows: only those directly in the grid are drawn (the rest of the form is not). */
+/** The read fields: only the cells directly in the read's flow are drawn (the rest of the form is
+ * not), each its label above its value. */
 function readLabels(root: HTMLElement): string[] {
-  return [...root.querySelectorAll(":scope > dt")].map((d) => strip(d.textContent ?? "")).sort();
+  return [...root.querySelectorAll(":scope > .form-field > dt")]
+    .map((d) => strip(d.textContent ?? ""))
+    .sort();
 }
 
 beforeEach(() => {
@@ -196,7 +199,7 @@ describe("a source read", () => {
     );
     const read = screen.getByTestId("read");
     expect(readLabels(read)).toEqual(shownInEdit);
-    // Every row is in the grid itself: one wrapped in anything else would not be drawn.
+    // Every field is a cell in the flow itself: one wrapped in anything else would not be drawn.
     expect(read.querySelectorAll("dt")).toHaveLength(shownInEdit.length);
     // Nothing of the form is editable when read.
     expect(within(read).queryAllByRole("textbox")).toEqual([]);
