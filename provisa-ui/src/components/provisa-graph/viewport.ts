@@ -30,14 +30,14 @@ function legendBand(cy: CyInstance): number {
   return Math.max(0, legend.getBoundingClientRect().bottom - box.getBoundingClientRect().top);
 }
 
-/** The least zoom a fit takes to fit a diagram's height: below it a label is too small to read,
- * so a tall diagram is fitted to its width at this zoom and scrolls down instead. */
+/** The least zoom a fit takes: below it a label is too small to read, so a diagram too big for
+ * its canvas at this zoom is drawn at it from its top left and scrolls (down, and across). */
 export const READABLE_ZOOM = 0.8;
 
 /** Fit the diagram by its drawn extent, `padding` round it, below the legend (which sits over the
- * canvas's top right: a lane's or a group's title is never under it). The diagram fills the canvas's
- * width, and its height while that keeps the zoom at READABLE_ZOOM or more; a taller one is drawn
- * from its top at the readable zoom and scrolled (scrollBy). */
+ * canvas's top right: a lane's or a group's title is never under it). The whole diagram is fitted
+ * while that keeps the zoom at READABLE_ZOOM or more; past that it is drawn at the readable zoom
+ * from its top (and, wider than the canvas, its left) and scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
   const box = cy.container();
   if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) {
@@ -58,12 +58,13 @@ export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
     cy.fit(undefined, padding);
     return;
   }
-  cy.zoom(Math.min(width / bb.w, Math.max(height / bb.h, READABLE_ZOOM)));
+  cy.zoom(Math.max(Math.min(width / bb.w, height / bb.h), READABLE_ZOOM));
   // The zoom the instance accepted: it holds its own limits.
   const z = cy.zoom();
+  const wide = bb.w * z > width;
   const tall = bb.h * z > height;
   cy.pan({
-    x: (box.clientWidth - bb.w * z) / 2 - bb.x1 * z,
+    x: (wide ? padding : (box.clientWidth - bb.w * z) / 2) - bb.x1 * z,
     y: (tall ? top : top + (height - bb.h * z) / 2) - bb.y1 * z,
   });
 }

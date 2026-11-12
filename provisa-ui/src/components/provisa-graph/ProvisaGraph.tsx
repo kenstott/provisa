@@ -349,8 +349,9 @@ export function ProvisaGraph({
     } as unknown as Parameters<typeof cytoscape>[0]) as Core;
     cyRef.current = cy;
     const c = cy as unknown as CyInstance;
-    // A diagram taller (or wider) than its canvas scrolls under the wheel, at a zoom its labels
-    // can be read at; at its end the wheel scrolls the page.
+    // A diagram taller or wider than its canvas scrolls under the wheel (across with Shift, or a
+    // trackpad's sideways swipe), at a zoom its labels can be read at; at its end the wheel
+    // scrolls the page.
     canvas.container.addEventListener(
       "wheel",
       (ev: WheelEvent) => {
@@ -361,7 +362,12 @@ export function ProvisaGraph({
             y: ev.clientY - r.top,
           });
           ev.preventDefault();
-        } else if (scrollBy(c, ev.deltaX, ev.deltaY)) ev.preventDefault();
+        } else {
+          // Shift turns a mouse wheel's scroll across, as the browser does for a page.
+          const across = ev.shiftKey && ev.deltaX === 0;
+          if (scrollBy(c, across ? ev.deltaY : ev.deltaX, across ? 0 : ev.deltaY))
+            ev.preventDefault();
+        }
       },
       { passive: false },
     );

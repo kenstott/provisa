@@ -233,10 +233,11 @@ export function runLanes(
   } as CyLayoutOptions);
 
   const at = (id: string) => ({ ...cy.getElementById(id).position() });
-  const widthOf = (id: string) => cy.getElementById(id).data("w") as number;
 
   canvas.run(layout, () => {
     const items = placedItems(cy);
+    const width = new Map(items.map((n) => [n.id, n.w]));
+    const widthOf = (id: string) => width.get(id) as number;
     // Each node's place in its lane: the view's order, else top to bottom as ELK put it.
     const rank = new Map<string, number>();
     const rows = opts.order?.(at) ?? [];

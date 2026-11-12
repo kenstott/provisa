@@ -115,11 +115,27 @@ describe("fitClear on a diagram taller than its canvas", () => {
     expect((rendered().x1 + rendered().x2) / 2).toBeCloseTo(600, 9);
   });
 
-  it("still fits a wide diagram to the canvas's width", () => {
+  it("draws a diagram too wide to read at a fit from its left, at the readable zoom", () => {
+    // Maintainer (2026-11-11, J1206): scroll rather than shrink to unreadable, across as well.
     const wideTall: BB = { x1: 0, y1: 0, x2: 4000, y2: 6000, w: 4000, h: 6000 };
     const { cy, rendered } = stage(1200, 720, 0, wideTall);
     fitClear(cy, 10);
-    expect(rendered().w).toBeCloseTo(1180, 9);
+    expect(cy.zoom()).toBeCloseTo(READABLE_ZOOM, 9);
+    expect(rendered().x1).toBeCloseTo(10, 9);
+    expect(rendered().y1).toBeCloseTo(10, 9);
+  });
+
+  it("keeps a short, wide diagram readable and scrolls it across", () => {
+    const wide: BB = { x1: 0, y1: 0, x2: 3000, y2: 400, w: 3000, h: 400 };
+    const { cy, rendered } = stage(1200, 720, 0, wide);
+    fitClear(cy, 10);
+    expect(cy.zoom()).toBeCloseTo(READABLE_ZOOM, 9);
+    expect(rendered().x1).toBeCloseTo(10, 9);
+    expect(scrollBy(cy, 0, 300)).toBe(false);
+    expect(scrollBy(cy, 500, 0)).toBe(true);
+    expect(rendered().x1).toBeCloseTo(10 - 500, 9);
+    while (scrollBy(cy, 5000, 0));
+    expect(rendered().x2).toBeCloseTo(1200 - 10, 9);
   });
 
   it("scrolls under the wheel as far as the diagram runs, and no further", () => {
