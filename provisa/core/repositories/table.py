@@ -21,7 +21,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
-from provisa.core.models import DataContract, Table
+from provisa.core.models import Table
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
@@ -184,8 +184,7 @@ def _stored_column_type(
     table: Table, col: Any, resolved: str, existing: tuple[str, str] | None
 ) -> tuple[str, str | None]:
     """``(data_type, subtype)`` a column is stored with, from the type it resolved to (REQ-1426):
-    a subtype as its base (REQ-2171), a numeric in its one spelling (REQ-1961). The save's
-    contract snapshots this and the column row stores it, so the two never differ (REQ-2158)."""
+    a subtype as its base (REQ-2171), a numeric in its one spelling (REQ-1961)."""
     try:
         data_type, subtype = _stored_subtype(resolved, getattr(col, "subtype", None), existing)
     except _NotASubtype as refused:
@@ -423,54 +422,6 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
-async def _contract_for_save(
-    conn: "Connection", table: Table, types: dict[str, str]
-) -> DataContract | None:
-    """REQ-2158: the contract the table's save stores (provisa.core.data_contracts). ``types``: each
-    column's resolved type, the one the save writes (REQ-1426)."""
-    from provisa.core import contract_versions, data_contracts
-
-    stored = (
-        await conn.execute_core(
-            select(
-                registered_tables.c.id,
-                registered_tables.c.contract,
-            ).where(
-                registered_tables.c.source_id == table.source_id,
-                registered_tables.c.schema_name == table.schema_name,
-                registered_tables.c.table_name == table.table_name,
-            )
-        )
-    ).fetchone()
-    # REQ-1634: the products the table is a member of are the product's to set (set_members); a
-    # table's save keeps its contract while it is a member of any.
-    products = [] if stored is None else await data_product_repo.products_of_table(conn, stored.id)
-    is_checker = getattr(table, "dq_contract", None) is not None
-    promised = (
-        await data_product_repo.promised_checks(conn, stored.id)
-        if stored is not None and products and not is_checker
-        else []
-    )
-    return data_contracts.for_save(
-        products=products,
-        is_checker=is_checker,
-        declared=getattr(table, "contract", None),
-        stored=None if stored is None else stored.contract,
-        checks=promised,
-        columns=contract_versions.snapshot(
-            [
-                {
-                    "column_name": c.name,
-                    "data_type": types[c.name],
-                    "description": c.description,
-                    "not_null": c.not_null,
-                }
-                for c in table.columns
-            ]
-        ),
-    )
-
-
 async def _require_landed_if_member(  # REQ-1634
     conn: "Connection", table: Table, domain_id: str
 ) -> None:
@@ -552,8 +503,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     # REQ-1426: a column without a type is not registrable. Every writer resolves the type before
     # it gets here (source introspection, SQLGlot annotation for views, the remote mappers' own
     # type maps); persisting NULL made the catalog render "unknown" and left the SQL layer with no
-    # type to compile against. Refused here, naming the column, before the contract snapshots the
-    # types and before anything is written (REQ-2158).
+    # type to compile against. Refused here, naming the column, before anything is written.
     _resolved_types: dict[str, str] = {}
     for col in table.columns:
         _resolved = getattr(col, "data_type", None) or _existing_types.get(col.name)
@@ -568,17 +518,13 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     _existing_subtypes = {
         r.column_name: (r.data_type, r.subtype) for r in _existing_rows if r.subtype
     }
-    # REQ-1961, REQ-2171: the stored form, settled once: the contract snapshots it and the column
-    # rows write it.
+    # REQ-1961, REQ-2171: the stored form, settled once: the column rows write it.
     _stored = {
         col.name: _stored_column_type(
             table, col, _resolved_types[col.name], _existing_subtypes.get(col.name)
         )
         for col in table.columns
     }
-    contract = await _contract_for_save(
-        conn, table, {name: stored[0] for name, stored in _stored.items()}
-    )  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -598,7 +544,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
-        "contract": contract.model_dump(mode="json") if contract is not None else None,  # REQ-2158
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
@@ -673,7 +618,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "dq_rules",  # REQ-1443 clause 10
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
-        "contract",  # REQ-2158
         "materialize",
         "mv_refresh_interval",
         "mv_debounce_quiet",

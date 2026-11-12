@@ -294,9 +294,6 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
-    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
-    # its own (provisa.core.models.DataContract); NULL for a table in no product.
-    Column("contract", JSON(none_as_null=True)),
     # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
     Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
     # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).

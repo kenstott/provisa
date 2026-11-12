@@ -1084,12 +1084,6 @@ mutation UpdateDataProduct($input: DataProductInput!) {
   }
 }
 
-mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
-  saveDataContract(tableId: $tableId, contract: $contract) {
-    ...MutationResult
-  }
-}
-
 # REQ-1634: a product's members become exactly these tables and commands; the one place membership
 # changes.
 mutation SetDataProductMembers($id: String!, $tableIds: [Int!]!, $commandNames: [String!]!) {

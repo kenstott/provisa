@@ -25,7 +25,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from provisa.core.models import DataContract
+from provisa.core.models import OfferContract
 
 
 class AssetKind(str, Enum):  # REQ-1070
@@ -116,9 +116,6 @@ class TableAsset:  # REQ-1070
     cache_ttl: int | None = None
     # REQ-2118: a view (defined by SQL over other tables) rather than a table read from a source.
     is_view: bool = False
-    # REQ-2158: the member's declared contract, its output port; None for a table in no product
-    # and for a checker table.
-    contract: DataContract | None = None
     # REQ-1093, REQ-2118: the table's declared UNIQUE constraints, each an ordered column set.
     unique_keys: tuple[tuple[str, ...], ...] = ()
     # REQ-2118: the data roles served at least one of its columns, and those holding a write
@@ -570,6 +567,23 @@ def column_terms(grounded_terms: "Iterable[GroundedTerm]") -> dict[str, Grounded
     return {ref.fqn(): term for term in grounded_terms if term.named for ref in term.refs}
 
 
+@dataclass(frozen=True)
+class OfferExport:  # REQ-2180
+    """One offer of a data product as the exports write it: its terms, and its contract on each
+    dataset by the dataset's address (``TableAsset.ref.fqn()``). ``freshness`` is the product's
+    (seconds), written once on it; None: each dataset's own."""
+
+    name: str
+    role_id: str
+    data_level: str
+    dq_results: bool
+    profiles: bool
+    open: bool
+    duration_days: int | None
+    contracts: Mapping[str, OfferContract]
+    freshness: int | None = None
+
+
 @dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
@@ -600,6 +614,9 @@ class MetadataSnapshot:  # REQ-1070
     sensitive_tags: frozenset[str] = frozenset()
     # REQ-2118: where a consumer reads the products; None when the caller names none.
     endpoints: ServingEndpoints | None = None
+    # REQ-2180: each product's offers, by product id, with the contracts derived from them: what
+    # its output ports are, and what another product's input port on its datasets names.
+    offers: Mapping[str, tuple[OfferExport, ...]] = field(default_factory=dict)
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

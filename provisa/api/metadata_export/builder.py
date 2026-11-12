@@ -44,6 +44,7 @@ from provisa.api.metadata_export.model import (
     LineageEdge,
     MetadataSnapshot,
     ModelTag,
+    OfferExport,
     OwnerRef,
     RelationshipEdge,
     ServingEndpoints,
@@ -216,7 +217,6 @@ def _table_assets(
                 table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
             ),
             is_view=table.view_sql is not None,
-            contract=table.contract,  # REQ-2158
             unique_keys=_unique_keys(table),
             readers=readers.get(table_ref(table).parts, ()),
             writers=tuple(sorted({grant.role for grant in table.write_grants})),
@@ -850,6 +850,7 @@ def build_snapshot(
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
     endpoints: ServingEndpoints | None = None,
+    offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -868,6 +869,8 @@ def build_snapshot(
     caller: a data product's owners are its owner role's holders, its team its team role's.
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
+    ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
+    id, read by the caller: a product's contracts are its offers' (none: no product has offers).
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -984,4 +987,5 @@ def build_snapshot(
             tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive
         ),  # REQ-1943
         endpoints=endpoints,
+        offers=dict(offers or {}),
     )

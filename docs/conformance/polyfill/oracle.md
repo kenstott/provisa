@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Oracle. A f
 
 When Oracle is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 27, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 28, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-2 of the grid's 23 features are native on Oracle and left out.
+3 of the grid's 25 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -88,4 +88,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>xid8in</strong><br>xid8in of a NULL: PostgreSQL&#x27;s NULL of xid8.</td><td><pre><code>xid8in(NULL)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8in(NULL). <code>0A000</code> xid8in does not read this value</li><li>A NULL of xid8 would be described as text: the call is refused. <code>0A000</code> xid8in does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on oracle</li></ul></td><td></td><td></td></tr>
 </tbody></table>

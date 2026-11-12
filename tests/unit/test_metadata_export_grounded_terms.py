@@ -36,7 +36,6 @@ from provisa.api.metadata_export.model import term_note
 from provisa.api.metadata_export.odps import SEMANTICS, product_documents
 from provisa.core.models import (
     Column,
-    DataContract,
     Domain,
     ProvisaConfig,
     Source,
@@ -46,7 +45,7 @@ from provisa.core.models import (
 from provisa.ossie.convert import OSSIE_VERSION, OssieExportRefused
 from provisa.ossie.ontology import ossie_ontology, ossie_ontology_yaml
 from tests.unit.product_members import with_members
-from tests.unit.test_metadata_export_odps_odcs import _offers
+from tests.unit.test_metadata_export_odps_odcs import _offers, _with
 
 pytestmark = pytest.mark.unit
 
@@ -85,7 +84,6 @@ def _table(name: str, columns: dict[str, str]) -> Table:
             Column(name=c, data_type=t, visible_to=["admin"], is_primary_key=c == "id")
             for c, t in columns.items()
         ],
-        contract=DataContract(version="1.0.0", status="active"),
     )
 
 
@@ -220,7 +218,7 @@ def test_a_hop_carries_no_name_definition_or_uri():
 def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition():
     snapshot = _snapshot()
     product = _product(snapshot)
-    _, contracts = product_documents(snapshot, product, _offers(snapshot, product))
+    _, contracts = product_documents(_with(snapshot, product, _offers(snapshot, product)), product)
     orders = contracts["default/wh.public.orders"]
     assert not list(ODCS.iter_errors(orders))
     (schema_object,) = orders["schema"]
@@ -248,7 +246,9 @@ def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition()
 def test_the_odps_output_port_carries_its_fields_term_links():
     snapshot = _snapshot()
     product = _product(snapshot)
-    document, contracts = product_documents(snapshot, product, _offers(snapshot, product))
+    document, contracts = product_documents(
+        _with(snapshot, product, _offers(snapshot, product)), product
+    )
     assert not list(ODPS.iter_errors(document))
     ports = {port["name"]: port for port in document["outputPorts"]}
     field_links = {

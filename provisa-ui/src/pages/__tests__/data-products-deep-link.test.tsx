@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../test-utils/render";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
 // their own tests (productCore.test.ts).
@@ -117,7 +118,6 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useDeleteDataProducts: () => vi.fn(),
   useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: FINDINGS, refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),
@@ -203,5 +203,56 @@ describe("Data Products deep link (REQ-1659)", () => {
     fireEvent.click(screen.getByTestId("data-products-row-pet_health"));
     await waitFor(() => expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument());
     expect(localStorage.getItem(scopedKey(EXPANDED_STORAGE_KEY))).toBeNull();
+  });
+});
+
+// The page's address as the router holds it, and the browser's Back.
+function Where() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="where">{location.search}</output>
+      <button onClick={() => navigate(-1)}>history-back</button>
+    </>
+  );
+}
+
+describe("Data Products panel in the URL (REQ-2241) beside bulk selection (REQ-2240)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("opening a product writes ?product=, and Back closes it", async () => {
+    render(
+      <>
+        <DataProductsPage />
+        <Where />
+      </>,
+      { initialEntries: ["/data-products"] },
+    );
+    fireEvent.click(await screen.findByTestId("data-products-row-pet_health"));
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("?product=pet_health"),
+    );
+    expect(screen.getByTestId("detail-panel")).toHaveTextContent("pet_health");
+    fireEvent.click(screen.getByText("history-back"));
+    await waitFor(() => expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument());
+    expect(screen.getByTestId("where")).toBeEmptyDOMElement();
+  });
+
+  it("ticking a row's checkbox selects it without opening its panel", async () => {
+    render(
+      <>
+        <DataProductsPage />
+        <Where />
+      </>,
+      { initialEntries: ["/data-products"] },
+    );
+    fireEvent.click(await screen.findByTestId("list-select-pet_health"));
+    expect(screen.getByTestId("list-select-pet_health")).toBeChecked();
+    expect(screen.getByTestId("data-products-bulk")).toBeInTheDocument();
+    expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("where")).toBeEmptyDOMElement();
   });
 });

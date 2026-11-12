@@ -61,7 +61,7 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from provisa.api.metadata_export.model import ServingEndpoints, TableAsset
+    from provisa.api.metadata_export.model import OfferExport, ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -274,6 +274,9 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
             product_row = await data_product_repo.get(conn, product_id)
             created_rows = [] if product_row is None else [product_row]
         product_created = {row["id"]: row["created_at"] for row in created_rows}
+        # REQ-2180: every product's offers and their contracts: a product's own are its output
+        # ports, another's default offer is what its input ports name.
+        offers = await offer_exports(conn)
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
@@ -293,7 +296,51 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         owner_emails=owner_emails,
         product_created=product_created,
         endpoints=serving_endpoints(state, org_id, base_url),
+        offers=offers,
     )
+
+
+async def offer_exports(conn: Any) -> dict[str, tuple["OfferExport", ...]]:
+    """Each product's offers as the exports write them (REQ-2180), by product id, each with its
+    stored contract on each dataset keyed by the dataset's address (source.schema.table) and the
+    freshness its product promises."""
+    from sqlalchemy import select
+
+    from provisa.api.metadata_export.model import OfferExport
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import data_product_offer as offers
+    from provisa.core.schema_org import registered_tables as rt
+
+    addresses = {
+        int(r.id): f"{r.source_id}.{r.schema_name}.{r.table_name}"
+        for r in (
+            await conn.execute_core(
+                select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name)
+            )
+        ).fetchall()
+    }
+    out: dict[str, tuple[OfferExport, ...]] = {}
+    for product in await data_product_repo.list_all(conn):
+        out[product["id"]] = tuple(
+            [
+                OfferExport(
+                    name=row["name"],
+                    role_id=row["role_id"],
+                    data_level=row["data_level"],
+                    dq_results=row["dq_results"],
+                    profiles=row["profiles"],
+                    open=row["open"],
+                    duration_days=row["duration_days"],
+                    contracts={
+                        addresses[tid]: c
+                        for tid, c in (await offers.contracts(conn, row["id"])).items()
+                    },
+                    freshness=product["freshness"],
+                )
+                for row in await offers.list_offers(conn, product["id"])
+            ]
+        )
+    return out
 
 
 def serving_endpoints(

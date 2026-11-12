@@ -27,7 +27,7 @@ from psycopg import pq
 from scripts.conformance.pgwire_function_probe import refused_by_name
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
-INT4, NUMERIC, BOOL, BIT, TIMESTAMPTZ = 23, 1700, 16, 1560, 1184
+INT4, NUMERIC, BOOL, BIT, TIMESTAMPTZ, DATE, TIMETZ = 23, 1700, 16, 1560, 1184, 1082, 1266
 INT4RANGE, INT8RANGE, NUMRANGE = 3904, 3926, 3906
 
 #: (statement, PostgreSQL 17's result type, its rows' text)
@@ -272,6 +272,31 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
         "time zone) AS v",
         1114,
         ["2000-02-29 06:30:00"],
+    ),
+    # Run 43237880934's engine errors.
+    # timezone() of an interval: the interval itself, never read as a zone's text.
+    (
+        "SELECT pg_catalog.\"timezone\"('-05:30'::interval, '00:00:00+00'::time with time zone) "
+        "AS v",
+        TIMETZ,
+        ["18:30:00-05:30"],
+    ),
+    # to_date and to_timestamp of a month's abbreviation (Mon): PostgreSQL's template, read whole.
+    (
+        "SELECT pg_catalog.\"to_date\"('15 Jun 2024'::text, 'DD Mon YYYY'::text) AS v",
+        DATE,
+        ["2024-06-15"],
+    ),
+    (
+        "SELECT pg_catalog.\"to_timestamp\"('15 Jun 2024'::text, 'DD Mon YYYY'::text) AS v",
+        TIMESTAMPTZ,
+        ["2024-06-15 00:00:00+00"],
+    ),
+    ("SELECT to_date('15 JUNE 2024', 'DD Month YYYY') AS v", DATE, ["2024-06-15"]),
+    (
+        "SELECT to_timestamp('Sat 15 jun 2024 10 pm', 'Dy DD mon YYYY HH am') AS v",
+        TIMESTAMPTZ,
+        ["2024-06-15 22:00:00+00"],
     ),
 ]
 
@@ -539,3 +564,26 @@ def test_duckdb_json_answers_as_postgresql_17(conn: Any, sql: str, oid: int, ans
     assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
     assert res.ftype(0) == oid
     assert _members(res.get_value(0, 0).decode()) == _members(answer)
+
+
+def test_pg_timezone_names_reads_each_zone_now_as_the_pinned_release_does():
+    """Run 43237880934's wrong answer: America/Edmonton was CST, -06:00 and daylight time, as
+    DuckDB's ICU release has it, where PostgreSQL, of a release as recent as the pinned one, said
+    standard time. Each zone's offset and daylight flag are the pinned release's, as its
+    abbreviation is."""
+    import datetime
+    import zoneinfo
+
+    import duckdb
+
+    from provisa.transpiler import pg_zones
+
+    rows = duckdb.connect().sql(f"SELECT name, abbrev, utc_offset, is_dst FROM ({pg_zones.NAMES})")
+    now = datetime.datetime.now(datetime.timezone.utc)
+    wrong = []
+    for name, abbrev, offset, dst in rows.fetchall():
+        local = now.astimezone(zoneinfo.ZoneInfo(name))
+        pinned = (local.tzname(), local.utcoffset(), bool(local.dst()))
+        if (abbrev, offset, dst) != pinned:
+            wrong.append((name, (abbrev, offset, dst), pinned))
+    assert wrong == []

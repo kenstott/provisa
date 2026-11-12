@@ -59,14 +59,6 @@ PRODUCT_FIELDS = {
     "custom_properties": {"cost_center": "CC-42"},
 }
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
-# REQ-2158: the orders member's output port, declared as its contract: what it promises, at its
-# own version and status, with the terms the product's prose once held.
-ORDERS_CONTRACT = {
-    "version": "1.2.0",
-    "status": "active",
-    "description": PRODUCT_FIELDS["purpose"],
-    "terms": {"usage": PRODUCT_FIELDS["usage"], "limitations": PRODUCT_FIELDS["limitations"]},
-}
 RLS_FILTER = "region = 'eu'"
 ORDERS_AMOUNT_DESCRIPTION = "Order total in cents"
 MEMBER_TTL = 3600
@@ -232,7 +224,6 @@ def model_config(
                 "table_name": "orders",
                 "description": "Orders placed",
                 "class_term": class_term,
-                "contract": ORDERS_CONTRACT,
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
                 "cache_ttl": MEMBER_TTL,

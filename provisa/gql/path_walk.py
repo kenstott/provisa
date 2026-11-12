@@ -411,7 +411,7 @@ class SessionWalkMixin:  # REQ-348
         arms: list[exp.Select] = []
         for label in union_labels(self._lm, "__all__"):
             nm = self._lm.nodes.get(label)
-            if nm is None or nm.native_filter_columns:
+            if nm is None or not self._lm.end_reads(label):
                 continue
             own = nm.catalog_name == walk.catalog_name
             if not own and label not in ends and labels is not None and nm.type_name not in labels:

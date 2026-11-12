@@ -58,7 +58,6 @@ from provisa.api.admin.types import (
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
-    DataContractInput,
     DataProductInput,
     DomainInput,
     DqDryRunCheckType,
@@ -607,6 +606,7 @@ async def _save_data_product(
             support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
+            freshness=input.freshness,  # REQ-2180
             created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
         await data_product_repo.upsert(conn, model)
@@ -678,65 +678,6 @@ async def _set_data_product_members(
             "tables": len(set(table_ids)),
             "commands": len(set(command_names)),
         },
-    )
-
-
-async def _save_data_contract(
-    info: StrawberryInfo, table_id: int, contract: DataContractInput
-) -> MutationResult:  # REQ-2158
-    """A product member's contract replaced, by whoever may curate its product's domain. Its
-    schema is its member's columns, so the save holds none."""
-    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
-    from provisa.core.data_contracts import ContractRefused
-    from provisa.core.models import DataContract
-    from provisa.core.repositories import data_product as data_product_repo
-    from provisa.core.repositories import table as table_repo
-
-    require_capability(info, "data_product_rw")
-    try:
-        declared = DataContract.model_validate(
-            {
-                "version": contract.version,
-                "status": contract.status,
-                "description": contract.description,
-                "terms": vars(contract.terms),
-                "sla": [vars(s) for s in contract.sla],
-            }
-        )
-    except ValueError as invalid:
-        return MutationResult(
-            success=False,
-            message=str(invalid),
-            code="schema.data_contract_invalid",
-            params={"table_id": table_id},
-        )
-    pool = await _get_pool()
-    async with pool.acquire() as conn:
-        conn = cast("Connection", conn)
-        stored = await table_repo.get(conn, table_id)
-        if stored is None or not stored["product_ids"]:
-            return MutationResult(
-                success=False,
-                message=f"Table {table_id} is no data product's member",
-                code="schema.data_contract_no_member",
-                params={"table_id": table_id},
-            )
-        # REQ-1634: a member's products are all of its domain, the table's own.
-        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
-        try:
-            await data_product_repo.save_contract(conn, table_id, declared)
-        except ContractRefused as refused:
-            return MutationResult(
-                success=False,
-                message=str(refused),
-                code="schema.data_contract_refused",
-                params={"table_id": table_id},
-            )
-    return MutationResult(
-        success=True,
-        message=f"Contract of table {table_id} saved at version {declared.version}",
-        code="schema.data_contract_saved",
-        params={"table_id": table_id, "version": declared.version},
     )
 
 
@@ -3532,12 +3473,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:  # REQ-1634
         """The product's members become exactly these tables and commands."""
         return await _set_data_product_members(info, id, table_ids, command_names)
-
-    @strawberry.mutation
-    async def save_data_contract(
-        self, info: StrawberryInfo, table_id: int, contract: DataContractInput
-    ) -> MutationResult:  # REQ-2158
-        return await _save_data_contract(info, table_id, contract)
 
     @strawberry.mutation
     async def delete_data_product(

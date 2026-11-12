@@ -19,6 +19,7 @@ import type { CoreTable } from "../productCore";
 import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
 import { lifecycleProps } from "./lifecycleProps";
+import { openTab } from "./panelTabs";
 
 // The panel parses nothing: a checker table's rules come with it, as meta's dqRules rows.
 const parseContract = vi.fn();
@@ -109,7 +110,6 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       owner
       seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={{
         nodes: [],
@@ -127,9 +127,15 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
   );
 }
 
+/** The panel, on its Quality tab. */
+function renderQuality(tables: CoreTable[], dq?: ProductDq) {
+  renderPanel(tables, dq);
+  openTab("quality", "pet_health");
+}
+
 describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", () => {
   it("moves checker tables out of Output Ports into Data Quality", () => {
-    renderPanel([VETS, VETS_SCAN]);
+    renderQuality([VETS, VETS_SCAN]);
     const ports = screen.getByTestId("data-product-detail-tables-pet_health");
     expect(within(ports).getByText("pet-store.vets")).toBeTruthy();
     expect(within(ports).queryByText("pet-store.vets_scan")).toBeNull();
@@ -146,6 +152,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     expect(within(patterns).getByText("pet-store.vets")).toBeTruthy();
     expect(within(patterns).queryByText("pet-store.vets_scan")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-sql-query-2")).toBeNull();
+    openTab("quality", "pet_health");
 
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     expect(within(dq).getByTestId("data-product-detail-dq-sql-query-2")).toBeTruthy();
@@ -158,13 +165,13 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("shows the empty state when no checker scans the product", () => {
-    renderPanel([VETS], NO_DQ);
+    renderQuality([VETS], NO_DQ);
     expect(screen.queryByTestId("data-product-detail-dq-tables-pet_health")).toBeNull();
     expect(screen.getByText(t("dataProductsTab.detail.dataQualityEmpty"))).toBeTruthy();
   });
 
   it("opens the scan's rules in a modal from the icon beside SQL, as the core read them", async () => {
-    renderPanel([VETS, VETS_SCAN]);
+    renderQuality([VETS, VETS_SCAN]);
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     const sql = within(dq).getByTestId("data-product-detail-dq-sql-query-2");
     const rules = within(dq).getByTestId("data-product-detail-dq-rules-2");
@@ -182,14 +189,14 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("names the table each checker scans (REQ-2125's checks)", () => {
-    renderPanel([VETS, VETS_SCAN]);
+    renderQuality([VETS, VETS_SCAN]);
     expect(screen.getByTestId("data-product-detail-dq-checks-2").textContent).toBe(
       "scans pet-store.vets",
     );
   });
 
   it("names a checker by its alias, as the model does", () => {
-    renderPanel(
+    renderQuality(
       [VETS, { ...VETS_SCAN, tableName: "vets_quality_dq_soda_dq", alias: "vets_quality" }],
       {
         ...NO_DQ,
@@ -204,12 +211,12 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
   });
 
   it("offers the rules at once, with no read of the scan's source", () => {
-    renderPanel([VETS_SCAN]);
+    renderQuality([VETS_SCAN]);
     expect(screen.getByTestId("data-product-detail-dq-rules-2")).toBeEnabled();
   });
 
   it("shows no output ports when the only member is a checker table", () => {
-    renderPanel([VETS_SCAN]);
+    renderQuality([VETS_SCAN]);
     expect(screen.queryByTestId("data-product-detail-tables-pet_health")).toBeNull();
     expect(screen.getByText(t("dataProductsTab.tablesEmpty"))).toBeTruthy();
     expect(screen.getByTestId("data-product-detail-dq-tables-pet_health")).toBeTruthy();

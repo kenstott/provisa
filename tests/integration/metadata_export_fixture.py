@@ -24,7 +24,6 @@ whose column lineage is resolved from compiled SQL rather than inferred.
 from __future__ import annotations
 
 from provisa.api.metadata_export import build_snapshot
-from provisa.core import data_contracts
 from provisa.api.metadata_export.model import MetadataSnapshot
 from provisa.core.models import (
     Cardinality,
@@ -47,8 +46,8 @@ RLS_FILTER = "region_id = current_setting('provisa.region')"
 
 def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Table:
     # Every fixture table is a member of "prod" (governed_config): only Data Product tables
-    # publish, and this fixture exists to exercise what published assets carry end-to-end. Each
-    # member carries the draft contract its first save gives it (REQ-2158).
+    # publish, and this fixture exists to exercise what published assets carry end-to-end. Its
+    # contracts are its product's offers' (REQ-2180), which a snapshot carries beside it.
     return Table(
         source_id="wh",
         domain_id="sales",
@@ -57,7 +56,6 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        contract=data_contracts.draft(),
     )
 
 

@@ -496,8 +496,7 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             + " END",
         ),
     ),
-    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
-    _macro("pg_timezone_names", "", f"unnest((SELECT list(_z) FROM ({pg_zones.NAMES}) _z))"),
+    # PostgreSQL's Default abbreviations (pg_zones); its zones are the polyfill grid's row.
     _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
@@ -2163,7 +2162,12 @@ def _polyfilled(
     if isinstance(form, polyfill.Rewrite):
         written = applied.rewritten
         if written is None:
-            written = form.function(target, dialect)
+            # A rule's own pattern: its arguments in their forms first, as a form's holes are
+            # bound, since the walk does not descend into what a rule writes.
+            argued = target.copy()
+            for argument in list(argued.iter_expressions()):
+                argument.replace(argument.transform(rewrite))
+            written = form.function(argued, dialect)
         if written is None:
             return None
     else:

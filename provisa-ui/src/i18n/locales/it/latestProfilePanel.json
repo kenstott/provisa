@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "Ultimo profilo, esecuzione {{time}}",
-    "none": "Nessuna esecuzione di profilo."
+    "none": "Nessuna esecuzione di profilo.",
+    "viewTable": "Tabella",
+    "viewTerrain": "Terreno"
   }
 }

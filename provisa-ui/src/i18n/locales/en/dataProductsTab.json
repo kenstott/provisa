@@ -210,7 +210,15 @@
         "check_removed": "Quality check {{subject}} removed",
         "check_changed": "Quality check {{subject}} changed",
         "description_changed": "Description changed",
-        "terms_changed": "Terms changed: {{subject}}"
+        "terms_changed": "Terms changed: {{subject}}",
+        "field_masked": "Field {{subject}} masked ({{after}})",
+        "field_unmasked": "Field {{subject}} no longer masked",
+        "row_rule_added": "Row rule added: {{subject}}",
+        "row_rule_removed": "Row rule removed: {{subject}}",
+        "data_level_changed": "Data level changed from {{before}} to {{after}}",
+        "dq_results_changed": "Quality results changed from {{before}} to {{after}}",
+        "profiles_changed": "Profiles changed from {{before}} to {{after}}",
+        "duration_changed": "Duration changed from {{before}} to {{after}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "Roles",
         "history": "Version history"
       }
-    }
+    },
+    "detailPanel": "Data product detail"
   }
 }

@@ -157,8 +157,8 @@ ON CONFLICT (id) DO NOTHING;
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
 -- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
--- and support stays prose. REQ-2158: each output port is a member table, whose declared contract
--- (registered_tables.contract) holds the SLA.
+-- and support stays prose. REQ-2180: its contracts are derived from its offers
+-- (data_product_offer_contracts); what they share (freshness, support) is written once here.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
@@ -273,9 +273,6 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
-    -- REQ-2158: a data product member's ODCS contract (its output port), declared and versioned on
-    -- its own: {version, status, description, terms, sla, schema}; NULL for a table in no product.
-    contract    JSONB,
     UNIQUE (source_id, schema_name, table_name)
 );
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
@@ -295,7 +292,6 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS hot BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS query_template TEXT;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS relay_pagination BOOLEAN;
-ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS contract JSONB;
 
 CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,

@@ -37,6 +37,8 @@ interface NodeMesh {
 interface EdgeMesh {
   edge: GraphEdge;
   meshes: THREE.Mesh[];
+  /** The line's name (NAMED), pinned to the point ``at`` gives from the nodes as they are now. */
+  label: { el: HTMLDivElement; at: () => THREE.Vector3 } | null;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -72,7 +74,20 @@ const NAMED: ReadonlySet<EdgeKind> = new Set(["term_edge", "relationship"]);
 /** A dash's length, and the gap after it, in layout units. */
 const DASH = 0.35;
 
-/** Whose label stays when two collide: the lower rank. */
+/** The control point of the arc a layered layout draws a lateral edge on, from ``a`` to ``b``: it
+ * bulges sideways in the layout's plane, clear of the straight rods. */
+function arcControl(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3 {
+  const unit = b.clone().sub(a).normalize();
+  const side = new THREE.Vector3(-unit.y, unit.x, 0);
+  return a
+    .clone()
+    .add(b)
+    .multiplyScalar(0.5)
+    .add(side.multiplyScalar(a.distanceTo(b) * 0.3));
+}
+
+/** Whose label stays when two collide: the lower rank. A line's name ranks after every node's
+ * name, a line of the selected or hovered node (or the hovered line) ahead of the other lines. */
 const LABEL_RANK: Record<NodeType, number> = {
   product: 0,
   domain: 1,
@@ -85,6 +100,8 @@ const LABEL_RANK: Record<NodeType, number> = {
   profile: 8,
   column: 9,
 };
+const EDGE_LABEL_RANK_FOCUSED = 10;
+const EDGE_LABEL_RANK = 11;
 
 /** A character's width in a label at its resting size: the label font is monospace, a character
  * 0.6 of the size. */
@@ -330,13 +347,30 @@ export class GraphScene extends BaseScene<GraphHover> {
       n.node.id === this.selected || (this.hover?.kind === "node" && this.hover.id === n.node.id)
         ? -1
         : LABEL_RANK[n.node.type];
-    const ranked = this.nodes
-      .filter((n) => n.label.style.visibility !== "hidden")
-      .map((n) => ({ n, rank: lead(n), d: n.mesh.position.distanceTo(this.camera.position) }))
+    const focus = this.hover?.kind === "node" ? this.hover.id : this.selected;
+    const edgeLead = (e: GraphEdge) =>
+      (this.hover?.kind === "edge" && this.hover.id === e.id) ||
+      (focus != null && (e.a === focus || e.b === focus))
+        ? EDGE_LABEL_RANK_FOCUSED
+        : EDGE_LABEL_RANK;
+    const cam = this.camera.position;
+    const ranked = [
+      ...this.nodes.map((n) => ({
+        el: n.label,
+        rank: lead(n),
+        d: n.mesh.position.distanceTo(cam),
+      })),
+      ...this.edgeMeshes.flatMap((em) =>
+        em.label
+          ? [{ el: em.label.el, rank: edgeLead(em.edge), d: em.label.at().distanceTo(cam) }]
+          : [],
+      ),
+    ]
+      .filter((l) => l.el.style.visibility !== "hidden")
       .sort((a, b) => a.rank - b.rank || a.d - b.d);
-    const hidden = hiddenLabels(ranked.map(({ n }) => n.label.getBoundingClientRect()));
-    ranked.forEach(({ n }, i) => {
-      if (hidden[i]) n.label.style.visibility = "hidden";
+    const hidden = hiddenLabels(ranked.map(({ el }) => el.getBoundingClientRect()));
+    ranked.forEach(({ el }, i) => {
+      if (hidden[i]) el.style.visibility = "hidden";
     });
   }
 
@@ -554,6 +588,15 @@ export class GraphScene extends BaseScene<GraphHover> {
     this.extentY = extentY;
     this.reach = reach;
     const nodeOf = new Map(this.nodes.map((n) => [n.node.id, n]));
+    // The named lines between each pair of nodes, in drawing order: their names share a midpoint,
+    // so the k-th of n is named (k+1)/(n+1) of the way along its own line.
+    const pairKey = (e: GraphEdge) => [e.a, e.b].sort().join("\u0000");
+    const named = new Map<string, string[]>();
+    for (const e of this.graph.edges) {
+      if (!NAMED.has(e.kind) || !e.label || !pos.has(e.a) || !pos.has(e.b)) continue;
+      const k = pairKey(e);
+      named.set(k, [...(named.get(k) ?? []), e.id]);
+    }
     const HEAD = 0.4; // an arrowhead's length
     for (const e of this.graph.edges) {
       const a = pos.get(e.a);
@@ -575,14 +618,10 @@ export class GraphScene extends BaseScene<GraphHover> {
       // The unit direction the edge arrives along: the chord, or an arc's end tangent.
       let arrive = unit;
       let curve: THREE.QuadraticBezierCurve3 | null = null;
-      if (this.arcs && edgeClass(e) === "lateral") {
+      const arced = this.arcs && edgeClass(e) === "lateral";
+      if (arced) {
         // A quadratic arc bulging sideways in the layout's plane, clear of the straight rods.
-        const side = new THREE.Vector3(-unit.y, unit.x, 0);
-        const ctrl = a
-          .clone()
-          .add(b)
-          .multiplyScalar(0.5)
-          .add(side.multiplyScalar(len * 0.3));
+        const ctrl = arcControl(a, b);
         curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
         arrive = b.clone().sub(ctrl).normalize();
       }
@@ -631,11 +670,27 @@ export class GraphScene extends BaseScene<GraphHover> {
         world.add(cone);
         meshes.push(cone);
       }
+      let label: EdgeMesh["label"] = null;
       if (NAMED.has(e.kind) && e.label) {
-        const mid = curve ? curve.getPoint(0.5) : a.clone().add(b).multiplyScalar(0.5);
-        this.pin(e.label, `p3d-label g3d-edge-label g3d-edge-label-${e.kind}`, () => mid);
+        // On the line as its ends stand when the label is placed: the arc, or the straight run.
+        const share = named.get(pairKey(e)) ?? [e.id];
+        // Measured from the pair's first end, whichever way each line runs, so no two coincide.
+        const k = (share.indexOf(e.id) + 1) / (share.length + 1);
+        const t = e.a <= e.b ? k : 1 - k;
+        const from = nodeOf.get(e.a)?.mesh;
+        if (!from) throw new Error(`edge ${e.id} starts at ${e.a}, which is not drawn`);
+        const to = target.mesh;
+        const at = () => {
+          const p = from.position;
+          const q = to.position;
+          return arced
+            ? new THREE.QuadraticBezierCurve3(p.clone(), arcControl(p, q), q.clone()).getPoint(t)
+            : p.clone().lerp(q, t);
+        };
+        const el = this.pin(e.label, `p3d-label g3d-edge-label g3d-edge-label-${e.kind}`, at);
+        label = { el, at };
       }
-      this.edgeMeshes.push({ edge: e, meshes });
+      this.edgeMeshes.push({ edge: e, meshes, label });
     }
     const size = Math.ceil(extent * 2.4);
     this.layFloor(world, size, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
