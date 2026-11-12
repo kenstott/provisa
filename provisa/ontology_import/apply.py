@@ -217,6 +217,7 @@ async def _terms(conn: Connection) -> list[Any]:
                     glossary_terms.c.name,
                     glossary_terms.c.iri,
                     glossary_terms.c.definition,
+                    glossary_terms.c.calculation_method,
                 )
             )
         ).fetchall()
@@ -301,6 +302,10 @@ async def apply(
                 await glossary_repo.set_iri(conn, term.id, item.iri)
             if item.definition and (chosen.use_definition or not (term.definition or "").strip()):
                 await glossary_repo.set_definition(conn, term.id, item.definition)
+            # REQ-2243: the method goes with the definition, by the same choice.
+            method = item.payload["calculation_method"]
+            if method and (chosen.use_definition or not (term.calculation_method or "").strip()):
+                await glossary_repo.set_calculation_method(conn, term.id, method)
             await store.written(conn, chosen.id)
             resolved[item.id] = term.id
             await glossary_repo.keep_statements(conn, term.id, _statements(item))
@@ -311,6 +316,10 @@ async def apply(
             )
             if item.iri:
                 await glossary_repo.set_iri(conn, term_id, item.iri)
+            if item.payload["calculation_method"]:  # REQ-2243
+                await glossary_repo.set_calculation_method(
+                    conn, term_id, item.payload["calculation_method"]
+                )
             await glossary_repo.keep_statements(conn, term_id, _statements(item))
             resolved[item.id] = term_id
             done.created.append({"item_id": item.id, "term_id": term_id, "name": item.name})

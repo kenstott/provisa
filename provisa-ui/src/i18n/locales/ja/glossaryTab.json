@@ -10,6 +10,8 @@
     "newTermHint": "概念は、まだ列やテーブルを指していないビジネス上の考えです。関係で他の用語と結び付けてください。",
     "nameLabel": "名前",
     "definitionLabel": "定義",
+    "calculationMethodLabel": "計算方法",
+    "calculationMethodPlaceholder": "業務用語での計算方法",
     "domainsLabel": "ドメイン",
     "domainsHint": "概念にはドメインを導く列がないため、ここで指定します。いずれかに到達できる人は用語を閲覧・管理できます。",
     "rename": "名前を変更",

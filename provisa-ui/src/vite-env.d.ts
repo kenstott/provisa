@@ -36,6 +36,7 @@ declare module "*.graphql" {
   export const CreateMetric: DocumentNode;
   export const UpdateMetric: DocumentNode;
   export const DeleteMetric: DocumentNode;
+  export const TableMetricsQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;
@@ -188,6 +189,7 @@ declare module "*.gql" {
   export const CreateMetric: DocumentNode;
   export const UpdateMetric: DocumentNode;
   export const DeleteMetric: DocumentNode;
+  export const TableMetricsQuery: DocumentNode;
   export const RelationshipsQuery: DocumentNode;
   export const AllRelationshipsQuery: DocumentNode;
   export const RLSRulesQuery: DocumentNode;

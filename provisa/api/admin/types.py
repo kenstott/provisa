@@ -1703,6 +1703,18 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     # Null for a caller without view_governance (REQ-1134, REQ-1958).
     visible_to: list[str] | None = None
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
+    term: str | None = None  # REQ-2243: the glossary term the metric names
+
+
+@strawberry.type
+class DatasetMetricType:  # REQ-2243: a governed metric a dataset uses, as its readers see it
+    name: str
+    description: str | None = None
+    ai_context: str | None = None  # REQ-1319
+    # The glossary term the metric names, with its definition and calculation method.
+    term: str | None = None
+    term_definition: str | None = None
+    term_calculation_method: str | None = None
 
 
 @strawberry.input
@@ -1714,6 +1726,7 @@ class MetricInput:  # REQ-1317
     ai_context: str | None = None  # REQ-1319
     # REQ-1317: None at create is the acting role and Viewer; the roles named otherwise.
     visible_to: list[str] | None = None
+    term: str | None = None  # REQ-2243: the glossary term the metric names, by its name
 
 
 @strawberry.input

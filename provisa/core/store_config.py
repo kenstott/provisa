@@ -266,6 +266,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 glossary_terms.c.id,
                 glossary_terms.c.name,
                 glossary_terms.c.definition,
+                glossary_terms.c.calculation_method,
                 glossary_terms.c.retired,
                 glossary_terms.c.approved,
                 glossary_terms.c.deprecation_asserted,
@@ -297,6 +298,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
             GlossaryTermConfig(
                 name=r.name,
                 definition=r.definition,
+                calculation_method=r.calculation_method,  # REQ-2243
                 domains=declared[r.id],
                 # By what names each edge, never its serial: the same model reads the same.
                 edges=sorted(edges.get(r.id, []), key=lambda e: (e.to, e.rel_type)),

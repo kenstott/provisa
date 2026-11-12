@@ -31,9 +31,11 @@ terms): every term on an agent's path down to one of the product's members' colu
   statements, provisa/ontology_import/kept.py) is written back out: Ossie's concepts take no key
   of a vendor's, so the document's ``ai_context.kept_statements`` lists each such concept with
   its own IRI and its statements, which an import of the document reads back.
+* REQ-2243: a term's calculation method is no key of Ossie's either: ``ai_context.calculation_methods``
+  lists each concept that has one with its IRI and the method, which an import reads back.
 """
 
-# Requirements: REQ-2238, REQ-2237
+# Requirements: REQ-2238, REQ-2237, REQ-2243
 
 from __future__ import annotations
 
@@ -42,7 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from provisa.ontology_import.parse import KEPT_STATEMENTS
+from provisa.ontology_import.parse import CALCULATION_METHODS, KEPT_STATEMENTS
 from provisa.ossie.convert import OSSIE_VERSION, OssieExportRefused, _map_datatype
 
 if TYPE_CHECKING:
@@ -161,7 +163,12 @@ def ossie_ontology(snapshot: "MetadataSnapshot", product: "DataProductAsset") ->
         for t in terms
         if t.statements and t.term_id in kinds
     ]
-    if drafts or withheld or kept:
+    methods = [
+        {"concept": names[t.term_id], "iri": t.iri, "method": t.calculation_method}
+        for t in terms
+        if t.calculation_method and t.term_id in kinds
+    ]
+    if drafts or withheld or kept or methods:
         context: dict[str, Any] = {}
         if drafts:
             context["draft_terms"] = drafts
@@ -169,6 +176,8 @@ def ossie_ontology(snapshot: "MetadataSnapshot", product: "DataProductAsset") ->
             context["withheld_terms"] = withheld
         if kept:
             context[KEPT_STATEMENTS] = kept
+        if methods:
+            context[CALCULATION_METHODS] = methods
         document["ai_context"] = context
     return document
 

@@ -37,6 +37,7 @@ const term: GlossaryTermDetail = {
   id: 1,
   name: "Customer",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,

@@ -69,8 +69,9 @@ class ItemRow:
     kind: str
     definition: str | None
     iri: str | None
-    #: ``keys`` (its identifiers in the file), ``labels`` (its alternative labels) and
-    #: ``statements`` (what the file states about it that a term does not model).
+    #: ``keys`` (its identifiers in the file), ``labels`` (its alternative labels),
+    #: ``statements`` (what the file states about it that a term does not model) and
+    #: ``calculation_method`` (REQ-2243; null when the file states none).
     payload: dict[str, Any]
     status: str
     term_id: int | None
@@ -160,7 +161,13 @@ async def create(
                 "definition": item.definition,
                 "iri": item.iri,
                 "payload": json.dumps(
-                    {"keys": item.keys, "labels": item.labels, "statements": item.statements}
+                    {
+                        "keys": item.keys,
+                        "labels": item.labels,
+                        "statements": item.statements,
+                        # REQ-2243: the method the ontology states for it.
+                        "calculation_method": item.calculation_method,
+                    }
                 ),
                 "status": PENDING,
             }

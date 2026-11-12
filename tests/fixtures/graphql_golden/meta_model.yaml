@@ -263,6 +263,10 @@ tables:
   schema: org_default
   table: _terms
   columns:
+  - name: calculation_method
+    data_type: text
+    visible_to:
+    - viewer
   - name: definition
     data_type: text
     visible_to:

@@ -21,12 +21,13 @@ The terms an import applied, each by its IRI, as the glossary holds them now:
   property's ``rdfs:domain``, ``RELATED_TO`` ``skos:related`` and ``VALID_VALUE_OF`` the
   individual's ``rdf:type``. An edge of another type is no RDF an import reads, and is counted;
 - its definition as ``skos:definition`` when no kept statement says it already, and a term that
-  keeps no declaration is an ``owl:Class`` labelled with its name.
+  keeps no declaration is an ``owl:Class`` labelled with its name;
+- REQ-2243: its calculation method as ``provisa:calculationMethod``, a plain literal.
 
 A term with no IRI is no RDF resource and is counted, never given one here.
 """
 
-# Requirements: REQ-2237
+# Requirements: REQ-2237, REQ-2243
 
 from __future__ import annotations
 
@@ -34,9 +35,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from rdflib import OWL, RDF, RDFS, SKOS, Graph, Literal, URIRef
+from rdflib import OWL, RDF, RDFS, SKOS, Graph, Literal, Namespace, URIRef
 
 from provisa.ontology_import import kept
+from provisa.ontology_import.parse import CALCULATION_METHOD, PROVISA
+
+_PROVISA = Namespace(PROVISA)
+_CALCULATION_METHOD = URIRef(CALCULATION_METHOD)
 
 #: rdflib's name for each format an export writes, by the name an import reads it under.
 FORMATS = {"turtle": "turtle", "xml": "xml", "nt": "nt", "json-ld": "json-ld"}
@@ -86,10 +91,11 @@ def graph_of(
     edges: Iterable[tuple[int, int, str]],
     statements: Mapping[int, list[dict[str, Any]]],
 ) -> Exported:
-    """``terms`` (``id``, ``name``, ``iri``, ``definition``), the ``edges`` between them and the
+    """``terms`` (``id``, ``name``, ``iri``, ``definition``, ``calculation_method``), the ``edges``
+    between them and the
     ``statements`` kept on each, as one RDF graph (module docstring)."""
     graph = Graph()
-    for prefix, namespace in (("owl", OWL), ("rdfs", RDFS), ("skos", SKOS)):
+    for prefix, namespace in (("owl", OWL), ("rdfs", RDFS), ("skos", SKOS), ("provisa", _PROVISA)):
         graph.bind(prefix, namespace)
     out = Exported(graph)
 
@@ -119,6 +125,9 @@ def graph_of(
             for s in held
         ):
             graph.add((subject, SKOS.definition, Literal(definition)))
+        method = (term.get("calculation_method") or "").strip()
+        if method:
+            graph.add((subject, _CALCULATION_METHOD, Literal(method)))
     for source, target, rel_type in edges:
         if source not in iris or target not in iris:
             continue

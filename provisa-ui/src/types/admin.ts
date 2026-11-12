@@ -764,6 +764,18 @@ export interface Metric {
   // Null for a caller without view_governance (REQ-1958): who a metric is granted to is a grant list.
   visibleTo: string[] | null;
   fromFact: string | null;
+  // REQ-2243: the glossary term the metric names, by its name.
+  term: string | null;
+}
+
+// REQ-2243: a governed metric a dataset uses, as its reader may see it (no expression).
+export interface DatasetMetric {
+  name: string;
+  description: string | null;
+  aiContext: string | null;
+  term: string | null;
+  termDefinition: string | null;
+  termCalculationMethod: string | null;
 }
 
 export interface Relationship {

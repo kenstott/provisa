@@ -303,6 +303,7 @@ def _term(term_id: int, name: str, definition: str | None, *, approved: bool = T
         "approved": approved,
         "retired": False,
         "export_excluded": False,
+        "calculation_method": None,
         "status_reason": None,
         "retire_on": None,
     }
