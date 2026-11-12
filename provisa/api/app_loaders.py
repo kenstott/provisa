@@ -1883,14 +1883,21 @@ def schema_input_with_drafts(
 ) -> SchemaInput:
     """``role``'s schema input with ``drafts`` among its tables, as the role build builds it from
     this generation's inputs, the tables moved from the drafts to the tables and their columns'
-    types the registered ones (REQ-1921). ``marked``: each draft's description says it is one
-    (:data:`DRAFT_MARK`), on a copy."""
+    types the registered ones (REQ-1921). ``marked``: the drafts as a schema offers them, on a
+    copy: each one's description says it is a draft (:data:`DRAFT_MARK`), and it takes no write
+    (a draft is served to be read; a mutation naming one is refused naming it as a draft)."""
     from dataclasses import replace
 
     inputs = state.role_build_inputs
     added = {d["id"] for d in drafts}
     tables = [
-        {**d, "description": f"{DRAFT_MARK} {d.get('description') or ''}".strip()} if marked else d
+        {
+            **d,
+            "description": f"{DRAFT_MARK} {d.get('description') or ''}".strip(),
+            "write_ops": [],
+        }
+        if marked
+        else d
         for d in drafts
     ]
     si = schema_input_for(state, role, [*inputs["tables"], *tables], inputs["metrics"])

@@ -330,6 +330,11 @@ def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
         return []
     if not holds_org_admin(state.roles[role_id]):
         return []
+    named = surface.context.draft_ids
+    # Parsed only when a draft's name is in the text: no other document pays for it here.
+    text = query.lower()
+    if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
+        return []
     try:
         document = parse(query)
     except GraphQLSyntaxError:
@@ -337,7 +342,6 @@ def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
     operations = [d for d in document.definitions if isinstance(d, OperationDefinitionNode)]
     if any(op.operation != OperationType.QUERY for op in operations):
         return []
-    named = surface.context.draft_ids
     ids: list[int] = []
     for op in operations:
         for selection in op.selection_set.selections:
