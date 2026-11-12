@@ -34,6 +34,8 @@
     "fieldAiContext": "AI 內容",
     "fieldTags": "標籤",
     "fieldAiContextPlaceholder": "供 AI 輔助查詢產生使用的提示",
+    "fieldTerm": "詞彙表術語",
+    "fieldTermHint": "其定義及計算方法會與指標一同顯示",
     "saveFailed": "儲存失敗。",
     "editMetric": "編輯指標 {{name}}",
     "deleteMetric": "刪除指標 {{name}}",

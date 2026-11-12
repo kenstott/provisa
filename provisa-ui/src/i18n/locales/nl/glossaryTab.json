@@ -10,6 +10,8 @@
     "newTermHint": "Een concept is een zakelijk idee dat nog geen kolom of tabel benoemt. Koppel het met relaties aan andere termen.",
     "nameLabel": "Naam",
     "definitionLabel": "Definitie",
+    "calculationMethodLabel": "Berekeningsmethode",
+    "calculationMethodPlaceholder": "Hoe het wordt berekend, in zakelijke termen",
     "domainsLabel": "Domeinen",
     "domainsHint": "Een concept heeft geen kolommen om zijn domeinen uit af te leiden, dus noem ze hier. Wie een ervan bereikt, mag de term lezen en beheren.",
     "rename": "Hernoemen",

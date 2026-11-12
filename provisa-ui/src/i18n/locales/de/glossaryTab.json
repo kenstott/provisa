@@ -10,6 +10,8 @@
     "newTermHint": "Ein Konzept ist eine fachliche Idee, die noch keine Spalte oder Tabelle benennt. Verknüpfen Sie es über Beziehungen mit anderen Begriffen.",
     "nameLabel": "Name",
     "definitionLabel": "Definition",
+    "calculationMethodLabel": "Berechnungsmethode",
+    "calculationMethodPlaceholder": "Wie der Wert berechnet wird, in fachlicher Sprache",
     "domainsLabel": "Domänen",
     "domainsHint": "Ein Konzept hat keine Spalten, aus denen sich seine Domänen ableiten, daher benennen Sie sie hier. Wer eine davon erreicht, darf den Begriff lesen und pflegen.",
     "rename": "Umbenennen",

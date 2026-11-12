@@ -2888,6 +2888,13 @@
     {
      "fields": [
       {
+       "name": "calculationMethod",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
        "name": "definition",
        "type": {
         "kind": "SCALAR",

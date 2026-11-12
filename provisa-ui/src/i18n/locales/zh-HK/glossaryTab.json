@@ -10,6 +10,8 @@
     "newTermHint": "概念是尚未指代任何欄或表的業務概念。透過關係將其與其他術語連結。",
     "nameLabel": "名稱",
     "definitionLabel": "定義",
+    "calculationMethodLabel": "計算方法",
+    "calculationMethodPlaceholder": "以業務語言說明其計算方式",
     "domainsLabel": "領域",
     "domainsHint": "概念沒有可推導其域的欄，因此請在此指定。能存取其中任一域的人都可以閱讀和維護該術語。",
     "rename": "重新命名",

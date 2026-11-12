@@ -34,6 +34,8 @@
     "fieldAiContext": "Contexte IA",
     "fieldTags": "Étiquettes",
     "fieldAiContextPlaceholder": "Indications pour la génération de requêtes assistée par IA",
+    "fieldTerm": "Terme du glossaire",
+    "fieldTermHint": "Sa définition et sa méthode de calcul sont affichées avec la métrique",
     "saveFailed": "Échec de l'enregistrement.",
     "editMetric": "Modifier la métrique {{name}}",
     "deleteMetric": "Supprimer la métrique {{name}}",
