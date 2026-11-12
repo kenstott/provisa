@@ -202,11 +202,16 @@ def test_turtle_classes_properties_and_concepts_are_items_with_their_own_text():
         ("banking", "RELATED_TO", "retail banking"),
     }
     # Customer ⊑ Elsewhere names a class the file does not declare; Account ⊑ [restriction] an
-    # anonymous one. Both are counted, never guessed at.
-    assert parsed.left_out == {
-        "statement about something the file does not declare": 1,
-        "statement about an anonymous class": 1,
+    # anonymous one. Neither is an edge, and neither is lost: each is kept on its item
+    # (REQ-2237, amended: nothing is lost). Only the ontology's own header is no item's.
+    kept_on = {
+        (i.name, s["predicate"].rsplit("#", 1)[-1], s["kind"])
+        for i in parsed.items
+        for s in i.statements
     }
+    assert ("customer", "subClassOf", "statement") in kept_on
+    assert ("account", "subClassOf", "restriction") in kept_on
+    assert parsed.left_out == {"statement about an ontology module itself": 2}
 
 
 def _serialized(fmt: str) -> bytes:

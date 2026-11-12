@@ -46,6 +46,7 @@ from provisa.core.schema_org import (
     model_names,
     registered_tables,
     sources,
+    table_columns,
 )
 
 if TYPE_CHECKING:
@@ -203,6 +204,44 @@ async def _check_synthetic(conn: "Connection", datasets: list[int]) -> None:
             f"{', '.join(missing)} has no profiler",
             datasets=", ".join(missing),
         )
+
+
+async def without_fake(conn: "Connection", datasets: Iterable[int]) -> list[str]:
+    """The columns of the datasets that declare no fake (REQ-1494), as ``table.column`` in table
+    id order: a synthetic offer's role reads each column through its fake, and these have none."""
+    ids = list(datasets)
+    if not ids:
+        return []
+    rows = await conn.execute_core(
+        select(
+            registered_tables.c.alias, registered_tables.c.table_name, table_columns.c.column_name
+        )
+        .join(table_columns, table_columns.c.table_id == registered_tables.c.id)
+        .where(registered_tables.c.id.in_(ids))
+        .where(table_columns.c.fake.is_(None))
+        .order_by(registered_tables.c.id, table_columns.c.id)
+    )
+    return [f"{r.alias or r.table_name}.{r.column_name}" for r in rows.fetchall()]
+
+
+async def synthetic_readers(conn: "Connection") -> dict[int, list[str]]:
+    """Per dataset of a product with a synthetic offer, the roles of those offers, sorted: each
+    reads every column of the dataset through its fake (REQ-2180, REQ-1494). A checker table is
+    no dataset (REQ-2157)."""
+    rows = await conn.execute_core(
+        select(data_product_tables.c.table_id, data_product_offers.c.role_id)
+        .join(
+            data_product_offers,
+            data_product_offers.c.product_id == data_product_tables.c.product_id,
+        )
+        .join(registered_tables, registered_tables.c.id == data_product_tables.c.table_id)
+        .where(data_product_offers.c.data_level == "synthetic")
+        .where(registered_tables.c.dq_contract.is_(None))
+    )
+    out: dict[int, set[str]] = {}
+    for r in rows.fetchall():
+        out.setdefault(int(r.table_id), set()).add(r.role_id)
+    return {table_id: sorted(roles) for table_id, roles in sorted(out.items())}
 
 
 async def quality_tables(conn: "Connection", product_id: str, dataset: int) -> list[int]:

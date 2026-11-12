@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 import yaml
+from psycopg.sql import Composable
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))
@@ -1865,8 +1866,8 @@ def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
         def __exit__(self, *_: Any) -> None:
             return None
 
-        def execute(self, sql: str) -> None:
-            statements.append(sql)
+        def execute(self, query: Composable) -> None:
+            statements.append(query.as_string())
 
     monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
     monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
@@ -1874,7 +1875,9 @@ def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
     support.seed_columns("dsn", out)
     inserts = [s for s in statements if s.startswith("INSERT")]
     assert len(inserts) == support.VALUE_ROWS
-    assert inserts[0].startswith("INSERT INTO conformance.function_columns VALUES (1, 3::smallint")
+    assert inserts[0].startswith(
+        'INSERT INTO "conformance"."function_columns" VALUES (1, 3::smallint'
+    )
     assert "'cat:1 fat:2'::tsvector" in inserts[0] and "'rat:3A'::tsvector" in inserts[2]
     [table] = yaml.safe_load(out.read_text())
     assert table["table"] == "function_columns" and table["source_id"] == "conformance-pg"
