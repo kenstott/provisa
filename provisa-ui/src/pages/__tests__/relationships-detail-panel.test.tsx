@@ -96,10 +96,10 @@ const rowOf = (text: string) =>
 const panel = () => screen.getByTestId("relationships-split-panel");
 
 describe("RelationshipsPage: the list's search", () => {
-  it("lists the relationships matching any word of the search", () => {
+  it("lists the relationships matching every word of the search, or either side of or", () => {
     render(<RelationshipsPage />);
     fireEvent.change(screen.getByTestId("filter-input"), {
-      target: { value: "customers payments" },
+      target: { value: "customers or payments" },
     });
     const list = within(screen.getByTestId("relationships-list"));
     expect(list.getByText("orders.customer_id")).toBeInTheDocument();

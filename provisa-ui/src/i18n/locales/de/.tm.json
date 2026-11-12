@@ -2584,7 +2584,7 @@
   "de/glossaryTab.json::glossaryTab.stewardshipHint": "Stewardship summary: what agents can see, and what is waiting on a steward.",
   "de/glossaryTab.json::glossaryTab.stewardshipTitle": "Stewardship summary",
   "de/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "de/glossaryTab.json::glossaryTab.termGraphTitle": "Term graph",
+  "de/glossaryTab.json::glossaryTab.termGraphTitle": "Graph",
   "de/glossaryTab.json::glossaryTab.title": "Ontology",
   "de/glossaryTab.json::glossaryTab.toReview": "To review",
   "de/glossaryTab.json::glossaryTab.unretire": "Restore",
@@ -10235,6 +10235,7 @@
   "de/ontologyImport.json::ontologyImport.withItem": "With another item",
   "de/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "de/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
+  "de/filterInput.json::filterInput.syntaxHint": "Uses Google search syntax: every word must match; put or between alternatives; -word excludes; \"quotes\" keep a phrase together.",
   "de/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
   "de/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "de/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."

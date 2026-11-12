@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "¿Mover {{count}} columna?",
     "moveManyUnnamed_other": "¿Mover {{count}} columnas?",
     "moveCarryUnnamed": "Mover y marcar sus nuevos términos con {{tags}}",
-    "termGraphTitle": "Grafo de términos",
+    "termGraphTitle": "Grafo",
     "status_approved": "Aprobado",
     "draftDefined": "Borrador: apruébelo cuando su definición sea correcta. Los agentes y los catálogos encuentran y citan datos a través de términos aprobados.",
     "grounding_grounded": "anclado",

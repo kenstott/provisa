@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "{{count}} Spalte verschieben?",
     "moveManyUnnamed_other": "{{count}} Spalten verschieben?",
     "moveCarryUnnamed": "Verschieben und ihre neuen Begriffe mit {{tags}} markieren",
-    "termGraphTitle": "Begriffsgraph",
+    "termGraphTitle": "Graph",
     "status_approved": "Freigegeben",
     "draftDefined": "Entwurf: Geben Sie ihn frei, wenn seine Definition stimmt. Agents und Kataloge finden und zitieren Daten über freigegebene Begriffe.",
     "grounding_grounded": "verankert",
