@@ -502,7 +502,10 @@ def test_sql_governance_columns_follow_view_governance():
 def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     _, gov = _gov(_flat())
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
-    assert gov.rls_rules[CATALOG] == rule_of(f"id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})")
+    # REQ-1921: and no draft's row, which only a role holding org_admin reads.
+    assert gov.rls_rules[CATALOG] == rule_of(
+        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT draft)"
+    )
     # ontology: the glossary's own rule, scoped to the role's data domains.
     assert mentions(gov.rls_rules[TERMS], "pet-store") and mentions(gov.rls_rules[TERMS], "shelter")
     assert not mentions(gov.rls_rules[TERMS], "|meta|")

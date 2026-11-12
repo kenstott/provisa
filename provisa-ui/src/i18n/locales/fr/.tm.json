@@ -10348,5 +10348,8 @@
   "fr/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "fr/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",
   "fr/graph3d.json::graph3d.hopsAll": "All",
-  "fr/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops"
+  "fr/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops",
+  "fr/tableSections.json::tableSections.classTermNoModel": "Its term could not be read: your roles cannot read the model's tables.",
+  "fr/tableSections.json::tableSections.classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
+  "fr/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of."
 }

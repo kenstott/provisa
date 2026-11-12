@@ -235,7 +235,10 @@ class TestREQ1132RowScope:
                 "domain_access": ["sales"],
             }
         )
-        assert gov.rls_rules[_RT_META_TID] == rule_of(f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})")
+        # REQ-1921: a draft's row is read by a role holding org_admin and by no other.
+        assert gov.rls_rules[_RT_META_TID] == rule_of(
+            f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT draft)"
+        )
         assert gov.rls_rules[_TC_META_TID] == rule_of(
             f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
         )
@@ -250,7 +253,7 @@ class TestREQ1132RowScope:
                 "domain_access": ["sales"],
             }
         )
-        assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
+        assert not mentions(gov.rls_rules[_RT_META_TID], _FIN_HIDDEN)
 
     def test_reaching_every_data_domain_sees_all_rows(self):
         # REQ-1132 — "*" lifts the row filter entirely (no predicate injected); catalog_read opens
@@ -263,7 +266,8 @@ class TestREQ1132RowScope:
                 "domain_access": ["*", *SYSTEM_DOMAINS],
             }
         )
-        assert _RT_META_TID not in gov.rls_rules
+        # REQ-1921: the whole catalog's rows but a draft's, which only org_admin reads.
+        assert gov.rls_rules[_RT_META_TID] == rule_of("NOT draft")
         assert _TC_META_TID not in gov.rls_rules
 
     def test_no_capability_lifts_the_row_filter(self):
@@ -279,7 +283,7 @@ class TestREQ1132RowScope:
                 }
             )
             assert gov.rls_rules[_RT_META_TID] == rule_of(
-                f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+                f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT draft)"
             )
             assert gov.rls_rules[_TC_META_TID] == rule_of(
                 f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
@@ -295,7 +299,7 @@ class TestREQ1132RowScope:
                 "domain_access": ["marketing"],
             }
         )
-        assert gov.rls_rules[_RT_META_TID] == rule_of("id IN (-1)")
+        assert gov.rls_rules[_RT_META_TID] == rule_of("(id IN (-1)) AND (NOT draft)")
 
 
 # --- REQ-2153: listed names, for a reader outside the listed table's domain -----------------------

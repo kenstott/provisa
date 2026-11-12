@@ -57,3 +57,80 @@ def test_the_model_table_holds_a_drafts_row(plane):
     with plane.begin() as conn:
         ids = [r[0] for r in conn.exec_driver_sql("SELECT id FROM registered_tables_meta")]
     assert sorted(ids) == [1, 2]
+
+
+# The governance a statement over the model table is given, by role: which rows it reads.
+_RT = 1
+
+
+def _governed(role_id: str, domain_access: list[str]):
+    from provisa.compiler.sql_types import CompilationContext, TableMeta
+    from provisa.compiler.stage2 import build_governance_context
+    from provisa.security.rights import META_DOMAIN_ID
+
+    ctx = CompilationContext()
+    ctx.tables["registered_tables"] = TableMeta(
+        table_id=_RT,
+        field_name="registered_tables",
+        type_name="RegisteredTables",
+        source_id="s",
+        catalog_name="main",
+        schema_name="public",
+        table_name="registered_tables_meta",
+        domain_id=META_DOMAIN_ID,
+    )
+    # REQ-2154: the served table's column names its reader.
+    column = {"column_name": "id", "visible_to": [role_id]}
+    served = [{"id": 1, "domain_id": "pet_store", "columns": [column]}]
+    rls = type("Rls", (), {"rules": {}, "write_rules": {}})()
+    role = {"id": role_id, "capabilities": [], "domain_access": domain_access}
+    return build_governance_context(role_id, rls, {}, ctx, served, role)
+
+
+def _rows_read(plane, gov) -> list[int]:
+    rule = gov.rls_rules.get(_RT)
+    where = "" if rule is None else f" WHERE {rule.sql(dialect='postgres')}"
+    with plane.begin() as conn:
+        return sorted(
+            r[0] for r in conn.exec_driver_sql(f"SELECT id FROM registered_tables_meta{where}")
+        )
+
+
+_EVERY = ["*", "meta", "ops", "ontology"]
+
+
+@pytest.mark.parametrize(
+    ("role_id", "domain_access"),
+    [
+        ("org_admin", _EVERY),
+        # The meta role a person holding several roles acts as ("Role: All").
+        ("meta:analyst+data_product_owner+org_admin", _EVERY),
+        # A scoped meta role: the draft beside the rows of its scope.
+        ("meta:analyst+org_admin", ["pet_store"]),
+    ],
+)
+def test_a_role_holding_org_admin_reads_a_drafts_row(plane, role_id, domain_access):
+    """The Associations' class-term read (registered_tables, id eq the draft's) finds its row."""
+    assert _rows_read(plane, _governed(role_id, domain_access)) == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("role_id", "domain_access"),
+    [
+        ("analyst", _EVERY),
+        ("meta:analyst+data_product_owner", _EVERY),
+        ("analyst", ["pet_store"]),
+    ],
+)
+def test_no_other_role_reads_a_drafts_row(plane, role_id, domain_access):
+    assert _rows_read(plane, _governed(role_id, domain_access)) == [1]
+
+
+def test_holding_org_admin_is_org_admin_or_a_meta_role_naming_it():
+    from provisa.security.rights import holds_org_admin
+
+    assert holds_org_admin("org_admin")
+    assert holds_org_admin("meta:analyst+org_admin")
+    assert not holds_org_admin("analyst")
+    assert not holds_org_admin("meta:analyst+data_product_owner")
+    assert not holds_org_admin("org_admin_helper")

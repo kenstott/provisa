@@ -51,6 +51,10 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+# A role id read without a runtime is pure and below the compiler (security/rights.py).
+from provisa.security.rights import META_PREFIX as META_PREFIX
+from provisa.security.rights import members_of as members_of
+
 
 def _member_surface(held: Any) -> Any:
     """A member role's context and row filters, built on first read: the parts a meta-role is
@@ -71,7 +75,6 @@ def _member_parts(state: Any, members: list[dict]) -> dict[str, tuple[Any, froze
     return parts
 
 
-META_PREFIX = "meta:"
 _LOCK = threading.Lock()
 
 
@@ -103,14 +106,6 @@ def refuse_named_meta_role(requested: list[str]) -> None:
             raise MetaRoleNamed(
                 f"{role_id!r} is not a role: name the roles you hold, and the server acts as them"
             )
-
-
-def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
-    """The roles ``role_id`` names: a meta-role's, from its id (:func:`meta_role_id`), else
-    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
-    if not is_meta_role_id(role_id):
-        return (role_id,)
-    return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
 def acting_roles(state: Any, role_id: str) -> tuple[str, ...]:

@@ -218,6 +218,25 @@ def normalized_reach(domains: Iterable[str]) -> list[str]:
 # platform_admin.
 PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
+#: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).
+META_PREFIX = "meta:"
+
+
+def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
+    """The roles ``role_id`` names: a meta-role's, from its id (meta_role.meta_role_id), else
+    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
+    if not role_id.startswith(META_PREFIX):
+        return (role_id,)
+    return tuple(role_id[len(META_PREFIX) :].split("+"))
+
+
+def holds_org_admin(role_id: str) -> bool:  # REQ-1921
+    """Whether ``role_id`` holds org_admin: org_admin itself, or a meta-role with org_admin among
+    its members. A draft is served to such a role (A DRAFT IS SERVED TO ORG_ADMIN); this is the
+    one place that answers it."""
+    return ORG_ADMIN_ROLE in members_of(role_id)
+
+
 DEVELOPER_ROLE = "developer"
 ANALYST_ROLE = "analyst"
 #: The standard role every role builds on (provisa/core/standard_roles.yaml).
@@ -739,6 +758,10 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
+#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding org_admin
+#: reads and no other role does (compiler/stage2; security/meta_role.holds_org_admin).
+DRAFT_ROWS_VIEW = "registered_tables_meta"
+
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
     "table_columns_meta": ("table_id",),

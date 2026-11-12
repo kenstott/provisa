@@ -38,6 +38,9 @@
     "classTerm": "Le righe sono istanze di",
     "noClassTerm": "Nessun termine",
     "classTermUnreadable": "Impossibile leggere il suo termine: {{error}}",
+    "classTermNoModel": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere le tabelle del modello.",
+    "classTermNoEntry": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere la voce di questa tabella nel modello.",
+    "classTermNoField": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere di quale termine le righe di una tabella sono istanze.",
     "access": "Accesso"
   }
 }
