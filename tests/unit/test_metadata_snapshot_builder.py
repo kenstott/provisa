@@ -365,7 +365,11 @@ def _naming_a_seeded_table(**kwargs) -> ProvisaConfig:
                 cardinality=Cardinality.many_to_one,
             ),
         ],
-        rls_rules=[RLSRule(table_id="meta_tables", role_id="analyst", filter="1 = 1")],
+        rls_rules=[
+            RLSRule(
+                table_id="meta_tables", role_id="analyst", filter="1 = 1", description="Test rule."
+            )
+        ],
         roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
         **kwargs,
     )
