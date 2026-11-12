@@ -10,10 +10,10 @@
 
 // REQ-2239 (maintainer, 2026-11-11 screenshots; amended 2026-11-11, TERMS SIT LEVEL WITH THEIR
 // COLUMNS; THE SCORE IS THE ANGLE OF THE LINES), REQ-2174 (amended 2026-11-11, EACH SIBLING TERM ON ITS
-// OWN ROW): the lanes preset as ProvisaGraph places it, measured on the positions it leaves (headless),
+// OWN ROW; amended 2026-11-12, COLUMNS ARE FIXED; TABLES, PRODUCTS AND TERMS ALIGN TO THEM): the lanes preset as ProvisaGraph places it, measured on the positions it leaves (headless),
 // on the pet-store and Pet Health Ontology graphs. Products, tables and columns are sorted by the
-// places of what they join on their left, tied tables that share terms side by side, and spread over
-// the tallest lane's height; the term lane is placed: a term bound to one column level with it, one
+// places of what they join on their left, tied tables that share terms side by side; the column lane
+// is packed and each table and product sits at the midpoint of the columns it reaches; the term lane is placed: a term bound to one column level with it, one
 // bound to several level with the column leaving its lines flattest, the children of one parent a
 // block on adjacent rows placed where its lines are flattest, no term or block left a free place that
 // flattens its lines. Each term has its own row and the lines between terms run beside the lane; each
@@ -26,13 +26,26 @@ import { resolve } from "node:path";
 import cytoscape from "cytoscape";
 import { laneDiagram, drawnCrossings, LANES, type At, type Lane } from "../../graph3d/laneDiagram";
 import { laneGraph } from "../../graph3d/laneGraph";
-import { petHealthOntology, petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
+import {
+  petHealthOntology,
+  petStoreOntology,
+  placedDiagram,
+} from "../../graph3d/__tests__/crossingFixtures";
 import type { GraphData } from "../../graph3d/graphModel";
 import { NODE_MAX_WIDTH, TEXT_LEFT, TEXT_RIGHT, graphElements, textWidth } from "../model";
 import { graphStylesheet } from "../stylesheet";
 import { SIZE, graphTokens } from "../tokens";
 import { GLOSSARY_REL_TYPES } from "../../../api/glossary";
-import { besideRoutes, runLanes, LANE_GAP, NODE_GAP, type LanesOptions } from "../lanes";
+import {
+  besideRoutes,
+  placeLanes,
+  runLanes,
+  LANE_GAP,
+  NODE_GAP,
+  type LaneItem,
+  type LaneLine,
+  type LanesOptions,
+} from "../lanes";
 import type { Core } from "../core";
 import type { CyCanvas } from "../cyCanvas";
 
@@ -572,30 +585,49 @@ describe("the name of a line beside the term lane (J1227)", () => {
 });
 
 describe("the lanes preset on the pet-store Ontology graph", () => {
-  it("spreads every lane but the term lane over the height of the tallest", async () => {
+  it("packs the column lane, its first node at the top, a node gap between each two", async () => {
     const { d, cy } = await laidOut(petStoreOntology());
-    const laneOf = (id: string) => cy.getElementById(id).data("lane") as string;
-    const placed = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => n.id());
-    const spans = LANES.filter((l) => l !== "term")
-      .map((l) => {
-        const ids = placed.filter((id) => laneOf(id) === l);
-        const bs = ids.map((id) => box(cy, id));
-        return {
-          l,
-          n: ids.length,
-          y1: Math.min(...bs.map((b) => b.y1)),
-          y2: Math.max(...bs.map((b) => b.y2)),
-        };
-      })
-      .filter((s) => s.n > 1);
-    const top = Math.min(...spans.map((s) => s.y1));
-    const bottom = Math.max(...spans.map((s) => s.y2));
+    const cols = drawnLanes(cy)[LANES.indexOf("column")].map((id) => box(cy, id));
     cy.destroy();
     expect(d.graph.nodes.length).toBeGreaterThan(40);
-    for (const s of spans) {
-      expect(s.y1, `${s.l} lane's top`).toBeCloseTo(top, 0);
-      expect(s.y2, `${s.l} lane's bottom`).toBeCloseTo(bottom, 0);
-    }
+    expect(cols[0].y1).toBe(0);
+    for (let i = 1; i < cols.length; i++)
+      expect(cols[i].y1 - cols[i - 1].y2).toBeCloseTo(NODE_GAP, 9);
+  });
+
+  it("sets each table beside the middle of its columns and each product beside the middle of its tables' columns", async () => {
+    const { cy } = await laidOut(petStoreOntology());
+    const lane = (id: string) => cy.getElementById(id).data("lane") as string;
+    const y = (id: string) => cy.getElementById(id).position().y;
+    const colsOf = new Map<string, string[]>();
+    const tablesOf = new Map<string, string[]>();
+    cy.edges().forEach((e) => {
+      const [s, g] = [e.data("source") as string, e.data("target") as string];
+      for (const [a, b] of [
+        [s, g],
+        [g, s],
+      ]) {
+        if (lane(a) === "table" && lane(b) === "column")
+          colsOf.set(a, [...(colsOf.get(a) ?? []), b]);
+        if (lane(a) === "product" && lane(b) === "table")
+          tablesOf.set(a, [...(tablesOf.get(a) ?? []), b]);
+      }
+    });
+    const mid = (ids: string[]) => (Math.min(...ids.map(y)) + Math.max(...ids.map(y))) / 2;
+    const tables = drawnLanes(cy)[LANES.indexOf("table")];
+    const products = drawnLanes(cy)[LANES.indexOf("product")];
+    const off = tables.map((t) => Math.abs(y(t) - mid(colsOf.get(t) ?? [])));
+    const pOff = products.map((p) =>
+      Math.abs(y(p) - mid((tablesOf.get(p) ?? []).flatMap((t) => colsOf.get(t) ?? []))),
+    );
+    const boxes = tables.map((t) => box(cy, t));
+    cy.destroy();
+    expect(tables.length).toBe(12);
+    // A table moves off its midpoint only where its neighbours' rows push it.
+    expect(off.filter((o) => o < 1e-9).length).toBeGreaterThan(tables.length / 2);
+    for (let i = 1; i < boxes.length; i++)
+      expect(boxes[i].y1 - boxes[i - 1].y2).toBeGreaterThanOrEqual(NODE_GAP - 1e-9);
+    for (const o of pOff) expect(o).toBeLessThan(1e-9);
   });
 
   it("boxes each lane round its own nodes alone, the boxes a gap apart", async () => {
@@ -626,6 +658,174 @@ describe("the lanes preset on the pet-store Ontology graph", () => {
       for (const h of hulls.filter((x) => x.lane !== lane))
         expect(b.x2 <= h.x1 || b.x1 >= h.x2, `${lane} node outside ${h.lane}'s box`).toBe(true);
     }
+  });
+});
+
+describe("tables, products and terms align to the fixed column lane (REQ-2239, amended 2026-11-12)", () => {
+  const LANE_IDS = ["product", "table", "column", "term"];
+  const item = (id: string, h = 20): LaneItem => ({ id, w: 100, h });
+  const line = (a: string, b: string): LaneLine => ({ id: `${a}>${b}`, source: a, target: b });
+  const place = (lanes: LaneItem[][], lines: LaneLine[]) => {
+    const at = placeLanes(
+      lanes.map((items, i) => ({ id: LANE_IDS[i], items })),
+      lines,
+      "term",
+    );
+    return (id: string) => (at.get(id) as At).y;
+  };
+  const near = (p: number, q: number) => Math.abs(p - q) <= 1e-9 * Math.max(1, Math.abs(q));
+
+  it("sets a table of ten columns at the midpoint of its first and tenth", () => {
+    const cols = Array.from({ length: 10 }, (_, i) => item(`t.c${i}`));
+    const y = place(
+      [[], [item("t", 40), item("u", 40)], [...cols, item("u.a"), item("u.b")], []],
+      [...cols.map((c) => line("t", c.id)), line("u", "u.a"), line("u", "u.b")],
+    );
+    expect(near(y("u"), (y("u.a") + y("u.b")) / 2)).toBe(true);
+    expect(near(y("t"), (y("t.c0") + y("t.c9")) / 2)).toBe(true);
+    expect(y("t.c0")).toBe(10);
+    expect(near(y("t.c9") - y("t.c8"), 20 + NODE_GAP)).toBe(true);
+  });
+
+  it("sets a folded table level with its more node", () => {
+    const y = place(
+      [
+        [],
+        [item("a", 40), item("b", 40)],
+        [item("a.c0"), item("a.c1"), item("a.c2"), item("more:b")],
+        [],
+      ],
+      [line("a", "a.c0"), line("a", "a.c1"), line("a", "a.c2"), line("more:b", "b")],
+    );
+    expect(near(y("b"), y("more:b"))).toBe(true);
+    expect(near(y("a"), y("a.c1"))).toBe(true);
+  });
+
+  it("sets a product over two tables at the midpoint of the first table's top column and the last table's bottom one", () => {
+    const y = place(
+      [
+        [item("p", 40)],
+        [item("t1", 40), item("t2", 40), item("t3", 40)],
+        ["t1.a", "t1.b", "t1.c", "t2.a", "t2.b", "t2.c", "t2.d", "t3.a", "t3.b", "t3.c"].map((id) =>
+          item(id),
+        ),
+        [],
+      ],
+      [
+        ...["a", "b", "c"].map((c) => line("t3", `t3.${c}`)),
+        line("p", "t1"),
+        line("p", "t2"),
+        ...["a", "b", "c"].map((c) => line("t1", `t1.${c}`)),
+        ...["a", "b", "c", "d"].map((c) => line("t2", `t2.${c}`)),
+      ],
+    );
+    expect(near(y("p"), (y("t1.a") + y("t2.d")) / 2)).toBe(true);
+  });
+
+  it("moves two products over one table apart by the least, in their order, a node gap between them", () => {
+    const y = place(
+      [
+        [item("p1", 40), item("p2", 40)],
+        [item("t", 40), item("u", 40)],
+        ["t.a", "t.b", "t.c", "u.a", "u.b", "u.c", "u.d", "u.e"].map((id) => item(id)),
+        [],
+      ],
+      [
+        line("p1", "t"),
+        line("p2", "t"),
+        ...["a", "b", "c"].map((c) => line("t", `t.${c}`)),
+        ...["a", "b", "c", "d", "e"].map((c) => line("u", `u.${c}`)),
+      ],
+    );
+    const mid = y("t.b");
+    expect(y("p1")).toBeLessThan(y("p2"));
+    expect(near(y("p2") - y("p1"), 40 + NODE_GAP)).toBe(true);
+    // Each moved half the overlap, the pair centred where both wanted to be.
+    expect(near((y("p1") + y("p2")) / 2, mid)).toBe(true);
+  });
+
+  it("stacks two one-column tables, a node gap apart, neither over the other", () => {
+    const y = place(
+      [
+        [],
+        [item("t1", 40), item("t2", 40), item("u", 40)],
+        ["t1.a", "t2.a", "u.a", "u.b", "u.c", "u.d", "u.e", "u.f"].map((id) => item(id)),
+        [],
+      ],
+      [
+        line("t1", "t1.a"),
+        line("t2", "t2.a"),
+        ...["a", "b", "c", "d", "e", "f"].map((c) => line("u", `u.${c}`)),
+      ],
+    );
+    expect(y("t1")).toBeLessThan(y("t2"));
+    expect(near(y("t2") - 20 - (y("t1") + 20), NODE_GAP)).toBe(true);
+    expect(near((y("t1") + y("t2")) / 2, (y("t1.a") + y("t2.a")) / 2)).toBe(true);
+  });
+
+  it("keeps a table reaching no column in its order, a node gap below the one before it", () => {
+    const y = place(
+      [
+        [],
+        [item("t1", 40), item("bare", 40), item("t2", 40)],
+        [
+          item("t1.a"),
+          item("t2.a"),
+          item("t2.b"),
+          item("t2.c"),
+          item("t2.d"),
+          item("t2.e"),
+          item("t2.f"),
+        ],
+        [],
+      ],
+      [line("t1", "t1.a"), ...["a", "b", "c", "d", "e", "f"].map((c) => line("t2", `t2.${c}`))],
+    );
+    expect(near(y("t1"), y("t1.a"))).toBe(true);
+    expect(near(y("bare") - y("t1"), 40 + NODE_GAP)).toBe(true);
+    expect(near(y("t2"), (y("t2.a") + y("t2.f")) / 2)).toBe(true);
+  });
+
+  it("leaves the terms of the Pet Health graph where they were", () => {
+    const data = petHealthOntology();
+    const d = laneDiagram(data, data, new Set());
+    const at = placedDiagram(d);
+    const terms = Object.fromEntries(
+      d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => [n.id, at(n.id).y]),
+    );
+    // As the even spread placed them (the column lane is the tallest, so its places are unchanged).
+    expect(terms).toEqual({
+      "term:pet": 834,
+      "term:dog": 892,
+      "term:cat": 950,
+      "term:owner": 1820,
+      "term:employee": 1124,
+      "term:veterinarian": 138,
+      "term:shelter": 1240,
+      "term:visit": 22,
+      "term:vaccination": 428,
+      "term:diagnosis": 370,
+      "term:medication": 486,
+      "term:adoption": 1704,
+      "term:assignment": 1298,
+      "term:name": 1414,
+      "term:contact": 2110,
+    });
+  });
+
+  it("draws the Pet Health tables' lines to their columns flatter in total than the even spread did", () => {
+    const data = petHealthOntology();
+    const d = laneDiagram(data, data, new Set());
+    const at = placedDiagram(d);
+    let total = 0;
+    for (const k of d.links) {
+      if (d.lane.get(k.to) !== "table" || d.lane.get(k.from) === "product") continue;
+      const [a, b] = [at(k.from), at(k.to)];
+      total += (Math.atan2(Math.abs(a.y - b.y), Math.abs(a.x - b.x)) * 180) / Math.PI;
+    }
+    // The even spread's total, in degrees, measured on this fixture before the change.
+    const EVEN_SPREAD = 718.7130524504767;
+    expect(total).toBeLessThan(EVEN_SPREAD);
   });
 });
 

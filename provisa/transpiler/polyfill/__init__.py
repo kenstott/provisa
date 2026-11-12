@@ -18,7 +18,7 @@ the per-engine tables of provisa.transpiler (scripts/conformance/polyfill_audit.
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill import arrays
+from provisa.transpiler.polyfill import arrays, money, records, type_io, zones
 from provisa.transpiler.polyfill.grid import (
     DIALECTS,
     Applied,
@@ -36,7 +36,7 @@ from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
 
 #: The one grid: every family's features.
-GRID = Grid(arrays.FEATURES)
+GRID = Grid(arrays.FEATURES + records.FEATURES + money.FEATURES + type_io.FEATURES + zones.FEATURES)
 
 __all__ = [
     "DIALECTS",

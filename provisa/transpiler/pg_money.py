@@ -47,6 +47,8 @@ from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_money import cash_in
 from provisa.transpiler.function_macros import outcome
 from provisa.transpiler.native_subtype import COMPARISONS, SubtypeOperationRefused, marked
+from provisa.transpiler.polyfill import Refusal
+from provisa.transpiler.polyfill.money import MONEY_TEXT
 
 MONEY = "money"
 MONEY_ARRAY = "money[]"
@@ -458,8 +460,13 @@ def _by_the_rule(row: str, operation: str, value: exp.Expr, dialect: str) -> exp
 
 
 def _money_text(value: exp.Expr, dialect: str) -> exp.Expr:
-    """money's text form."""
-    return _by_the_rule("money_text", "cast to text", value, dialect)
+    """money's text form, as the polyfill grid's row money_text writes it on ``dialect``
+    (provisa.transpiler.polyfill.money). Where the row refuses it, the refusal is raised here, as
+    the subtype's: its message is the row's."""
+    (rule,) = MONEY_TEXT.read.rules
+    if isinstance(rule.forms.get(dialect), Refusal):
+        raise SubtypeOperationRefused(MONEY, "cast to text", dialect)
+    return exp.Anonymous(this="money_text", expressions=[value])
 
 
 def _money_words(value: exp.Expr, dialect: str) -> exp.Expr:

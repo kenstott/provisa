@@ -175,6 +175,9 @@ export function Sidebar({
   const [relTypesCollapsed, setRelTypesCollapsedRaw] = useState(() =>
     readCollapsed("graph-sidebar:relTypes:collapsed", false),
   );
+  const [paramNodesCollapsed, setParamNodesCollapsedRaw] = useState(() =>
+    readCollapsed("graph-sidebar:paramNodes:collapsed", false),
+  );
   const [propKeysCollapsed, setPropKeysCollapsedRaw] = useState(() =>
     readCollapsed("graph-sidebar:propKeys:collapsed", false),
   );
@@ -183,6 +186,13 @@ export function Sidebar({
     setNodeLabelsCollapsedRaw((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       writeCollapsed("graph-sidebar:nodeLabels:collapsed", next);
+      return next;
+    });
+  };
+  const setParamNodesCollapsed = (updater: boolean | ((prev: boolean) => boolean)) => {
+    setParamNodesCollapsedRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      writeCollapsed("graph-sidebar:paramNodes:collapsed", next);
       return next;
     });
   };
@@ -304,6 +314,60 @@ export function Sidebar({
     e.preventDefault();
     setRelContextMenu({ x: e.clientX, y: e.clientY, type });
   }, []);
+
+  const pagedNodeLabels = [...schemaNodeLabels]
+    .map((n) => ({
+      node: n,
+      compoundLabel: n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel,
+    }))
+    .sort((a, b) => a.node.tableLabel.localeCompare(b.node.tableLabel))
+    .slice(nodeLabelsPage * SCHEMA_PAGE_SIZE, (nodeLabelsPage + 1) * SCHEMA_PAGE_SIZE);
+  const paramNodeLabels = pagedNodeLabels.filter(({ node }) => node.nativeFilterColumns.length > 0);
+
+  const renderNodeChip = ({
+    node,
+    compoundLabel,
+  }: {
+    node: SchemaNodeLabel;
+    compoundLabel: string;
+  }) => {
+    const chipHint =
+      node.nativeFilterColumns.length > 0
+        ? t("graphSidebar.needsParams", {
+            params: node.nativeFilterColumns.map((c) => c.name).join(", "),
+          })
+        : `MATCH (n:${compoundLabel}) RETURN n LIMIT 25`;
+    const color = colorOverrides[compoundLabel] ?? labelColor(compoundLabel);
+    return (
+      <div key={compoundLabel} className="graph-label-item">
+        <Tip text={chipHint}>
+          <button
+            type="button"
+            className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
+            style={{ background: color }}
+            draggable
+            data-testid={`graph-label-${compoundLabel}`}
+            onDragStart={(e) => e.dataTransfer.setData("text/x-provisa-label", compoundLabel)}
+            onClick={() => onLabelClick(compoundLabel)}
+            onContextMenu={(e) => handleNodeRightClick(e, node)}
+          >
+            {node.tableLabel}
+            {counts?.label_counts[compoundLabel] !== undefined && (
+              <span
+                style={{
+                  opacity: 0.7,
+                  fontSize: "0.7em",
+                  marginInlineStart: "0.25em",
+                }}
+              >
+                ({total(counts.label_counts[compoundLabel].count)})
+              </span>
+            )}
+          </button>
+        </Tip>
+      </div>
+    );
+  };
 
   return (
     <aside className="graph-sidebar" style={{ width }}>
@@ -453,7 +517,7 @@ export function Sidebar({
                 aria-expanded={!nodeLabelsCollapsed}
                 data-testid="graph-sidebar-node-labels-toggle"
               >
-                {t("graphSidebar.nodeLabels")}
+                {t("graphSidebar.nodes")}
                 <span
                   className={`graph-schema-chevron ${nodeLabelsCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
                   aria-hidden="true"
@@ -501,54 +565,9 @@ export function Sidebar({
                         </button>
                       </Tip>
                     </div>
-                    {(() => {
-                      const sorted = [...schemaNodeLabels]
-                        .map((n) => ({
-                          node: n,
-                          compoundLabel: n.domainLabel
-                            ? `${n.domainLabel}:${n.tableLabel}`
-                            : n.tableLabel,
-                        }))
-                        .sort((a, b) => a.node.tableLabel.localeCompare(b.node.tableLabel));
-                      const paged = sorted.slice(
-                        nodeLabelsPage * SCHEMA_PAGE_SIZE,
-                        (nodeLabelsPage + 1) * SCHEMA_PAGE_SIZE,
-                      );
-                      return paged.map(({ node, compoundLabel }) => {
-                        const color = colorOverrides[compoundLabel] ?? labelColor(compoundLabel);
-                        return (
-                          <div key={compoundLabel} className="graph-label-item">
-                            <Tip text={`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`}>
-                              <button
-                                type="button"
-                                className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
-                                style={{ background: color }}
-                                draggable
-                                data-testid={`graph-label-${compoundLabel}`}
-                                onDragStart={(e) =>
-                                  e.dataTransfer.setData("text/x-provisa-label", compoundLabel)
-                                }
-                                onClick={() => onLabelClick(compoundLabel)}
-                                onContextMenu={(e) => handleNodeRightClick(e, node)}
-                              >
-                                {node.tableLabel}
-                                {counts?.label_counts[compoundLabel] !== undefined && (
-                                  <span
-                                    style={{
-                                      opacity: 0.7,
-                                      fontSize: "0.7em",
-                                      marginInlineStart: "0.25em",
-                                    }}
-                                  >
-                                    ({total(counts.label_counts[compoundLabel].count)})
-                                  </span>
-                                )}
-                              </button>
-                            </Tip>
-                          </div>
-                        );
-                      });
-                    })()}
+                    {pagedNodeLabels
+                      .filter(({ node }) => node.nativeFilterColumns.length === 0)
+                      .map(renderNodeChip)}
                     {(() => {
                       const sorted = [...schemaNodeLabels].sort((a, b) =>
                         a.tableLabel.localeCompare(b.tableLabel),
@@ -642,6 +661,29 @@ export function Sidebar({
                   </div>
                 ))}
             </div>
+
+            {paramNodeLabels.length > 0 && !schemaLoading && schemaError === null && (
+              <div className="graph-schema-section">
+                <button
+                  type="button"
+                  className="graph-schema-heading graph-schema-heading--collapsible"
+                  onClick={() => setParamNodesCollapsed((c) => !c)}
+                  aria-expanded={!paramNodesCollapsed}
+                  data-testid="graph-sidebar-param-nodes-toggle"
+                >
+                  {t("graphSidebar.parameterizedNodes")}
+                  <span
+                    className={`graph-schema-chevron ${paramNodesCollapsed ? "graph-schema-chevron--collapsed" : ""}`}
+                    aria-hidden="true"
+                  >
+                    ▾
+                  </span>
+                </button>
+                {!paramNodesCollapsed && (
+                  <div className="graph-label-list">{paramNodeLabels.map(renderNodeChip)}</div>
+                )}
+              </div>
+            )}
 
             <div className="graph-schema-section">
               <button
