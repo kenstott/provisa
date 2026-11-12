@@ -34,8 +34,9 @@ export function MultiSelect({
   "aria-labelledby": labelledBy,
   "aria-description": ariaDescription,
 }: {
-  /** An option `disabled` is shown and cannot be picked; `disabledHint` says why. */
-  options: { id: string; label: string; disabled?: boolean }[];
+  /** An option `disabled` is shown and cannot be picked; its `reason` says why, else
+   * `disabledHint`, the reason shared by every option that has none of its own. */
+  options: { id: string; label: string; disabled?: boolean; reason?: string }[];
   disabledHint?: string;
   value: string[];
   onChange: (selected: string[]) => void;
@@ -53,21 +54,29 @@ export function MultiSelect({
   "aria-description"?: string;
 }) {
   const { t } = useTranslation();
+  const reasons = new Map(
+    options.flatMap((o) => {
+      const why = o.disabled ? (o.reason ?? disabledHint) : undefined;
+      return why ? [[o.id, why] as const] : [];
+    }),
+  );
   return (
     <MantineMultiSelect
       className={className}
       style={style}
       data={options.map((o) => ({ value: o.id, label: o.label, disabled: o.disabled }))}
       renderOption={
-        disabledHint
-          ? ({ option }) =>
-              option.disabled ? (
-                <Tip text={disabledHint}>
+        reasons.size > 0
+          ? ({ option }) => {
+              const why = reasons.get(option.value);
+              return why ? (
+                <Tip text={why}>
                   <span data-testid={`option-not-held-${option.value}`}>{option.label}</span>
                 </Tip>
               ) : (
                 option.label
-              )
+              );
+            }
           : undefined
       }
       value={value}
