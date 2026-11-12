@@ -121,6 +121,19 @@ async def test_the_deletable_tables_are_deleted_and_each_refused_one_is_named_wi
     assert await _names(plane) == ["open_orders", "orders"]
 
 
+async def test_the_bulk_delete_runs_as_the_schema_runs_it_with_no_object(plane):
+    """GraphQL runs a root resolver with no object: ``self`` is None there, as it never is when a
+    test calls the method on a ``Mutation()``. The bulk delete still reaches each single delete."""
+    customers = await _table(plane, "customers")
+    resolver: Any = schema_mutation.Mutation.delete_tables
+
+    result = await resolver(None, _info(), [customers])
+
+    assert result.deleted == ["customers"]
+    assert result.refused == []
+    assert await _names(plane) == []
+
+
 async def test_a_caller_without_the_right_to_delete_is_refused_before_any_table(plane, monkeypatch):
     orders = await _table(plane, "orders")
     asked: list[str] = []

@@ -172,11 +172,10 @@ const STRETCHED_BUTTONS: Readonly<Record<string, { marker: string; reason: strin
 };
 
 /**
- * Permanent: the file that IS the shared layout. Its footer is where the form's one Save and one
- * Cancel are defined, which is the very thing the rules send every other file to use, so the
- * rules are not read against it. Its own behaviour is held by FormLayout.test.tsx.
+ * Permanent: the file that IS the one Save (SaveButton), which the footer draws in a form's foot,
+ * a panel's head and a dialog alike. Its own rule is held by saveGuard.test.ts.
  */
-const THE_SHARED_LAYOUT = "components/form/FormLayout.tsx";
+const THE_SAVE = "components/form/SaveButton.tsx";
 
 /**
  * Permanent: the file that IS the one Cancel (CancelButton), which the footer and every other
@@ -559,15 +558,14 @@ describe("every component follows the form rules", () => {
     expect(violationsOf(THE_CANCEL).map((v) => v.rule)).toContain("save-cancel-not-shared");
   });
 
-  it("still has the shared layout where the rules expect it", () => {
-    expect(files).toContain(THE_SHARED_LAYOUT);
-    // Were it to stop defining the footer, it would be an ordinary file and must be read again.
-    expect(violationsOf(THE_SHARED_LAYOUT).map((v) => v.rule)).toContain("save-cancel-not-shared");
+  it("still has the one Save where the rules expect it", () => {
+    expect(files).toContain(THE_SAVE);
+    expect(violationsOf(THE_SAVE).map((v) => v.rule)).toContain("save-cancel-not-shared");
   });
 
   it.each(
     files.filter(
-      (f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SHARED_LAYOUT && f !== THE_CANCEL,
+      (f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL,
     ),
   )("%s", (file) => {
     const violations = violationsOf(file);
