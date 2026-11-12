@@ -61,12 +61,12 @@ def _adapter_files(operand: dict) -> list[str]:
     relative to the directory)."""
     directory = Path(operand["directory"])
     if "glob" not in operand:
-        return sorted(p.name for p in directory.iterdir() if p.is_file())
+        return sorted(p.name for p in directory.iterdir() if p.is_file() and p.name[0] != ".")
     return sorted(p.name for p in directory.glob(operand["glob"]) if p.is_file())
 
 
 def test_the_demo_drop_folder_holds_five_files():
-    assert sorted(p.name for p in DROP.iterdir() if p.is_file()) == ALL_FIVE
+    assert sorted(p.name for p in DROP.iterdir() if p.is_file() and p.name[0] != ".") == ALL_FIVE
 
 
 # --- discovery: the tables offered ---------------------------------------------------------
@@ -300,5 +300,5 @@ def test_an_fsspec_table_glob_under_a_globbed_source(memory_drop):
 def test_a_file_uri_glob_decides_its_files():
     files = source_glob_files(f"file://{DROP}/complaints*.csv")
     assert files is not None and [f.rsplit("/", 1)[1] for f in files] == COMPLAINTS
-    names = sorted(e["name"] for e in crawl_directory(f"file://{DROP}/complaints*.csv"))
-    assert names == ["complaints_2026_08", "complaints_2026_09"]
+    with pytest.raises(FileOutsideSourceGlob):
+        matched_files(f"file://{DROP}/complaints*.csv", "*.json")
