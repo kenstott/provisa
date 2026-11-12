@@ -706,9 +706,8 @@ _ABBREVS: tuple[Macro, ...] = (
 )
 
 #: Money over its numeric base, for provisa.transpiler.pg_money: no name of PostgreSQL's, so these
-#: never read a statement's own call.
+#: never read a statement's own call. money_text is the polyfill grid's (polyfill.money).
 _MONEY: tuple[Macro, ...] = (
-    _macro("money_text", "value", pg_forms.MONEY_TEXT, {_TRINO: pg_forms.TRINO_MONEY_TEXT}),
     _macro("money_words", "value", pg_forms.MONEY_WORDS),
     _macro("money_bytes", "value", pg_forms.MONEY_BYTES, own={_TRINO: pg_forms.TRINO_MONEY_BYTES}),
     _macro("money_input", "value", pg_forms.MONEY_INPUT),

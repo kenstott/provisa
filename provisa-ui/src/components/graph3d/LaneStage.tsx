@@ -35,6 +35,7 @@ export function LaneStage({
   setHover,
   onMore,
   command,
+  opensOn = null,
   testId,
   bare = false,
 }: {
@@ -46,6 +47,8 @@ export function LaneStage({
   /** A "+N columns" node was clicked: its table's columns are drawn one by one. */
   onMore: (table: string) => void;
   command: CameraCommand | null;
+  /** The focus the diagram is drawn round: it opens, and Reset view comes back, with it in view. */
+  opensOn?: string | null;
   testId: string;
   /** A glance only (a card): no controls, legend or hint. */
   bare?: boolean;
@@ -98,6 +101,7 @@ export function LaneStage({
         edgeHasCard={edgeHasCard}
         hoverCard={hoverCard}
         command={command}
+        opensOn={opensOn}
         copy={{
           label: t("graph3d.copyMermaid"),
           done: t("graph3d.mermaidCopied"),

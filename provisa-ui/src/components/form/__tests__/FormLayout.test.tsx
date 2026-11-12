@@ -250,6 +250,49 @@ describe("FormLayout", () => {
     expect(buttons[1]).toHaveAttribute("data-size", "sm");
   });
 
+  it("draws Save the same in a form's foot, a panel's head and a dialog", async () => {
+    const look = (b: HTMLElement) => ({
+      variant: b.getAttribute("data-variant"),
+      size: b.getAttribute("data-size"),
+      icon: b.querySelector("svg")?.getAttribute("class"),
+      changes: b.getAttribute("data-changes"),
+      primary: b.getAttribute("data-primary"),
+    });
+    const foot = render(
+      <FormFooter onSave={() => {}} onCancel={() => {}} saveProps={{ "data-testid": "s" }} />,
+    );
+    const atFoot = look(screen.getByTestId("s"));
+    foot.unmount();
+    render(
+      <SplitPane
+        list={<div>list</div>}
+        title="orders"
+        onClose={() => {}}
+        storageKey="test-panel-same"
+        labels={{
+          panel: "Detail",
+          resize: "Resize",
+          expand: "Expand",
+          restore: "Restore",
+          close: "Close",
+          backToList: "Back",
+        }}
+        testId="pane"
+      >
+        <FormFooter
+          panel
+          onSave={() => {}}
+          onCancel={() => {}}
+          saveProps={{ "data-testid": "s" }}
+        />
+      </SplitPane>,
+    );
+    const atHead = look(await screen.findByTestId("s"));
+    expect(atHead).toEqual(atFoot);
+    expect(atFoot.variant).toBe("filled");
+    expect(atFoot.size).toBe("sm");
+  });
+
   describe("as a detail panel's actions", () => {
     const LABELS = {
       panel: "Detail",
@@ -274,7 +317,7 @@ describe("FormLayout", () => {
       );
     const head = () => screen.getByTestId("pane-title").parentElement as HTMLElement;
 
-    it("sits in the panel's head beside the name, Save borderless and compact, Cancel the one Cancel, with the same ids", async () => {
+    it("sits in the panel's head beside the name, Save the one Save, Cancel the one Cancel, with the same ids", async () => {
       inPanel(
         <FormFooter
           panel
@@ -294,14 +337,11 @@ describe("FormLayout", () => {
         t("common.cancel"),
       ]);
       for (const b of [save, cancel]) expect(b.querySelector("svg")).not.toBeNull();
-      // Save takes the head's look; Cancel is bordered and full size, as everywhere.
-      expect(save).toHaveAttribute("data-variant", "subtle");
-      expect(save).toHaveAttribute("data-size", "compact-sm");
+      // Save is the Save a form's foot shows (filled, full size); Cancel is bordered, same size.
+      expect(save).toHaveAttribute("data-variant", "filled");
+      expect(save).toHaveAttribute("data-size", "sm");
       expect(cancel).toHaveAttribute("data-variant", "default");
       expect(cancel).toHaveAttribute("data-size", "sm");
-      // Save is marked as the primary (and tinted as one), Cancel is not.
-      expect(save).toHaveAttribute("data-primary", "true");
-      expect(cancel).not.toHaveAttribute("data-primary");
       expect(save.closest(".form-footer")).toHaveClass("form-footer--head");
       // Nothing is left at the foot of the panel's content.
       expect(
