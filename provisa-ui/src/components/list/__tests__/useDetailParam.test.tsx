@@ -180,6 +180,49 @@ describe("useDetailParam (REQ-2241)", () => {
     expect(title()).toBe("pets");
   });
 
+  it("two of them on one page compose: a derived role opened as the role closes, one entry", async () => {
+    function Roles() {
+      const role = useDetailParam("roles");
+      const derived = useDetailParam("derived");
+      return (
+        <>
+          <output data-testid="open">{`${role.id}|${derived.id}`}</output>
+          <button
+            onClick={() => {
+              derived.open("region:eu");
+              role.close();
+            }}
+          >
+            derived
+          </button>
+          <button
+            onClick={() => {
+              role.open("analyst");
+              derived.close();
+            }}
+          >
+            role
+          </button>
+        </>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/security/roles?role=analyst&section=data"]}>
+        <Where />
+        <Roles />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByText("derived"));
+    expect(where()).toBe("/security/roles?derived=region%3Aeu");
+    expect(screen.getByTestId("open")).toHaveTextContent("null|region:eu");
+    await userEvent.click(screen.getByText("role"));
+    expect(where()).toBe("/security/roles?role=analyst");
+    await userEvent.click(screen.getByText("history-back"));
+    expect(where()).toBe("/security/roles?derived=region%3Aeu");
+    await userEvent.click(screen.getByText("history-back"));
+    expect(where()).toBe("/security/roles?role=analyst&section=data");
+  });
+
   it("an open and a tab chosen in one handler land as one entry", async () => {
     function OneHandler() {
       const detail = useDetailParam("tables");

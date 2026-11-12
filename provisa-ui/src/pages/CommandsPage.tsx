@@ -52,7 +52,7 @@ import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { commandId, readCommandId, useDetailParam } from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -101,13 +101,16 @@ export function CommandsPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-  // REQ-2241: `?command=<name>` is the open command's panel -- a lineage edge links to the command
-  // it names -- a function's or a webhook's, a command's name being one of either.
+  // REQ-2241: `?command=` is the open command's panel -- a lineage edge links to the command it
+  // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
+  // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
   const detail = useDetailParam("commands");
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
-  const openCommand = (name: string | null) => (name === null ? detail.close() : detail.open(name));
+  const openCommand = (kind: ActionType, name: string | null) =>
+    name === null ? detail.close() : detail.open(commandId(kind, name));
+  const opened = detail.id === null ? null : readCommandId(detail.id);
   const [fnPage, setFnPage] = useState(1);
   const [whPage, setWhPage] = useState(1);
   const PAGE_SIZE = 50;
@@ -197,7 +200,7 @@ export function CommandsPage() {
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
       });
-      openCommand(name);
+      openCommand("function", name);
     } else {
       const wh = held.webhooks.find((w) => w.name === name);
       if (!wh) return;
@@ -226,7 +229,7 @@ export function CommandsPage() {
         outputColumns: [],
         languageBindings: {},
       });
-      openCommand(name);
+      openCommand("webhook", name);
     }
     setEditingName(name);
     setShowForm(false);
@@ -304,7 +307,7 @@ export function CommandsPage() {
       setEditingName(null);
       const held = await load();
       if (created && held) {
-        openCommand(created.name);
+        openCommand(created.type, created.name);
         handleEdit(created.type, created.name, held);
       }
     } catch (e) {
@@ -439,8 +442,10 @@ export function CommandsPage() {
 
   // What the right-hand panel shows: the result of a test run (with a way back to the command),
   // the short step that creates a command, or the selected command -- being edited, or read.
-  const selectedFn = functions.find((f) => f.name === detail.id) ?? null;
-  const selectedWh = selectedFn ? null : (webhooks.find((w) => w.name === detail.id) ?? null);
+  const selectedFn =
+    opened?.kind === "function" ? (functions.find((f) => f.name === opened.name) ?? null) : null;
+  const selectedWh =
+    opened?.kind === "webhook" ? (webhooks.find((w) => w.name === opened.name) ?? null) : null;
   // Whom a test run is made as: chosen where the run is started, in the command's own panel.
   const testAs = (
     <Group gap="sm" align="center" mt="sm">
@@ -599,7 +604,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteFunction(fn.name);
                     await load();
-                    detail.close({ only: fn.name });
+                    detail.close({ only: commandId("function", fn.name) });
                   }}
                 />
               </Group>
@@ -657,7 +662,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteWebhook(wh.name);
                     await load();
-                    detail.close({ only: wh.name });
+                    detail.close({ only: commandId("webhook", wh.name) });
                   }}
                 />
               </Group>
@@ -675,7 +680,7 @@ export function CommandsPage() {
   const closePanel = () => {
     setTestResult(null);
     if (showForm || editingName) handleCancel();
-    openCommand(null);
+    detail.close();
   };
 
   if (loading) return <PageLoading message={t("commandsPage.loading")} />;
@@ -771,7 +776,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            openCommand(isExpanded ? null : fn.name);
+                            openCommand("function", isExpanded ? null : fn.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >
@@ -844,7 +849,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            openCommand(isExpanded ? null : wh.name);
+                            openCommand("webhook", isExpanded ? null : wh.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >

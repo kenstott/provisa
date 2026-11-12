@@ -15,7 +15,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DETAIL_VIEWS, detailHref, type DetailPage } from "../useDetailParam";
+import {
+  DETAIL_VIEWS,
+  commandId,
+  derivedId,
+  detailHref,
+  readCommandId,
+  readDerivedId,
+  type DetailPage,
+} from "../useDetailParam";
 
 const SRC = join(__dirname, "..", "..", "..");
 
@@ -30,6 +38,7 @@ const PAGES: Record<DetailPage, { file: string; call: string }> = {
   metrics: { file: "pages/MetricsPage.tsx", call: 'useDetailParam("metrics")' },
   products: { file: "pages/DataProductsPage.tsx", call: 'useDetailParam("products")' },
   roles: { file: "pages/SecurityPage.tsx", call: 'useDetailParam("roles")' },
+  derived: { file: "pages/SecurityPage.tsx", call: 'useDetailParam("derived")' },
   rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useDetailParam("rls")' },
   commands: { file: "pages/CommandsPage.tsx", call: 'useDetailParam("commands")' },
 };
@@ -50,5 +59,23 @@ describe("every list page's detail panel is in the URL through useDetailParam (R
     expect(detailHref("sources", "pets")).toBe("/sources?expanded=pets");
     expect(detailHref("ontology", 3)).toBe("/admin/ontology?term=3");
     expect(() => detailHref("metrics", "m", "x")).toThrow();
+  });
+
+  it("names a webhook by its kind and a function by its bare name", () => {
+    expect(commandId("function", "notify_ops")).toBe("notify_ops");
+    expect(commandId("webhook", "notify_ops")).toBe("webhook:notify_ops");
+    expect(readCommandId("notify_ops")).toEqual({ kind: "function", name: "notify_ops" });
+    expect(readCommandId("webhook:notify_ops")).toEqual({ kind: "webhook", name: "notify_ops" });
+    expect(detailHref("commands", commandId("webhook", "n"))).toBe("/commands?command=webhook%3An");
+  });
+
+  it("names a derived role by its attribute and the value picked under it", () => {
+    expect(derivedId("region", null)).toBe("region");
+    expect(derivedId("region", "eu")).toBe("region:eu");
+    expect(readDerivedId("region")).toEqual({ attribute: "region", value: null });
+    expect(readDerivedId("region:eu:west")).toEqual({ attribute: "region", value: "eu:west" });
+    expect(detailHref("derived", derivedId("region", "eu"))).toBe(
+      "/security/roles?derived=region%3Aeu",
+    );
   });
 });

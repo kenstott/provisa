@@ -53,7 +53,7 @@ import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { derivedId, readDerivedId, useDetailParam } from "../components/list/useDetailParam";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
@@ -120,7 +120,14 @@ export function SecurityRolesPage() {
   // REQ-2078: derived roles share the list. The panel declares one, or shows the one picked.
   const { derived, problem: derivedProblem, reload: reloadDerived } = useDerivedRoles();
   const [showDerivedForm, setShowDerivedForm] = useState(false);
-  const [derivedPick, setDerivedPick] = useState<DerivedPick | null>(null);
+  // REQ-2241: `?derived=<attribute>:<value>` is the open derived role's panel (derivedId).
+  const derivedDetail = useDetailParam("derived");
+  const derivedPick: DerivedPick | null =
+    derivedDetail.id === null ? null : readDerivedId(derivedDetail.id);
+  const setDerivedPick = (pick: DerivedPick | null) =>
+    pick === null
+      ? derivedDetail.close()
+      : derivedDetail.open(derivedId(pick.attribute, pick.value));
 
   const reload = useCallback(async () => {
     await Promise.all([refetchRoles(), refetchDomains(), reloadDerived()]);
