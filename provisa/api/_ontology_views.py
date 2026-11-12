@@ -164,7 +164,7 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
             JOIN same_entity_edges se ON se.a = ir.table_id
             JOIN registered_tables gt ON gt.class_term_id = ir.term_id AND gt.id = se.b
         )
-        SELECT t.id, t.name, t.definition,
+        SELECT t.id, t.name, t.definition, t.calculation_method,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
                       OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN FALSE ELSE TRUE END AS is_abstract,

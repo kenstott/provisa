@@ -904,6 +904,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
 
     name: str
     definition: str | None = None
+    # REQ-2243: how the measure the term names is computed, in business language.
+    calculation_method: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
     # REQ-1387, REQ-2144: its status, set by people. ``approve`` approves it (it needs a

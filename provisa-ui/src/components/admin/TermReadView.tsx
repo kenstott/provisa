@@ -66,6 +66,15 @@ export function TermReadView({
             label: t("glossaryTab.definitionLabel"),
             value: term.definition || t("glossaryTab.hoverNoDefinition"),
           },
+          // REQ-2243: how the measure is computed, when the term says.
+          ...(term.calculation_method
+            ? [
+                {
+                  label: t("glossaryTab.calculationMethodLabel"),
+                  value: term.calculation_method,
+                },
+              ]
+            : []),
           {
             // REQ-1591: derived from the refs for a rooted term, declared for a concept; none
             // means unscoped, which the create form names as the enterprise.

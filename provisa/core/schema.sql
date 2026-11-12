@@ -931,6 +931,9 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
+    -- REQ-2243: how the measure or derived value the term names is computed, in business
+    -- language. Curator work governed with the definition: read by everyone who reads the term.
+    calculation_method TEXT,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
     -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
