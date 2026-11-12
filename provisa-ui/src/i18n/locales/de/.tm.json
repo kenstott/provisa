@@ -1786,7 +1786,6 @@
   "de/dependentsDialog.json::dependentsDialog.kind.table": "Tables and views",
   "de/dependentsDialog.json::dependentsDialog.kind.tag_assignment": "Tag assignments",
   "de/dependentsDialog.json::dependentsDialog.kind.webhook": "Webhooks",
-  "de/dependentsDialog.json::dependentsDialog.open": "Open the page",
   "de/dependentsDialog.json::dependentsDialog.removeAssignment": "Remove assignment",
   "de/dependentsDialog.json::dependentsDialog.removeGrant": "Remove this role's grant",
   "de/dependentsDialog.json::dependentsDialog.removeTableGrants": "Remove this role from this table's grants",

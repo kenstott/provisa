@@ -41,6 +41,8 @@ const PAGES: Record<DetailPage, { file: string; call: string }> = {
   derived: { file: "pages/SecurityPage.tsx", call: 'useDetailParam("derived")' },
   rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useDetailParam("rls")' },
   commands: { file: "pages/CommandsPage.tsx", call: 'useDetailParam("commands")' },
+  domains: { file: "pages/AdminPage.tsx", call: 'useDetailParam("domains")' },
+  tags: { file: "components/admin/TagsTab.tsx", call: 'useDetailParam("tags")' },
 };
 
 describe("every list page's detail panel is in the URL through useDetailParam (REQ-2241)", () => {
@@ -59,6 +61,13 @@ describe("every list page's detail panel is in the URL through useDetailParam (R
     expect(detailHref("sources", "pets")).toBe("/sources?expanded=pets");
     expect(detailHref("ontology", 3)).toBe("/admin/ontology?term=3");
     expect(() => detailHref("metrics", "m", "x")).toThrow();
+    // REQ-2240: a mark the panel keeps with its object (a column row), and only such a one.
+    expect(detailHref("tables", 7, "columns", { column: "amount" })).toBe(
+      "/tables?table=7&section=columns&column=amount",
+    );
+    expect(() => detailHref("metrics", "m", undefined, { column: "x" })).toThrow();
+    expect(detailHref("domains", "sales")).toBe("/admin/domains?domain=sales");
+    expect(detailHref("tags", "pii")).toBe("/admin/tags?tag=pii");
   });
 
   it("names a webhook by its kind and a function by its bare name", () => {

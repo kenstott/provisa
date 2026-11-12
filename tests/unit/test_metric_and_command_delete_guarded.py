@@ -159,7 +159,13 @@ async def test_the_mutation_refuses_with_the_list(plane, monkeypatch):
     assert refused.params == {
         "metric": "margin",
         "dependents": [
-            {"kind": "table", "id": view, "name": "margins", "via": ["registered_tables.view_sql"]}
+            {
+                "kind": "table",
+                "id": view,
+                "name": "margins",
+                "label": "margins",
+                "via": ["registered_tables.view_sql"],
+            }
         ],
     }
     assert rebuilds == []

@@ -12,6 +12,7 @@ import { Anchor, Badge, Table, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { TableRow } from "../../types/admin";
+import { detailHref } from "../../components/list/useDetailParam";
 
 /** The tables registered from a source, each linked to its own panel on the Tables page; a
  *  draft is marked as one. "—" when none is registered. */
@@ -37,7 +38,7 @@ export function SourceTablesList({ sourceId, tables }: { sourceId: string; table
         {own.map((tb) => (
           <Table.Tr key={tb.id} data-testid={`source-table-${tb.id}`}>
             <Table.Td>
-              <Anchor component={Link} to={`/tables?table=${tb.id}`} size="sm">
+              <Anchor component={Link} to={detailHref("tables", tb.id)} size="sm">
                 {/* As the Tables list names it: its alias, where it has one. */}
                 {tb.alias || tb.tableName}
               </Anchor>
