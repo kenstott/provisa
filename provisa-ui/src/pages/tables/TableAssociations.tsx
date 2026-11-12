@@ -14,6 +14,8 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { RegisteredTable, Relationship } from "../../types/admin";
 import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../../api/glossary";
+import { useRelationships } from "../../hooks/useAdminQueries";
+import { detailHref } from "../../components/list/useDetailParam";
 import { TagControl } from "../../components/TagControl";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { TableClassTerm } from "./TableClassTerm";
@@ -36,8 +38,12 @@ export function TableAssociations({
 }) {
   const { t } = useTranslation();
   const terms = useColumnTerms(table.id);
+  // The system's own relationships are not listed: the server's `relationships` read is the ones a
+  // person made, and `relationships` (read with the system's) is narrowed to them.
+  const { relationships: made, loading: madeLoading } = useRelationships();
+  const madeIds = new Set(made.map((r) => r.id));
   const related = relationships.filter(
-    (r) => r.sourceTableId === table.id || r.targetTableId === table.id,
+    (r) => madeIds.has(r.id) && (r.sourceTableId === table.id || r.targetTableId === table.id),
   );
   return (
     <DetailFields
@@ -78,7 +84,11 @@ export function TableAssociations({
           label: t("tableSections.relationships"),
           testId: "table-associations-relationships",
           value:
-            related.length === 0 ? (
+            madeLoading ? (
+              <Text span size="sm" c="dimmed">
+                {t("common.loading")}
+              </Text>
+            ) : related.length === 0 ? (
               <Text span size="sm" c="dimmed">
                 {t("tableSections.noRelationships")}
               </Text>
@@ -88,7 +98,7 @@ export function TableAssociations({
                   <Anchor
                     key={r.id}
                     component={Link}
-                    to={`/relationships?search=${encodeURIComponent(r.sourceTableName)}`}
+                    to={relationshipHref(r)}
                     size="sm"
                     data-testid={`table-association-relationship-${r.id}`}
                   >
@@ -124,4 +134,15 @@ function useColumnTerms(tableId: number): RelatedGlossaryTerm[] | "loading" | Er
     };
   }, [tableId]);
   return read?.tableId === tableId ? read.terms : "loading";
+}
+
+/**
+ * The Relationships page scoped to the relationship's source table, with its panel open: the
+ * page's own detail link plus the search that narrows its list.
+ */
+function relationshipHref(r: Relationship): string {
+  const [route, query] = detailHref("relationships", r.id).split("?");
+  const params = new URLSearchParams(query);
+  params.set("search", r.sourceTableName);
+  return `${route}?${params.toString()}`;
 }
