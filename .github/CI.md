@@ -15,7 +15,7 @@ its setup from the action and never repeats the commands.
 | Action | What the job has afterwards | Inputs |
 | --- | --- | --- |
 | `setup-python` | uv, and the locked environment in `.venv` | `extras`, `client`, `cache`, `sync` (false: uv only) |
-| `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`, `chromium-with-deps`) |
+| `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
 | `docs-site-deps` | MkDocs and its plugins | none |

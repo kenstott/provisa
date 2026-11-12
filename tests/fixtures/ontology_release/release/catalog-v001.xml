@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<catalog prefer="public" xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+    <uri id="parties" name="https://example.org/mini-fibo/foundations/Parties/" uri="foundations/Parties.ttl"/>
+    <uri id="agreements" name="https://example.org/mini-fibo/foundations/Agreements/" uri="foundations/Agreements.rdf"/>
+    <uri id="accounts" name="https://example.org/mini-fibo/business/Accounts/" uri="business/Accounts.ttl"/>
+</catalog>
