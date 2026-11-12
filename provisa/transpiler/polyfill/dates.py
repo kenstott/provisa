@@ -113,7 +113,7 @@ MAKE_DATE = Feature(
 TRANSACTION_TIMESTAMP = Feature(
     "transaction_timestamp",
     FAMILY,
-    "The time the transaction began: now(), as a statement is its own transaction.",
+    "The time the transaction began: now(), as Provisa answers it.",
     read=Side(
         rules=(Rule("transaction_timestamp()", trino.trino_only("current_timestamp")),),
     ),

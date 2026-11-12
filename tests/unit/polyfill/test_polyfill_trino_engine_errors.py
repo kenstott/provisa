@@ -202,7 +202,10 @@ def test_trunc_of_a_mac_address_keeps_its_first_three_bytes_on_trino(type_name):
 
 
 def test_trunc_of_a_number_is_still_trinos_own():
-    assert "truncate" in _calls(_sent(_call("trunc", "1.5::double precision")))
+    calls = _calls(
+        _sent(_call("trunc", "1.5::double precision"))
+    )  # sqlglot reads truncate as trunc
+    assert "trunc" in calls and "regexp_replace" not in calls
 
 
 # --- a value of a type Trino holds none of -------------------------------------------------------
@@ -304,7 +307,7 @@ def test_a_right_shift_is_arithmetic_by_an_integer_count_on_trino(function, args
 )
 def test_a_dates_days_are_counted_by_date_diff_and_date_add_on_trino(function, args):
     tree = _sent(_call(function, args))
-    assert _calls(tree) & {"date_diff", "date_add"}
+    assert _calls(tree) & {"datediff", "date_add", "dateadd"}  # sqlglot's names of Trino's
     assert not [n for n in tree.find_all(exp.Sub) if isinstance(n.this, exp.Cast)
                 and n.this.to.is_type(exp.DataType.Type.DATE)]  # fmt: skip
 
@@ -321,10 +324,19 @@ def test_make_date_is_a_date_of_its_parts_on_trino():
 # --- functions Trino has none of ------------------------------------------------------------------
 
 
-def test_array_append_is_trinos_concatenation():
+def test_array_append_of_a_null_array_is_an_array_of_the_element_on_trino():
     tree = _sent(_call("array_append", "NULL::integer[], NULL::integer"))
     assert not _calls(tree) & {"array_append", "array_prepend"}
+    (array,) = tree.find_all(exp.Array)  # a NULL array is read as an empty one: {NULL}
+    assert len(array.expressions) == 1
+
+
+def test_array_append_is_trinos_concatenation():
+    tree = _sent(_call("array_append", "'{2,3}'::integer[], 1::integer"))
+    assert not _calls(tree) & {"array_append", "array_prepend"}
     assert tree.find(exp.Case) is not None  # a NULL array is read as an empty one
+    (joined,) = [n for n in tree.find_all(exp.ArrayConcat, exp.DPipe)]
+    assert isinstance(joined.expression, exp.Array)
 
 
 def test_array_prepend_puts_the_element_first_on_trino():
@@ -409,7 +421,8 @@ def test_generate_series_in_a_select_list_is_refused_on_trino(args):
 
 
 def test_generate_series_in_from_is_still_trinos_sequence():
-    assert "sequence" in _calls(_sent("SELECT * FROM generate_series(1, 3)"))
+    sent = transpile_to_trino("SELECT * FROM generate_series(1, 3)")
+    assert sent == "SELECT * FROM UNNEST(SEQUENCE(1, 3))"
 
 
 @pytest.mark.parametrize("function", ["lag", "lead"])
@@ -436,3 +449,36 @@ def test_string_agg_of_a_constant_delimiter_is_still_trinos_listagg():
 @pytest.mark.parametrize("args", ["NULL::text[]", "NULL::text[], NULL::text[]"])
 def test_json_object_of_arrays_is_refused_on_trino(args):
     _refused(_call("json_object", args), "json_object")
+
+
+def test_each_row_is_in_the_grid_and_the_orders_moved_out_of_the_old_table():
+    from provisa.transpiler.pg_forms_types import FORMS_BY_NAME
+    from provisa.transpiler.polyfill import GRID
+
+    in_the_grid = {f.name for f in GRID.features}
+    rows = {
+        *(name for name, _ in _COLLATED),
+        *_NETWORKS,
+        *_ORDERS,
+        "array_larger",
+        "array_smaller",
+        "btarraycmp",
+        *(f"record_{o}" for o in ("lt", "le", "gt", "ge")),
+        *(f"record_image_{o}" for o in ("lt", "le", "gt", "ge")),
+        "int2_sum",
+        "int8shl",
+        "int8shr",
+        "date_mi",
+        "make_date",
+        "factorial",
+        "lag",
+        "generate_series",
+        "max",
+        "trunc",
+    }
+    assert rows <= in_the_grid
+    # The orders of arrays and records moved whole: no old table holds them.
+    moved = {*_ORDERS, "array_larger", "array_smaller"}
+    moved |= {f"record_{o}" for o in ("lt", "le", "gt", "ge")}
+    moved |= {f"record_image_{o}" for o in ("lt", "le", "gt", "ge")}
+    assert not moved & set(FORMS_BY_NAME)
