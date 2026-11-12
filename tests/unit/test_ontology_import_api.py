@@ -489,3 +489,14 @@ async def test_bulk_approval_decides_each_and_names_the_refused(api):
     )
     assert decided["approved"] == ids
     assert decided["refused"] == [{"id": 999, "message": "no import holds an alignment 999"}]
+
+
+async def test_applying_an_import_embeds_the_terms_it_brought_into_service(api, monkeypatch):
+    """REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): an applied import calls the one trigger."""
+    from tests.unit.test_reference_library_terms_embedded import record_embeds
+
+    embedded = record_embeds(monkeypatch)
+    review = await router.import_ontology(_request(_upload(ONTOLOGY)))
+    assert embedded == []
+    await router.apply_import(review["import"]["id"], _request())
+    assert embedded == ["default"]

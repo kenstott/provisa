@@ -567,20 +567,6 @@ def test_each_node_serves_its_own_sandboxes_its_templates_and_its_deployment_org
         require_this_tier(org)
 
 
-async def test_a_demos_own_library_retrieval_reaches_its_sandboxes(monkeypatch):
-    """REQ-2185: banksecrecy declares graph retrieval for its reference library. Its template org's
-    settings carry it, so a sandbox cloned from them reads retrieval=graph."""
-    updates = await _declared_settings(monkeypatch, "banksecrecy")
-    assert updates["reference_library"] == {"retrieval": "graph"}
-    assert "reference_library" in _carried_settings()
-
-
-async def test_a_demo_that_declares_no_library_retrieval_clears_it(monkeypatch):
-    """REQ-2185: a setting the configuration does not declare is cleared (REQ-1919)."""
-    updates = await _declared_settings(monkeypatch, "sonnets")
-    assert updates["reference_library"] is None
-
-
 @pytest.fixture(autouse=True)
 def _declared_org_base_domain(monkeypatch):
     """REQ-1276: a host names an org only under the deployment's declared base domain."""

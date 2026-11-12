@@ -950,6 +950,29 @@ async def test_the_steward_edits_accepts_merges_rejects_and_bulk_accepts(api):
     assert "ontology terms accepted from a document" in api.notified
 
 
+async def test_accepting_or_merging_a_draft_embeds_the_glossary_terms(api, monkeypatch):
+    """REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): each decision that makes or redefines a term
+    calls the one trigger; a rejection makes none."""
+    from tests.unit.test_reference_library_terms_embedded import record_embeds
+
+    embedded = record_embeds(monkeypatch)
+    async with api.db.acquire() as conn:
+        await glossary_repo.create_abstract_term(conn, "client", domains={"d"})
+    found = await _scanned(api, _upload(POLICY, domains=["d"]))
+    drafts = _by_name(found)
+    await router.accept_draft(drafts["know your customer check"]["id"], _request())
+    assert embedded == ["default"]
+    await router.merge_draft(drafts["customer"]["id"], _request({}))
+    assert embedded == ["default"] * 2
+    await router.reject_draft(drafts["account (ledger)"]["id"], _request())
+    assert embedded == ["default"] * 2
+    await router.bulk_accept(
+        found["scan"]["id"],
+        _request({"draft_ids": [drafts["record retention period"]["id"]]}),
+    )
+    assert embedded == ["default"] * 3
+
+
 async def test_a_rescan_shows_what_the_glossary_now_holds_as_matches_and_duplicates(api):
     first = await _scanned(api, _upload(POLICY, domains=["d"]))
     kyc = _by_name(first)["know your customer check"]
