@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import type { GraphData, QueryScope } from "../graphModel";
 import { FACTS } from "./fixture";
+import { searchItems } from "../../../lib/searchItems";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
 // Each scene's calls, and what it reports to the view (a node picked on the canvas).
@@ -471,7 +472,7 @@ describe("the Ontology page", () => {
       within(await screen.findByTestId("ontology-depth")).getByRole("radio", { name: "1" }),
     );
     await waitFor(() =>
-      expect(reads.scopes.at(-1)).toMatchObject({ focus: null, depth: 1, search: ["customer"] }),
+      expect(reads.scopes.at(-1)).toMatchObject({ focus: null, depth: 1, search: searchItems("customer") }),
     );
   });
 

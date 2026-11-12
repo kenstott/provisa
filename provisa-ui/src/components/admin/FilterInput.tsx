@@ -14,6 +14,7 @@ import { X } from "lucide-react";
 import { ActionIcon, Group, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { CopyButton } from "../CopyButton";
+import { Tip } from "../Tip";
 import { getStored, removeStored, setStored } from "../../lib/browserStorage";
 
 // What a list's search box last held, per viewer, per page: a list reopens filtered as it was left.
@@ -69,29 +70,32 @@ export function FilterInput({
   };
   return (
     <div className="search-wrap">
-      <TextInput
-        type="search"
-        aria-label={placeholder ?? t("filterInput.filter")}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => change(e.target.value)}
-        data-testid={testId}
-        rightSection={
-          <Group gap={2} wrap="nowrap">
-            <CopyButton text={value} size={11} />
-            <ActionIcon
-              type="button"
-              variant="transparent"
-              aria-label={t("filterInput.clear")}
-              data-testid="filter-input-clear"
-              onClick={() => change("")}
-            >
-              <X size={11} />
-            </ActionIcon>
-          </Group>
-        }
-        rightSectionWidth={54}
-      />
+      {/* REQ-2143: every page search reads the web-search syntax (lib/searchItems.ts). */}
+      <Tip text={t("filterInput.syntaxHint")} position="bottom-start">
+        <TextInput
+          type="search"
+          aria-label={placeholder ?? t("filterInput.filter")}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => change(e.target.value)}
+          data-testid={testId}
+          rightSection={
+            <Group gap={2} wrap="nowrap">
+              <CopyButton text={value} size={11} />
+              <ActionIcon
+                type="button"
+                variant="transparent"
+                aria-label={t("filterInput.clear")}
+                data-testid="filter-input-clear"
+                onClick={() => change("")}
+              >
+                <X size={11} />
+              </ActionIcon>
+            </Group>
+          }
+          rightSectionWidth={54}
+        />
+      </Tip>
     </div>
   );
 }
