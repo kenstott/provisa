@@ -92253,7 +92253,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
     term finding run in a background job; its index status is a property (indexing with progress where known,
     ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07).'
+    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-11, TERMS ARE EMBEDDED AS
+    THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
+    and when its name or definition changes, and its embedding is removed when it leaves service, whatever
+    the library''s retrieval setting, as a document''s passages are embedded when the document is added.
+    The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
+    nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
+    embedding. An org with no vector model embeds nothing.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
