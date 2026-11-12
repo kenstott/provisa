@@ -22,6 +22,7 @@ import { render, screen, waitFor, within } from "../../../test-utils/render";
 import { ListHead, ListRow, ListTable } from "../ListTable";
 import { useListSelection, type BulkDeleteResult } from "../listSelection";
 import { ListBulkBar } from "../ListBulkBar";
+import { detailHref } from "../useDetailParam";
 
 const ALL = ["orders", "customers", "invoices", "payments", "refunds"];
 
@@ -140,7 +141,13 @@ describe("list selection (REQ-2240)", () => {
           name: "t_orders",
           reason: "Cannot delete orders: view open_orders reads it",
           dependents: [
-            { kind: "table", id: 7, name: "open_orders", via: ["registered_tables.view_sql"] },
+            {
+              kind: "table",
+              id: 7,
+              name: "open_orders",
+              label: "open_orders",
+              via: ["registered_tables.view_sql"],
+            },
           ],
         },
         { name: "t_invoices", reason: "Table 3 not found", dependents: [] },
@@ -158,9 +165,14 @@ describe("list selection (REQ-2240)", () => {
       "t_orders: Cannot delete orders: view open_orders reads it",
       "t_invoices: Table 3 not found",
     ]);
-    // The row still referred to: the dependents dialog names it and what refers to it.
+    // The row still referred to: the dependents dialog names it and what refers to it, by the
+    // server's label, linked to that dependent's detail panel.
     const dependents = await screen.findByTestId("dependents-table");
     expect(dependents).toHaveTextContent("open_orders");
+    expect(within(dependents).getByRole("link", { name: "open_orders" })).toHaveAttribute(
+      "href",
+      detailHref("tables", 7),
+    );
     expect(screen.getByRole("dialog")).toHaveTextContent("t_orders");
   });
 

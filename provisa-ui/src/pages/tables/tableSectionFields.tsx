@@ -15,6 +15,7 @@ import type { TFunction } from "i18next";
 import type { DataProduct, RegisteredTable, Source } from "../../types/admin";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { DetailField } from "../../components/detail/DetailFields";
+import { detailHref } from "../../components/list/useDetailParam";
 
 // What a table's sections say of a field, shared by the read view and the edit form.
 
@@ -75,7 +76,7 @@ export function dataProductField(
           {table.productIds.map((id, i) => (
             <Fragment key={id}>
               {i > 0 && ", "}
-              <Link to={`/data-products?product=${encodeURIComponent(id)}`}>
+              <Link to={detailHref("products", id)}>
                 {dataProducts.find((p) => p.id === id)?.name ?? id}
               </Link>
             </Fragment>

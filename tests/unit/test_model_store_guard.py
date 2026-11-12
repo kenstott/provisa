@@ -639,7 +639,136 @@ async def test_each_dependent_carries_the_name_an_operator_knows_it_by(plane):
         "kind": "column",
         "id": column,
         "name": "orders.amount",
+        "label": "orders.amount",
         "via": ["table_columns.visible_to"],
         # The table a column grant is changed through (revokeRoleFromTable).
         "table_id": orders.id,
     }
+
+
+# --- a dependent is labelled as its own page names it (REQ-2240) ----------------------------------
+
+
+async def _labels(plane: Plane, ref: ObjectRef) -> dict[ObjectRef, dict[str, Any]]:
+    async with plane.db.acquire() as conn:
+        return {d.ref: d.as_dict() for d in await integrity.guard(conn, ref)}
+
+
+async def test_a_relationship_is_labelled_by_its_two_tables_never_its_id(plane):
+    orders, customers = await plane.table("orders"), await plane.table("customers")
+    rel = await plane.relationship("orders-to-customers", orders, customers)
+    await plane.add(
+        "relationships",
+        id="orders-to-recent",
+        source_table_id=orders.id,
+        target_function_name="recent_orders",
+        source_column="id",
+        cardinality="one-to-many",
+    )
+    assert (await _labels(plane, orders))[rel]["label"] == "orders -> customers"
+    # A relationship to a function blocks dropping the column it is keyed on.
+    async with plane.db.acquire() as conn:
+        keyed = {d.ref: d.label for d in await integrity.column_dependents(conn, orders.id, "id")}
+    assert keyed[ObjectRef("relationship", "orders-to-recent")] == "orders -> recent_orders"
+    assert (await _labels(plane, customers))[rel]["label"] == "orders -> customers"
+
+
+async def test_a_table_view_metric_command_webhook_and_mv_are_labelled_by_their_names(plane):
+    orders = await plane.table("orders")
+    view = await plane.table("open_orders", view_sql="SELECT o.id FROM orders o WHERE o.open")
+    await plane.add("metrics", name="revenue", expression="SUM(orders.amount)")
+    await plane.add(
+        "materialized_views",
+        id="mv-daily",
+        source_tables=["orders"],
+        target_catalog="c",
+        target_schema="s",
+        target_table="daily",
+    )
+    await plane.add("tracked_functions", name="recent_orders", returns="public.orders")
+    await plane.add("tracked_webhooks", name="notify", url="http://x", returns="public.orders")
+    await plane.add(
+        "synthetic_datasets", id="ds1", seed=1, scale=1.0, status="ready", store_schema="s"
+    )
+    await plane.add(
+        "synthetic_dataset_tables",
+        dataset_id="ds1",
+        table_id=orders.id,
+        profile_env="prod",
+        run_id="r1",
+    )
+    labels = {ref: d["label"] for ref, d in (await _labels(plane, orders)).items()}
+    assert labels == {
+        view: "open_orders",
+        ObjectRef("metric", "revenue"): "revenue",
+        ObjectRef("materialized_view", "mv-daily"): "mv-daily",
+        ObjectRef("command", "recent_orders"): "recent_orders",
+        ObjectRef("webhook", "notify"): "notify",
+        ObjectRef("synthetic_dataset", "ds1"): "ds1",
+    }
+
+
+async def test_what_refers_to_a_domain_or_a_role_is_labelled_as_its_page_names_it(plane):
+    orders = await plane.table("orders")
+    column = await plane.add(
+        "table_columns", table_id=orders.id, column_name="amount", visible_to=["seller"]
+    )
+    await plane.add("roles", id="seller", capabilities=[], domain_access=["sales"])
+    await plane.add("roles", id="junior", capabilities=[], domain_access=[], parents=["seller"])
+    assignment = await plane.add(
+        "user_role_assignments", user_id="alice", role_id="seller", domain_id="*"
+    )
+    rule = await plane.add("rls_rules", role_id="seller", domain_id="sales", filter_expr=b"1=1")
+    term = await plane.add("glossary_terms", name="Order")
+    await plane.add("glossary_term_domains", term_id=term, domain_id="sales")
+    await plane.add("data_products", id="dp", domain_id="sales", name="Sales product")
+    await plane.add("tracked_functions", name="refund", domain_id="sales")
+    await plane.add("tracked_webhooks", name="notify", domain_id="sales")
+    async with plane.db.acquire() as conn:
+        src = metadata.tables["sources"]
+        await conn.execute_core(
+            src.update().where(src.c.id == "pg").values(allowed_domains=["sales"])
+        )
+        dom = metadata.tables["domains"]
+        await conn.execute_core(dom.update().where(dom.c.id == "finance").values(steward="seller"))
+    remote = await plane.add(
+        "provisa_sources",
+        source_id="pg",
+        source_type="provisa",
+        table_name="remote_orders",
+        domain_id="sales",
+    )
+
+    of_role = {
+        ref: d["label"] for ref, d in (await _labels(plane, ObjectRef("role", "seller"))).items()
+    }
+    assert of_role == {
+        ObjectRef("column", column): "orders.amount",
+        ObjectRef("role", "junior"): "junior",
+        ObjectRef("role_assignment", assignment): "alice holds seller",
+        ObjectRef("domain", "finance"): "finance",
+    }
+    of_domain = await _labels(plane, ObjectRef("domain", "sales"))
+    labels = {ref: d["label"] for ref, d in of_domain.items()}
+    assert labels[orders] == "orders"
+    assert labels[ObjectRef("row_filter", rule)] == "seller on sales"
+    assert labels[ObjectRef("glossary_term", term)] == "Order"
+    assert labels[ObjectRef("data_product", "dp")] == "Sales product"
+    assert labels[ObjectRef("role", "seller")] == "seller"
+    assert labels[ObjectRef("source", "pg")] == "pg"
+    assert labels[ObjectRef("command", "refund")] == "refund"
+    assert labels[ObjectRef("webhook", "notify")] == "notify"
+    # A remote registration is a table of its source: named so, and linked through its source.
+    registration = of_domain[ObjectRef("remote_registration", remote)]
+    assert (registration["label"], registration["source_id"]) == ("remote_orders", "pg")
+
+
+async def test_a_region_is_labelled_by_its_name(plane):
+    await plane.add("stores", id="eu-pg", url="postgresql://x")
+    await plane.add(
+        "org_regions",
+        id="eu",
+        **{role: "eu-pg" for role in ("engine", "replicas", "views", "cache", "state", "record")},
+    )
+    labels = await _labels(plane, ObjectRef("store", "eu-pg"))
+    assert labels[ObjectRef("region", "eu")]["label"] == "eu"

@@ -1835,7 +1835,6 @@
   "zh/dependentsDialog.json::dependentsDialog.kind.table": "Tables and views",
   "zh/dependentsDialog.json::dependentsDialog.kind.tag_assignment": "Tag assignments",
   "zh/dependentsDialog.json::dependentsDialog.kind.webhook": "Webhooks",
-  "zh/dependentsDialog.json::dependentsDialog.open": "Open the page",
   "zh/dependentsDialog.json::dependentsDialog.removeAssignment": "Remove assignment",
   "zh/dependentsDialog.json::dependentsDialog.removeGrant": "Remove this role's grant",
   "zh/dependentsDialog.json::dependentsDialog.removeTableGrants": "Remove this role from this table's grants",
@@ -2567,11 +2566,11 @@
   "zh/glossaryTab.json::glossaryTab.rel_VALID_VALUE_OF_reverse": "Has valid value",
   "zh/glossaryTab.json::glossaryTab.relatedToDialogAnyway": "Add Related to anyway",
   "zh/glossaryTab.json::glossaryTab.relatedToDialogNoNames": "No names were suggested ({{reason}}). Start a shape and type the name yourself.",
-  "zh/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Shapes that would resolve the pair, tightest first:",
+  "zh/glossaryTab.json::glossaryTab.relatedToDialogShapes": "Ways to say how these two are connected, most specific first:",
   "zh/glossaryTab.json::glossaryTab.relatedToDialogStart": "Start",
   "zh/glossaryTab.json::glossaryTab.relatedToDialogSuggesting": "Suggesting names…",
   "zh/glossaryTab.json::glossaryTab.relatedToDialogTitle": "Link {{from}} and {{to}} with Related to?",
-  "zh/glossaryTab.json::glossaryTab.relatedToDialogWhy": "Related to is the least useful edge: it does not ground, so the term still cannot reach data through it. One new term between the two would turn the pair into edges that ground.",
+  "zh/glossaryTab.json::glossaryTab.relatedToDialogWhy": "\"Related to\" says two terms are connected, but not how. Nothing can follow it from a term to data. Usually a term is missing in between that says how.",
   "zh/glossaryTab.json::glossaryTab.relatedToHint": "This term reaches no data: its only links are Related to, which don't ground. The pair may lack a term in between.",
   "zh/glossaryTab.json::glossaryTab.relatedToOnly": "Related to",
   "zh/glossaryTab.json::glossaryTab.relatedToOnlyHint": "Related to links hold a place and don't ground. How to resolve them",
@@ -10233,5 +10232,6 @@
   "zh/ontologyImport.json::ontologyImport.withTerm": "With a glossary term",
   "zh/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
   "zh/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
+  "zh/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "zh/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
 }

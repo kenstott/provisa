@@ -60,6 +60,9 @@ export const DETAIL_VIEWS = {
   derived: { route: "/security/roles", param: "derived", replaces: ["role", "section"] },
   rls: { route: "/security/rls", param: "rule" },
   commands: { route: "/commands", param: "command", tab: { param: "section", first: "command" } },
+  // REQ-2240: a domain's row and a tag's are marked on their lists, where they are changed.
+  domains: { route: "/admin/domains", param: "domain" },
+  tags: { route: "/admin/tags", param: "tag" },
 } as const satisfies Record<string, DetailView>;
 
 export type DetailPage = keyof typeof DETAIL_VIEWS;
@@ -95,15 +98,35 @@ export function readDerivedId(id: string): { attribute: string; value: string | 
     : { attribute: id.slice(0, at), value: id.slice(at + 1) };
 }
 
-/** The URL of `page` with `id`'s panel open, on `tab` where given. */
-export function detailHref(page: DetailPage, id: string | number, tab?: string): string {
+/**
+ * The URL of `page` with `id`'s panel open, on `tab` where given, with `marks`: parameters that
+ * belong to the open object (`alsoClears`), as a column row marked on a table's Columns tab.
+ */
+export function detailHref(
+  page: DetailPage,
+  id: string | number,
+  tab?: string,
+  marks?: Record<string, string>,
+): string {
   const view: DetailView = DETAIL_VIEWS[page];
   const params = new URLSearchParams({ [view.param]: String(id) });
   if (tab !== undefined) {
     const tabs = panelTabs(page);
     if (tab !== tabs.first) params.set(tabs.param, tab);
   }
+  for (const [name, value] of Object.entries(marks ?? {})) {
+    if (!view.alsoClears?.includes(name)) throw new Error(`${page}'s panel has no mark ${name}`);
+    params.set(name, value);
+  }
   return `${view.route}?${params.toString()}`;
+}
+
+/**
+ * The URL of a table's (or a view's) panel naming it by `<source>.<table>` instead of its id:
+ * what a link that knows only the table's name (a lineage box) opens.
+ */
+export function tableByNameHref(page: "tables" | "views", sourceTable: string): string {
+  return `${DETAIL_VIEWS[page].route}?${new URLSearchParams({ open: sourceTable }).toString()}`;
 }
 
 function panelTabs(page: DetailPage): { param: string; first: string } {
