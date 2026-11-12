@@ -43,10 +43,10 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
 from provisa.api.org_runtime import OrgRegistry, OrgRuntime
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
+from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 pytestmark = [pytest.mark.integration]
 
@@ -75,9 +75,7 @@ def _prepare_sync():
         conn.execute(insert(user_org_memberships).values(user_id="alice", org_id=_ORG))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         # The org's schema carries the same seeded role catalog every org gets: `admin` exists as a
         # row, which is precisely why "is this role defined?" is the wrong question — the creator is
         # assigned org_admin and only org_admin.

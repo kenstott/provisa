@@ -1190,6 +1190,17 @@ def _refuse_composed_mutators(tree, commands: dict) -> None:
         )
 
 
+def governed_table_functions(state: Any, role_id: str) -> frozenset[str]:  # REQ-870, REQ-2226
+    """The table functions a statement of ``role_id`` may read as governed relations: the
+    catalog's own on a catalog statement (REQ-2190), and the commands the role may call, by their
+    SQL binding (REQ-2226). A command the role may not call is left out, so it reads exactly as a
+    name never registered does (V006), on every surface."""
+    from provisa.api.data.action_exec import usable_commands
+
+    catalog = CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
+    return catalog | frozenset(usable_commands(state, role_id, webhooks=False))
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -1985,9 +1996,7 @@ async def govern_statement(
         state.schema_version,
         _bypass_guard,
     )
-    _table_functions = (
-        CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
-    ) | frozenset(getattr(state, "tracked_functions", None) or {})
+    _table_functions = governed_table_functions(state, role_id)
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
