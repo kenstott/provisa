@@ -15,10 +15,12 @@ remove-or-deprecate rule, and an abstract term is never left dangling.
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 
 from provisa.api.admin.column_dependents import _glossary_dependents
 from provisa.api.admin.read_rights import SERVICE_READER
@@ -26,7 +28,7 @@ from provisa.api.admin.read_rights import SERVICE_READER
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, registered_tables, sources
+from provisa.core.schema_org import domains, glossary_terms, registered_tables, sources
 
 
 @asynccontextmanager
@@ -458,16 +460,68 @@ async def test_export_graph_shape(control_plane):
         assert graph["domains"] == [{"term_id": customer["id"], "domain_id": "d"}]
 
 
-def test_a_search_is_its_quoted_phrases_and_its_words():
-    assert glossary_repo.search_items('"shift coverage" clinic') == ["shift coverage", "clinic"]
-    assert glossary_repo.search_items("  Shift   CLINIC ") == ["shift", "clinic"]
+def test_a_search_is_its_groups_of_items():
+    item = glossary_repo.SearchItem
+    assert glossary_repo.search_items('"shift coverage" clinic') == [
+        [item("shift coverage")],
+        [item("clinic")],
+    ]
+    assert glossary_repo.search_items("  Shift   CLINIC ") == [[item("shift")], [item("clinic")]]
     # A stray quote mark is dropped; an empty phrase is nothing.
-    assert glossary_repo.search_items('shift" "" clinic') == ["shift", "clinic"]
+    assert glossary_repo.search_items('shift" "" clinic') == [[item("shift")], [item("clinic")]]
     assert glossary_repo.search_items("") == []
+    # or joins the items either side of it, and binds tighter than a space.
+    assert glossary_repo.search_items("blue red OR green") == [
+        [item("blue")],
+        [item("red"), item("green")],
+    ]
+    assert glossary_repo.search_items("or a or or b or") == [[item("a"), item("b")]]
+    # A leading - excludes a word or a phrase; a lone - is dropped, a hyphen inside a word kept.
+    assert glossary_repo.search_items('red -blue -"pet store" - pet-store') == [
+        [item("red")],
+        [item("blue", True)],
+        [item("pet store", True)],
+        [item("pet-store")],
+    ]
+    # A quoted or, a quoted -x and a + are text.
+    assert glossary_repo.search_items('"or" "-x" +red') == [
+        [item("or")],
+        [item("-x")],
+        [item("+red")],
+    ]
+
+
+_PAGE_SEARCH_CASES = json.loads(
+    (Path(__file__).resolve().parents[1] / "fixtures" / "page_search_cases.json").read_text()
+)["cases"]
 
 
 @pytest.mark.asyncio
-async def test_a_search_admits_a_term_matching_any_of_its_items(control_plane):
+async def test_a_search_keeps_the_terms_the_page_search_keeps(control_plane):
+    """REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): the term list answers every shared case
+    as the page filters do (searchItems.test.ts): texts are the term's name and definition."""
+    async with _conn(control_plane) as conn:
+        wrong: list[dict] = []
+        for case in _PAGE_SEARCH_CASES:
+            name, definition = case["texts"]
+            term_id = (
+                await conn.execute_core(
+                    insert(glossary_terms)
+                    .values(name=name, definition=definition)
+                    .returning(glossary_terms.c.id)
+                )
+            ).scalar_one()
+            kept = term_id in {
+                t["id"] for t in await glossary_repo.list_terms(conn, q=case["query"])
+            }
+            await conn.execute_core(delete(glossary_terms).where(glossary_terms.c.id == term_id))
+            if kept != case["kept"]:
+                wrong.append(case)
+        assert wrong == []
+
+
+@pytest.mark.asyncio
+async def test_a_search_admits_a_term_holding_every_item(control_plane):
     async with _conn(control_plane) as conn:
         for name in ("shift coverage", "shift start", "clinic", "referral"):
             await glossary_repo.create_abstract_term(conn, name, domains=set())
@@ -475,6 +529,8 @@ async def test_a_search_admits_a_term_matching_any_of_its_items(control_plane):
         async def names(q: str) -> set[str]:
             return {t["name"] for t in await glossary_repo.list_terms(conn, q=q)}
 
-        assert await names("shift clinic") == {"shift coverage", "shift start", "clinic"}
+        assert await names("shift clinic") == set()
+        assert await names("shift or clinic") == {"shift coverage", "shift start", "clinic"}
+        assert await names("shift -start") == {"shift coverage"}
         # A quoted phrase is one item, spaces and all, beside a bare word.
-        assert await names('"shift coverage" clinic') == {"shift coverage", "clinic"}
+        assert await names('"shift coverage" or clinic') == {"shift coverage", "clinic"}

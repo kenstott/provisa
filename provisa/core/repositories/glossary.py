@@ -35,7 +35,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import delete as _delete, func, insert, or_, select, update
+from sqlalchemy import and_, delete as _delete, func, insert, or_, select, update
 
 from provisa.core.glossary import (
     GROUNDED,
@@ -752,19 +752,60 @@ def _dangling_grows(graph: _TermGraph, term_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
-_SEARCH_ITEM = re.compile(r'"([^"]*)"|(\S+)')
+_SEARCH_TOKEN = re.compile(r'(-?)"([^"]*)"|(\S+)')
 
 
-def search_items(q: str) -> list[str]:
-    """The items a glossary search is made of: a phrase in double quotes is one item, spaces and
-    all; every other word is one item; stray quote marks are dropped. A term matches the search
-    when any item is in it -- the same rule the Ontology View's graph applies (searchItems.ts)."""
-    out: list[str] = []
-    for phrase, word in _SEARCH_ITEM.findall(q):
-        item = (phrase if phrase else word.replace('"', "")).strip().lower()
-        if item:
-            out.append(item)
-    return out
+@dataclass(frozen=True)
+class SearchItem:
+    """One item of a page search: its text, lower-cased, and whether it must not be found."""
+
+    text: str
+    excluded: bool = False
+
+
+def search_items(q: str) -> list[list[SearchItem]]:
+    """REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): a page search as it is read, the same
+    rule as the page filters and the Ontology View's graph (searchItems.ts). Every group must hold,
+    and a group holds when any of its items does. Items separated by spaces are each a group; the
+    word or (unquoted, any case) joins the items either side of it into one; an item with a leading
+    - must not be found; a phrase in double quotes is one item, spaces and all. A leading, trailing
+    or doubled or, a lone -, and stray quote marks are dropped."""
+    groups: list[list[SearchItem]] = []
+    either = False
+    for sign, phrase, word in _SEARCH_TOKEN.findall(q):
+        if word:
+            word = word.replace('"', "")
+            if word.lower() == "or":
+                either = bool(groups)
+                continue
+            excluded = word.startswith("-")
+            text = word[1:] if excluded else word
+        else:
+            excluded, text = sign == "-", phrase
+        text = text.strip().lower()
+        if not text:
+            continue
+        item = SearchItem(text, excluded)
+        if either:
+            groups[-1].append(item)
+        else:
+            groups.append([item])
+        either = False
+    return groups
+
+
+def _search_where(groups: list[list[SearchItem]]) -> Any:
+    """The terms holding ``groups``: an item is found in the name or the definition, whatever its
+    case, its own % _ and \\ taken literally."""
+
+    def found(i: SearchItem) -> Any:
+        pattern = "%" + re.sub(r"([\\%_])", r"\\\1", i.text) + "%"
+        held = glossary_terms.c.name.ilike(pattern, escape="\\") | func.coalesce(
+            glossary_terms.c.definition, ""
+        ).ilike(pattern, escape="\\")
+        return ~held if i.excluded else held
+
+    return and_(*(or_(*(found(i) for i in g)) for g in groups))
 
 
 async def list_terms(
@@ -786,18 +827,9 @@ async def list_terms(
     org's shared vocabulary and is listed for everyone, whatever the caller's domains.
     """
     stmt = select(glossary_terms)
-    items = search_items(q or "")
-    if items:
-        # Any item matching the name or the definition admits the term (the search is an OR).
-        stmt = stmt.where(
-            or_(
-                *(
-                    glossary_terms.c.name.ilike(f"%{i}%")
-                    | glossary_terms.c.definition.ilike(f"%{i}%")
-                    for i in items
-                )
-            )
-        )
+    groups = search_items(q or "")
+    if groups:
+        stmt = stmt.where(_search_where(groups))
     if not include_deprecated:
         stmt = stmt.where(~glossary_terms.c.deprecated)
     rows = (await conn.execute_core(stmt.order_by(glossary_terms.c.name))).fetchall()
