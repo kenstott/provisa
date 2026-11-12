@@ -603,7 +603,8 @@ class DataProduct(BaseModel):  # REQ-1634
     retire_on: date | None = None
     successor: str | None = None
     created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
-    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
+    # REQ-2180: what all of the product's contracts share -- support, freshness -- is written
+    # once here; the contracts themselves are derived from its offers.
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
@@ -620,6 +621,10 @@ class DataProduct(BaseModel):  # REQ-1634
     # are the one place it is declared.
     tables: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=list)
+    # REQ-2180: the product's offers, each added or replaced by its name when the configuration
+    # loads; an offer the file does not declare is kept (an apply removes nothing). A product
+    # declaring none keeps the default offer it starts with.
+    offers: list["DeclaredOffer"] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -632,15 +637,8 @@ class DataProduct(BaseModel):  # REQ-1634
         return self
 
 
-#: REQ-2158: the states of an ODCS contract.
-CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
-#: REQ-2158: the version a member's contract is created at, as a draft.
-FIRST_CONTRACT_VERSION = "0.1.0"
-
-
 class VersionColumn(BaseModel):  # REQ-2158
-    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
-    what a version's field differences compare is what the member's columns were when it was saved."""
+    """A contract's field as two of its versions are compared (provisa.core.contract_versions)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -650,28 +648,8 @@ class VersionColumn(BaseModel):  # REQ-2158
     required: bool = False  # ODCS: the column is never null
 
 
-class ContractSlaProperty(BaseModel):  # REQ-2158
-    """One declared ODCS service-level property (availability, retention, ...). Freshness is
-    not declared here: it is the member's declared freshness, read when the contract is."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    property: str = Field(min_length=1)
-    value: str | int | float | None = None
-    unit: str | None = None
-    description: str | None = None
-
-
-class ContractTerms(BaseModel):  # REQ-2158
-    model_config = ConfigDict(extra="forbid")
-
-    usage: str | None = None
-    limitations: str | None = None
-    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
-
-
 class ContractCheck(BaseModel):  # REQ-2158
-    """One check the product promised on the member, as a contract version saved it: promises are
+    """One check the product promised on a dataset, as a contract's terms keep it: promises are
     read live, so what a version promised is kept with it."""
 
     model_config = ConfigDict(extra="forbid")
@@ -696,14 +674,9 @@ class ContractChange(BaseModel):  # REQ-2158
         "field_required",
         "field_optional",
         "field_described",
-        "sla_added",
-        "sla_removed",
-        "sla_changed",
         "check_added",
         "check_removed",
         "check_changed",
-        "description_changed",
-        "terms_changed",
         # REQ-2180: an offer's contract on a dataset changing with the offer.
         "field_masked",
         "field_unmasked",
@@ -720,69 +693,30 @@ class ContractChange(BaseModel):  # REQ-2158
     breaking: bool = False
 
 
-class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
-    is its member table's columns, never a selection of its own; its promises are the checks the
-    product owns on the member (REQ-2157), read when the contract is."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: str = Field(min_length=1)
-    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
-    description: str | None = None
-    terms: ContractTerms = Field(default_factory=ContractTerms)
-    sla: list[ContractSlaProperty] = Field(default_factory=list)
-    # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
-    # every later version (data_contracts.for_save).
-    created_at: datetime | None = None
-    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
-    # store's record, as created_at is: a save replaces whatever it declares here.
-    versions: list["ContractVersion"] = Field(default_factory=list)
-
-
-class ContractVersion(BaseModel):  # REQ-2158
-    """A saved version of a contract: what it was, what it promised, how it differs from the one
-    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
-    load, a boot), as model_change.actor() says."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    contract: DataContract
-    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
-    columns: list[VersionColumn] = Field(default_factory=list)
-    checks: list[ContractCheck] = Field(default_factory=list)
-    changes: list[ContractChange] = Field(default_factory=list)
-    saved_at: datetime
-    saved_by: str | None = None
-
-
-DataContract.model_rebuild()
-
-
 #: REQ-2180: an offer's level of data: the product's datasets, a sample (existing views over
 #: them), or synthetic (the product's shape, generated from each dataset's profile).
 OFFER_DATA_LEVELS = ("full", "sample", "synthetic")
 
 
-class DataProductOffer(BaseModel):  # REQ-2180
-    """One offer of a data product: a role its owner may grant, the level of data it gives, whether
-    it includes the product's data quality results and its profiles, whether it is open (accepted
-    at once), and how long what accepting it grants lasts (None: no end). A sample names the views
-    it gives by table id; a synthetic offer has no profiles."""
+class _OfferBase(BaseModel):  # REQ-2180
+    """What an offer is, however its sample's views are named: a role its owner may grant, the
+    level of data it gives, whether it includes the product's data quality results and its
+    profiles, whether it is open (accepted at once), and how long what accepting it grants lasts
+    (None: no end). A synthetic offer has no profiles."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
     role_id: str = Field(min_length=1)
     data_level: Literal["full", "sample", "synthetic"] = "full"
-    sample_views: list[int] = Field(default_factory=list)
+    sample_views: list[Any] = Field(default_factory=list)
     dq_results: bool = True
     profiles: bool = False
     open: bool = False
     duration_days: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
-    def _data_fits(self) -> "DataProductOffer":
+    def _data_fits(self) -> "_OfferBase":
         if self.data_level == "sample" and not self.sample_views:
             raise ValueError("a sample offer names one or more views (sample_views)")
         if self.data_level != "sample" and self.sample_views:
@@ -790,6 +724,23 @@ class DataProductOffer(BaseModel):  # REQ-2180
         if self.data_level == "synthetic" and self.profiles:
             raise ValueError("a synthetic offer has no profiles")
         return self
+
+
+class DataProductOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as it is stored: a sample names the views it gives by table
+    id."""
+
+    sample_views: list[int] = Field(default_factory=list)
+
+
+class DeclaredOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as a configuration declares it: a sample names its views as a
+    product names its tables (the alias, else the table name, or ``source.schema.table``)."""
+
+    sample_views: list[str] = Field(default_factory=list)
+
+
+DataProduct.model_rebuild()
 
 
 #: REQ-2180: the offer every product starts with, and only it.
@@ -1842,6 +1793,19 @@ class Table(
     def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
         return _refuse_member_product_id(data, "table")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _no_contract(cls, data: Any) -> Any:  # REQ-2180
+        # A table once declared its product contract by hand. Contracts are derived from the
+        # product's offers now, so the key means nothing: a config carrying it is told so.
+        if isinstance(data, dict) and "contract" in data:
+            name = data.get("table") or data.get("table_name")
+            raise ValueError(
+                f"table {name!r} declares a contract; a data product's contracts are derived "
+                "from its offers (declare offers on the data product). Remove the key."
+            )
+        return data
+
     source_id: str
     domain_id: str
     schema_name: str = Field(
@@ -2055,9 +2019,6 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
-    contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.
@@ -3803,15 +3764,6 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
-class ReferenceLibraryConfig(BaseModel):  # REQ-2185
-    """The reference library's retrieval setting, as an org holds it (org setting
-    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    retrieval: Literal["passage", "graph"] = "passage"
-
-
 class ConnectorRequirement(BaseModel):  # REQ-2221
     """A named value a connector needs from whoever sets it up: a ``@requires`` tag in its code."""
 
@@ -4115,8 +4067,6 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
-    # REQ-2185: the reference library's retrieval setting, passage or graph.
-    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)

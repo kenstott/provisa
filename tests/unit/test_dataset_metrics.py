@@ -35,7 +35,7 @@ DEFINITION = "Revenue kept after refunds."
 METHOD = "Gross order value less refunds, on the order date."
 
 
-async def _seed(conn, *, with_view: bool = True) -> dict[str, int]:
+async def _seed(conn) -> dict[str, int]:
     """orders, customers and a view declared from net_revenue; three metrics, one naming a term."""
     await _seed_semantic_layer(conn)
     term_id = await glossary_repo.create_abstract_term(
@@ -56,18 +56,17 @@ async def _seed(conn, *, with_view: bool = True) -> dict[str, int]:
     ):
         await metric_repo.upsert(conn, metric)
     ids = {}
-    if with_view:
-        view = Table(
-            source_id="__derived__",
-            domain_id="sales",
-            schema_name="views",
-            table_name="revenue_by_region",
-            columns=[],
-            view_metrics=ViewMetricsSpec(metrics=["net_revenue"], dimensions=["region"]),
-        )
-        view.view_sql = "SELECT 1"  # registration generates it and persists both (REQ-1318)
-        await table_repo.upsert(conn, view)
-    for name in ("orders", "customers") + (("revenue_by_region",) if with_view else ()):
+    view = Table(
+        source_id="__derived__",
+        domain_id="sales",
+        schema_name="views",
+        table_name="revenue_by_region",
+        columns=[],
+        view_metrics=ViewMetricsSpec(metrics=["net_revenue"], dimensions=["region"]),
+    )
+    view.view_sql = "SELECT 1"  # registration generates it and persists both (REQ-1318)
+    await table_repo.upsert(conn, view)
+    for name in ("orders", "customers", "revenue_by_region"):
         row = await table_repo.find_by_table_name(conn, name)
         assert row is not None
         ids[name] = row["id"]
@@ -172,7 +171,7 @@ async def test_the_term_a_metric_names_is_versioned_with_it(control_plane):
 
     async with _admin_db(control_plane) as db:
         async with db.acquire() as conn:
-            ids = await _seed(conn, with_view=False)
+            ids = await _seed(conn)
             tree = await project(conn, SCHEMA)
             existing = await _existing_ids(conn, SCHEMA)
             roles = await _roles_after(conn, SCHEMA, tree)

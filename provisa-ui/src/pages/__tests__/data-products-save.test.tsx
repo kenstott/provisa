@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
 import { render, screen, waitFor, fireEvent } from "../../test-utils/render";
 
 // REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
@@ -69,12 +70,23 @@ vi.mock("../../api/lineage", () => ({
 vi.mock("../../api/glossary", () => ({
   fetchRelatedGlossaryTerms: () => Promise.resolve([]),
 }));
+// The panel's own parts are its tests'; here it is its edit control, and, while the product is
+// edited, the edit form the page hands it in place of its header.
 vi.mock("../data-products/DataProductDetailPanel", () => ({
-  DataProductDetailPanel: ({ p, onEdit }: { p: { id: string }; onEdit: () => void }) => (
-    <button data-testid={`edit-${p.id}`} onClick={onEdit}>
-      {p.id}
-    </button>
-  ),
+  DataProductDetailPanel: ({
+    p,
+    onEdit,
+    editForm,
+  }: {
+    p: { id: string };
+    onEdit: () => void;
+    editForm?: ReactNode;
+  }) =>
+    editForm ?? (
+      <button data-testid={`edit-${p.id}`} onClick={onEdit}>
+        {p.id}
+      </button>
+    ),
 }));
 
 const products = [
@@ -129,7 +141,6 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
   useDeleteDataProducts: () => vi.fn(),
   useSetDataProductMembers: () => ({ setDataProductMembers: saves.members, loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),

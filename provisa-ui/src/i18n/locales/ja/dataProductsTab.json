@@ -210,7 +210,15 @@
         "check_removed": "品質チェック {{subject}} を削除",
         "check_changed": "品質チェック {{subject}} を変更",
         "description_changed": "説明を変更",
-        "terms_changed": "条件を変更: {{subject}}"
+        "terms_changed": "条件を変更: {{subject}}",
+        "field_masked": "フィールド {{subject}} をマスク ({{after}})",
+        "field_unmasked": "フィールド {{subject}} のマスクを解除",
+        "row_rule_added": "行ルールを追加: {{subject}}",
+        "row_rule_removed": "行ルールを削除: {{subject}}",
+        "data_level_changed": "データレベルを {{before}} から {{after}} に変更",
+        "dq_results_changed": "品質の結果を {{before}} から {{after}} に変更",
+        "profiles_changed": "プロファイルを {{before}} から {{after}} に変更",
+        "duration_changed": "期間を {{before}} から {{after}} に変更"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "ロール",
         "history": "バージョン履歴"
       }
-    }
+    },
+    "detailPanel": "データプロダクトの詳細"
   }
 }

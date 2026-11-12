@@ -77,7 +77,6 @@ vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   fetchLibrary: vi.fn(async () => [DOC]),
   fetchLibraryDocument: vi.fn(async () => DETAIL),
   fetchCitedBy: vi.fn(async () => ({ terms: [], drifted: 0 })),
-  fetchRetrieval: vi.fn(async () => ({ retrieval: "passage" })),
 }));
 
 const target = (el: HTMLElement) => JSON.parse(el.dataset.target as string);
@@ -99,7 +98,6 @@ describe("a data product's tags", () => {
         owner
         seesConsumers
         lineageLoading={false}
-        contractsVersion={0}
         lineageError=""
         lineageGraph={null}
         onEdit={vi.fn()}
@@ -108,6 +106,8 @@ describe("a data product's tags", () => {
         onTagsChanged={onTagsChanged}
       />,
     );
+    // A product's tags are among what it is related to: its Related tab.
+    fireEvent.click(screen.getByTestId("data-product-tab-related-sales_kpis"));
     return screen.getByTestId("data-product-card-tags-sales_kpis");
   }
 

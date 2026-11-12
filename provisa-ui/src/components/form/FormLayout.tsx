@@ -28,12 +28,13 @@ import {
 } from "react";
 import { Button, Divider, Loader, Text } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
-import { Check, CircleHelp, X } from "lucide-react";
+import { Check, CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { PanelActionsContext, PanelNoticeContext } from "../list/panelActions";
 import { PanelHeadStyle } from "../list/PanelHeadStyle";
 import { useHelpNaming } from "./useHelpNaming";
+import { CancelButton } from "./CancelButton";
 import { usePendingPress } from "./usePendingPress";
 import { Tip } from "../Tip";
 import { readValue } from "./readValue";
@@ -546,7 +547,7 @@ type ButtonExtras = { "data-testid"?: string; disabled?: boolean };
  *
  * `panel`: the form is a detail panel's content, and these are the panel's actions while it is
  * open. In a panel (`SplitPane`) the same two buttons then sit in its pinned head beside the
- * name -- borderless and compact, so they cost no height -- in place of a row at the form's foot;
+ * name -- Save borderless and compact, Cancel the one Cancel -- in place of a row at the form's foot;
  * outside a panel a form that says `panel` keeps the row at its foot. One implementation, the
  * same test ids either way. `problem` is what the form has to say of a save that did not go
  * through: in a panel a line under its head, else a line above the row.
@@ -588,8 +589,8 @@ export function FormFooter({
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
   const busy = saving || pending;
-  // In a panel's head the two take the head's one style (PanelHeadStyle): borderless and
-  // compact; the words and icons are the same. Cancel leaves its bordered look at the foot.
+  // In a panel's head Save takes the head's one style (PanelHeadStyle): borderless and compact.
+  // Cancel is the one Cancel (CancelButton), the same in the head, at the foot and in a dialog.
   const inHeadLook = inHead ? ({ variant: undefined } as const) : {};
   const said = problem ? (
     <div className="form-problem" role="alert" data-testid="form-problem">
@@ -618,19 +619,11 @@ export function FormFooter({
       )}
       {action}
       {onCancel !== undefined && (
-        <Button
-          variant="default"
-          {...inHeadLook}
-          {...cancelProps}
-          type="button"
+        <CancelButton
           onClick={onCancel}
-          // REQ-2115: leaving a form changes nothing; Polly presses it without asking.
-          data-changes="false"
-          leftSection={<X size={14} />}
           disabled={busy || cancelProps?.disabled === true}
-        >
-          {t("common.cancel")}
-        </Button>
+          testId={cancelProps?.["data-testid"]}
+        />
       )}
       {children}
     </>

@@ -4039,6 +4039,15 @@ async def _rebuild_schemas_impl(
     from provisa.api.metadata_export.publishing import notify_model_changed
 
     if announce:
+        # REQ-2180: a product's contracts are derived from its offers applied to the model just
+        # built -- its members, their columns, the masks and row rules its offers' roles read
+        # under -- so the process that made the change derives them again, before the catalogs
+        # hear of it. An env build's model is the prod's, whose build derived them.
+        if _env == PROD:
+            from provisa.api.offer_derivation import rederive_all
+
+            async with state.model_db.acquire() as _offers_conn:
+                await rederive_all(cast("Connection", _offers_conn), state)
         await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
     # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest

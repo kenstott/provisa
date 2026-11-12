@@ -596,13 +596,6 @@
        }
       },
       {
-       "name": "contract",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "description",
        "type": {
         "kind": "SCALAR",

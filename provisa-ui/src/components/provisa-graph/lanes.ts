@@ -27,8 +27,8 @@
 import type { CyInstance, CyLayoutOptions } from "../graph/cytoscape-types";
 import type { CyCanvas } from "./cyCanvas";
 import type { Core, ElementDefinition } from "./core";
-import { edgeElement, type GraphEdgeSpec } from "./model";
-import { groupHue } from "./tokens";
+import { edgeElement, textWidth, type GraphEdgeSpec } from "./model";
+import { SIZE, groupHue } from "./tokens";
 import type { At } from "./tipPlacement";
 import { segmentCoords } from "./taxi";
 import { fitClear } from "./viewport";
@@ -56,6 +56,11 @@ export const NODE_GAP = 14;
  * to each next one. */
 const TRACK_INSET = 14;
 const TRACK_STEP = 12;
+/** The space between a line's run beside the lane and its name, and between two names. */
+const NAME_GAP = 4;
+/** A line's name: its text background's padding (stylesheet) and its line height. */
+const NAME_PAD = 2;
+const NAME_LINE = 1.25;
 
 /** A node as placeLanes reads it: its size. */
 export interface LaneItem {
@@ -64,11 +69,12 @@ export interface LaneItem {
   h: number;
 }
 
-/** A line between two nodes. */
+/** A line between two nodes, and its name (drawn beside it when it runs beside its lane). */
 export interface LaneLine {
   id: string;
   source: string;
   target: string;
+  label?: string;
 }
 
 /** Two keys equal within the float tolerance: a relative 1e-14 (a node with no key, Infinity, equals
@@ -255,17 +261,14 @@ export function placeLanes(
         top += n.h + step;
       }
     }
-    const order = [...items].sort((p, q) => (out.get(p.id) as At).y - (out.get(q.id) as At).y);
-    const tracks =
-      id === beside
-        ? new Set(
-            besideTracks(
-              order.map((n) => n.id),
-              lines,
-            ).values(),
-          ).size
-        : 0;
-    const room = tracks > 0 ? TRACK_INSET + (tracks - 1) * TRACK_STEP : 0;
+    let room = 0;
+    if (id === beside) {
+      const placed = items.map((n) => ({ ...n, ...(out.get(n.id) as At) }));
+      const routes = routesBeside(placed, lines);
+      const right = left + width;
+      for (const path of routes.values()) room = Math.max(room, path[1].x - right);
+      for (const b of besideNames(routes, lines).values()) room = Math.max(room, b.x2 - right);
+    }
     left += width + room + 2 * (LANE_PAD + LANE_EDGE) + gap;
   }
   return out;
@@ -455,19 +458,35 @@ export function placeRows(
  * right side to its track beside the lane, down (or up) the track, and into its other node's right
  * side, by id. */
 export function besideRoutes(cy: Core, lane: string): Map<string, At[]> {
-  const items = placedItems(cy).filter((n) => n.lane === lane);
-  const out = new Map<string, At[]>();
-  if (items.length === 0) return out;
-  const byId = new Map(items.map((n) => [n.id, n]));
+  return routesBeside(
+    placedItems(cy).filter((n) => n.lane === lane),
+    drawnLines(cy),
+  );
+}
+
+/** The lines drawn on ``cy``, with their names. */
+function drawnLines(cy: Core): LaneLine[] {
   const lines: LaneLine[] = [];
   cy.edges().forEach((e) => {
-    const k = {
+    lines.push({
       id: e.id(),
       source: e.data("source") as string,
       target: e.data("target") as string,
-    };
-    if (byId.has(k.source) && byId.has(k.target)) lines.push(k);
+      label: (e.data("label") as string | undefined) ?? "",
+    });
   });
+  return lines;
+}
+
+/** The routes of those of ``lines`` between two of ``items`` (one lane, placed), as besideRoutes. */
+function routesBeside(
+  items: (LaneItem & { x: number; y: number })[],
+  all: LaneLine[],
+): Map<string, At[]> {
+  const out = new Map<string, At[]>();
+  if (items.length === 0) return out;
+  const byId = new Map(items.map((n) => [n.id, n]));
+  const lines = all.filter((k) => byId.has(k.source) && byId.has(k.target));
   const order = [...items].sort((p, q) => p.y - q.y).map((n) => n.id);
   const tracks = besideTracks(order, lines);
   const right = Math.max(...items.map((n) => n.x + n.w / 2));
@@ -487,6 +506,74 @@ export function besideRoutes(cy: Core, lane: string): Map<string, At[]> {
   return out;
 }
 
+/** A box drawn on the canvas. */
+export interface NameBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+const overlaps = (p: NameBox, q: NameBox) =>
+  p.x1 < q.x2 + NAME_GAP &&
+  q.x1 < p.x2 + NAME_GAP &&
+  p.y1 < q.y2 + NAME_GAP &&
+  q.y1 < p.y2 + NAME_GAP;
+
+/** Where the name of each of ``lines`` running beside its lane on ``routes`` (besideRoutes) is
+ * drawn, by id: right of its run down its track (``NAME_GAP`` past it), growing away from the lane,
+ * centred on that run's middle. A name never lies on another name or on any line's route: it moves
+ * along its own run, a name's height at a time, nearest the middle first (above before below), to
+ * the first place clear of them; where its run has none, it moves right past what it meets and
+ * tries again. Names go in turn from the track nearest the lane, each down its track from the top,
+ * then by id. A line with no name has no box. */
+export function besideNames(routes: Map<string, At[]>, lines: LaneLine[]): Map<string, NameBox> {
+  const label = new Map(lines.map((k) => [k.id, k.label ?? ""]));
+  const size = SIZE.edgeLabel;
+  const h = size * NAME_LINE + 2 * NAME_PAD;
+  const thin = (a: At, b: At): NameBox => ({
+    x1: Math.min(a.x, b.x),
+    x2: Math.max(a.x, b.x),
+    y1: Math.min(a.y, b.y),
+    y2: Math.max(a.y, b.y),
+  });
+  const taken: NameBox[] = [];
+  routes.forEach((p) => {
+    for (let i = 1; i < p.length; i++) taken.push(thin(p[i - 1], p[i]));
+  });
+  const named = [...routes]
+    .filter(([id]) => (label.get(id) ?? "") !== "")
+    .map(([id, p]) => ({
+      id,
+      x: p[1].x,
+      lo: Math.min(p[1].y, p[2].y),
+      hi: Math.max(p[1].y, p[2].y),
+    }))
+    .sort((p, q) => p.x - q.x || p.lo + p.hi - (q.lo + q.hi) || (p.id < q.id ? -1 : 1));
+  const out = new Map<string, NameBox>();
+  for (const n of named) {
+    const w = textWidth(label.get(n.id) as string, size) + 2 * NAME_PAD;
+    const mid = (n.lo + n.hi) / 2;
+    const ys = [mid];
+    for (let k = 1; mid - k * (h + NAME_GAP) >= n.lo || mid + k * (h + NAME_GAP) <= n.hi; k++)
+      for (const y of [mid - k * (h + NAME_GAP), mid + k * (h + NAME_GAP)])
+        if (y >= n.lo && y <= n.hi) ys.push(y);
+    let x1 = n.x + NAME_GAP;
+    let placed: NameBox | undefined;
+    while (placed === undefined) {
+      const at = (y: number): NameBox => ({ x1, x2: x1 + w, y1: y - h / 2, y2: y + h / 2 });
+      const y = ys.find((c) => taken.every((t) => !overlaps(at(c), t)));
+      if (y !== undefined) placed = at(y);
+      else
+        x1 =
+          Math.max(...taken.filter((t) => overlaps(at(mid), t)).map((t) => t.x2)) + NAME_GAP + 1e-6;
+    }
+    taken.push(placed);
+    out.set(n.id, placed);
+  }
+  return out;
+}
+
 /** Lays ``cy`` out in lanes; ``done`` once it is placed. */
 export function runLanes(
   cy: Core,
@@ -501,14 +588,7 @@ export function runLanes(
   canvas.run(cy.layout({ name: "null" } as CyLayoutOptions), () => {
     cy.add(overlay.map((e) => edgeElement(e)) as unknown as ElementDefinition[]);
     const items = placedItems(cy);
-    const lines: LaneLine[] = [];
-    cy.edges().forEach((e) => {
-      lines.push({
-        id: e.id(),
-        source: e.data("source") as string,
-        target: e.data("target") as string,
-      });
-    });
+    const lines = drawnLines(cy);
     const gap = opts.tight ? TIGHT_LANE_GAP : LANE_GAP;
     const laid = new Set(overlay.map((e) => e.id));
     const lanes = sortLanes(
@@ -530,7 +610,9 @@ export function runLanes(
 /** The lines inside ``lane`` drawn on their routes beside it (besideRoutes), as right-angled
  * segments from each node's right side. */
 function routeBeside(cy: Core, lane: string): void {
-  besideRoutes(cy, lane).forEach((path, id) => {
+  const routes = besideRoutes(cy, lane);
+  const names = besideNames(routes, drawnLines(cy));
+  routes.forEach((path, id) => {
     const [s, p1, p2, t] = path;
     const c1 = segmentCoords(p1, s, t);
     const c2 = segmentCoords(p2, s, t);
@@ -544,6 +626,14 @@ function routeBeside(cy: Core, lane: string): void {
       "segment-weights": `${c1.weight} ${c2.weight}`,
       "segment-distances": `${c1.distance} ${c2.distance}`,
     });
+    // Its name beside its run down the track (besideNames): cytoscape centres a segments edge's
+    // label on the middle of its two bends, so the margins move it from there.
+    const b = names.get(id);
+    if (b !== undefined)
+      e.style({
+        "text-margin-x": (b.x1 + b.x2) / 2 - (p1.x + p2.x) / 2,
+        "text-margin-y": (b.y1 + b.y2) / 2 - (p1.y + p2.y) / 2,
+      });
   });
 }
 
@@ -569,15 +659,24 @@ function boxLanes(cy: Core, opts: LanesOptions): void {
   const items = placedItems(cy);
   const routes =
     opts.beside === undefined ? new Map<string, At[]>() : besideRoutes(cy, opts.beside);
-  const trackRight = Math.max(-Infinity, ...[...routes.values()].map((p) => p[1].x));
+  const names = [...besideNames(routes, drawnLines(cy)).values()];
+  const trackRight = Math.max(
+    -Infinity,
+    ...[...routes.values()].map((p) => p[1].x),
+    ...names.map((b) => b.x2),
+  );
   for (const lane of opts.lanes) {
     const inLane = items.filter((n) => n.lane === lane.id);
     if (inLane.length === 0) continue;
     const x1 = Math.min(...inLane.map((n) => n.x - n.w / 2)) - LANE_PAD;
     const nodesRight = Math.max(...inLane.map((n) => n.x + n.w / 2));
     const x2 = (lane.id === opts.beside ? Math.max(nodesRight, trackRight) : nodesRight) + LANE_PAD;
-    const y1 = Math.min(...inLane.map((n) => n.y - n.h / 2)) - LANE_PAD - LANE_TITLE;
-    const y2 = Math.max(...inLane.map((n) => n.y + n.h / 2)) + LANE_PAD;
+    const own = lane.id === opts.beside ? names : [];
+    const y1 =
+      Math.min(...inLane.map((n) => n.y - n.h / 2), ...own.map((b) => b.y1)) -
+      LANE_PAD -
+      LANE_TITLE;
+    const y2 = Math.max(...inLane.map((n) => n.y + n.h / 2), ...own.map((b) => b.y2)) + LANE_PAD;
     cy.add({
       group: "nodes",
       data: {

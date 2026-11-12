@@ -52,8 +52,13 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/commands/ColumnGovernanceFields.tsx",
     ],
   },
+  // REQ-2180 OFFERS: its header and its tabs draw the read view.
   "Data Products": {
-    read: ["pages/data-products/DataProductDetailPanel.tsx"],
+    read: [
+      "pages/data-products/DataProductDetailPanel.tsx",
+      "pages/data-products/ProductHeader.tsx",
+      "pages/data-products/tabs/RelatedTab.tsx",
+    ],
     form: ["pages/data-products/DataProductFormCard.tsx"],
   },
   // Edited in place: the panel is the form, and the fields it does not edit are listed above it.

@@ -210,7 +210,15 @@
         "check_removed": "已移除质量检查 {{subject}}",
         "check_changed": "质量检查 {{subject}} 已更改",
         "description_changed": "描述已更改",
-        "terms_changed": "条款已更改：{{subject}}"
+        "terms_changed": "条款已更改：{{subject}}",
+        "field_masked": "字段 {{subject}} 已脱敏（{{after}}）",
+        "field_unmasked": "字段 {{subject}} 不再脱敏",
+        "row_rule_added": "已添加行规则：{{subject}}",
+        "row_rule_removed": "已移除行规则：{{subject}}",
+        "data_level_changed": "数据级别从 {{before}} 改为 {{after}}",
+        "dq_results_changed": "质量结果从 {{before}} 改为 {{after}}",
+        "profiles_changed": "画像从 {{before}} 改为 {{after}}",
+        "duration_changed": "期限从 {{before}} 改为 {{after}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +307,7 @@
         "roles": "角色",
         "history": "版本历史"
       }
-    }
+    },
+    "detailPanel": "数据产品详情"
   }
 }

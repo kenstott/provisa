@@ -24,7 +24,6 @@ import {
   ontologyGraph,
   ontologyHopQuery,
   ontologyQuery,
-  PRODUCT_TERM_HOPS,
   termEdges,
   termLevels,
   type OntologyRows,
@@ -301,7 +300,7 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     expect(searched("50%_x")).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
   });
 
-  it("reads each match's neighbourhood both ways, two hops deep and no further", () => {
+  it("reads each match's neighbourhood both ways, each hop's terms with their grounding", () => {
     const q = searched("cust");
     // A match is read with what it touches, and its edges both ways, each end by its id: the
     // next hop reads the ends.
@@ -310,13 +309,14 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     expect(q).toContain("edgesIn");
     expect(q).toContain("sourceTerm { id }");
     expect(q).toContain("targetTerm { id }");
-    // The terms a hop off are read with what they touch; those two hops off with their edges alone.
+    // Every hop's terms are read with what they touch, the last hop's too (REQ-2174, amended
+    // 2026-11-12: a term drawn brings its grounding).
     const s = scope(["ontology", "domains", "columns"], { search: searchItems("cust") });
     const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [3, 4]));
     expect(hop(1)).toContain("on_terms(where: { id: { in: [3,4] } })");
     expect(hop(1).match(/refs \{/g)).toHaveLength(1);
-    expect(hop(2)).not.toContain("refs {");
-    expect(hop(2)).not.toContain("domains {");
+    expect(hop(2).match(/refs \{/g)).toHaveLength(1);
+    expect(hop(2).match(/domains \{/g)).toHaveLength(1);
     expect(hop(2)).toContain("edgesIn");
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
@@ -350,46 +350,47 @@ describe("REQ-2174: a focus's hops, read as steps across the term links", () => 
   const fullTerms = (q: string) => q.match(/refs \{/g)?.length ?? 0;
 
   it("counts a term's hops from the term: each hop a step", () => {
-    for (const depth of [1, 2, 3, 4])
+    for (const depth of [1, 2, 3, 4, Infinity])
       expect(termLevels({ search: [], focus: "term:7", depth })).toBe(depth);
     expect(termLevels({ search: searchItems("cust"), focus: null, depth: 2 })).toBe(2);
     expect(termLevels({ search: [], focus: null, depth: 2 })).toBe(0);
   });
 
-  it("counts a product's hops from the product: its own terms are three hops off", () => {
-    expect(PRODUCT_TERM_HOPS).toBe(3);
-    expect([1, 2, 3, 4].map((depth) => termLevels({ search: [], focus: "p:c360", depth }))).toEqual(
-      [0, 0, 0, 1],
-    );
+  it("counts a product's hops from its own terms: each hop a step across the links", () => {
+    // REQ-2174 (amended 2026-11-12): its tables, their columns and the terms grounded on them come
+    // with the product at no hop.
+    expect(
+      [1, 2, 3, 4, Infinity].map((depth) => termLevels({ search: [], focus: "p:c360", depth })),
+    ).toEqual([1, 2, 3, 4, Infinity]);
   });
 
-  it("reads a product's graph at 3 hops as its own terms alone, no term link followed", () => {
+  it("reads a product's graph at its root as its own terms, each read once", () => {
     // J509a: read three levels deep, nested both ways, the query was 20 KB and got no answer in a
     // minute; its tables, columns and terms are all the product's own terms read once.
     const q = focused("p:c360", 3);
     expect(fullTerms(q)).toBe(1);
-    expect(q).not.toContain("edgesIn");
     expect(q).toContain("targetTerm { id }");
     expect(q).toBe(focused("p:c360", 1));
     expect(q.length).toBeLessThan(focused("term:7", 1).length * 2);
   });
 
-  it("reads a product's fourth hop as one step across the links, both ways", () => {
-    // The term panel's one-hop read: the product's terms, the terms a link reaches by their ids.
-    const q = focused("p:c360", 4);
+  it("reads a product's first hop as one step across the links, both ways", () => {
+    // The product's terms, the terms a link reaches by their ids.
+    const q = focused("p:c360", 1);
     expect(fullTerms(q)).toBe(1);
     expect(q).toContain("edgesIn");
     expect(q).toContain("sourceTerm { id }");
   });
 
-  it("reads a term's graph a hop at a time, each hop's terms once", () => {
+  it("reads a term's graph a hop at a time, each hop's terms once with their grounding", () => {
     // Nested, a level to each hop both ways, depth 3 read 7 terms' refs per path (R509-C2).
     for (const depth of [1, 2, 3]) expect(fullTerms(focused("term:7", depth))).toBe(1);
     expect(focused("term:7", 3)).toBe(focused("term:7", 1));
     const s = scope(["ontology", "columns", "data"], { focus: "term:7", depth: 3 });
     const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [1, 2]));
-    expect([1, 2, 3].map((n) => fullTerms(hop(n)))).toEqual([1, 1, 0]);
+    expect([1, 2, 3].map((n) => fullTerms(hop(n)))).toEqual([1, 1, 1]);
     expect(hop(1)).toBe(hop(2).replace("OntologyHop2", "OntologyHop1"));
+    expect(hop(3)).toBe(hop(2).replace("OntologyHop2", "OntologyHop3"));
   });
 });
 

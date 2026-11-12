@@ -451,6 +451,7 @@ async def apply_import(import_id: int, request: Request) -> dict:
     except (apply.ImportRefused, ValueError) as exc:
         raise _refused(exc) from None
     await glossary._notify(org_id, "ontology imported")
+    await glossary.embed_terms(org_id)
     return {
         "id": import_id,
         "created": done.created,

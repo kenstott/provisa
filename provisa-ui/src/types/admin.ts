@@ -123,21 +123,6 @@ export interface DataProduct {
   createdAt: string;
 }
 
-// REQ-2158: a declared ODCS service-level property; freshness is the member's own.
-export interface ContractSlaProperty {
-  property: string;
-  value?: unknown;
-  unit?: string | null;
-  description?: string | null;
-}
-
-export interface ContractTerms {
-  usage?: string | null;
-  limitations?: string | null;
-  noticePeriod?: string | null;
-}
-
-// REQ-2158: a product member's contract, its output port, versioned on its own.
 /** One difference of a contract version from the one before it (REQ-2158). */
 export interface ContractChange {
   kind: string;
@@ -147,30 +132,14 @@ export interface ContractChange {
   breaking: boolean;
 }
 
-/** A saved version of a contract, as the store keeps it (REQ-2158). */
+/** REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: a saved version of an offer's contract on a
+ *  dataset, how it differs from the one before it, and when and by whom it was saved. */
 export interface ContractVersion {
-  contract: { version: string; status: string };
-  /** The member's columns when this version was saved; a contract holds none of its own. */
-  columns: { name: string; type: string; required: boolean; description: string | null }[];
+  version: string;
   changes: ContractChange[];
   saved_at: string;
   /** Who saved it; null when the system did (a configuration load). */
   saved_by: string | null;
-}
-
-export interface DataContract {
-  tableId: number;
-  sourceId: string;
-  schemaName: string;
-  tableName: string;
-  contractId: string;
-  version: string;
-  status: string;
-  description?: string | null;
-  terms: ContractTerms;
-  sla: ContractSlaProperty[];
-  // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
-  versions?: ContractVersion[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.

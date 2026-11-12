@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "最新剖析，於 {{time}} 執行",
-    "none": "尚未有剖析執行。"
+    "none": "尚未有剖析執行。",
+    "viewTable": "表格",
+    "viewTerrain": "地形"
   }
 }
