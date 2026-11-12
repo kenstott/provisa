@@ -88,8 +88,22 @@ const CATALOG: FakeCatalog = {
     },
   ],
   methods: [
-    { name: "email", category: "internet", params: [], families: ["text"], stable: true, stableNeeds: [] },
-    { name: "swift", category: "bank", params: [], families: ["text"], stable: false, stableNeeds: [] },
+    {
+      name: "email",
+      category: "internet",
+      params: [],
+      families: ["text"],
+      stable: true,
+      stableNeeds: [],
+    },
+    {
+      name: "swift",
+      category: "bank",
+      params: [],
+      families: ["text"],
+      stable: false,
+      stableNeeds: [],
+    },
     {
       name: "random_digit",
       category: "pattern",
@@ -117,12 +131,23 @@ const CATALOG: FakeCatalog = {
       stable: true,
       stableNeeds: [],
     },
-    { name: "date_object", category: "date_time", params: [], families: ["date"], stable: false, stableNeeds: [] },
+    {
+      name: "date_object",
+      category: "date_time",
+      params: [],
+      families: ["date"],
+      stable: false,
+      stableNeeds: [],
+    },
   ],
   typeFamilies: { integer: "integer", varchar: "text", date: "date" },
 };
 
-function column(columnName: string, dataType: string, extra: Partial<TableColumn> = {}): TableColumn {
+function column(
+  columnName: string,
+  dataType: string,
+  extra: Partial<TableColumn> = {},
+): TableColumn {
   return {
     id: columnName.length,
     columnName,
@@ -148,7 +173,13 @@ const TABLE = { id: 4, tableName: "schedules", columns: [] } as unknown as Regis
 
 function openDialog(col: TableColumn, onSave = vi.fn()) {
   render(
-    <ColumnFakeDialog table={TABLE} column={col} catalog={CATALOG} onClose={vi.fn()} onSave={onSave} />,
+    <ColumnFakeDialog
+      table={TABLE}
+      column={col}
+      catalog={CATALOG}
+      onClose={vi.fn()}
+      onSave={onSave}
+    />,
   );
 }
 
@@ -189,7 +220,9 @@ describe("the Test data dialog offers what the column can hold (REQ-1494)", () =
   it("offers an integer column integer fakes and no text-only one", async () => {
     openDialog(column("id", "integer"));
     const fakes = await offered("fake");
-    expect(fakes).toEqual(expect.arrayContaining(["random_digit", "pyint", "poisson", "categories"]));
+    expect(fakes).toEqual(
+      expect.arrayContaining(["random_digit", "pyint", "poisson", "categories"]),
+    );
     for (const textOnly of ["swift", "email", "pattern", "sentence", "date_object", "truncate"])
       expect(fakes).not.toContain(textOnly);
     // A fake list never offers a synthetic-rule-only kind; the rule list does, filtered alike.
@@ -224,7 +257,9 @@ describe("Stable only when the fake can be (REQ-1494)", () => {
     expect(stable.checked).toBe(false);
     fireEvent.mouseOver(screen.getByTestId("testdata-dialog-stable-tip"));
     expect(
-      await screen.findByText("random_digit() cannot be stable: it is not computed the same way on every engine"),
+      await screen.findByText(
+        "random_digit() cannot be stable: it is not computed the same way on every engine",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -246,17 +281,27 @@ describe("Stable only when the fake can be (REQ-1494)", () => {
   });
 
   it("names what a kind needs to be stable, and that a stable method takes no arguments", () => {
-    expect(stableBlock(CATALOG, "categories()")).toEqual({ reason: "needs", name: "categories", args: ["values"] });
+    expect(stableBlock(CATALOG, "categories()")).toEqual({
+      reason: "needs",
+      name: "categories",
+      args: ["values"],
+    });
     expect(stableBlock(CATALOG, "categories((a, b))")).toBeNull();
     expect(stableBlock(CATALOG, "pattern()")).toEqual({ reason: "never", name: "pattern" });
-    expect(stableBlock(CATALOG, "sentence(nb_words=3)")).toEqual({ reason: "noArguments", name: "sentence" });
+    expect(stableBlock(CATALOG, "sentence(nb_words=3)")).toEqual({
+      reason: "noArguments",
+      name: "sentence",
+    });
     expect(stableBlock(CATALOG, "sentence()")).toBeNull();
     expect(stableBlock(CATALOG, "")).toEqual({ reason: "noFake" });
     expect(parseArgs(CATALOG, "categories((a, b), (0.5, 0.5))")).toEqual({
       values: "(a, b)",
       shares: "(0.5, 0.5)",
     });
-    expect(parseArgs(CATALOG, "pyint(min_value=1, max_value=9)")).toEqual({ min_value: "1", max_value: "9" });
+    expect(parseArgs(CATALOG, "pyint(min_value=1, max_value=9)")).toEqual({
+      min_value: "1",
+      max_value: "9",
+    });
   });
 });
 
@@ -264,7 +309,9 @@ describe("the saved text is called Saved as (REQ-1494)", () => {
   it("shows Saved as once per section, folded until a choice is made", async () => {
     openDialog(column("id", "integer"));
     for (const section of ["fake", "rule"]) {
-      expect(screen.getByTestId(`testdata-dialog-${section}-edit-as-text`)).toHaveTextContent("Edit as text");
+      expect(screen.getByTestId(`testdata-dialog-${section}-edit-as-text`)).toHaveTextContent(
+        "Edit as text",
+      );
       expect(screen.queryByTestId(`testdata-dialog-${section}-text`)).toBeNull();
     }
     expect(screen.queryByText("Declaration, e.g. email() or categories((a, b))")).toBeNull();
@@ -272,7 +319,9 @@ describe("the saved text is called Saved as (REQ-1494)", () => {
     const saved = (await screen.findByTestId("testdata-dialog-fake-text")) as HTMLInputElement;
     expect(saved.value).toBe("random_digit()");
     expect(screen.getAllByText("Saved as")).toHaveLength(1);
-    expect(screen.getByText("Written from your choice above; edit it to set arguments by hand")).toBeInTheDocument();
+    expect(
+      screen.getByText("Written from your choice above; edit it to set arguments by hand"),
+    ).toBeInTheDocument();
     // The rule's stays folded until the reader opens it.
     expect(screen.queryByTestId("testdata-dialog-rule-text")).toBeNull();
     fireEvent.click(screen.getByTestId("testdata-dialog-rule-edit-as-text"));
@@ -285,7 +334,9 @@ describe("the saved text is called Saved as (REQ-1494)", () => {
     expect((screen.getByTestId("testdata-dialog-fake-text") as HTMLInputElement).value).toBe(
       "pyint(min_value=1)",
     );
-    expect((screen.getByTestId("testdata-dialog-fake-arg-min_value") as HTMLInputElement).value).toBe("1");
+    expect(
+      (screen.getByTestId("testdata-dialog-fake-arg-min_value") as HTMLInputElement).value,
+    ).toBe("1");
   });
 });
 
@@ -305,7 +356,9 @@ describe("the columns table's Stable follows the same rule (REQ-1494)", () => {
     expect(screen.getByTestId("testdata-stable-id")).toBeDisabled();
     fireEvent.mouseOver(screen.getByTestId("testdata-stable-tip-id"));
     expect(
-      await screen.findByText("random_digit() cannot be stable: it is not computed the same way on every engine"),
+      await screen.findByText(
+        "random_digit() cannot be stable: it is not computed the same way on every engine",
+      ),
     ).toBeInTheDocument();
     fireEvent.change(screen.getByTestId("testdata-fake-mail"), { target: { value: "swift()" } });
     expect(updateEditCol).toHaveBeenCalledWith(1, "fake", "swift()");
