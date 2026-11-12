@@ -8,16 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174, REQ-2239 (amended 2026-11-11, EACH LANE IS SORTED BY THE LANE ON ITS LEFT; EACH SIBLING
-// TERM ON ITS OWN ROW): the lanes preset. The lanes are ordered left to right, one lane at a time, by a
-// sort and not a search (sortLanes): the first lane keeps the order it is given; each lane after it is
-// sorted by the places of what its nodes join in the lanes to their left (the mean when a node joins
-// several), ties in the order given, so the same graph always draws the same way. Then the lanes are
-// placed from that order (placeLanes): side by side left to right, each as wide as its widest node,
-// every node on its own row, every lane spread over the height of the tallest, so a lane short of nodes
-// is not packed at the middle. The lines between two nodes of one lane (the term lane's rank lines and
-// the links laid over it) run beside that lane, on its right, never through its rows (besideRoutes).
-// Each lane is boxed round its own nodes and those lines, titled as a group is, the boxes a gap apart.
+// REQ-2174, REQ-2239 (amended 2026-11-11, TERMS SIT LEVEL WITH THEIR COLUMNS; THE SCORE IS THE ANGLE
+// OF THE LINES; EACH SIBLING TERM ON ITS OWN ROW): the lanes preset. Every lane but the last (the
+// ``beside`` lane, the terms) is sorted left to right, one lane at a time, by a sort and not a search
+// (sortLanes): the first lane keeps the order it is given; each lane after it is sorted by the places
+// of what its nodes join in the lanes to their left (the mean when a node joins several), nodes tied
+// on that key next to those reaching the same nodes two lanes on (tables sharing terms), then in the
+// order given. Those lanes are spread over the height of the tallest (placeLanes). The beside lane is
+// placed, not sorted (placeRows), scored by how far its lines to the lane on its left are from
+// horizontal: a node joining one node there sits level with it, one joining several level with the
+// one leaving its lines flattest in total (fewer crossings, then the higher, on a tie), the children of
+// one parent (and a parent joining nothing on its left, with them) a block on adjacent rows placed
+// where its lines are flattest in total; a block never takes a row another has taken. Each node has its
+// own row. The lines between two nodes of the beside lane run beside it, on its right, never through
+// its rows (besideRoutes). Each lane is boxed round its own nodes and those lines, titled as a group
+// is, the boxes a gap apart.
 
 import type { CyInstance, CyLayoutOptions } from "../graph/cytoscape-types";
 import type { CyCanvas } from "./cyCanvas";
@@ -74,17 +79,21 @@ const same = (p: number, q: number) =>
     Number.isFinite(q) &&
     Math.abs(p - q) <= 1e-14 * Math.max(Math.abs(p), Math.abs(q)));
 
-/** ``lanes`` (left to right) each in its drawn order. The first keeps its order. Each lane after it is
- * sorted, once, by the places (as placeLanes draws them) of what its nodes join in the lanes to their
- * left: a node by the mean height of those; a node joining nothing to its left by the nodes of its own
- * lane it joins that are sorted (the mean of theirs), and one joining neither after the rest; ties in
- * the order given. Placing a lane moves no lane to its left, so each lane is sorted on its left
- * neighbours' final places. */
+/** ``lanes`` (left to right) each in its drawn order. The first keeps its order, and so does the
+ * ``beside`` lane (placeRows places it). Each other lane is sorted, once, by the places (as placeLanes
+ * draws them) of what its nodes join in the lanes to their left: a node by the mean height of those;
+ * a node joining nothing to its left by the nodes of its own lane it joins that are sorted (the mean
+ * of theirs), and one joining neither after the rest. Nodes tied on that key (the tables of one
+ * product) stand next to those reaching the most of the same nodes two or more lanes on (the terms
+ * their columns bind): each after the first is the one sharing most with the one before it, ties and
+ * none shared in the order given. Placing a lane moves no lane to its left, so each lane is sorted on
+ * its left neighbours' final places. */
 export function sortLanes(
   lanes: { id: string; items: LaneItem[] }[],
   lines: LaneLine[],
   beside?: string,
   gap: number = LANE_GAP,
+  overlay: ReadonlySet<string> = new Set(),
 ): { id: string; items: LaneItem[] }[] {
   const laneOf = new Map<string, number>();
   lanes.forEach((l, i) => l.items.forEach((n) => laneOf.set(n.id, i)));
@@ -95,9 +104,27 @@ export function sortLanes(
     join(k.source, k.target);
     join(k.target, k.source);
   }
+  /** The nodes two or more lanes right of ``id`` reached by stepping right. */
+  const reach = (id: string): Set<string> => {
+    const from = laneOf.get(id) as number;
+    const out = new Set<string>();
+    const seen = new Set([id]);
+    const todo = [id];
+    while (todo.length > 0) {
+      const at = todo.pop() as string;
+      for (const m of near.get(at) ?? []) {
+        if (seen.has(m) || (laneOf.get(m) as number) <= (laneOf.get(at) as number)) continue;
+        seen.add(m);
+        todo.push(m);
+        if ((laneOf.get(m) as number) >= from + 2) out.add(m);
+      }
+    }
+    return out;
+  };
   const out = lanes.map((l) => ({ id: l.id, items: [...l.items] }));
   for (let i = 1; i < out.length; i++) {
-    const at = placeLanes(out, lines, beside, gap);
+    if (out[i].id === beside) continue;
+    const at = placeLanes(out, lines, beside, gap, overlay);
     const y = (id: string) => (at.get(id) as At).y;
     const mean = (ys: number[]) => ys.reduce((s, v) => s + v, 0) / ys.length;
     const key = new Map<string, number>();
@@ -119,10 +146,40 @@ export function sortLanes(
         grew = true;
       }
     }
-    out[i].items = out[i].items
+    const sorted = out[i].items
       .map((n, order) => ({ n, k: key.get(n.id) ?? Infinity, order }))
-      .sort((p, q) => (same(p.k, q.k) ? 0 : p.k - q.k) || p.order - q.order)
-      .map((x) => x.n);
+      .sort((p, q) => (same(p.k, q.k) ? 0 : p.k - q.k) || p.order - q.order);
+    const items: LaneItem[] = [];
+    for (let a = 0; a < sorted.length; ) {
+      let b = a + 1;
+      while (b < sorted.length && same(sorted[b].k, sorted[a].k)) b++;
+      items.push(...chainShared(sorted.slice(a, b).map((x) => x.n), reach));
+      a = b;
+    }
+    out[i].items = items;
+  }
+  return out;
+}
+
+/** ``tied`` (in the order given) with each after the first the one sharing most of ``reach`` with
+ * the one before it; ties, and none shared, in the order given. */
+function chainShared(tied: LaneItem[], reach: (id: string) => Set<string>): LaneItem[] {
+  if (tied.length < 3) return tied;
+  const reached = new Map(tied.map((n) => [n.id, reach(n.id)]));
+  const shared = (a: string, b: string) => {
+    const rb = reached.get(b) as Set<string>;
+    let n = 0;
+    for (const x of reached.get(a) as Set<string>) if (rb.has(x)) n++;
+    return n;
+  };
+  const left = [...tied];
+  const out = [left.shift() as LaneItem];
+  while (left.length > 0) {
+    const last = out[out.length - 1].id;
+    let pick = 0;
+    for (let j = 1; j < left.length; j++)
+      if (shared(last, left[j].id) > shared(last, left[pick].id)) pick = j;
+    out.push(left.splice(pick, 1)[0]);
   }
   return out;
 }
@@ -165,36 +222,223 @@ function besideTracks(
 /** Where each node of ``lanes`` (left to right, each in its order top to bottom) is drawn. Each node
  * has its own row; each lane is as wide as its widest node, its nodes centred in it, and as wide again
  * as the tracks of the lines beside it (the ``beside`` lane, its ``lines`` inside it); the lanes' boxes
- * stand ``gap`` apart. Every lane is spread over the height of the tallest packed lane: its first node
- * at the top, its last at the bottom, the space between shared evenly; a lane of one node sits at the
- * middle. Spreading keeps each lane's order. */
+ * stand ``gap`` apart. Every lane but the beside lane is spread over the height of the tallest of
+ * them packed: its first node at the top, its last at the bottom, the space between shared evenly; a
+ * lane of one node sits at the middle. Spreading keeps each lane's order. The beside lane's rows are
+ * placed by placeRows on the places of the lanes to its left; its ``overlay`` lines place nothing. */
 export function placeLanes(
   lanes: { id: string; items: LaneItem[] }[],
   lines: LaneLine[] = [],
   beside?: string,
   gap: number = LANE_GAP,
+  overlay: ReadonlySet<string> = new Set(),
 ): Map<string, At> {
   const packed = (items: LaneItem[]) =>
     items.reduce((sum, n) => sum + n.h, 0) + NODE_GAP * Math.max(0, items.length - 1);
-  const height = Math.max(0, ...lanes.map((l) => packed(l.items)));
+  const height = Math.max(0, ...lanes.filter((l) => l.id !== beside).map((l) => packed(l.items)));
   const out = new Map<string, At>();
   let left = 0;
   for (const { id, items } of lanes) {
     if (items.length === 0) continue;
     const width = Math.max(...items.map((n) => n.w));
-    const free = height - items.reduce((sum, n) => sum + n.h, 0);
-    const step = items.length > 1 ? free / (items.length - 1) : 0;
-    let top = items.length > 1 ? 0 : (height - items[0].h) / 2;
-    for (const n of items) {
-      out.set(n.id, { x: left + width / 2, y: top + n.h / 2 });
-      top += n.h + step;
+    if (id === beside) {
+      const rows = placeRows(items, lines, overlay, (m) => out.get(m)?.y);
+      for (const n of items) out.set(n.id, { x: left + width / 2, y: rows.get(n.id) as number });
+    } else {
+      const free = height - items.reduce((sum, n) => sum + n.h, 0);
+      const step = items.length > 1 ? free / (items.length - 1) : 0;
+      let top = items.length > 1 ? 0 : (height - items[0].h) / 2;
+      for (const n of items) {
+        out.set(n.id, { x: left + width / 2, y: top + n.h / 2 });
+        top += n.h + step;
+      }
     }
+    const order = [...items].sort((p, q) => (out.get(p.id) as At).y - (out.get(q.id) as At).y);
     const tracks =
       id === beside
-        ? new Set(besideTracks(items.map((n) => n.id), lines).values()).size
+        ? new Set(besideTracks(order.map((n) => n.id), lines).values()).size
         : 0;
     const room = tracks > 0 ? TRACK_INSET + (tracks - 1) * TRACK_STEP : 0;
     left += width + room + 2 * (LANE_PAD + LANE_EDGE) + gap;
+  }
+  return out;
+}
+
+/** ``x <= y`` within the float tolerance. */
+const atMost = (x: number, y: number) => x <= y || same(x, y);
+
+/** The centre height of each of ``items`` (one lane), each on its own row, a node gap between rows.
+ * ``yOf`` gives the place of a node already drawn to the left, which is what a node's lines out of
+ * the lane run to. A line's score is how far it is from horizontal: its vertical run (the lanes stand
+ * a fixed distance apart). The lane's own lines (``lines`` with both ends in it, ``overlay`` aside)
+ * run from a parent to its children: the children of one parent, and a parent with no line out of
+ * the lane with its children, move as one block, its rows adjacent in the order of their lines' ends
+ * (a parent above its children), ties in the order given. Each unit (a node alone or a block) is
+ * placed once, where its lines' summed run is least among the places no unit placed before it has
+ * taken; ties to the fewer crossings with the lines already placed, then a place level with one of its
+ * lines, then the higher. The units go one at a time: nodes with one line out first (level with its
+ * end), then those with several, then blocks, then those with none, which sit nearest the nodes of the
+ * lane they join (below the rest when they join none); within each, from the top, then in the order
+ * given. */
+export function placeRows(
+  items: LaneItem[],
+  lines: LaneLine[],
+  overlay: ReadonlySet<string>,
+  yOf: (id: string) => number | undefined,
+): Map<string, number> {
+  const index = new Map(items.map((n, i) => [n.id, i]));
+  const size = new Map(items.map((n) => [n.id, n.h]));
+  const wants = new Map<string, number[]>(items.map((n) => [n.id, []]));
+  const children = new Map<string, string[]>();
+  const kin = new Map<string, string[]>(items.map((n) => [n.id, []]));
+  const seen = new Set<string>();
+  for (const k of lines) {
+    const s = index.has(k.source);
+    const g = index.has(k.target);
+    if (s && g) {
+      if (k.source === k.target) continue;
+      (kin.get(k.source) as string[]).push(k.target);
+      (kin.get(k.target) as string[]).push(k.source);
+      const pair = `${k.source}>${k.target}`;
+      if (overlay.has(k.id) || seen.has(pair)) continue;
+      seen.add(pair);
+      children.set(k.source, [...(children.get(k.source) ?? []), k.target]);
+    } else if (s || g) {
+      const y = yOf(s ? k.target : k.source);
+      if (y !== undefined) (wants.get(s ? k.source : k.target) as number[]).push(y);
+    }
+  }
+  const root = new Map(items.map((n) => [n.id, n.id]));
+  const find = (id: string): string => {
+    const r = root.get(id) as string;
+    return r === id ? id : find(r);
+  };
+  const union = (a: string, b: string) => {
+    const [p, q] = [find(a), find(b)];
+    if (p !== q) root.set(q, p);
+  };
+  for (const [p, kids] of children) {
+    if (kids.length > 1) for (const k of kids) union(kids[0], k);
+    if ((wants.get(p) as number[]).length === 0) for (const k of kids) union(p, k);
+  }
+
+  /** The height that leaves ``ys`` flattest in total: their median (the upper of the two middle). */
+  const flattest = (ys: number[]) => [...ys].sort((p, q) => p - q)[Math.floor((ys.length - 1) / 2)];
+  // A member's place in its block: by its lines' ends; one with none by its children's, above them.
+  const depth = new Map<string, number>();
+  const keyOf = new Map<string, number>();
+  const key = (id: string, path: Set<string> = new Set()): number => {
+    const known = keyOf.get(id);
+    if (known !== undefined) return known;
+    const ys = wants.get(id) as number[];
+    let k = Infinity;
+    if (ys.length > 0) k = flattest(ys);
+    else if (!path.has(id))
+      for (const c of children.get(id) ?? [])
+        if (find(c) === find(id)) k = Math.min(k, key(c, new Set([...path, id])));
+    keyOf.set(id, k);
+    return k;
+  };
+  const depthOf = (id: string, path: Set<string> = new Set()): number => {
+    const known = depth.get(id);
+    if (known !== undefined) return known;
+    let d = 0;
+    for (const [p, kids] of children)
+      if (kids.includes(id) && find(p) === find(id) && !path.has(p))
+        d = Math.max(d, depthOf(p, new Set([...path, id])) + 1);
+    depth.set(id, d);
+    return d;
+  };
+  const groups = new Map<string, string[]>();
+  for (const n of items) groups.set(find(n.id), [...(groups.get(find(n.id)) ?? []), n.id]);
+  const units = [...groups.values()].map((ids) => {
+    const members = [...ids].sort(
+      (p, q) =>
+        (same(key(p), key(q)) ? 0 : key(p) - key(q)) ||
+        depthOf(p) - depthOf(q) ||
+        (index.get(p) as number) - (index.get(q) as number),
+    );
+    const off: number[] = [];
+    let h = 0;
+    for (const id of members) {
+      off.push(h + (size.get(id) as number) / 2);
+      h += (size.get(id) as number) + NODE_GAP;
+    }
+    const lineCount = members.reduce((s, id) => s + (wants.get(id) as number[]).length, 0);
+    const kind =
+      members.length > 1
+        ? lineCount > 0
+          ? 2
+          : 3
+        : lineCount === 1
+          ? 0
+          : lineCount > 1
+            ? 1
+            : 3;
+    return { members, off, h: h - NODE_GAP, kind, first: index.get(members[0]) as number };
+  });
+  const ideal = (u: (typeof units)[number]) =>
+    u.kind === 3 ? Infinity : key(u.members.find((id) => (wants.get(id) as number[]).length > 0) as string);
+  units.sort(
+    (p, q) =>
+      p.kind - q.kind || (same(ideal(p), ideal(q)) ? 0 : ideal(p) - ideal(q)) || p.first - q.first,
+  );
+
+  const out = new Map<string, number>();
+  const taken: [number, number][] = [];
+  const fits = (top: number, h: number) =>
+    taken.every(([a, b]) => atMost(top + h + NODE_GAP, a) || atMost(b + NODE_GAP, top));
+  /** Pairs of lines out of the lane crossing, ``u``'s at ``top`` against those placed. */
+  const crossings = (u: (typeof units)[number], top: number) => {
+    let n = 0;
+    u.members.forEach((id, i) => {
+      const y = top + u.off[i];
+      for (const c of wants.get(id) as number[])
+        for (const [o, oy] of out)
+          for (const oc of wants.get(o) as number[])
+            if (!same(c, oc) && !same(y, oy) && (c - oc) * (y - oy) < 0) n++;
+    });
+    return n;
+  };
+  for (const u of units) {
+    const level: number[] = [];
+    u.members.forEach((id, i) => (wants.get(id) as number[]).forEach((c) => level.push(c - u.off[i])));
+    let score: (top: number) => number;
+    if (u.kind === 3) {
+      const near = u.members
+        .flatMap((id) => kin.get(id) as string[])
+        .map((m) => out.get(m))
+        .filter((y): y is number => y !== undefined);
+      const bottom = Math.max(0, ...taken.map(([, b]) => b + NODE_GAP));
+      const aim = near.length > 0 ? near.reduce((s, v) => s + v, 0) / near.length - u.h / 2 : bottom;
+      level.push(aim);
+      score = (top) => Math.abs(top - aim);
+    } else
+      score = (top) =>
+        u.members.reduce(
+          (s, id, i) =>
+            s + (wants.get(id) as number[]).reduce((t, c) => t + Math.abs(top + u.off[i] - c), 0),
+          0,
+        );
+    const tops = [
+      ...level.map((top) => ({ top, level: 0 })),
+      ...taken.flatMap(([a, b]) => [
+        { top: a - NODE_GAP - u.h, level: 1 },
+        { top: b + NODE_GAP, level: 1 },
+      ]),
+    ]
+      .filter((c) => fits(c.top, u.h))
+      .map((c) => ({ ...c, score: score(c.top), crossings: u.kind === 3 ? 0 : crossings(u, c.top) }));
+    tops.sort(
+      (p, q) =>
+        (same(p.score, q.score) ? 0 : p.score - q.score) ||
+        p.crossings - q.crossings ||
+        p.level - q.level ||
+        p.top - q.top,
+    );
+    const top = tops[0].top;
+    u.members.forEach((id, i) => out.set(id, top + u.off[i]));
+    taken.push([top, top + u.h]);
   }
   return out;
 }
@@ -239,7 +483,8 @@ export function runLanes(
   overlay: GraphEdgeSpec[],
   done: () => void,
 ): void {
-  // Nothing is placed by a layout: the order is a sort and the places follow from it. The null
+  // Nothing is placed by a layout: the order is a sort, the beside lane's rows are placed by their
+  // lines, and the places follow from them. The null
   // layout only gives the canvas its one run, which ends the core cleanly if it goes first.
   canvas.run(cy.layout({ name: "null" } as CyLayoutOptions), () => {
     cy.add(overlay.map((e) => edgeElement(e)) as unknown as ElementDefinition[]);
@@ -249,13 +494,15 @@ export function runLanes(
       lines.push({ id: e.id(), source: e.data("source") as string, target: e.data("target") as string });
     });
     const gap = opts.tight ? TIGHT_LANE_GAP : LANE_GAP;
+    const laid = new Set(overlay.map((e) => e.id));
     const lanes = sortLanes(
       opts.lanes.map((l) => ({ id: l.id, items: items.filter((n) => n.lane === l.id) })),
       lines,
       opts.beside,
       gap,
+      laid,
     );
-    const where = placeLanes(lanes, lines, opts.beside, gap);
+    const where = placeLanes(lanes, lines, opts.beside, gap, laid);
     cy.batch(() => where.forEach((p, id) => cy.getElementById(id).position(p)));
     if (opts.beside !== undefined) routeBeside(cy, opts.beside);
     boxLanes(cy, opts);

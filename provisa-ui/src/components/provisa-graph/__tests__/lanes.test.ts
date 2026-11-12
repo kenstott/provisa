@@ -8,20 +8,22 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2239 (maintainer, 2026-11-11 screenshots; amended 2026-11-11, EACH LANE IS SORTED BY THE LANE
-// ON ITS LEFT), REQ-2174 (amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW): the lanes preset as
-// ProvisaGraph places it, measured on the positions it leaves (headless), on the pet-store and Pet
-// Health Ontology graphs. The first lane keeps its order and each lane after it is sorted by the places
-// of what its nodes join on their left, ties by the order given; every lane is spread over the tallest
-// lane's height; each term has its own row and the lines between terms run beside the lane; each lane's
-// box bounds its own nodes and no two boxes meet; a node is wide enough for its label, which starts
-// after the icon.
+// REQ-2239 (maintainer, 2026-11-11 screenshots; amended 2026-11-11, TERMS SIT LEVEL WITH THEIR
+// COLUMNS; THE SCORE IS THE ANGLE OF THE LINES), REQ-2174 (amended 2026-11-11, EACH SIBLING TERM ON ITS
+// OWN ROW): the lanes preset as ProvisaGraph places it, measured on the positions it leaves (headless),
+// on the pet-store and Pet Health Ontology graphs. Products, tables and columns are sorted by the
+// places of what they join on their left, tied tables that share terms side by side, and spread over
+// the tallest lane's height; the term lane is placed: a term bound to one column level with it, one
+// bound to several level with the column leaving its lines flattest, the children of one parent a
+// block on adjacent rows placed where its lines are flattest, no term or block left a free place that
+// flattens its lines. Each term has its own row and the lines between terms run beside the lane; each
+// lane's box bounds its own nodes and no two boxes meet; a node is wide enough for its label, which
+// starts after the icon. Crossings are counted (drawnCrossings), not gated.
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import cytoscape from "cytoscape";
-import elk from "cytoscape-elk";
 import { laneDiagram, drawnCrossings, LANES, type At } from "../../graph3d/laneDiagram";
 import { laneGraph } from "../../graph3d/laneGraph";
 import { petHealthOntology, petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
@@ -29,22 +31,9 @@ import type { GraphData } from "../../graph3d/graphModel";
 import { NODE_MAX_WIDTH, TEXT_LEFT, TEXT_RIGHT, graphElements, textWidth } from "../model";
 import { graphStylesheet } from "../stylesheet";
 import { SIZE, graphTokens } from "../tokens";
-import { besideRoutes, runLanes, LANE_GAP, type LanesOptions } from "../lanes";
+import { besideRoutes, runLanes, LANE_GAP, NODE_GAP, type LanesOptions } from "../lanes";
 import type { Core } from "../core";
 import type { CyCanvas } from "../cyCanvas";
-
-type CyExt = Parameters<typeof cytoscape.use>[0];
-try {
-  cytoscape.use(((elk as { default?: CyExt }).default ?? elk) as CyExt);
-} catch {
-  /* already registered */
-}
-
-/** Pairs of lines crossing before the lanes were spread (J1206's baseline, run headless as below):
- * the pet-store graph 24 as the second ELK pass drew it (origin/main 2c6f10d75d), Pet Health 42. */
-const CROSSINGS_BEFORE = { petStore: 24, petHealth: 42 };
-/** The pet-store graph at most as crossed as J1206's barycentre sweeps left it (6a4b0d1db0: 20). */
-const PET_STORE_SWEPT = 20;
 
 const headlessCanvas: CyCanvas = {
   container: null as unknown as HTMLDivElement,
@@ -86,7 +75,8 @@ async function laidOut(data: GraphData) {
   const at = (id: string): At => cy.getElementById(id).position();
   /** Each line as drawn: the lines inside the term lane by the route beside it, the rest straight. */
   const routes = besideRoutes(cy, "term");
-  return { d, cy, at, route: (id: string) => routes.get(id) };
+  const overlay = new Set(graph.edges.filter((e) => e.overlay).map((e) => e.id));
+  return { d, cy, at, route: (id: string) => routes.get(id), overlay };
 }
 
 /** Each lane's nodes top to bottom as drawn. */
@@ -107,25 +97,93 @@ const box = (cy: Core, id: string) => {
   return { x1: p.x - w / 2, x2: p.x + w / 2, y1: p.y - h / 2, y2: p.y + h / 2 };
 };
 
-describe("each lane sorted by the lane on its left (REQ-2239, amended 2026-11-11)", () => {
+/** Two numbers equal within the float tolerance (a relative 1e-14). */
+const close = (p: number, q: number) =>
+  p === q ||
+  (Number.isFinite(p) &&
+    Number.isFinite(q) &&
+    Math.abs(p - q) <= 1e-14 * Math.max(Math.abs(p), Math.abs(q)));
+
+/** The term lane as drawn: each term's place and size, the columns it binds, the terms its rank lines
+ * join it to, and the blocks that move as one (the children of one parent, with a parent that binds
+ * no column of its own). */
+function termLane(cy: Core, overlay: Set<string>) {
+  const lane = (id: string) => cy.getElementById(id).data("lane") as string;
+  const terms = cy
+    .nodes('[kind = "node"]')
+    .filter((n) => n.data("lane") === "term")
+    .map((n) => ({
+      id: n.id(),
+      y: n.position().y,
+      h: n.data("h") as number,
+    }));
+  const cols = new Map<string, number[]>(terms.map((t) => [t.id, []]));
+  const children = new Map<string, string[]>();
+  cy.edges().forEach((e) => {
+    const [s, g] = [e.data("source") as string, e.data("target") as string];
+    for (const [a, b] of [
+      [s, g],
+      [g, s],
+    ])
+      if (lane(a) === "term" && lane(b) === "column")
+        cols.get(a)?.push(cy.getElementById(b).position().y);
+    if (lane(s) === "term" && lane(g) === "term" && !overlay.has(e.id()))
+      children.set(s, [...(children.get(s) ?? []), g]);
+  });
+  const root = new Map(terms.map((t) => [t.id, t.id]));
+  const find = (id: string): string => {
+    const r = root.get(id) as string;
+    return r === id ? id : find(r);
+  };
+  const union = (a: string, b: string) => root.set(find(a), find(b));
+  for (const [p, kids] of children) {
+    if (kids.length > 1) kids.forEach((k) => union(kids[0], k));
+    if ((cols.get(p) ?? []).length === 0) kids.forEach((k) => union(p, k));
+  }
+  const blocks = new Map<string, string[]>();
+  for (const t of terms) blocks.set(find(t.id), [...(blocks.get(find(t.id)) ?? []), t.id]);
+  const inBlock = (id: string) => (blocks.get(find(id)) as string[]).length > 1;
+  const byId = new Map(terms.map((t) => [t.id, t]));
+  /** The summed vertical offset of ``ids``' lines with each moved by ``dy``. */
+  const score = (ids: string[], dy = 0) =>
+    ids.reduce(
+      (s, id) =>
+        s + (cols.get(id) as number[]).reduce((u, c) => u + Math.abs((byId.get(id)!.y + dy) - c), 0),
+      0,
+    );
+  /** Whether ``ids`` moved by ``dy`` overlap no other term's row (a node gap kept). */
+  const free = (ids: string[], dy: number) =>
+    ids.every((id) => {
+      const t = byId.get(id)!;
+      return terms
+        .filter((o) => !ids.includes(o.id))
+        .every(
+          (o) =>
+            t.y + dy + t.h / 2 + NODE_GAP <= o.y - o.h / 2 + 1e-9 ||
+            t.y + dy - t.h / 2 >= o.y + o.h / 2 + NODE_GAP - 1e-9,
+        );
+    });
+  return { terms, cols, children, blocks: [...blocks.values()], inBlock, score, free, byId };
+}
+
+describe("terms sit level with their columns (REQ-2239, amended 2026-11-11)", () => {
   const FIXTURES = { petStore: petStoreOntology, petHealth: petHealthOntology };
 
-  it("draws no line from a table to its own columns across another (Pet Health)", async () => {
-    const { d, cy, at } = await laidOut(petHealthOntology());
-    const own = d.links.filter((k) => d.lane.get(k.to) === "table" && d.lane.get(k.from) !== "term");
-    const n = drawnCrossings(own, at);
-    cy.destroy();
-    expect(own.length).toBeGreaterThan(30);
-    expect(n).toBe(0);
-  });
+  for (const [name, fixture] of Object.entries(FIXTURES)) {
+    it(`draws no line from a table to its own columns across another (${name})`, async () => {
+      const { d, cy, at } = await laidOut(fixture());
+      const own = d.links.filter(
+        (k) => d.lane.get(k.to) === "table" && d.lane.get(k.from) !== "term",
+      );
+      const n = drawnCrossings(own, at);
+      cy.destroy();
+      expect(own.length).toBeGreaterThan(30);
+      expect(n).toBe(0);
+    });
 
-  for (const [name, fixture] of Object.entries(FIXTURES))
-    it(`draws each lane in the sort of its left neighbours' places (${name})`, async () => {
+    it(`sorts the product, table and column lanes by their left neighbours' places (${name})`, async () => {
       const { cy } = await laidOut(fixture());
-      // The order the nodes are given in: the stable key.
-      const given = cy
-        .nodes('[kind = "node"], [kind = "more"]')
-        .map((n) => n.id());
+      const given = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => n.id());
       const laneAt = new Map<string, number>();
       cy.nodes('[kind = "node"], [kind = "more"]').forEach((n) => {
         laneAt.set(n.id(), LANES.indexOf(n.data("lane")));
@@ -138,54 +196,161 @@ describe("each lane sorted by the lane on its left (REQ-2239, amended 2026-11-11
           [a, b],
           [b, a],
         ])
-          if ((laneAt.get(q) as number) < (laneAt.get(p) as number))
+          if ((laneAt.get(q) as number) === (laneAt.get(p) as number) - 1)
             left.set(p, [...(left.get(p) ?? []), y(q)]);
       });
       const key = (id: string) => {
         const ys = left.get(id) ?? [];
         return ys.length === 0 ? Infinity : ys.reduce((s, v) => s + v, 0) / ys.length;
       };
-      const close = (p: number, q: number) =>
-        p === q ||
-        (Number.isFinite(p) &&
-          Number.isFinite(q) &&
-          Math.abs(p - q) <= 1e-14 * Math.max(Math.abs(p), Math.abs(q)));
       const drawn = drawnLanes(cy);
       cy.destroy();
       expect(drawn[0]).toEqual(given.filter((id) => laneAt.get(id) === 0));
-      for (let l = 1; l < LANES.length; l++) {
-        const sorted = given
-          .filter((id) => laneAt.get(id) === l)
-          .map((id, i) => ({ id, k: key(id), i }))
-          .sort((p, q) => (close(p.k, q.k) ? 0 : p.k - q.k) || p.i - q.i)
-          .map((x) => x.id);
-        expect(drawn[l], `the ${LANES[l]} lane`).toEqual(sorted);
+      for (const l of [1, 2]) {
+        const keys = drawn[l].map(key);
+        for (let i = 1; i < keys.length; i++)
+          expect(
+            close(keys[i], keys[i - 1]) || keys[i] > keys[i - 1],
+            `${LANES[l]} lane: ${drawn[l][i]} after ${drawn[l][i - 1]}`,
+          ).toBe(true);
       }
     });
 
-  it("crosses fewer lines than before the lanes were spread, counted as drawn", async () => {
-    const health = await laidOut(petHealthOntology());
-    const h = drawnCrossings(health.d.links, health.at, health.route);
-    health.cy.destroy();
-    const store = await laidOut(petStoreOntology());
-    const s = drawnCrossings(store.d.links, store.at, store.route);
-    store.cy.destroy();
-    expect(h).toBeLessThan(CROSSINGS_BEFORE.petHealth);
-    expect(s).toBeLessThan(CROSSINGS_BEFORE.petStore);
-    expect(s).toBeLessThanOrEqual(PET_STORE_SWEPT);
-  });
+    it(`puts tied tables that share terms next to each other (${name})`, async () => {
+      const { cy } = await laidOut(fixture());
+      const lane = (id: string) => cy.getElementById(id).data("lane") as string;
+      const termsOf = new Map<string, Set<string>>();
+      const tableOf = new Map<string, string>();
+      cy.edges().forEach((e) => {
+        const [s, g] = [e.data("source") as string, e.data("target") as string];
+        if (lane(s) === "table" && lane(g) === "column") tableOf.set(g, s);
+      });
+      cy.edges().forEach((e) => {
+        const [s, g] = [e.data("source") as string, e.data("target") as string];
+        for (const [c, t] of [
+          [s, g],
+          [g, s],
+        ])
+          if (lane(c) === "column" && lane(t) === "term" && tableOf.has(c)) {
+            const tb = tableOf.get(c) as string;
+            termsOf.set(tb, (termsOf.get(tb) ?? new Set()).add(t));
+          }
+      });
+      const productY = (tb: string) => {
+        const ps = cy
+          .edges()
+          .filter((e) => e.data("target") === tb && lane(e.data("source")) === "product")
+          .map((e) => cy.getElementById(e.data("source")).position().y);
+        return ps.length === 0 ? Infinity : ps.reduce((s, v) => s + v, 0) / ps.length;
+      };
+      const tables = drawnLanes(cy)[1];
+      cy.destroy();
+      const shared = (a: string, b: string) =>
+        [...(termsOf.get(a) ?? [])].filter((t) => termsOf.get(b)?.has(t)).length;
+      // In each run of tables tied on their product, a table is followed by one it shares a term
+      // with whenever any table still to come in the run shares one with it.
+      let runs = 0;
+      for (let i = 0; i < tables.length; ) {
+        let j = i + 1;
+        while (j < tables.length && close(productY(tables[j]), productY(tables[i]))) j++;
+        const run = tables.slice(i, j);
+        if (run.length > 2) runs++;
+        for (let k = 0; k + 1 < run.length; k++) {
+          const best = Math.max(...run.slice(k + 1).map((b) => shared(run[k], b)));
+          if (best > 0) expect(shared(run[k], run[k + 1]), `${run[k]} then ${run[k + 1]}`).toBe(best);
+        }
+        i = j;
+      }
+      expect(runs).toBeGreaterThan(0);
+    });
 
-  it("draws the same graph the same way twice", async () => {
-    for (const fixture of Object.values(FIXTURES)) {
+    it(`sets each term bound to one column level with it (${name})`, async () => {
+      const { cy, overlay } = await laidOut(fixture());
+      const t = termLane(cy, overlay);
+      cy.destroy();
+      const single = t.terms.filter((x) => t.cols.get(x.id)!.length === 1 && !t.inBlock(x.id));
+      expect(single.length).toBeGreaterThan(1);
+      for (const x of single) expect(x.y, x.id).toBeCloseTo(t.cols.get(x.id)![0], 9);
+    });
+
+    it(`sets each term bound to several columns level with the one leaving its lines flattest (${name})`, async () => {
+      const { cy, overlay } = await laidOut(fixture());
+      const t = termLane(cy, overlay);
+      cy.destroy();
+      const multi = t.terms.filter((x) => t.cols.get(x.id)!.length > 1 && !t.inBlock(x.id));
+      expect(multi.length).toBeGreaterThan(2);
+      for (const x of multi) {
+        const ys = t.cols.get(x.id)!;
+        expect(
+          ys.some((c) => close(c, x.y)),
+          `${x.id} level with one of its columns`,
+        ).toBe(true);
+        const now = t.score([x.id]);
+        for (const c of ys)
+          if (t.free([x.id], c - x.y))
+            expect(t.score([x.id], c - x.y), `${x.id} at its column ${c}`).toBeGreaterThanOrEqual(
+              now - 1e-14 * now,
+            );
+      }
+    });
+
+    it(`leaves no term or block a free place that flattens its lines (${name})`, async () => {
+      const { cy, overlay } = await laidOut(fixture());
+      const t = termLane(cy, overlay);
+      cy.destroy();
+      const units = t.blocks.filter((b) => b.some((id) => t.cols.get(id)!.length > 0));
+      for (const ids of units) {
+        const now = t.score(ids);
+        // Every place the unit could take: each of its lines level, and against each other row.
+        const tops = ids.map((id) => t.byId.get(id)!.y);
+        const moves = new Set<number>();
+        ids.forEach((id, i) => t.cols.get(id)!.forEach((c) => moves.add(c - tops[i])));
+        const lo = Math.min(...ids.map((id) => t.byId.get(id)!.y - t.byId.get(id)!.h / 2));
+        const hi = Math.max(...ids.map((id) => t.byId.get(id)!.y + t.byId.get(id)!.h / 2));
+        for (const o of t.terms.filter((o) => !ids.includes(o.id))) {
+          moves.add(o.y - o.h / 2 - NODE_GAP - hi);
+          moves.add(o.y + o.h / 2 + NODE_GAP - lo);
+        }
+        for (const dy of moves)
+          if (t.free(ids, dy))
+            expect(t.score(ids, dy), `${ids.join("+")} moved ${dy}`).toBeGreaterThanOrEqual(
+              now - 1e-14 * now,
+            );
+      }
+    });
+
+    it(`keeps a parent's children next to each other, each on its own row (${name})`, async () => {
+      const { cy, overlay } = await laidOut(fixture());
+      const t = termLane(cy, overlay);
+      cy.destroy();
+      const order = [...t.terms].sort((p, q) => p.y - q.y).map((x) => x.id);
+      let families = 0;
+      for (const [, kids] of t.children) {
+        if (kids.length < 2) continue;
+        families++;
+        const at = kids.map((k) => order.indexOf(k)).sort((p, q) => p - q);
+        expect(at[at.length - 1] - at[0], kids.join(",")).toBe(kids.length - 1);
+      }
+      expect(families).toBeGreaterThan(1);
+      const rows = [...t.terms].sort((p, q) => p.y - q.y);
+      for (let i = 1; i < rows.length; i++)
+        expect(rows[i].y - rows[i].h / 2, `${rows[i].id} below ${rows[i - 1].id}`).toBeGreaterThanOrEqual(
+          rows[i - 1].y + rows[i - 1].h / 2 + NODE_GAP - 1e-9,
+        );
+    });
+
+    it(`draws the same graph the same way twice (${name})`, async () => {
+      const where = (cy: Core) =>
+        cy.nodes().map((n) => [n.id(), n.position().x, n.position().y] as const);
       const one = await laidOut(fixture());
-      const first = drawnLanes(one.cy);
+      const first = where(one.cy);
       one.cy.destroy();
       const two = await laidOut(fixture());
-      const second = drawnLanes(two.cy);
+      const second = where(two.cy);
       two.cy.destroy();
       expect(second).toEqual(first);
-    }
-  });
+    });
+  }
 });
 
 describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () => {
@@ -234,11 +399,11 @@ describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () =
 
 describe("the lanes preset on the pet-store Ontology graph", () => {
 
-  it("spreads every lane over the height of the tallest", async () => {
+  it("spreads every lane but the term lane over the height of the tallest", async () => {
     const { d, cy } = await laidOut(petStoreOntology());
     const laneOf = (id: string) => cy.getElementById(id).data("lane") as string;
     const placed = cy.nodes('[kind = "node"], [kind = "more"]').map((n) => n.id());
-    const spans = LANES.map((l) => {
+    const spans = LANES.filter((l) => l !== "term").map((l) => {
       const ids = placed.filter((id) => laneOf(id) === l);
       const bs = ids.map((id) => box(cy, id));
       return {
