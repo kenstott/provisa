@@ -170,7 +170,7 @@ test.describe("REQ-1387 glossary curation", () => {
 
     // Creation selects the new term; it is a concept, so it has no refs.
     await expect(page.getByTestId("glossary-read-fields")).toContainText(abstractName, ROUND_TRIP);
-    await expect(page.getByTestId("glossary-detail").getByText("No physical refs.")).toBeVisible();
+    await expect(page.getByTestId("glossary-detail").getByText("Grounded in no column")).toBeVisible();
 
     // KIND_OF edge to the rooted "species" term, in the term's Edit form.
     await editTerm(page);
@@ -193,7 +193,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await expect(page.getByTestId("glossary-delete-btn")).toBeDisabled();
     await page.getByTestId("glossary-delete-btn").hover({ force: true });
     await expect(
-      page.getByText("This term has refs or relationships", { exact: false }),
+      page.getByText("This term is grounded in columns or has relationships", { exact: false }),
     ).toBeVisible();
 
     // The inverse direction is visible from the rooted term.
