@@ -38,7 +38,7 @@ export type Loaded =
   | { data: GraphData; query: string; over?: undefined }
   | { over: number; rows: CountRow[]; query: string };
 
-/** The ontology as ``scope`` reads it, in one query (REQ-2136), by the rules it reads by
+/** The ontology as ``scope`` reads it, opened as one query (REQ-2136), by the rules it reads by
  * (QueryScope.products): its terms counted first, and read only within the budget (REQ-2143);
  * null when the role cannot read the glossary. */
 export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
@@ -50,16 +50,18 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
   // alone. Else a search's or a focus's neighbourhood is read a hop at a time, each term once.
-  const { rows } = await readOntology(
+  const { rows, opened } = await readOntology(
     m,
     scope,
     (q) => dataGraphql<OntologyRows>(q, {}, role),
     counted.length > 0,
   );
+  // REQ-2136: what the view opens as is what it read -- the root and every hop -- in one query.
+  if (opened === null) return null;
   const data = ontologyGraph(rows, scope);
   // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];
-  if (!scope.products || !scope.layers.has("lineage")) return { data, query };
+  if (!scope.products || !scope.layers.has("lineage")) return { data, query: opened };
   // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): under Lineage each product read has its
   // lineage, from the product lineage endpoint (REQ-2156).
   const lineages = await Promise.all(products.map((p) => fetchProductLineage(p.id)));
@@ -68,7 +70,7 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
       (g, p, i) => withProductLineage(g, p.id, lineages[i], memberTablesOf(p)),
       data,
     ),
-    query,
+    query: opened,
   };
 }
 
