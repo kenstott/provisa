@@ -60,7 +60,8 @@ export function tipsInsideTriggers(file: string, source: string): { tag: string;
       if (child) {
         const opening = ts.isJsxElement(child) ? child.openingElement : child;
         const tag = (opening as ts.JsxOpeningLikeElement).tagName.getText();
-        if (tag === "Tip" || tag === "TipSurface" || tag === "HelpBubble")
+        // CanvasButton (provisa-graph/CanvasControls.tsx) is a Tip round a canvas control.
+        if (tag === "Tip" || tag === "TipSurface" || tag === "HelpBubble" || tag === "CanvasButton")
           out.push({ tag, line: sf.getLineAndCharacterOfPosition(child.getStart()).line + 1 });
       }
     }

@@ -15,7 +15,7 @@ import { ResetSettingsButton } from "../ResetSettingsButton";
 import { useGraphSettings } from "../graphSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
+import { Group, SegmentedControl, Select, Text } from "@mantine/core";
 import type { ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { Stage3D, type CameraCommand } from "../Stage3D";
@@ -56,7 +56,15 @@ function useSlotName(model: JointModel) {
   };
 }
 
-function JointStage({ s, command }: { s: Shared; command: CameraCommand | null }) {
+function JointStage({
+  s,
+  command,
+  onReset,
+}: {
+  s: Shared;
+  command: CameraCommand | null;
+  onReset: () => void;
+}) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: JointHover; x: number; y: number } | null>(null);
   const latest = useRef(s);
@@ -139,6 +147,11 @@ function JointStage({ s, command }: { s: Shared; command: CameraCommand | null }
       exportable={scene}
       exportName={s.exportName}
       testId="joint-stage"
+      controls={{
+        testId: "joint",
+        onReset,
+        rotate: { value: s.rotate, onChange: s.setRotate },
+      }}
       legend={
         s.color === "rows" ? (
           <span>
@@ -279,24 +292,17 @@ function JointView({
           aria-label={t("profileJoint.colorBy")}
           data-testid="joint-color"
         />
-        <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="joint-rotate">
-          {t("profile3d.rotate")}
-        </Chip>
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() =>
-            setCommand((c) => ({ kind: "reset", target: null, seq: c == null ? 1 : c.seq + 1 }))
-          }
-          data-testid="joint-reset"
-        >
-          {t("profile3d.resetView")}
-        </Button>
         <ResetSettingsButton onReset={s.resetSettings} testId="joint" />
         {onExpand && <ExpandButton onClick={onExpand} testId="joint-expand" />}
       </Group>
       <div className="p3d-body">
-        <JointStage s={s} command={command} />
+        <JointStage
+          s={s}
+          command={command}
+          onReset={() =>
+            setCommand((c) => ({ kind: "reset", target: null, seq: c == null ? 1 : c.seq + 1 }))
+          }
+        />
         <JointDetail s={s} />
       </div>
     </div>

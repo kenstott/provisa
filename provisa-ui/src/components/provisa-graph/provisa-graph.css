@@ -41,7 +41,7 @@
   overflow-y: auto;
   pointer-events: auto;
 }
-.pg-controls,
+/* The controls' stack is the one 2D and 3D share (canvas-controls.css). */
 .pg-legend {
   position: absolute;
   z-index: 10;
@@ -49,26 +49,6 @@
   border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-sm);
   background: var(--mantine-color-body);
-}
-.pg-controls {
-  bottom: 8px;
-  inset-inline-start: 8px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.pg-stage:hover .pg-controls,
-.pg-controls:focus-within {
-  opacity: 1;
-}
-.pg-copied {
-  position: absolute;
-  bottom: 4px;
-  inset-inline-start: calc(100% + 6px);
-  padding: 2px 6px;
-  border-radius: var(--mantine-radius-sm);
-  background: var(--mantine-color-body);
-  font-size: var(--mantine-font-size-xs);
-  white-space: nowrap;
 }
 /* The one legend: top right, clear of the controls and of the application's floating buttons. */
 .pg-legend {

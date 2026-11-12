@@ -15,7 +15,7 @@ import { ResetSettingsButton } from "../ResetSettingsButton";
 import { useGraphSettings } from "../graphSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Chip, Group, Loader, Select, Text } from "@mantine/core";
+import { Alert, Group, Loader, Select, Text } from "@mantine/core";
 import { fetchProfileRun, type ProfileRun, type ProfileRunResults } from "../../../../api/profiler";
 import { ExpandButton, Expandable3D } from "../Expandable3D";
 import { Stage3D, type CameraCommand } from "../Stage3D";
@@ -46,7 +46,15 @@ interface Shared {
 const runTimeLabel = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 
-function DriftStage({ s, command }: { s: Shared; command: CameraCommand | null }) {
+function DriftStage({
+  s,
+  command,
+  onReset,
+}: {
+  s: Shared;
+  command: CameraCommand | null;
+  onReset: () => void;
+}) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: StrataHover; x: number; y: number } | null>(null);
   const latest = useRef(s);
@@ -136,6 +144,11 @@ function DriftStage({ s, command }: { s: Shared; command: CameraCommand | null }
       exportable={scene}
       exportName={s.exportName}
       testId="strata-stage"
+      controls={{
+        testId: "strata",
+        onReset,
+        rotate: { value: s.rotate, onChange: s.setRotate },
+      }}
       legend={
         <>
           <span>
@@ -234,24 +247,17 @@ function DriftView({
           aria-label={t("profileStrata.column")}
           data-testid="strata-column"
         />
-        <Chip size="xs" checked={s.rotate} onChange={s.setRotate} data-testid="strata-rotate">
-          {t("profile3d.rotate")}
-        </Chip>
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() =>
-            setCommand((c) => ({ kind: "reset", target: null, seq: c == null ? 1 : c.seq + 1 }))
-          }
-          data-testid="strata-reset"
-        >
-          {t("profile3d.resetView")}
-        </Button>
         <ResetSettingsButton onReset={s.resetSettings} testId="strata" />
         {onExpand && <ExpandButton onClick={onExpand} testId="strata-expand" />}
       </Group>
       <div className="p3d-body">
-        <DriftStage s={s} command={command} />
+        <DriftStage
+          s={s}
+          command={command}
+          onReset={() =>
+            setCommand((c) => ({ kind: "reset", target: null, seq: c == null ? 1 : c.seq + 1 }))
+          }
+        />
         <DriftDetail s={s} />
       </div>
     </div>
