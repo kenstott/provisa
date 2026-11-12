@@ -799,11 +799,17 @@ def api(control_plane, monkeypatch):
     async def _embedder():
         return EMBEDDER
 
+    async def _embed_terms(org_id: str) -> None:
+        return None
+
     monkeypatch.setattr(router, "_pool", lambda: db)
     monkeypatch.setattr(router, "require_active_org_id", lambda request: "default")
     monkeypatch.setattr(router, "_launch", launched.append)
     monkeypatch.setattr(router, "_model", _model)
     monkeypatch.setattr(library_api, "_embedder", _embedder)
+    # REQ-2185: a decision that makes a term embeds it in the background, which these cases do not
+    # run (test_reference_library_terms_embedded).
+    monkeypatch.setattr(library_api, "embed_terms", _embed_terms)
     # Which right gates each endpoint, and how domains narrow curation, are the glossary's own
     # tests (test_glossary_rights.py, test_glossary_stewardship.py); here they must not block.
     monkeypatch.setattr(glossary_router, "_require_glossary_rw", lambda request: None)

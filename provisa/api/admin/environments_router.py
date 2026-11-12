@@ -965,17 +965,17 @@ async def _refresh(org_id: str, env: str, *, connectivity: bool) -> str:
 
     from provisa.api.admin.glossary_router import embed_terms
 
+    registry = _state().org_registry
+    key = runtime_key(org_id, env)
+    if registry.get(key) is None:
+        return "uncached"
     org_token = set_current_org(org_id)
     env_token = set_current_env(env)
     try:
         # REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): the glossary terms the load brought into
         # service, renamed, redefined or took out of it are embedded in the environment, in the
-        # background.
+        # background, before its runtime is let go.
         await embed_terms(org_id)
-        registry = _state().org_registry
-        key = runtime_key(org_id, env)
-        if registry.get(key) is None:
-            return "uncached"
         if connectivity:
             registry.invalidate(key)
             return "rebuilt"

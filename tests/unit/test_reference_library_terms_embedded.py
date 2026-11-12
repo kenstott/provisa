@@ -45,6 +45,9 @@ from tests.unit.test_glossary_class_grounding import (
 
 ORG = "acme"  # the org _request is bound to
 
+#: The trigger itself: the save harnesses (_surface) replace it, and these cases run it.
+TRIGGER = library_api.embed_terms
+
 
 def record_embeds(monkeypatch) -> list[str]:
     """The orgs the one trigger is called with, in order; nothing is embedded."""
@@ -190,7 +193,9 @@ async def test_a_configuration_applied_embeds(monkeypatch):
             return None
 
     monkeypatch.setattr(
-        app, "state", types.SimpleNamespace(model_db=_Pool(), federation_engine=None)
+        app,
+        "state",
+        types.SimpleNamespace(model_db=_Pool(), federation_engine=None, source_catalogs={}),
     )
     monkeypatch.setattr(app, "_rebuild_schemas", nothing)
     monkeypatch.setattr(startup_seed, "_resolve_pk_from_sources", nothing)
@@ -221,7 +226,9 @@ async def test_a_load_into_an_environment_embeds_there(monkeypatch, cached):
         environments_router, "_state", lambda: types.SimpleNamespace(org_registry=registry)
     )
     await environments_router._refresh(ORG, "dev", connectivity=True)
-    assert seen == [(ORG, ORG, "dev")]
+    # an environment whose runtime is cached embeds in it; one with none cached embeds before
+    # its first search (retrieve's refresh), as nothing of it is running to embed with
+    assert seen == ([] if cached is None else [(ORG, ORG, "dev")])
     source = Path(environments_router.__file__).read_text(encoding="utf-8")
     for route in (
         "merge_into_environment",
@@ -259,6 +266,7 @@ def _vector_model(monkeypatch, db, model: str | None) -> None:
     async def embedder() -> library.Embedder:
         return EMBEDDER
 
+    monkeypatch.setattr(library_api, "embed_terms", TRIGGER)
     monkeypatch.setattr(library_api, "_current_model", current)
     monkeypatch.setattr(library_api, "_embedder", embedder)
     monkeypatch.setattr(library_api, "_pool", lambda: db)
