@@ -298,7 +298,9 @@ describe("a product's graph, expanded from its panel", () => {
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360");
   });
 
-  it("draws no table reached only through a term grounded on a member table", async () => {
+  it("draws a table a class term of a member table also grounds, as that term's grounding", async () => {
+    // REQ-2174 (amended 2026-11-12): Account IS customers (a member) and elsewhere; every term drawn
+    // brings the tables it grounds, at no hop.
     reads.data = {
       nodes: [
         ...FACTS.nodes,
@@ -331,7 +333,7 @@ describe("a product's graph, expanded from its panel", () => {
     };
     await open();
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:account"));
-    expect(nodeIds(drawn())).not.toContain("t:elsewhere");
+    expect(nodeIds(drawn())).toContain("t:elsewhere");
   });
 
   it("shows the rest of the model on asking, and folds it away again", async () => {

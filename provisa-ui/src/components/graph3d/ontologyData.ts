@@ -287,24 +287,21 @@ const TERM_FIELDS = [
   "identity_gap",
 ];
 
-/** The hops from a product to its own terms, the root a product's focus reads: its tables (1),
- * their columns (2) and the terms tied to them (3), as reach() and laneDiagram count them. */
-export const PRODUCT_TERM_HOPS = 3;
-
-/** How many steps across the term links ``s``'s hops take from the terms at its root. A search's
- * matches and a term's focus are at hop 0, so each hop is a step. A product's own terms are
- * PRODUCT_TERM_HOPS from it, so only the hops past them step across a link. */
+/** How many steps across the term links ``s``'s hops take from the terms at its root: a search's
+ * matches, a term's focus, or a product's own terms (those its tables' columns are, and those its
+ * tables are), each read at no hop (REQ-2174, amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS).
+ * Infinity (All) reads to the end of the connected part. */
 export function termLevels(s: Pick<QueryScope, "search" | "focus" | "depth">): number {
   if (s.search.length === 0 && s.focus === null) return 0;
-  return focusProduct(s) === null ? s.depth : Math.max(0, s.depth - PRODUCT_TERM_HOPS);
+  return s.depth;
 }
 
-/** A term's selection: its edges with their ends by id, and -- when ``full`` -- what it touches.
- * Under a search or a focus a hop's terms are read with their edges both ways, each edge's end
- * kept by the filters, so the next hop reads the ends no hop has read (readOntology); a term at
- * the last hop is read with its edges alone, so an edge between two of them is drawn and nothing
- * past them is. With neither every term is read at the root in full, the edges leaving it. */
-function termSelection(s: QueryScope, full: boolean): Selection {
+/** A term's selection: its edges with their ends by id, and what it touches -- its grounding, drawn
+ * with every term whatever the hop it is read at (REQ-2174, amended 2026-11-12). Under a search or
+ * a focus a hop's terms are read with their edges both ways, each edge's end kept by the filters,
+ * so the next hop reads the ends no hop has read (readOntology); an edge to a term no hop read has
+ * no end to draw. With neither every term is read at the root, the edges leaving it. */
+function termSelection(s: QueryScope): Selection {
   const depth = termLevels(s);
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
@@ -334,56 +331,54 @@ function termSelection(s: QueryScope, full: boolean): Selection {
         where: edgeWhere("source_term"),
       };
   }
-  // What a term touches is a hop past it: the last hop's is past the neighbourhood.
-  if (full) {
-    // A class term's tables are the ontology's: what the term names the rows of.
-    if (s.layers.has("ontology"))
-      rels.tables = {
-        // A class term's table has no columns drawn: its product is read only to be named.
-        sel: {
-          fields: ["id", "table_name", "domain_id"],
-          ...(productsNamed(s) ? { rels: productOf(s) } : {}),
-        },
-        where: inDomains(s.domains),
-      };
-    if (s.layers.has("domains"))
-      rels.domains = {
-        sel: { fields: ["domain_id"] },
-        where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
-      };
-    if (s.layers.has("columns"))
-      rels.refs = {
-        sel: {
-          fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
-          rels: {
-            // REQ-2174: the column's and its table's facts, for the hover card and detail panel;
-            // under the Product map their tags too, which its tag filter judges.
-            column: {
-              sel: {
-                fields: COLUMN_FACTS,
-                rels: {
-                  sensitivity: { sel: { fields: ["tags"] } },
-                  ...(s.products ? TAGS : {}),
-                },
+  // What a term touches comes with it at no hop: its grounding.
+  // A class term's tables are the ontology's: what the term names the rows of.
+  if (s.layers.has("ontology"))
+    rels.tables = {
+      // A class term's table has no columns drawn: its product is read only to be named.
+      sel: {
+        fields: ["id", "table_name", "domain_id"],
+        ...(productsNamed(s) ? { rels: productOf(s) } : {}),
+      },
+      where: inDomains(s.domains),
+    };
+  if (s.layers.has("domains"))
+    rels.domains = {
+      sel: { fields: ["domain_id"] },
+      where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
+    };
+  if (s.layers.has("columns"))
+    rels.refs = {
+      sel: {
+        fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
+        rels: {
+          // REQ-2174: the column's and its table's facts, for the hover card and detail panel;
+          // under the Product map their tags too, which its tag filter judges.
+          column: {
+            sel: {
+              fields: COLUMN_FACTS,
+              rels: {
+                sensitivity: { sel: { fields: ["tags"] } },
+                ...(s.products ? TAGS : {}),
               },
             },
-            registeredTable: {
-              to: "registered_tables",
-              sel: {
-                fields: ["id", ...TABLE_FACTS.fields],
-                rels: {
-                  ...TABLE_FACTS.rels,
-                  ...(s.products ? TAGS : {}),
-                  ...productOf(s),
-                  ...relationships(s),
-                },
+          },
+          registeredTable: {
+            to: "registered_tables",
+            sel: {
+              fields: ["id", ...TABLE_FACTS.fields],
+              rels: {
+                ...TABLE_FACTS.rels,
+                ...(s.products ? TAGS : {}),
+                ...productOf(s),
+                ...relationships(s),
               },
             },
           },
         },
-        where: inDomains(s.domains),
-      };
-  }
+      },
+      where: inDomains(s.domains),
+    };
   // REQ-2174: its experts, its stewards on the graph's hover card and detail panel.
   rels.experts = { sel: { fields: ["user_id", "kind"] } };
   return { fields: TERM_FIELDS, rels };
@@ -418,26 +413,25 @@ function rootWhere(s: QueryScope): Where | undefined {
 }
 
 function termsField(m: MetaReader, s: QueryScope): string | null {
-  // The root's terms are read in full: at no depth they are all there is; under a search or a
-  // focus they are hop 0.
-  return rootField(m, "_terms", termSelection(s, true), rootWhere(s));
+  // Under a search or a focus the root's terms are hop 0; else they are all there is.
+  return rootField(m, "_terms", termSelection(s), rootWhere(s));
 }
 
 /** REQ-2174: the terms hop ``hop`` of ``s``'s neighbourhood reads -- ``ids``, the terms the last
- * hop's edges reach that no hop has read -- with their edges, and what they touch short of the
- * last hop; null when the role cannot read the terms. */
+ * hop's edges reach that no hop has read -- with their edges and what they touch; null when the
+ * role cannot read the terms. */
 export function ontologyHopQuery(
   m: MetaReader,
   s: QueryScope,
   hop: number,
   ids: number[],
 ): string | null {
-  const field = hopField(m, s, hop, ids);
+  const field = hopField(m, s, ids);
   return field === null ? null : operation(`OntologyHop${hop}`, [field]);
 }
 
-function hopField(m: MetaReader, s: QueryScope, hop: number, ids: number[]): string | null {
-  return rootField(m, "_terms", termSelection(s, hop < termLevels(s)), { id: { in: ids } });
+function hopField(m: MetaReader, s: QueryScope, ids: number[]): string | null {
+  return rootField(m, "_terms", termSelection(s), { id: { in: ids } });
 }
 
 /** REQ-2136, REQ-2174: what a snippet opens as -- one query of what it read: the root's fields
@@ -446,7 +440,7 @@ function hopField(m: MetaReader, s: QueryScope, hop: number, ids: number[]): str
  * grows with what is drawn, as the reads do; null when the role cannot read the terms. */
 export function ontologyOpenedQuery(m: MetaReader, s: QueryScope, hops: number[][]): string | null {
   const root = ontologyFields(m, s, true);
-  const read = hops.map((ids, i) => hopField(m, s, i + 1, ids));
+  const read = hops.map((ids) => hopField(m, s, ids));
   if (root === null || read.some((f) => f === null)) return null;
   return operation("Ontology", [
     ...root,

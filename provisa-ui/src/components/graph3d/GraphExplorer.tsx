@@ -14,7 +14,7 @@
 // that set the layers and the layout. A layer the data has nothing in is not offered. A snippet
 // (a term's page, a product's panel) is the same view with only its 2D/3D and depth controls.
 // (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) the depth control is "Hops from <focus>", counted
-// from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
+// from the focus alone (amended 2026-11-12: each hop a step between terms, then All); Related tables draws the tables related to those drawn, one step, in 3D;
 // a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
 import { useContext, useEffect, useMemo, useState } from "react";
@@ -63,7 +63,7 @@ import {
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { LaneStage } from "./LaneStage";
-import { laneDiagram, type LanePath } from "./laneDiagram";
+import { laneDiagram } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
@@ -87,8 +87,13 @@ const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "related"]);
  * amended 2026-11-07), so neither is read for it. */
 const NOT_IN_2D: ReadonlySet<LayerId> = new Set(["related", "lineage"]);
 
-/** The depths a focus can be read to, in hops. */
-const DEPTHS = [1, 2, 3, 4];
+/** The depths a focus can be read to, in steps between terms; Infinity is All, the connected part
+ * to its end (REQ-2174, amended 2026-11-12). */
+const DEPTHS = [1, 2, 3, 4, Infinity];
+
+/** A depth as the control and the remembered scope hold it: All as "all". */
+const depthValue = (d: number) => (d === Infinity ? "all" : String(d));
+const depthOf = (v: string) => (v === "all" ? Infinity : Number(v));
 
 export function GraphExplorer({
   data,
@@ -364,7 +369,7 @@ export function GraphExplorer({
     narrowed.sensitivities,
     searchItems(search ?? ""),
     flat,
-    depth,
+    depthValue(depth),
   ]);
   useEffect(() => {
     if (!onScope) return;
@@ -380,7 +385,7 @@ export function GraphExplorer({
       string[],
       string[],
       boolean,
-      number,
+      string,
     ];
     onScope({
       layers: new Set(l),
@@ -393,7 +398,7 @@ export function GraphExplorer({
       search: items,
       lanes,
       focus: own,
-      depth: hops,
+      depth: depthOf(hops),
     });
   }, [onScope, scopeKey, own]);
 
@@ -405,12 +410,6 @@ export function GraphExplorer({
     const id = search === undefined && filters.focus.length === 1 ? filters.focus[0] : null;
     return id === null ? null : (data.nodes.find((n) => n.id === id) ?? null);
   }, [search, filters.focus, data]);
-  // REQ-2174 (amended 2026-11-07): in 2D a product's hops run along the lanes (laneDiagram).
-  const lanePath: LanePath | null = useMemo(
-    () => (flat && focusNode?.type === "product" ? { focus: focusNode.id, depth } : null),
-    [flat, focusNode, depth],
-  );
-
   // What the drawing reads of ``query``: the page rebuilds the object on each render, and a drawing
   // redrawn on every render of the page loses its layout (the 2D lanes are laid out anew).
   const queried = query !== undefined;
@@ -431,12 +430,12 @@ export function GraphExplorer({
     // Under a query the domains, edge types and statuses are its own: ``data`` is what they keep.
     // Tags are judged here: a column or a table carries its own.
     // The focus the query itself states (a term's snippet's) is read as its neighbourhood: it
-    // prunes nothing more here. A product's query reads all of its tables, so its hops are counted
-    // here (REQ-2174, amended 2026-11-07); in 2D along the lanes, so nothing is pruned before them.
+    // prunes nothing more here. A product's hops are counted here too (REQ-2174, amended
+    // 2026-11-07), in 2D as in 3D, a step between terms (amended 2026-11-12).
     const own = (f: string) => f === queryOwn && !f.startsWith("p:");
     const narrowing = {
       ...filters,
-      focus: matched ?? (lanePath ? [] : filters.focus.filter((f) => !own(f))),
+      focus: matched ?? filters.focus.filter((f) => !own(f)),
       ...(queried
         ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: narrowed.tags, sensitivities: [] }
         : narrowed),
@@ -471,7 +470,6 @@ export function GraphExplorer({
     orphans,
     search,
     lateral,
-    lanePath,
   ]);
   // REQ-2174 (amended 2026-11-07): in 3D a table's columns tied to no term drawn are one node.
   const folded = useMemo(
@@ -485,8 +483,8 @@ export function GraphExplorer({
   const layeredPossible = useMemo(() => openingLayout(folded).layeredPossible, [folded]);
   // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
   const lanes = useMemo(
-    () => (flat ? laneDiagram(shown, data, expanded, lanePath) : null),
-    [flat, shown, data, expanded, lanePath],
+    () => (flat ? laneDiagram(shown, data, expanded) : null),
+    [flat, shown, data, expanded],
   );
   const drawn = lanes?.graph ?? folded;
   const at = useMemo(
@@ -566,9 +564,12 @@ export function GraphExplorer({
       </Text>
       <SegmentedControl
         size="xs"
-        value={String(depth)}
-        onChange={(v) => setDepth(Number(v))}
-        data={DEPTHS.map((d) => ({ value: String(d), label: String(d) }))}
+        value={depthValue(depth)}
+        onChange={(v) => setDepth(depthOf(v))}
+        data={DEPTHS.map((d) => ({
+          value: depthValue(d),
+          label: d === Infinity ? t("graph3d.hopsAll") : String(d),
+        }))}
         aria-label={hopsLabel}
         data-testid={`${testId}-depth`}
       />

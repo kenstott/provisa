@@ -10234,5 +10234,7 @@
   "zh-HK/provisaGraph.json::provisaGraph.hint": "Drag to pan · scroll to move · Ctrl/⌘-scroll to zoom",
   "zh-HK/provisaGraph.json::provisaGraph.layingOut": "Laying out…",
   "zh-HK/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
-  "zh-HK/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym."
+  "zh-HK/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",
+  "zh-HK/graph3d.json::graph3d.hopsAll": "All",
+  "zh-HK/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops"
 }

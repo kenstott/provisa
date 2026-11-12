@@ -13,11 +13,16 @@
 // them; reach() draws that, and the query the view reads and exports (ontologyData) asks the
 // server for exactly that. A graph that would draw more than NODE_BUDGET nodes is not drawn: its
 // count is said instead, and with no search the domains are drawn with their counts.
+// REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): a hop is a step along a term link;
+// each term drawn brings its grounding (its columns, their tables, the tables it grounds and the
+// products holding them) at no hop, and a focus's own (a product's tables, columns and terms) come
+// with it at none.
 
 import type { EdgeKind, NodeType } from "./graphModel";
 
 export interface Neighbourhood {
-  /** Hops from a match, each edge one hop; Infinity follows a connected part to its end. */
+  /** Steps along the term links from the terms a match starts from (reach); Infinity follows a
+   * connected part to its end. */
   depth: number;
   /** Nodes drawn where reached but never passed through. */
   stopAt: readonly NodeType[];
@@ -25,8 +30,8 @@ export interface Neighbourhood {
   tableEnteredBy: EdgeKind;
 }
 
-/** Every graph's, the Ontology View's and a product's alike: two hops -- a match, what it touches,
- * and what those touch. */
+/** Every graph's, the Ontology View's and a product's alike: two steps across the term links from
+ * a match. */
 export const NEIGHBOURHOOD: Neighbourhood = {
   depth: 2,
   stopAt: ["product", "domain"],
