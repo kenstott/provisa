@@ -46,6 +46,7 @@ const upsertRole = vi.fn(async () => ({ success: true, message: "" }));
 vi.mock("../../hooks/useSecurityQueries", () => ({
   useUpsertRole: () => ({ upsertRole, loading: false }),
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
+  useDeleteRoles: () => vi.fn(),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
 }));
 const REGION = {

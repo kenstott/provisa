@@ -19,7 +19,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../../api/metaGraph";
-import { ontologyCountQuery, ontologyHopQuery, ontologyQuery, termLevels } from "../ontologyData";
+import {
+  ontologyCountQuery,
+  ontologyHopQuery,
+  ontologyOpenedQuery,
+  ontologyQuery,
+  termLevels,
+} from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
@@ -174,6 +180,9 @@ function corpus(): Record<string, string> {
     // REQ-2174: each hop past the root, by the ids of the terms it reaches.
     for (let hop = 1; hop <= termLevels(s); hop++)
       add(`ontology snippet hop ${hop}: ${key}`, ontologyHopQuery(m, s, hop, [1, 2]));
+    // REQ-2136: what the snippet opens as -- its root and every hop -- in one query.
+    const hops = Array.from({ length: termLevels(s) }, (_, i) => [2 * i + 1, 2 * i + 2]);
+    add(`ontology snippet opened: ${key}`, ontologyOpenedQuery(m, s, hops));
   }
   for (const [key, s] of productLayerScopes())
     add(`ontology product layers: ${key}`, ontologyQuery(m, s));

@@ -432,10 +432,26 @@ export function ontologyHopQuery(
   hop: number,
   ids: number[],
 ): string | null {
-  const field = rootField(m, "_terms", termSelection(s, hop < termLevels(s)), {
-    id: { in: ids },
-  });
+  const field = hopField(m, s, hop, ids);
   return field === null ? null : operation(`OntologyHop${hop}`, [field]);
+}
+
+function hopField(m: MetaReader, s: QueryScope, hop: number, ids: number[]): string | null {
+  return rootField(m, "_terms", termSelection(s, hop < termLevels(s)), { id: { in: ids } });
+}
+
+/** REQ-2136, REQ-2174: what a snippet opens as -- one query of what it read: the root's fields
+ * (its terms, whatever the count found) and each hop's terms, ``hops[i]`` the ids hop i + 1 read,
+ * answered under ``_termsHop<n>``. Each term is named once, at the hop that read it, so the query
+ * grows with what is drawn, as the reads do; null when the role cannot read the terms. */
+export function ontologyOpenedQuery(m: MetaReader, s: QueryScope, hops: number[][]): string | null {
+  const root = ontologyFields(m, s, true);
+  const read = hops.map((ids, i) => hopField(m, s, i + 1, ids));
+  if (root === null || read.some((f) => f === null)) return null;
+  return operation("Ontology", [
+    ...root,
+    ...read.map((f, i) => (f as string).replace(/^_terms:/, `_termsHop${i + 1}:`)),
+  ]);
 }
 
 /** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
@@ -589,11 +605,16 @@ export function readsProducts(s: QueryScope): boolean {
  * read is left out. Without ``terms`` (the count found none at the root, so none nests under it)
  * it reads the products alone, and is null when it reads none. */
 export function ontologyQuery(m: MetaReader, s: QueryScope, terms = true): string | null {
+  const fields = ontologyFields(m, s, terms);
+  return fields === null || fields.length === 0 ? null : operation("Ontology", fields);
+}
+
+/** ontologyQuery's root fields; null when the role cannot read the terms. */
+function ontologyFields(m: MetaReader, s: QueryScope, terms: boolean): string[] | null {
   const termsRead = termsField(m, s);
   if (termsRead === null) return null;
   const products = readsProducts(s) ? productsField(m, s) : null;
-  const fields = [terms ? termsRead : null, products].filter((f): f is string => f !== null);
-  return fields.length === 0 ? null : operation("Ontology", fields);
+  return [terms ? termsRead : null, products].filter((f): f is string => f !== null);
 }
 
 /** The edges the terms were read with, each once: from the term it leaves or the one it reaches. */

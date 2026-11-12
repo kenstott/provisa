@@ -5,6 +5,18 @@
     "sortNone": "לא ממוין",
     "groupBy": "קיבוץ לפי {{label}}",
     "ungroupLevel": "ביטול קיבוץ (רמה {{level}})",
-    "moreValues": "+{{count}} נוספים"
+    "moreValues": "+{{count}} נוספים",
+    "selectAll": "בחירת כל השורות המוצגות",
+    "selectRow": "בחירת שורה",
+    "selectedCount_one": "נבחרו: {{count}}",
+    "selectedCount_other": "נבחרו: {{count}}",
+    "bulkDelete": "מחיקה",
+    "clearSelection": "ניקוי הבחירה",
+    "bulkDeleteTitle_one": "למחוק {{count}} שורה?",
+    "bulkDeleteTitle_other": "למחוק {{count}} שורות?",
+    "bulkDeleteConsequence": "יימחקו: {{names}}. כל מה שעדיין יש אליו הפניה יישמר, עם הסיבה.",
+    "bulkRefused_one": "לא נמחקו: {{count}}",
+    "bulkRefused_other": "לא נמחקו: {{count}}",
+    "dismiss": "סגירה"
   }
 }

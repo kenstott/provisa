@@ -39,11 +39,15 @@ _RULES = [
 
 
 def _call(rule_pattern: str | None) -> str:
-    """A call of the rule's function with a column for each hole."""
+    """A call of the rule's function with a column for each hole, and a NULL of an array its
+    pattern names as a NULL integer[]."""
     assert rule_pattern is not None  # every array rule has a pattern
     tree = pattern(rule_pattern).copy()
     for cast in list(tree.find_all(exp.Cast)):
-        cast.replace(exp.column(cast.this.this.name))
+        if isinstance(cast.this, exp.Null):
+            cast.set("to", exp.DataType.build("integer[]", dialect="postgres"))
+        else:
+            cast.replace(exp.column(cast.this.this.name))
     return tree.sql("postgres")
 
 
@@ -325,6 +329,10 @@ def test_a_documented_refusal_is_the_text_the_form_raises(feature):
         ("SELECT trim_array(ARRAY[1,2,3], 1)", [([1, 2],)]),
         ("SELECT array_shuffle(ARRAY[7])", [([7],)]),
         ("SELECT generate_subscripts(ARRAY[7,8,9], 1, true)", [(3,), (2,), (1,)]),
+        ("SELECT array_cat(ARRAY[1], ARRAY[2])", [([1, 2],)]),
+        ("SELECT array_cat(NULL::integer[], ARRAY[1, 2])", [([1, 2],)]),
+        ("SELECT array_cat(ARRAY[1, 2], NULL::integer[])", [([1, 2],)]),
+        ("SELECT array_cat(NULL::integer[], NULL::integer[])", [(None,)]),
     ],
 )
 def test_the_duckdb_forms_answer_as_postgresql_does(sql: str, expected):

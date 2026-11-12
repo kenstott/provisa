@@ -16,6 +16,9 @@ PostgreSQL answers, and Trino's array result is sent as PostgreSQL's array type.
 
 from __future__ import annotations
 
+import importlib
+
+import chdb
 import pytest
 import sqlglot
 import sqlglot.expressions as exp
@@ -23,6 +26,7 @@ from buenavista.core import BVType
 from buenavista.postgres import BVTYPE_TO_OID
 
 from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype
+from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 
@@ -112,6 +116,90 @@ def test_a_null_array_appended_to_is_not_answered_null_on_clickhouse():
     written = transpile('SELECT pg_catalog."array_append"(NULL::integer[], 1) AS v', "clickhouse")
     column = _first_column(written, "clickhouse")
     assert not isinstance(column.unalias(), exp.Null)
+
+
+# PostgreSQL 17 (array_userfuncs.c): array_append and array_prepend read a NULL array as an empty
+# one, and array_cat answers the other argument, NULL only where both are NULL. ClickHouse has no
+# NULL of an array: each is written as that answer, by the polyfill grid's rows (REQ-2236).
+@pytest.mark.parametrize(
+    ("pg_sql", "written"),
+    [
+        ('SELECT pg_catalog."array_append"(NULL::integer[], 1) AS v', "SELECT [1] AS v"),
+        ("SELECT array_append(NULL::integer[], 1) AS v", "SELECT [1] AS v"),
+        ('SELECT pg_catalog."array_prepend"(1, NULL::integer[]) AS v', "SELECT [1] AS v"),
+        ("SELECT array_prepend(1, NULL::integer[]) AS v", "SELECT [1] AS v"),
+        ("SELECT array_cat(NULL::integer[], ARRAY[1, 2]) AS v", "SELECT [1, 2] AS v"),
+        ("SELECT array_cat(ARRAY[1, 2], NULL::integer[]) AS v", "SELECT [1, 2] AS v"),
+        ('SELECT pg_catalog."array_cat"(NULL::integer[], ARRAY[1]) AS v', "SELECT [1] AS v"),
+        ('SELECT pg_catalog."array_cat"(ARRAY[1], NULL::integer[]) AS v', "SELECT [1] AS v"),
+        ("SELECT array_cat(NULL::integer[], NULL::integer[]) AS v", "SELECT NULL AS v"),
+        (
+            'SELECT pg_catalog."array_cat"(NULL::integer[], NULL::integer[]) AS v',
+            "SELECT NULL AS v",
+        ),
+    ],
+)
+def test_a_null_array_is_written_as_postgresqls_answer_on_clickhouse(pg_sql, written):
+    assert transpile(pg_sql, "clickhouse") == written
+
+
+def _on_clickhouse(sql: str) -> list[str | None]:
+    held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
+    return [None if line == "\\N" else line for line in held.splitlines()]
+
+
+@pytest.mark.parametrize(
+    ("pg_sql", "answer"),
+    [
+        ('SELECT pg_catalog."array_append"(NULL::integer[], 1) AS v', "[1]"),
+        ('SELECT pg_catalog."array_append"(NULL::integer[], NULL::integer) AS v', "[NULL]"),
+        ('SELECT pg_catalog."array_prepend"(1, NULL::integer[]) AS v', "[1]"),
+        ('SELECT pg_catalog."array_prepend"(NULL::integer, NULL::integer[]) AS v', "[NULL]"),
+        ("SELECT array_cat(NULL::integer[], '{1,2}'::integer[]) AS v", "[1,2]"),
+        ("SELECT array_cat('{1,2}'::integer[], NULL::integer[]) AS v", "[1,2]"),
+        ('SELECT pg_catalog."array_cat"(NULL::integer[], NULL::integer[]) AS v', None),
+    ],
+)
+def test_clickhouse_answers_a_null_array_as_postgresql_does(pg_sql, answer):
+    assert _on_clickhouse(pg_sql) == [answer]
+
+
+@pytest.mark.parametrize(
+    ("pg_sql", "written"),
+    [
+        ("SELECT array_append(ARRAY[1], 2) AS v", "SELECT ARRAY_APPEND([1], 2) AS v"),
+        ("SELECT array_prepend(1, ARRAY[2]) AS v", "SELECT ARRAY_PREPEND([2], 1) AS v"),
+        ("SELECT array_append(a, 2) AS v FROM t", "SELECT ARRAY_APPEND(a, 2) AS v FROM t"),
+        ("SELECT array_prepend(2, a) AS v FROM t", "SELECT ARRAY_PREPEND(a, 2) AS v FROM t"),
+    ],
+)
+def test_an_array_that_is_not_a_null_is_written_as_before_on_clickhouse(pg_sql, written):
+    assert transpile(pg_sql, "clickhouse") == written
+
+
+def test_array_cat_of_two_arrays_is_still_refused_on_clickhouse():
+    with pytest.raises(FunctionRefused, match=r"array_cat\(\) has no form on clickhouse"):
+        transpile("SELECT array_cat(a, b) AS v FROM t", "clickhouse")
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_every_statement_is_read_for_an_array_text_form_on_its_tree(monkeypatch, dialect):
+    """REQ-913: whether a statement holds an array's text form is read from its tree, never from
+    a substring of its text; a statement with none is written as before."""
+    module = importlib.import_module("provisa.transpiler.transpile")
+    read: list[exp.Expr] = []
+    own = module.array_inputs
+
+    def spied(tree: exp.Expr) -> exp.Expr:
+        read.append(tree)
+        return own(tree)
+
+    monkeypatch.setattr(module, "array_inputs", spied)
+    sql = "SELECT a + 1 AS v FROM t WHERE b = 'x'"
+    assert transpile(sql, dialect) == sql
+    assert len(read) == 1
+    assert transpile("SELECT '{1,2}'::integer[] AS v", dialect) != "SELECT '{1,2}'::integer[] AS v"
+    assert len(read) == 2
 
 
 @pytest.mark.parametrize(
