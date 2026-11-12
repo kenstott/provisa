@@ -98,6 +98,14 @@ titled the same way.
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
+- A graph with a focus (`opensOn`: the node the graph is about, a term's graph's term) opens, and
+  Reset view comes back, at that fit's zoom, moved so the focus is in view (`showFocus`, the pure
+  rule `focusShift`; REQ-2239, J1236). Along an axis on which the diagram fits the canvas it does
+  not move; along one it runs past, it moves no further than it scrolls. Of those moves: those that
+  keep the focus inside the canvas, the fit's margin round it and below the legend (a focus larger
+  than the canvas is held at its start); of those, the ones showing the most of the nodes the focus
+  joins directly, each whole (across and down at once); of those, the least move from the fit. A
+  diagram that fits, and a graph with no focus or a focus it does not draw, open as fitted.
 - The fit control fits the entire image, below the legend, however small that makes it
   (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
 - A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the

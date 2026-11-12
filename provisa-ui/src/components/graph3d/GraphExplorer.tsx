@@ -626,6 +626,7 @@ export function GraphExplorer({
       setHover={setHover}
       onMore={toggleExpanded}
       command={command}
+      opensOn={focusNode?.id ?? null}
       testId={`${testId}-lanes`}
       bare={snippet}
     />
