@@ -216,12 +216,9 @@ describe("the product panel in 2D", () => {
       within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
-    // REQ-2174 (amended 2026-11-07): it opens at 1 hop, the product's tables alone.
-    expect(ids("node")).toEqual(["p:c360", "t:customers", "t:orders"]);
-    // At 4 hops: their columns, the terms tied to them, and Party a step across a term link.
-    fireEvent.click(
-      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "4" }),
-    );
+    // REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): it opens at 1 hop -- the
+    // product's tables, their columns tied to terms, those terms, and Party a step across a term
+    // link.
     await waitFor(() => expect(ids("node")).toContain("term:party"));
     expect(ids("node")).toEqual([
       "c:customers.email",

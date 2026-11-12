@@ -37,26 +37,31 @@ const opened = (m: MetaReader, s: QueryScope, hops: number[][]): string | null =
 
 /** What a read of the ontology answered, the queries it sent, in order, and the one query it
  * opens as (ontologyOpenedQuery): its root and every hop it read, null when the role cannot read
- * the terms. */
+ * the terms. ``over``: it stopped, the terms read past the budget, before its hops were done. */
 export interface OntologyRead {
   rows: OntologyRows;
   queries: string[];
   opened: string | null;
+  over: boolean;
 }
 
 /** REQ-2174: the ontology as ``s`` reads it, through ``read`` (one query's answer). The root --
  * ontologyQuery's, its terms only with ``terms`` -- then, under a search or a focus, each hop to
- * termLevels: the terms the last hop's edges reach that no hop has read, by their ids. Each term
- * is read once, with its refs once, so the reads grow with what is drawn, not a level nested both
- * ways under each path. It stops at a hop that reaches nothing new. */
+ * termLevels (Infinity, All: to the end of the connected part): the terms the last hop's edges
+ * reach that no hop has read, by their ids, each with its grounding. Each term is read once, with
+ * its refs once, so the reads grow with what is drawn, not a level nested both ways under each
+ * path. It stops at a hop that reaches nothing new, or once more terms are read than ``budget``
+ * (each a node drawn): ``over``. */
 export async function readOntology(
   m: MetaReader,
   s: QueryScope,
   read: (query: string) => Promise<OntologyRows>,
   terms = true,
+  budget = Infinity,
 ): Promise<OntologyRead> {
   const root = ontologyQuery(m, s, terms);
-  if (root === null) return { rows: { _terms: [] }, queries: [], opened: opened(m, s, []) };
+  if (root === null)
+    return { rows: { _terms: [] }, queries: [], opened: opened(m, s, []), over: false };
   const rows = await read(root);
   const got = [...(rows._terms ?? [])];
   const seen = new Set(got.map((t) => t.id));
@@ -64,6 +69,7 @@ export async function readOntology(
   const hops: number[][] = [];
   let frontier = got;
   for (let hop = 1; hop <= termLevels(s); hop++) {
+    if (got.length > budget) return { rows: { ...rows, _terms: got }, queries, opened: null, over: true };
     const ids = [...new Set(frontier.flatMap(reached))].filter((id) => !seen.has(id));
     if (ids.length === 0) break;
     const query = ontologyHopQuery(m, s, hop, ids);
@@ -75,5 +81,5 @@ export async function readOntology(
     queries.push(query);
     hops.push(ids);
   }
-  return { rows: { ...rows, _terms: got }, queries, opened: opened(m, s, hops) };
+  return { rows: { ...rows, _terms: got }, queries, opened: opened(m, s, hops), over: false };
 }

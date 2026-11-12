@@ -24,6 +24,7 @@ import {
   ontologyQuery,
   overviewGraph,
   memberTablesOf,
+  termLevels,
   withProductLineage,
   type CountRow,
   type OntologyRows,
@@ -33,10 +34,12 @@ import { NODE_BUDGET } from "./neighbourhood";
 import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
 /** What a read of the ontology came to: the graph and the query that read it, or -- past the
- * budget -- how many terms it would have read, with each term's domains. */
+ * budget -- how many terms it would have read, with each term's domains; ``hops``: its root was
+ * within the budget, and its hops (All's, or a few hops of a dense part) took it past, so it would
+ * draw more than the budget, ``over``. */
 export type Loaded =
   | { data: GraphData; query: string; over?: undefined }
-  | { over: number; rows: CountRow[]; query: string };
+  | { over: number; rows: CountRow[]; query: string; hops?: true };
 
 /** The ontology as ``scope`` reads it, opened as one query (REQ-2136), by the rules it reads by
  * (QueryScope.products): its terms counted first, and read only within the budget (REQ-2143);
@@ -50,15 +53,21 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   // No term at the root, so no hop past it: a product with no terms (a new one) reads itself
   // alone. Else a search's or a focus's neighbourhood is read a hop at a time, each term once.
-  const { rows, opened } = await readOntology(
+  const { rows, opened, over } = await readOntology(
     m,
     scope,
     (q) => dataGraphql<OntologyRows>(q, {}, role),
     counted.length > 0,
+    NODE_BUDGET,
   );
+  // REQ-2174 (amended 2026-11-12): All follows the connected part to its end under the budget --
+  // past it the reads stop, and that it is past is said, as at the root.
+  const past = { over: NODE_BUDGET, rows: counted, query, hops: true } as const;
+  if (over) return past;
   // REQ-2136: what the view opens as is what it read -- the root and every hop -- in one query.
   if (opened === null) return null;
   const data = ontologyGraph(rows, scope);
+  if (termLevels(scope) > 0 && data.nodes.length > NODE_BUDGET) return past;
   // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];
   if (!scope.products || !scope.layers.has("lineage")) return { data, query: opened };
@@ -185,7 +194,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
           : EMPTY;
   const notice =
     scoped?.over !== undefined && !overview
-      ? t("graph3d.overBudget", { count: scoped.over })
+      ? t(scoped.hops ? "graph3d.overBudgetHops" : "graph3d.overBudget", { count: scoped.over })
       : null;
   const query = (all: GraphData) => ({
     all,
