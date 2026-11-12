@@ -22,6 +22,7 @@ import io
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import yaml
@@ -239,6 +240,8 @@ def _wire_apply(monkeypatch) -> dict:
 
     monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
+    # REQ-2185: the term-embedding trigger reads the org's vector model; its own tests cover it.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     monkeypatch.setattr(app_mod.state, "tenant_db", _FakePool(), raising=False)
     monkeypatch.setattr(app_mod.state, "model_db", app_mod.state.tenant_db, raising=False)
     monkeypatch.setattr(app_mod.state, "federation_engine", None, raising=False)
