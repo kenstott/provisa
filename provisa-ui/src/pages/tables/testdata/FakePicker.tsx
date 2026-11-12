@@ -13,7 +13,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { FakeCatalog } from "../../../api/fakes";
 import { chosen, compose, offeredFor, parseArgs, type ArgValues, type Choice } from "./declaration";
-import { FieldGroup, FormEntry, FormField, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormField, FormLayout } from "../../../components/form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 
 // REQ-1494: a kind of fake or fake method picked by name within its category -- among those whose
@@ -73,7 +73,7 @@ export function FakePicker({
   };
   return (
     // One section: its list, the chosen entry's arguments, then the text it saves.
-    <FormEntry data-testid={`${testId}-section`}>
+    <FormLayout data-testid={`${testId}-section`}>
       <FormField size="medium">
         <Select
           label={label}
@@ -133,6 +133,6 @@ export function FakePicker({
         </Collapsibles>
       </FormField>
       {children}
-    </FormEntry>
+    </FormLayout>
   );
 }
