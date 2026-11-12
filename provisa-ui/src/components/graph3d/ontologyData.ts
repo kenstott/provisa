@@ -32,6 +32,7 @@ import {
   type Where,
 } from "../../api/metaGraph";
 import type { MaskEntry } from "../../lib/masks";
+import type { SearchGroups, SearchItem } from "../../lib/searchItems";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
 import { TERM_STATUSES } from "./graphModel";
@@ -266,13 +267,14 @@ function related(s: QueryScope): Where {
 /** A search item as an ILIKE pattern: anywhere in the text, its own % _ and \\ taken literally. */
 const anywhere = (item: string) => `%${item.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
-/** REQ-2143: the terms the page's search matches, searchItems' rule -- any item, in the name or the
- * definition, whatever its case. */
-export function searchWhere(items: string[]): Where {
-  const any: Where[] = [];
-  for (const i of items)
-    any.push({ name: { ilike: anywhere(i) } }, { definition: { ilike: anywhere(i) } });
-  return { _or: any };
+/** REQ-2143: the terms the page's search matches, searchItems' rule -- every group, each by any
+ * of its items, an item in the name or the definition whatever its case. */
+export const searchWhere = (groups: SearchGroups): Where | undefined =>
+  all(groups.map((g) => ({ _or: g.flatMap(itemWhere) })));
+
+function itemWhere(i: SearchItem): Where[] {
+  if (i.excluded) throw new Error(`the Ontology View's query cannot exclude ${i.text}`);
+  return [{ name: { ilike: anywhere(i.text) } }, { definition: { ilike: anywhere(i.text) } }];
 }
 
 const TERM_FIELDS = [
@@ -409,10 +411,11 @@ function focusWhere(focus: string): Where {
  * and under a focus those it starts from. */
 function rootWhere(s: QueryScope): Where | undefined {
   const kept = termKept(s);
+  const searched = searchWhere(s.search);
   return all([
     ...(kept ? [kept] : []),
     ...(s.orphans ? [] : [related(s)]),
-    ...(s.search.length > 0 ? [searchWhere(s.search)] : []),
+    ...(searched ? [searched] : []),
     ...(s.focus !== null ? [focusWhere(s.focus)] : []),
   ]);
 }

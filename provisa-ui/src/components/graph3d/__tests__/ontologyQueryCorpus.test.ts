@@ -27,6 +27,7 @@ import {
   termLevels,
 } from "../ontologyData";
 import type { LayerId, QueryScope } from "../graphModel";
+import { searchItems } from "../../../lib/searchItems";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
 
@@ -53,7 +54,7 @@ function subsets<T>(items: T[]): T[][] {
 }
 
 const LAYERS: LayerId[] = ["domains", "data", "columns"];
-const SEARCHES = [[], ["party"]];
+const SEARCHES = ["", "party"];
 const STATUSES: QueryScope["hiddenStatuses"][] = [
   [],
   ["retired"],
@@ -74,7 +75,7 @@ function ontologyScopes(): [string, QueryScope][] {
           for (const domains of DOMAINS) {
             const key = [
               ["ontology", ...layers].join("+"),
-              `search=${search.join(",")}`,
+              `search=${search}`,
               `hidden=${hiddenStatuses.join(",")}`,
               `edges=${edgeTypes.join(",")}`,
               `domains=${domains.join(",")}`,
@@ -83,7 +84,7 @@ function ontologyScopes(): [string, QueryScope][] {
               key,
               {
                 layers: new Set<LayerId>(["ontology", ...layers]),
-                search,
+                search: searchItems(search),
                 hiddenStatuses,
                 edgeTypes,
                 domains,
