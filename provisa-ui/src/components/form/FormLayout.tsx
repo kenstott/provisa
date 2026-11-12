@@ -51,9 +51,10 @@ const FormLayoutContext = createContext(false);
 
 /**
  * A form drawn read-only: the same form, so the read view lists exactly the fields the form has
- * for what it shows, under the same labels. Each field is its label and its value on the shared
- * detail grid ("—" when empty, "Set" for a secret that holds something); the layout around the
- * fields, the notes and the buttons are not drawn, and the form's Save and Cancel are not offered.
+ * for what it shows, under the same labels, in the same flow and at the same sizes as its edit
+ * form (REQ-1968). Each field is its label above its value ("—" when empty, "Set" for a secret
+ * that holds something) and its hint below; the notes and buttons around the fields are not
+ * drawn, and the form's Save and Cancel are not offered.
  */
 export function FormRead({
   children,
@@ -62,51 +63,95 @@ export function FormRead({
 }: {
   children: ReactNode;
   /** Values the form does not set but the object has, read after its fields. */
-  derived?: DetailField[];
+  derived?: ReadValue[];
   testId?: string;
 }) {
   return (
     <FormReadContext.Provider value={true}>
       <FormLayoutContext.Provider value={true}>
-        <dl className="detail-fields form-read" data-testid={testId}>
+        <div className="form-layout form-read" data-testid={testId}>
           {children}
           {derived.map((f) => (
-            <ReadRow key={f.label} label={f.label} value={f.value} testId={f.testId} />
+            <ReadRow
+              key={f.label}
+              label={f.label}
+              value={f.value}
+              testId={f.testId}
+              size={f.size}
+              hint={f.hint}
+              hintTestId={f.hintTestId}
+            />
           ))}
-        </dl>
+        </div>
       </FormLayoutContext.Provider>
     </FormReadContext.Provider>
   );
 }
 
+/** A value read beside a form's fields: its label, its value, and the field's size and hint. */
+export type ReadValue = DetailField & {
+  /** As wide as the field would be in the form; the enclosing field's size, else medium. */
+  size?: FormFieldSize;
+  /** A brief explanation of the value, shown below it, dimmed. */
+  hint?: ReactNode;
+  hintTestId?: string;
+};
+
+/** The size and hint of the field a read row is drawn for, when the row draws itself. */
+const ReadCellContext = createContext<{ size: FormFieldSize; hint?: string }>({
+  size: "medium",
+});
+
 /**
- * One field of a form read: its label beside its value ("—" when empty). A control that labels
- * itself draws this when `useFormRead()` says the form is read.
+ * One field of a form read: its label above its value ("—" when empty) and its hint below, in a
+ * cell of the field's size in the form's flow. A control that labels itself draws this when
+ * `useFormRead()` says the form is read.
  */
 export function ReadRow({
   label,
   value,
   testId,
+  size,
+  hint,
+  hintTestId,
 }: {
   label: ReactNode;
   value: ReactNode;
   testId?: string;
+  size?: FormFieldSize;
+  hint?: ReactNode;
+  hintTestId?: string;
 }) {
   const { t } = useTranslation();
+  const cell = useContext(ReadCellContext);
+  const shownHint = hint ?? cell.hint;
   return (
-    <>
+    <dl className={classes("form-field", `form-field--${size ?? cell.size}`)}>
       <Text component="dt" c="dimmed" fw={500} size="sm">
         {label}
       </Text>
       <Text component="dd" m={0} size="sm" data-testid={testId}>
         {value === null || value === undefined || value === "" ? t("detailFields.empty") : value}
       </Text>
-    </>
+      {shownHint !== undefined && (
+        <Text component="dd" className="form-read__hint" size="xs" data-testid={hintTestId}>
+          {shownHint}
+        </Text>
+      )}
+    </dl>
   );
 }
 
-/** A field read: its control's label beside the value the control holds. */
-function ReadField({ children }: { children: ReactNode }) {
+/** A field read: its control's label above the value the control holds, at the field's size. */
+function ReadField({
+  size,
+  hint,
+  children,
+}: {
+  size: FormFieldSize;
+  hint?: string;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const only = Children.toArray(children);
   const control = only.length === 1 ? only[0] : null;
@@ -120,9 +165,18 @@ function ReadField({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  // A field whose child is no labelled control (a section of further fields) reads as those.
-  if (!isValidElement(control) || label === undefined) return <>{children}</>;
-  return <ReadRow label={label} value={readValue(control, t)} />;
+  // A field whose child is no labelled control (a control that reads itself, or a section of
+  // further fields) reads as those; a row drawn for this field takes its size and its hint, and
+  // a field inside it its own.
+  return (
+    <ReadCellContext.Provider value={{ size, hint }}>
+      {!isValidElement(control) || label === undefined ? (
+        children
+      ) : (
+        <ReadRow label={label} value={readValue(control, t)} />
+      )}
+    </ReadCellContext.Provider>
+  );
 }
 
 function useInsideFormLayout(component: string): void {
@@ -248,7 +302,12 @@ export function FormField({
     ) : (
       node
     );
-  if (read) return within(<ReadField>{children}</ReadField>);
+  if (read)
+    return within(
+      <ReadField size={size} hint={hint}>
+        {children}
+      </ReadField>,
+    );
   let content = children;
   if (hint !== undefined || help !== undefined) {
     const only = Children.toArray(children);

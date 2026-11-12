@@ -166,7 +166,7 @@
     "moveManyUnnamed_one": "Перенести {{count}} столбец?",
     "moveManyUnnamed_other": "Перенести {{count}} столбцов?",
     "moveCarryUnnamed": "Перенести и отметить их новые термины тегами {{tags}}",
-    "termGraphTitle": "Граф терминов",
+    "termGraphTitle": "Граф",
     "status_approved": "Утверждён",
     "draftDefined": "Черновик: утвердите его, когда определение будет верным. Агенты и каталоги находят и цитируют данные через утверждённые термины.",
     "grounding_grounded": "привязан",
