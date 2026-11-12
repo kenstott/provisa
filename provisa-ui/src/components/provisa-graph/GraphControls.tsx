@@ -21,7 +21,7 @@ import { Check, Copy, Download, Expand, Shrink } from "lucide-react";
 import { FitScreenIcon, ZoomInIcon, ZoomOutIcon } from "../graph/GraphIcons";
 import type { CyInstance } from "../graph/cytoscape-types";
 import { Tip } from "../Tip";
-import { fitClear, zoomAboutCentre, type GraphExports } from "./viewport";
+import { fitWhole, zoomAboutCentre, type GraphExports } from "./viewport";
 
 const ZOOM_STEP = 1.3;
 
@@ -123,7 +123,7 @@ export function GraphControls({
           variant="subtle"
           size="md"
           aria-label={t("erdModal.fitAll")}
-          onClick={() => cyRef.current && fitClear(cyRef.current)}
+          onClick={() => cyRef.current && fitWhole(cyRef.current)}
           data-testid={`${testId}-fit-all`}
         >
           <FitScreenIcon size={15} />

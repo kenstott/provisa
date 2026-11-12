@@ -34,11 +34,23 @@ function legendBand(cy: CyInstance): number {
  * its canvas at this zoom is drawn at it from its top left and scrolls (down, and across). */
 export const READABLE_ZOOM = 0.8;
 
-/** Fit the diagram by its drawn extent, `padding` round it, below the legend (which sits over the
- * canvas's top right: a lane's or a group's title is never under it). The whole diagram is fitted
- * while that keeps the zoom at READABLE_ZOOM or more; past that it is drawn at the readable zoom
- * from its top (and, wider than the canvas, its left) and scrolled (scrollBy). */
+/** How a graph opens and Reset view: fit the diagram by its drawn extent, `padding` round it,
+ * below the legend (which sits over the canvas's top right: a lane's or a group's title is never
+ * under it). The whole diagram is fitted while that keeps the zoom at READABLE_ZOOM or more; past
+ * that it is drawn at the readable zoom from its top (and, wider than the canvas, its left) and
+ * scrolled (scrollBy). */
 export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
+  fitBelowLegend(cy, padding, READABLE_ZOOM);
+}
+
+/** The fit control: the whole diagram in the canvas, below the legend, however small that makes
+ * it (REQ-2239, FIT MEANS THE WHOLE IMAGE). */
+export function fitWhole(cy: CyInstance, padding: number = FIT_PADDING): void {
+  fitBelowLegend(cy, padding, 0);
+}
+
+/** Fit by the drawn extent below the legend, at no less than `floor`. */
+function fitBelowLegend(cy: CyInstance, padding: number, floor: number): void {
   const box = cy.container();
   if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) {
     // A canvas not on the page (headless, or not yet laid out): cytoscape's own fit.
@@ -58,7 +70,7 @@ export function fitClear(cy: CyInstance, padding: number = FIT_PADDING): void {
     cy.fit(undefined, padding);
     return;
   }
-  cy.zoom(Math.max(Math.min(width / bb.w, height / bb.h), READABLE_ZOOM));
+  cy.zoom(Math.max(Math.min(width / bb.w, height / bb.h), floor));
   // The zoom the instance accepted: it holds its own limits.
   const z = cy.zoom();
   const wide = bb.w * z > width;
