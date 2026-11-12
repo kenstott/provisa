@@ -8,32 +8,28 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2239 (maintainer, 2026-11-11 screenshots): the lanes preset as ProvisaGraph places it, measured
-// on the positions it leaves -- ELK headless, the pet-store Ontology graph. Each lane is ordered by
-// the barycentre of its neighbours, so the drawing crosses less than the second ELK pass left it;
-// every lane is spread over the tallest lane's height; each lane's box bounds its own nodes and no
-// two boxes meet; a node is wide enough for its label, which starts after the icon.
+// REQ-2239 (maintainer, 2026-11-11 screenshots; amended 2026-11-11, EACH LANE IS SORTED BY THE LANE
+// ON ITS LEFT), REQ-2174 (amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW): the lanes preset as
+// ProvisaGraph places it, measured on the positions it leaves (headless), on the pet-store and Pet
+// Health Ontology graphs. The first lane keeps its order and each lane after it is sorted by the places
+// of what its nodes join on their left, ties by the order given; every lane is spread over the tallest
+// lane's height; each term has its own row and the lines between terms run beside the lane; each lane's
+// box bounds its own nodes and no two boxes meet; a node is wide enough for its label, which starts
+// after the icon.
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import cytoscape from "cytoscape";
 import elk from "cytoscape-elk";
-import {
-  laneDiagram,
-  drawnCrossings,
-  placedLaneOrder,
-  stackTerms,
-  LANES,
-  type At,
-} from "../../graph3d/laneDiagram";
+import { laneDiagram, drawnCrossings, LANES, type At } from "../../graph3d/laneDiagram";
 import { laneGraph } from "../../graph3d/laneGraph";
-import { petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
+import { petHealthOntology, petStoreOntology } from "../../graph3d/__tests__/crossingFixtures";
 import type { GraphData } from "../../graph3d/graphModel";
 import { NODE_MAX_WIDTH, TEXT_LEFT, TEXT_RIGHT, graphElements, textWidth } from "../model";
 import { graphStylesheet } from "../stylesheet";
 import { SIZE, graphTokens } from "../tokens";
-import { laneElements, runLanes, LANE_GAP, type LanesOptions } from "../lanes";
+import { besideRoutes, runLanes, LANE_GAP, type LanesOptions } from "../lanes";
 import type { Core } from "../core";
 import type { CyCanvas } from "../cyCanvas";
 
@@ -44,9 +40,11 @@ try {
   /* already registered */
 }
 
-/** The pet-store graph as the second ELK pass drew it, before J1206 (origin/main 2c6f10d75d, run
- * headless as below): 24 pairs of lines crossed. */
-const CROSSINGS_BEFORE = 24;
+/** Pairs of lines crossing before the lanes were spread (J1206's baseline, run headless as below):
+ * the pet-store graph 24 as the second ELK pass drew it (origin/main 2c6f10d75d), Pet Health 42. */
+const CROSSINGS_BEFORE = { petStore: 24, petHealth: 42 };
+/** The pet-store graph at most as crossed as J1206's barycentre sweeps left it (6a4b0d1db0: 20). */
+const PET_STORE_SWEPT = 20;
 
 const headlessCanvas: CyCanvas = {
   container: null as unknown as HTMLDivElement,
@@ -65,14 +63,9 @@ async function laidOut(data: GraphData) {
   const graph = laneGraph(d, (n) => `+${n} columns`);
   const opts: LanesOptions = {
     lanes: LANES.map((l) => ({ id: l, title: l })),
-    stacked: "term",
-    order: (at) => placedLaneOrder(d, at),
-    settle: (order, at, widthOf) => stackTerms(d, order, at, widthOf),
+    beside: "term",
   };
-  const elements = laneElements(
-    graphElements(graph, (t) => t),
-    opts,
-  );
+  const elements = graphElements(graph, (t) => t);
   const cy = cytoscape({
     headless: true,
     styleEnabled: true,
@@ -91,8 +84,20 @@ async function laidOut(data: GraphData) {
     ),
   );
   const at = (id: string): At => cy.getElementById(id).position();
-  return { d, cy, at };
+  /** Each line as drawn: the lines inside the term lane by the route beside it, the rest straight. */
+  const routes = besideRoutes(cy, "term");
+  return { d, cy, at, route: (id: string) => routes.get(id) };
 }
+
+/** Each lane's nodes top to bottom as drawn. */
+const drawnLanes = (cy: Core) =>
+  LANES.map((l) =>
+    cy
+      .nodes('[kind = "node"], [kind = "more"]')
+      .filter((n) => n.data("lane") === l)
+      .map((n) => n.id())
+      .sort((a, b) => cy.getElementById(a).position().y - cy.getElementById(b).position().y),
+  );
 
 const box = (cy: Core, id: string) => {
   const n = cy.getElementById(id);
@@ -102,13 +107,132 @@ const box = (cy: Core, id: string) => {
   return { x1: p.x - w / 2, x2: p.x + w / 2, y1: p.y - h / 2, y2: p.y + h / 2 };
 };
 
-describe("the lanes preset on the pet-store Ontology graph", () => {
-  it("crosses fewer lines than the second ELK pass drew", async () => {
-    const { d, cy, at } = await laidOut(petStoreOntology());
-    const n = drawnCrossings(d.links, at);
+describe("each lane sorted by the lane on its left (REQ-2239, amended 2026-11-11)", () => {
+  const FIXTURES = { petStore: petStoreOntology, petHealth: petHealthOntology };
+
+  it("draws no line from a table to its own columns across another (Pet Health)", async () => {
+    const { d, cy, at } = await laidOut(petHealthOntology());
+    const own = d.links.filter((k) => d.lane.get(k.to) === "table" && d.lane.get(k.from) !== "term");
+    const n = drawnCrossings(own, at);
     cy.destroy();
-    expect(n).toBeLessThan(CROSSINGS_BEFORE);
+    expect(own.length).toBeGreaterThan(30);
+    expect(n).toBe(0);
   });
+
+  for (const [name, fixture] of Object.entries(FIXTURES))
+    it(`draws each lane in the sort of its left neighbours' places (${name})`, async () => {
+      const { cy } = await laidOut(fixture());
+      // The order the nodes are given in: the stable key.
+      const given = cy
+        .nodes('[kind = "node"], [kind = "more"]')
+        .map((n) => n.id());
+      const laneAt = new Map<string, number>();
+      cy.nodes('[kind = "node"], [kind = "more"]').forEach((n) => {
+        laneAt.set(n.id(), LANES.indexOf(n.data("lane")));
+      });
+      const left = new Map<string, number[]>();
+      const y = (id: string) => cy.getElementById(id).position().y;
+      cy.edges().forEach((e) => {
+        const [a, b] = [e.data("source") as string, e.data("target") as string];
+        for (const [p, q] of [
+          [a, b],
+          [b, a],
+        ])
+          if ((laneAt.get(q) as number) < (laneAt.get(p) as number))
+            left.set(p, [...(left.get(p) ?? []), y(q)]);
+      });
+      const key = (id: string) => {
+        const ys = left.get(id) ?? [];
+        return ys.length === 0 ? Infinity : ys.reduce((s, v) => s + v, 0) / ys.length;
+      };
+      const close = (p: number, q: number) =>
+        p === q ||
+        (Number.isFinite(p) &&
+          Number.isFinite(q) &&
+          Math.abs(p - q) <= 1e-14 * Math.max(Math.abs(p), Math.abs(q)));
+      const drawn = drawnLanes(cy);
+      cy.destroy();
+      expect(drawn[0]).toEqual(given.filter((id) => laneAt.get(id) === 0));
+      for (let l = 1; l < LANES.length; l++) {
+        const sorted = given
+          .filter((id) => laneAt.get(id) === l)
+          .map((id, i) => ({ id, k: key(id), i }))
+          .sort((p, q) => (close(p.k, q.k) ? 0 : p.k - q.k) || p.i - q.i)
+          .map((x) => x.id);
+        expect(drawn[l], `the ${LANES[l]} lane`).toEqual(sorted);
+      }
+    });
+
+  it("crosses fewer lines than before the lanes were spread, counted as drawn", async () => {
+    const health = await laidOut(petHealthOntology());
+    const h = drawnCrossings(health.d.links, health.at, health.route);
+    health.cy.destroy();
+    const store = await laidOut(petStoreOntology());
+    const s = drawnCrossings(store.d.links, store.at, store.route);
+    store.cy.destroy();
+    expect(h).toBeLessThan(CROSSINGS_BEFORE.petHealth);
+    expect(s).toBeLessThan(CROSSINGS_BEFORE.petStore);
+    expect(s).toBeLessThanOrEqual(PET_STORE_SWEPT);
+  });
+
+  it("draws the same graph the same way twice", async () => {
+    for (const fixture of Object.values(FIXTURES)) {
+      const one = await laidOut(fixture());
+      const first = drawnLanes(one.cy);
+      one.cy.destroy();
+      const two = await laidOut(fixture());
+      const second = drawnLanes(two.cy);
+      two.cy.destroy();
+      expect(second).toEqual(first);
+    }
+  });
+});
+
+describe("each sibling term on its own row (REQ-2174, amended 2026-11-11)", () => {
+  for (const [name, fixture] of Object.entries({
+    petStore: petStoreOntology,
+    petHealth: petHealthOntology,
+  }))
+    it(`gives every term a row and runs the lines between terms beside the lane (${name})`, async () => {
+      const { d, cy } = await laidOut(fixture());
+      const terms = cy
+        .nodes('[kind = "node"]')
+        .filter((n) => n.data("lane") === "term")
+        .map((n) => ({ id: n.id(), b: box(cy, n.id()) }));
+      const inside = cy.edges().filter((e) => {
+        const lane = (id: string) => cy.getElementById(id).data("lane");
+        return lane(e.data("source")) === "term" && lane(e.data("target")) === "term";
+      });
+      const styles = inside.map((e) => ({
+        id: e.id(),
+        curve: e.style("curve-style") as string,
+      }));
+      const routes = besideRoutes(cy, "term");
+      cy.destroy();
+      // Dog and Cat under Pet: siblings.
+      expect(d.links.filter((k) => k.to === "term:dog" || k.to === "term:cat")).toHaveLength(2);
+      // No two terms share a row: their spans down the lane are apart.
+      const spans = terms.map((t) => t.b).sort((p, q) => p.y1 - q.y1);
+      for (let i = 1; i < spans.length; i++)
+        expect(spans[i].y1, "a term's row below the last").toBeGreaterThanOrEqual(spans[i - 1].y2);
+      // Each line between terms runs beside the lane: past every term's right edge, save where it
+      // leaves and meets its own two terms.
+      const right = Math.max(...terms.map((t) => t.b.x2));
+      expect(styles.length).toBeGreaterThanOrEqual(6);
+      for (const { id, curve } of styles) {
+        expect(curve, id).toBe("segments");
+        const path = routes.get(id) as At[];
+        expect(path.length, id).toBe(4);
+        expect(path[0].x, `${id} leaves from a term's right side`).toBeLessThanOrEqual(right);
+        for (const p of path.slice(1, -1)) expect(p.x, `${id} beside the lane`).toBeGreaterThan(right);
+        // Its run down the lane passes through no term's row.
+        for (const t of terms)
+          expect(path[1].x > t.b.x2, `${id} clear of ${t.id}`).toBe(true);
+      }
+    });
+});
+
+describe("the lanes preset on the pet-store Ontology graph", () => {
 
   it("spreads every lane over the height of the tallest", async () => {
     const { d, cy } = await laidOut(petStoreOntology());
