@@ -30,8 +30,15 @@ import {
 } from "../../api/referenceLibrary";
 import { FilterInput } from "../../components/admin/FilterInput";
 import { LabelWithHelp } from "../../components/form/FormLayout";
-import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../../components/list/ListTable";
+import {
+  ListEmpty,
+  ListHead,
+  ListItems,
+  ListRow,
+  ListTable,
+} from "../../components/list/ListTable";
 import { SplitPane } from "../../components/list/SplitPane";
+import { useDetailParam } from "../../components/list/useDetailParam";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PageHelp } from "../../components/PageHelp";
 import { PageLoading } from "../../components/PageLoading";
@@ -103,7 +110,11 @@ export function LibraryPage() {
   const [documents, setDocuments] = useState<LibraryDocument[] | null>(null);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  // REQ-2241: `?document=<id>` is the open document's panel.
+  const detail = useDetailParam("library");
+  const selected = detail.id === null ? null : Number(detail.id);
+  const setSelected = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
   const [adding, setAdding] = useState(false);
   const [reembedding, setReembedding] = useState(false);
   const [outcome, setOutcome] = useState<ReembedOutcome | null>(null);
