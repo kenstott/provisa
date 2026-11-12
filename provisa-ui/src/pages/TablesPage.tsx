@@ -1127,7 +1127,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           {!hidingOnly && !(viewsOnly && showViewForm) && (
             <Tip text={translate("tablesPage.addViewTitle")}>
               <Button
-                variant="default"
+                // On the Views page "+ View" is the page's own add, so the filled primary as
+                // "+ Table" is on the Tables page; beside "+ Table" it is a secondary.
+                variant={viewsOnly ? "filled" : "default"}
                 data-testid="views-add-toggle"
                 // REQ-1318: on the Views page, Add View opens the definition-mode form
                 // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
