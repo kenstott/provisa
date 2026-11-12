@@ -552,8 +552,11 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
         return {"rows": [{"role": role}]}
 
     # The state a first start has: no org setting and no config file, so no derived role is
-    # declared (the loopback reads them to name the role it acts as).
-    mcp_state = SimpleNamespace(org_id="default", settings_overrides={}, config=None)
+    # declared (the loopback reads them to name the role it acts as), and no attribute recorded
+    # for any user (REQ-1105: the principal's own, which the loopback binds).
+    mcp_state = SimpleNamespace(
+        org_id="default", settings_overrides={}, config=None, user_attributes={}
+    )
     # REQ-1105: a loopback call acts for the principal the operator names, found in the org; the
     # subject here is the request thread, not the principal (tests/unit/mcp_local_principal).
     act_for(monkeypatch, mcp_state)
