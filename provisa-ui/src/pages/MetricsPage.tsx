@@ -39,6 +39,7 @@ import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -247,7 +248,10 @@ export function MetricsPage() {
   const [editingName, setEditingName] = useState<string | null>(null);
   const [form, setForm] = useState<MetricForm>({ ...EMPTY_FORM });
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // REQ-2241: `?metric=<name>` is the open metric's panel.
+  const detail = useDetailParam("metrics");
+  const expanded = detail.id;
+  const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
 
   // REQ-1320: facts are the metric sources — the builder's source picker.

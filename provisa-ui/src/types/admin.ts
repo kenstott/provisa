@@ -39,6 +39,7 @@ export interface Source {
   database: string | null;
   username: string | null;
   dialect: string | null;
+  isSystem: boolean; // a source Provisa runs for itself: not offered by Register table
   cacheEnabled: boolean;
   cacheTtl: number | null;
   replicate: number | null; // REQ-826: null = Default; -1 never, N hot, 0 always

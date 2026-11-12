@@ -58,6 +58,7 @@ import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { derivedId, readDerivedId, useDetailParam } from "../components/list/useDetailParam";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
@@ -117,13 +118,23 @@ export function SecurityRolesPage() {
 
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
-  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+  // REQ-2241: `?role=<id>&section=<tab>` is the open role's panel and its tab.
+  const detail = useDetailParam("roles");
+  const expandedRole = detail.id;
+  const setExpandedRole = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
   // REQ-2078: derived roles share the list. The panel declares one, or shows the one picked.
   const { derived, problem: derivedProblem, reload: reloadDerived } = useDerivedRoles();
   const [showDerivedForm, setShowDerivedForm] = useState(false);
-  const [derivedPick, setDerivedPick] = useState<DerivedPick | null>(null);
+  // REQ-2241: `?derived=<attribute>:<value>` is the open derived role's panel (derivedId).
+  const derivedDetail = useDetailParam("derived");
+  const derivedPick: DerivedPick | null =
+    derivedDetail.id === null ? null : readDerivedId(derivedDetail.id);
+  const setDerivedPick = (pick: DerivedPick | null) =>
+    pick === null
+      ? derivedDetail.close()
+      : derivedDetail.open(derivedId(pick.attribute, pick.value));
 
   const reload = useCallback(async () => {
     await Promise.all([refetchRoles(), refetchDomains(), reloadDerived()]);
@@ -405,7 +416,11 @@ export function SecurityRolesPage() {
         )}
         {editingRoleInRow !== r.id ? (
           // REQ-2161: the role's values, then its effective rights by dimension.
-          <Tabs defaultValue="details" keepMounted={false}>
+          <Tabs
+            value={detail.tab ?? "details"}
+            onChange={(v) => v && detail.setTab(v)}
+            keepMounted={false}
+          >
             <Tabs.List mb="sm" aria-label={t("roleRights.tabs")}>
               <Tabs.Tab value="details" data-testid={`role-tab-details-${r.id}`}>
                 {t("roleRights.tab_details")}

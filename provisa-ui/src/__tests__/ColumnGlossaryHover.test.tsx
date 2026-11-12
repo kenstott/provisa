@@ -64,6 +64,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "alice", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 function renderHover(tableId: number, columnName: string) {

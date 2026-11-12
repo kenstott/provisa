@@ -280,6 +280,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -290,6 +291,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -301,6 +303,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),

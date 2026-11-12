@@ -38,6 +38,7 @@ KEPT_ON_FORM_EDIT: tuple[str, ...] = (
     "cache_catalog",
     "cache_schema",
     "approval_hook",
+    "is_system",
     "allowed_domains",
     "gql_naming_convention",
     "brand_setup",  # REQ-1923: set by the brand's own add (graphql_remote_router)
@@ -82,6 +83,7 @@ def _source_values(source: Source) -> dict:
         "cache_catalog": source.cache_catalog,
         "cache_schema": source.cache_schema,
         "approval_hook": source.approval_hook,
+        "is_system": source.is_system,
         "allowed_domains": list(source.allowed_domains),
         "gql_naming_convention": source.gql_naming_convention,
         # REQ-1695: the REFERENCE, never the credential. ``Source.password`` is documented as a

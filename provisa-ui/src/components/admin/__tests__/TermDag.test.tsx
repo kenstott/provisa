@@ -69,6 +69,7 @@ const term: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** ``term`` as the ontology's query reads it around the term: its neighbours, its column and

@@ -91124,8 +91124,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     page opens it focused on that term (its ancestors and descendants, and the columns, tables and products
     it reaches); a product''s panel opens it focused on that product; a domain or tag filter narrows it;
     the Ontology page shows it whole. The component''s options are focus, depth, domains, tags, whether
-    lateral edges are drawn, and 2D or 3D. Expanding a snippet opens the whole ontology with the same focus
-    selected. The separate term graph and product graph implementations are replaced by these presets. (Amended
+    lateral edges are drawn, and 2D or 3D. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 --
+    expanding a term opens on that term alone, as a product does. Kept here for history; do not implement
+    against it.] Expanding a snippet opens the whole ontology with the same focus selected. [END SUPERSEDED
+    BLOCK] The separate term graph and product graph implementations are replaced by these presets. (Amended
     2026-10-27, THE ONE GRAPH''S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth
     1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node''s
     page. Lateral edges are drawn by default, their toggle shown in 3D. The Product map is the whole ontology
@@ -91188,7 +91190,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended
     2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product''s graph opens
     on that product alone, its member tables, their columns and the terms grounded on them, with a control
-    that shows the rest of the model. Expanding a term still opens the whole ontology with the term selected.'
+    that shows the rest of the model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding
+    a term opens on that term alone, as a product does. Kept here for history; do not implement against
+    it.] Expanding a term still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK]
+    (Amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram''s
+    term lane, sibling terms (Dog and Cat under Pet) are not drawn side by side, where their edges leave
+    from different positions and cross regardless of order; each term takes its own row, and the rank lines
+    that join a term to its parent run beside the lane, not through its rows, so each lane can be ordered
+    freely to minimise crossings. On the Pet Health graph the diagram has fewer crossings than before the
+    lanes were spread (42). (Amended 2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding
+    a term''s graph opens on that term alone, as a product''s does on the product: the term, its ancestors
+    and descendants, and the columns, tables and products it reaches, at full hops, with the same control
+    that shows the rest of the model. The rest of the ontology is not read or drawn until that control asks
+    for it. No expanded snippet opens on the whole ontology; only the Ontology page''s own graph does.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -95250,7 +95264,36 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     A node is as wide as its label needs, and the label starts after the icon, never over it. Each lane
     is ordered to minimise edge crossings (each by the positions of its neighbours), and every lane spreads
     over the tallest lane''s height. A diagram is fitted only down to a readable zoom; beyond that it scrolls,
-    and zooming is an explicit gesture.'
+    and zooming is an explicit gesture. (Amended 2026-11-11, EACH LANE IS SORTED BY THE LANE ON ITS LEFT:)
+    Maintainer 2026-11-11 (Pet Health graph, lines still crossing): the lane diagram is ordered left to
+    right, one lane at a time. The first lane keeps its order; every lane after it is sorted by what its
+    nodes join in the lane on its left: tables in the order of their products, the columns of a table together
+    and in the order of their tables, [SUPERSEDED by REQ-2239 TERMS SIT LEVEL WITH THEIR COLUMNS, 2026-11-11
+    -- the pure sort raised crossings (Pet Health 45 to 68, pet-store 20 to 66); only the term lane is placed
+    to cut crossings. Kept here for history; do not implement against it.] a term by the place of the columns
+    it binds (the mean when it binds several) [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-2239 TERMS SIT
+    LEVEL WITH THEIR COLUMNS, 2026-11-11 -- the pure sort raised crossings (Pet Health 45 to 68, pet-store
+    20 to 66); only the term lane is placed to cut crossings. Kept here for history; do not implement against
+    it.] The order is this sort, not a search scored on crossings, so the same graph always draws the same
+    way. [END SUPERSEDED BLOCK] Lines between a table and its own columns never cross one another. (Amended
+    2026-11-11, FIT MEANS THE WHOLE IMAGE:) Maintainer 2026-11-11: the fit control on a 2D graph fits the
+    entire image into the canvas, however small that makes it. The readable zoom floor applies to how a
+    graph opens and to Reset view, not to fit. A control''s tooltip is drawn on one line beside its button.
+    (Amended 2026-11-11, TERMS SIT LEVEL WITH THEIR COLUMNS:) Maintainer 2026-11-11: products, tables and
+    columns keep the left-to-right sort; where tables tie under one product, tables that share terms are
+    placed next to each other. Only the term lane is placed to cut crossings, in this order. First, horizontal
+    lines are maximised: a term sits level with a column it binds, so a term bound to one column is joined
+    by a horizontal line. [SUPERSEDED by REQ-2239 THE SCORE IS THE ANGLE OF THE LINES, 2026-11-11 -- a term
+    is placed by how far its lines are from horizontal, not by a count of crossings. Kept here for history;
+    do not implement against it.] Then a term bound to several columns is moved up or down among them to
+    the place with the fewest crossings. [END SUPERSEDED BLOCK] Terms with a common parent move together
+    as one group and stay next to each other. The result is the same every time the same graph is drawn.
+    (Amended 2026-11-11, THE SCORE IS THE ANGLE OF THE LINES:) Maintainer 2026-11-11: the term lane is scored
+    by the angle of its lines: the further a line is from horizontal, the worse. A term bound to several
+    columns sits level with the one of them that leaves its lines flattest in total (the middle one of its
+    columns); a group of terms with a common parent is placed where its members'' lines are flattest in
+    total. Crossings that no placement can remove are accepted: the goal is the least, not none, and crossings
+    are reported, not the score.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
@@ -95302,14 +95345,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   unit_test: true
   description: 'Maintainer 2026-11-11: Provisa never changes sqlglot''s own classes at runtime. Every change
     to how a dialect tokenizes, parses or generates (today five assignments in provisa/transpiler: DuckDB''s
-    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types) is
-    made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses and
-    expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa does
-    not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc), whose
-    classes cannot be patched, can run under the transpiler. The compiled build is adopted when it gives
-    byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise the
-    plain build stays, and the measurement is recorded.'
-
+    lambda_sql, Postgres''s FUNC_TOKENS, anonymous_sql and FUNCTION_PARSERS, and ColumnDef''s arg_types)
+    is made in Provisa''s own dialect subclasses, with their own Tokenizer, Parser and Generator subclasses
+    and expression subclasses, and those dialects are the ones the transpiler names. So importing Provisa
+    does not alter stock sqlglot for any other caller, and sqlglot''s compiled build (sqlglot[c], mypyc),
+    whose classes cannot be patched, can run under the transpiler. The compiled build is adopted when it
+    gives byte-identical output on the SQL goldens and a measured gain in parse and generate time; otherwise
+    the plain build stays, and the measurement is recorded. (Amended 2026-11-11, DEFERRED: THE COMPILED
+    BUILD FORBIDS SUBCLASSES:) Maintainer 2026-11-11, on job J1210''s findings. sqlglot[c] 30.23.0 (sqlglotc)
+    compiles Parser and Generator without allowing interpreted subclasses: a Provisa subclass of either
+    raises ''interpreted classes cannot inherit from compiled''; Tokenizer subclasses work; entries added
+    to the FUNCTIONS, FUNCTION_PARSERS, TRANSFORMS and FUNC_TOKENS tables take effect, but a method assigned
+    on a compiled class is ignored by compiled callers. So neither runtime patches nor Provisa dialect subclasses
+    run on the compiled build, and moving the patches into subclasses would not let it run. The rule is
+    deferred: today''s patches stay, and this is rechecked when sqlglot allows interpreted subclasses of
+    Parser and Generator. Measured on the 325 golden semantic statements (parse as postgres; generate postgres,
+    duckdb, trino; stock dialects): compiled 1.70-1.72 s median against 3.76-4.84 s interpreted, identical
+    output; wheels exist for cp312 on macOS universal2, manylinux x86_64 and aarch64, and win_amd64. The
+    patched dialects reach past the five first listed: postgres, duckdb, trino, presto, spark, bigquery
+    and clickhouse directly, and redshift, materialize, risingwave, athena, dune and databricks by inheritance.'
 - id: REQ-2243
   status: proposed
   target: 2026-Q4
@@ -95340,7 +95394,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     from metrics (REQ-1318) lists the metrics it closes; a table or view lists the metrics whose expression
     references it, found by the same reference extraction the GraphQL metrics block uses (metric_reference_tables).
     A metric grounded in a glossary term shows the term''s definition and calculation method with it. Metrics
-    are listed as the reader''s role may see them (visible_to).'
+    are listed as the reader''s role may see them (visible_to). (Amended 2026-11-11, A METRIC NAMES ITS
+    TERM; THE METHOD HAS ITS OWN ANNOTATION:) Maintainer 2026-11-11: a metric is grounded in a glossary
+    term by naming it: a metric optionally carries one term, set in the metric editor and in configuration
+    and versioned with the metric, as a table names its class term. On ontology export the calculation method
+    is written in RDF as the Provisa predicate https://provisa.dev/ns#calculationMethod on the term, and
+    in an Ossie document as a calculation_methods list in its ai_context, as kept statements are carried.
+    An import maps that predicate and that list onto the method; annotations of other vocabularies are not
+    read as a method.'
   scenario: |
     Given a glossary term "net revenue" with a calculation method
     And a computed column grounded in that term whose formula reads a masked column

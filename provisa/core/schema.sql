@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS sources (
     producer_command JSONB,  -- REQ-861
     cache_catalog   TEXT,
     cache_schema    TEXT NOT NULL DEFAULT 'api_cache',
-    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
+    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE  -- a source Provisa runs for itself; not a target of Register table
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS replicate INTEGER;

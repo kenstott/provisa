@@ -412,6 +412,24 @@ describe("SplitPane — leaving a form that has unsaved changes", () => {
     expect(await screen.findByText("creating")).toBeInTheDocument();
   });
 
+  it("asks for Escape too, as for its close, and closes on Discard", async () => {
+    render(<Tables />);
+    await edit();
+    fireEvent.keyDown(screen.getByLabelText("alias"), { key: "Escape" });
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Discard your changes?");
+    // Nothing has moved yet: the panel and the edit are there.
+    expect(title()).toHaveTextContent("orders");
+    expect(screen.getByLabelText("alias")).toHaveValue("orders_v2");
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(asked()).toBeNull());
+    expect(screen.getByLabelText("alias")).toHaveValue("orders_v2");
+    fireEvent.keyDown(screen.getByLabelText("alias"), { key: "Escape" });
+    await userEvent.click(await screen.findByTestId("discard-changes-confirm"));
+    await waitFor(() => expect(screen.queryByTestId("split-panel")).toBeNull());
+  });
+
   it("does not ask when nothing was changed", async () => {
     render(<Tables />);
     await userEvent.click(row("orders"));

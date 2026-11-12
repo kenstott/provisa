@@ -143,6 +143,7 @@ function source(type: string, extra: Partial<Source> = {}): Source {
     passwordRef: null,
     changeSignal: "",
     rowFetchByKeys: false,
+    isSystem: false,
     cdc: null,
     ...extra,
   };

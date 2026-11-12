@@ -131,6 +131,7 @@ class SourceType:  # REQ-012
     # replay) can carry the same field forward.
     password_ref: str | None = ""
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
+    is_system: bool = False  # a source Provisa runs for itself: not offered by Register table
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 

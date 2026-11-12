@@ -117,6 +117,7 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
@@ -141,9 +142,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { dataProducts } = useDataProducts(); // REQ-1634
   const listedNames = useListedNames(); // REQ-2153
   const { relationships } = useAllRelationships();
-  // The detail's section in view: the same in the read view and the edit form, so opening the
-  // editor keeps the tab that was being read.
-  const [section, setSection] = useState<TableSection>("identity");
+  // REQ-2241: the open table and its section are the URL (`?table=<id>&section=<section>`): a link
+  // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
+  // Back returns to the panel and section before. The section is the same in the read view and the
+  // edit form, so opening the editor keeps the tab that was being read.
+  const detail = useDetailParam(viewsOnly ? "views" : "tables");
+  const section: TableSection =
+    detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
+      ? (detail.tab as TableSection)
+      : "identity";
+  const setSection = detail.setTab;
   // REQ-2187: the ERD in the list's place, its state in the URL.
   const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
@@ -165,7 +173,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { deployViewToDb } = useDeployViewToDb();
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  // `?open=<source>.<table>` names the table to open by its name instead -- a demo tour's step names
+  // a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
+  const openParam = searchParams.get("open");
+  const opened = openParam
+    ? tables.find(
+        (t) =>
+          `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
+      )
+    : undefined;
+  const expanded: number | null =
+    detail.id !== null ? Number(detail.id) : opened ? opened.id : null;
+  const setExpanded = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
   // One request for every row; asked for often only while a build runs or a detail is open.
   const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
   // REQ-1386: table whose governed SELECT * preview modal is open.
@@ -200,41 +220,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setSeededSource(sourceParam);
     setTableSearch(sourceParam ?? "");
   }
-  // `?table=<id>` opens that table's detail panel: a link from elsewhere (its checkers, its
-  // source) lands on the table itself, again whenever the link changes while the page stays.
-  const tableParam = searchParams.get("table");
-  const [seededTable, setSeededTable] = useState<string | null>(null);
-  if (tableParam !== seededTable) {
-    setSeededTable(tableParam);
-    if (tableParam !== null) {
-      setExpanded(Number(tableParam));
-      // A graph's column link names the Columns section too (lib/entityHref).
-      const named = searchParams.get("section");
-      if (named && (TABLE_SECTIONS as string[]).includes(named)) setSection(named as TableSection);
-    }
-  }
   // `?column=<name>` with `?table=`: that column's row is marked and brought into view.
   const columnParam = searchParams.get("column");
-  // `?open=<source>.<table>` opens that table's detail panel by its name -- a demo tour's step
-  // names a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
-  const openParam = searchParams.get("open");
-  const sectionParam = searchParams.get("section");
+  // `?tab=<tab>`: the Columns section's tab.
   const tabParam = searchParams.get("tab");
-  const opened = openParam
-    ? tables.find(
-        (t) =>
-          `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
-      )
-    : undefined;
-  const [seededOpen, setSeededOpen] = useState<string | null>(null);
-  const openKey = opened ? `${opened.id}:${sectionParam}:${tabParam}` : null;
-  if (openKey !== null && openKey !== seededOpen) {
-    setSeededOpen(openKey);
-    setExpanded(opened!.id);
-    if (sectionParam && (TABLE_SECTIONS as string[]).includes(sectionParam)) {
-      setSection(sectionParam as TableSection);
-    }
-  }
   const linkedColumnTab =
     tabParam && (COLUMN_TABS as string[]).includes(tabParam) ? (tabParam as ColumnTab) : undefined;
   const [page, setPage] = useState(0);
@@ -827,7 +816,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setPreviewTable(null);
     setEditingViewDef(null);
     cancelEditing();
-    if (erd.on) erd.setPanel("table", null);
   };
   // REQ-2187: a table clicked in the ERD: its panel, in place of whatever the panel held.
   const openFromErd = (id: string) => {
@@ -838,7 +826,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setEditingViewDef(null);
     cancelEditing();
     setExpanded(Number(id));
-    erd.setPanel("table", id);
   };
   const selectedTable =
     expanded === null ? null : (tables.find((tb) => tb.id === expanded) ?? null);
@@ -1019,7 +1006,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             onSectionChange={setSection}
             columnTab={linkedColumnTab}
             column={
-              tableParam !== null && Number(tableParam) === t.id
+              detail.id !== null && Number(detail.id) === t.id
                 ? (columnParam ?? undefined)
                 : undefined
             }

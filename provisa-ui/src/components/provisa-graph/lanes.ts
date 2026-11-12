@@ -8,17 +8,20 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174, REQ-2239: the lanes preset. ELK's layered algorithm in fixed lane partitions, placed
-// strictly left to right; one lane (the stacked lane) is a compound laid out top-down by the lines
-// inside it. A second pass orders each lane by the first's placement (the view's ``order``), the
-// stacked lane is settled (the view's ``settle``), the lines laid over the placed nodes are added,
-// and each lane is boxed and titled as a group is.
+// REQ-2174, REQ-2239: the lanes preset. ELK's layered algorithm in fixed lane partitions places
+// the diagram once; one lane (the stacked lane) is a compound laid out top-down by the lines inside
+// it. Then the view orders each lane given those places (``order``: the barycentre of each node's
+// neighbours, crossings cut), settles the stacked lane (``settle``), and the lanes are placed here
+// from that order alone (placeLanes): side by side left to right, each as wide as its widest node,
+// every lane spread over the height of the tallest, so a lane short of nodes is not packed at the
+// middle. Each lane is boxed round its own nodes and titled as a group is, the boxes a gap apart;
+// the lines laid over the placed nodes are added last.
 
 import type { CyInstance, CyLayoutOptions } from "../graph/cytoscape-types";
 import type { CyCanvas } from "./cyCanvas";
 import type { Core, ElementDefinition, NodeSingular } from "./core";
 import { edgeElement, type Element, type GraphEdgeSpec } from "./model";
-import { SIZE, groupHue } from "./tokens";
+import { groupHue } from "./tokens";
 import type { At } from "./tipPlacement";
 import { fitClear } from "./viewport";
 
@@ -58,6 +61,138 @@ export function laneElements(elements: Element[], opts: LanesOptions): Element[]
   ];
 }
 
+/** The space between two lanes' boxes; a glance's lanes sit closer. */
+export const LANE_GAP = 56;
+const TIGHT_LANE_GAP = 24;
+/** A lane's box round its nodes, and the room above them for its title. */
+export const LANE_PAD = 16;
+/** A lane box's dashed border, as drawn past its size (stylesheet). */
+const LANE_EDGE = 2;
+const LANE_TITLE = 12;
+/** The least gap between two nodes of a lane, as the stacked lane's ELK spacing. */
+export const NODE_GAP = 14;
+
+/** A node as placeLanes reads it: its size, and in the stacked lane where ``settle`` put it. */
+export interface LaneItem {
+  id: string;
+  w: number;
+  h: number;
+}
+
+/** A run of nodes placed as one: a node of an ordinary lane, or a row of the stacked lane (nodes
+ * whose heights overlap where ``settle`` put them), moved together so its shape holds. */
+interface Band {
+  ids: string[];
+  /** Each node's place inside the band, from the band's top left. */
+  at: Map<string, At>;
+  w: number;
+  h: number;
+}
+
+/** The stacked lane's rows, in order down the lane: nodes joined by a line inside the lane
+ * (``links``) stay together, and so do nodes whose spans overlap where ``settle`` put them. */
+function stackedBands(
+  items: LaneItem[],
+  settled: (id: string) => At,
+  links: [string, string][],
+): Band[] {
+  const span = new Map(
+    items.map((n) => {
+      const p = settled(n.id);
+      return [n.id, { n, x1: p.x - n.w / 2, y1: p.y - n.h / 2, y2: p.y + n.h / 2 }] as const;
+    }),
+  );
+  const up = new Map(items.map((n) => [n.id, n.id]));
+  const root = (id: string): string => {
+    const u = up.get(id) as string;
+    return u === id ? id : root(u);
+  };
+  for (const [a, b] of links) if (up.has(a) && up.has(b)) up.set(root(a), root(b));
+  const joined = new Map<string, string[]>();
+  for (const n of items) joined.set(root(n.id), [...(joined.get(root(n.id)) ?? []), n.id]);
+  const groups = [...joined.values()]
+    .map((ids) => ({
+      ids,
+      y1: Math.min(...ids.map((id) => span.get(id)!.y1)),
+      y2: Math.max(...ids.map((id) => span.get(id)!.y2)),
+    }))
+    .sort((a, b) => a.y1 - b.y1);
+  const rows: string[][] = [];
+  let bottom = -Infinity;
+  for (const g of groups) {
+    if (rows.length > 0 && g.y1 < bottom) {
+      rows[rows.length - 1].push(...g.ids);
+      bottom = Math.max(bottom, g.y2);
+    } else {
+      rows.push([...g.ids]);
+      bottom = g.y2;
+    }
+  }
+  return rows.map((ids) => {
+    const row = ids.map((id) => span.get(id)!);
+    const x1 = Math.min(...row.map((s) => s.x1));
+    const y1 = Math.min(...row.map((s) => s.y1));
+    const at = new Map(
+      row.map((s) => [s.n.id, { x: s.x1 - x1 + s.n.w / 2, y: s.y1 - y1 + s.n.h / 2 }] as const),
+    );
+    return {
+      ids,
+      at,
+      w: Math.max(...row.map((s) => s.x1 + s.n.w)) - x1,
+      h: Math.max(...row.map((s) => s.y2)) - y1,
+    };
+  });
+}
+
+/** Where each node of ``lanes`` (left to right, each in its order top to bottom) is drawn. Each
+ * lane is as wide as its widest node (or row), its nodes centred in it (the stacked lane's rows at
+ * its left edge, so its lines leave from one side); the lanes' boxes stand
+ * ``gap`` apart. Every lane is spread over the height of the tallest packed lane: its first node at
+ * the top, its last at the bottom, the space between shared evenly; a lane of one node sits at the
+ * middle. ``settled`` gives the stacked lane's places, whose rows (``links`` the lines inside it)
+ * keep their shape. */
+export function placeLanes(
+  lanes: { id: string; items: LaneItem[] }[],
+  stacked: string | undefined,
+  settled: (id: string) => At,
+  links: [string, string][] = [],
+  gap: number = LANE_GAP,
+): Map<string, At> {
+  const banded = lanes.map((l) => ({
+    id: l.id,
+    bands:
+      l.id === stacked
+        ? stackedBands(l.items, settled, links)
+        : l.items.map((n) => ({
+            ids: [n.id],
+            at: new Map([[n.id, { x: n.w / 2, y: n.h / 2 }]]),
+            w: n.w,
+            h: n.h,
+          })),
+  }));
+  const packed = (bands: Band[]) =>
+    bands.reduce((sum, b) => sum + b.h, 0) + NODE_GAP * Math.max(0, bands.length - 1);
+  const height = Math.max(0, ...banded.map((l) => packed(l.bands)));
+  const out = new Map<string, At>();
+  let left = 0;
+  for (const { id, bands } of banded) {
+    if (bands.length === 0) continue;
+    const width = Math.max(...bands.map((b) => b.w));
+    const free = height - bands.reduce((sum, b) => sum + b.h, 0);
+    const step = bands.length > 1 ? free / (bands.length - 1) : 0;
+    let top = bands.length > 1 ? 0 : (height - bands[0].h) / 2;
+    for (const b of bands) {
+      // An ordinary lane's nodes are centred in it; the stacked lane's rows start at its left
+      // edge, so every line out of it leaves from the same side.
+      const x0 = id === stacked ? left : left + (width - b.w) / 2;
+      b.at.forEach((p, id) => out.set(id, { x: x0 + p.x, y: top + p.y }));
+      top += b.h + step;
+    }
+    left += width + 2 * (LANE_PAD + LANE_EDGE) + gap;
+  }
+  return out;
+}
+
 /** Lays ``cy`` out in lanes; ``done`` once every pass has placed it. */
 export function runLanes(
   cy: Core,
@@ -69,92 +204,114 @@ export function runLanes(
   const ids = opts.lanes.map((l) => l.id);
   const partition = (lane: string) => String(ids.indexOf(lane));
   const stacked = opts.stacked;
-  const layout = (ordered: boolean) =>
-    cy.layout({
-      name: "elk",
-      fit: true,
-      padding: 24,
-      nodeLayoutOptions: (n: NodeSingular) => {
-        if (stacked !== undefined && n.id() === frameId(stacked))
-          return {
-            "elk.partitioning.partition": partition(stacked),
-            "elk.algorithm": "layered",
-            "elk.direction": "DOWN",
-            "elk.aspectRatio": "0.4",
-            "elk.layered.spacing.nodeNodeBetweenLayers": "36",
-            "elk.spacing.nodeNode": "14",
-          };
-        if (n.data("lane") === stacked) return {};
-        return { "elk.partitioning.partition": partition(n.data("lane") as string) };
-      },
-      elk: {
-        algorithm: "layered",
-        "elk.direction": "RIGHT",
-        "elk.partitioning.activate": "true",
-        // One graph, so every lane lines up across all of it.
-        "elk.separateConnectedComponents": "false",
-        "elk.layered.spacing.nodeNodeBetweenLayers": opts.tight ? "40" : "90",
-        "elk.spacing.nodeNode": "12",
-        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
-        // The second pass keeps each lane in the order the first pass's places ask for.
-        ...(ordered ? { "elk.layered.crossingMinimization.strategy": "INTERACTIVE" } : {}),
-      },
-    } as CyLayoutOptions);
+  const layout = cy.layout({
+    name: "elk",
+    fit: false,
+    nodeLayoutOptions: (n: NodeSingular) => {
+      if (stacked !== undefined && n.id() === frameId(stacked))
+        return {
+          "elk.partitioning.partition": partition(stacked),
+          "elk.algorithm": "layered",
+          "elk.direction": "DOWN",
+          "elk.aspectRatio": "0.4",
+          "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+          "elk.spacing.nodeNode": String(NODE_GAP),
+        };
+      if (n.data("lane") === stacked) return {};
+      return { "elk.partitioning.partition": partition(n.data("lane") as string) };
+    },
+    elk: {
+      algorithm: "layered",
+      "elk.direction": "RIGHT",
+      "elk.partitioning.activate": "true",
+      // One graph, so every lane lines up across all of it.
+      "elk.separateConnectedComponents": "false",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+      "elk.spacing.nodeNode": "12",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+    },
+  } as CyLayoutOptions);
 
-  const at = (id: string) => cy.getElementById(id).position();
+  const at = (id: string) => ({ ...cy.getElementById(id).position() });
 
-  // The second pass's order: each lane spread over the height of the longest.
-  const reorder = (): string[] => {
-    if (!opts.order) return [];
-    const [first, ...lanes] = opts.order(at);
-    const span = Math.max(1, ...lanes.map((row) => row.length));
-    for (const row of lanes)
-      row.forEach((id, i) => {
-        const n = cy.getElementById(id);
-        n.position({
-          x: n.position("x"),
-          y: ((i + 0.5) * span * SIZE.nodeHeight * 2) / row.length,
-        });
-      });
-    return first ?? [];
-  };
+  canvas.run(layout, () => {
+    const items = placedItems(cy);
+    const width = new Map(items.map((n) => [n.id, n.w]));
+    const widthOf = (id: string) => width.get(id) as number;
+    // Each node's place in its lane: the view's order, else top to bottom as ELK put it.
+    const rank = new Map<string, number>();
+    const rows = opts.order?.(at) ?? [];
+    const stackOrder = stacked === undefined ? [] : (rows[0] ?? []);
+    for (const row of rows) row.forEach((id, i) => rank.set(id, i));
+    const settled =
+      stacked !== undefined && opts.settle
+        ? opts.settle(stackOrder, at, widthOf)
+        : new Map<string, At>();
+    const lanes = ids.map((lane) => ({
+      id: lane,
+      items: items
+        .filter((n) => n.lane === lane)
+        .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity) || a.y - b.y),
+    }));
+    // The lines between nodes, for the stacked lane's rows.
+    const links: [string, string][] = [];
+    cy.elements().forEach((e) => {
+      if (!e.isNode()) links.push([e.data("source") as string, e.data("target") as string]);
+    });
+    const where = placeLanes(
+      lanes,
+      stacked,
+      (id) => settled.get(id) ?? at(id),
+      links,
+      opts.tight ? TIGHT_LANE_GAP : LANE_GAP,
+    );
+    cy.batch(() => where.forEach((p, id) => cy.getElementById(id).position(p)));
+    cy.add(overlay.map((e) => edgeElement(e)) as unknown as ElementDefinition[]);
+    boxLanes(cy, opts);
+    fitClear(cy as unknown as CyInstance, 24);
+    done();
+  });
+}
 
-  const boxLanes = () => {
-    const placed = cy.nodes('[kind = "node"], [kind = "more"]');
-    if (placed.empty()) return;
-    const top = placed.boundingBox({}).y1;
-    const bottom = placed.boundingBox({}).y2;
-    for (const lane of opts.lanes) {
-      const inLane = placed.filter((n) => n.data("lane") === lane.id);
-      if (inLane.empty()) continue;
-      const bb = inLane.boundingBox({});
-      const pad = 16;
-      cy.add({
-        group: "nodes",
-        data: {
-          id: `lane:${lane.id}`,
-          kind: "lane",
-          title: lane.title.toUpperCase(),
-          hue: groupHue(lane.id),
-          w: bb.x2 - bb.x1 + pad * 2,
-          h: bottom - top + pad * 2 + 12,
-        },
-        position: { x: (bb.x1 + bb.x2) / 2, y: (top + bottom) / 2 - 6 },
-      });
-    }
-  };
-
-  canvas.run(layout(false), () => {
-    const first = reorder();
-    canvas.run(layout(true), () => {
-      if (opts.settle) {
-        const moved = opts.settle(first, at, (id) => cy.getElementById(id).data("w") as number);
-        cy.batch(() => moved.forEach((p, id) => cy.getElementById(id).position(p)));
-      }
-      cy.add(overlay.map((e) => edgeElement(e)) as unknown as ElementDefinition[]);
-      boxLanes();
-      fitClear(cy as unknown as CyInstance, 24);
-      done();
+/** The nodes laid out (not a lane's box or the stacked lane's frame): each one's lane, size and
+ * place. */
+function placedItems(cy: Core): (LaneItem & { lane: string; x: number; y: number })[] {
+  const out: (LaneItem & { lane: string; x: number; y: number })[] = [];
+  cy.nodes('[kind = "node"], [kind = "more"]').forEach((n) => {
+    const p = n.position();
+    out.push({
+      id: n.id(),
+      lane: n.data("lane") as string,
+      w: n.data("w") as number,
+      h: n.data("h") as number,
+      x: p.x,
+      y: p.y,
     });
   });
+  return out;
+}
+
+/** Each lane boxed round its own nodes, its title above them. */
+function boxLanes(cy: Core, opts: LanesOptions): void {
+  const items = placedItems(cy);
+  for (const lane of opts.lanes) {
+    const inLane = items.filter((n) => n.lane === lane.id);
+    if (inLane.length === 0) continue;
+    const x1 = Math.min(...inLane.map((n) => n.x - n.w / 2)) - LANE_PAD;
+    const x2 = Math.max(...inLane.map((n) => n.x + n.w / 2)) + LANE_PAD;
+    const y1 = Math.min(...inLane.map((n) => n.y - n.h / 2)) - LANE_PAD - LANE_TITLE;
+    const y2 = Math.max(...inLane.map((n) => n.y + n.h / 2)) + LANE_PAD;
+    cy.add({
+      group: "nodes",
+      data: {
+        id: `lane:${lane.id}`,
+        kind: "lane",
+        title: lane.title.toUpperCase(),
+        hue: groupHue(lane.id),
+        w: x2 - x1,
+        h: y2 - y1,
+      },
+      position: { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
+    });
+  }
 }
