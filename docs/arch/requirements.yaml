@@ -95268,12 +95268,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Maintainer 2026-11-11 (Pet Health graph, lines still crossing): the lane diagram is ordered left to
     right, one lane at a time. The first lane keeps its order; every lane after it is sorted by what its
     nodes join in the lane on its left: tables in the order of their products, the columns of a table together
-    and in the order of their tables, a term by the place of the columns it binds (the mean when it binds
-    several). The order is this sort, not a search scored on crossings, so the same graph always draws the
-    same way. Lines between a table and its own columns never cross one another. (Amended 2026-11-11, FIT
-    MEANS THE WHOLE IMAGE:) Maintainer 2026-11-11: the fit control on a 2D graph fits the entire image into
-    the canvas, however small that makes it. The readable zoom floor applies to how a graph opens and to
-    Reset view, not to fit. A control''s tooltip is drawn on one line beside its button.'
+    and in the order of their tables, [SUPERSEDED by REQ-2239 TERMS SIT LEVEL WITH THEIR COLUMNS, 2026-11-11
+    -- the pure sort raised crossings (Pet Health 45 to 68, pet-store 20 to 66); only the term lane is placed
+    to cut crossings. Kept here for history; do not implement against it.] a term by the place of the columns
+    it binds (the mean when it binds several) [END SUPERSEDED BLOCK]. [SUPERSEDED by REQ-2239 TERMS SIT
+    LEVEL WITH THEIR COLUMNS, 2026-11-11 -- the pure sort raised crossings (Pet Health 45 to 68, pet-store
+    20 to 66); only the term lane is placed to cut crossings. Kept here for history; do not implement against
+    it.] The order is this sort, not a search scored on crossings, so the same graph always draws the same
+    way. [END SUPERSEDED BLOCK] Lines between a table and its own columns never cross one another. (Amended
+    2026-11-11, FIT MEANS THE WHOLE IMAGE:) Maintainer 2026-11-11: the fit control on a 2D graph fits the
+    entire image into the canvas, however small that makes it. The readable zoom floor applies to how a
+    graph opens and to Reset view, not to fit. A control''s tooltip is drawn on one line beside its button.
+    (Amended 2026-11-11, TERMS SIT LEVEL WITH THEIR COLUMNS:) Maintainer 2026-11-11: products, tables and
+    columns keep the left-to-right sort; where tables tie under one product, tables that share terms are
+    placed next to each other. Only the term lane is placed to cut crossings, in this order. First, horizontal
+    lines are maximised: a term sits level with a column it binds, so a term bound to one column is joined
+    by a horizontal line. Then a term bound to several columns is moved up or down among them to the place
+    with the fewest crossings. Terms with a common parent move together as one group and stay next to each
+    other. The result is the same every time the same graph is drawn.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4
