@@ -1305,11 +1305,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   if (!found) throw new Error(`table ${key} is not listed`);
                   return found.tableName;
                 }}
-                onDelete={async (keys) => {
-                  const result = await deleteTables(keys.map(Number));
-                  await reload();
-                  return result;
-                }}
+                // The tables shown are read again by the call itself: a reload() would show the
+                // page loading and take the refusals the bar names with it.
+                onDelete={(keys) => deleteTables(keys.map(Number))}
                 testId="tables-bulk"
               />
               <ListTable testId="tables-list" selection={selection}>

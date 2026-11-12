@@ -10065,5 +10065,17 @@
   "pt/entitlements.json::entitlements.expiry.none": "No end dates: this grant lasts until it is ended.",
   "pt/entitlements.json::entitlements.expiry.on": "{{what}} on {{entries}}",
   "pt/entitlements.json::entitlements.expiry.passed": "Passed",
-  "pt/entitlements.json::entitlements.expiry.wholeGrant": "The whole grant"
+  "pt/entitlements.json::entitlements.expiry.wholeGrant": "The whole grant",
+  "pt/list.json::list.selectAll": "Select every row shown",
+  "pt/list.json::list.selectRow": "Select row",
+  "pt/list.json::list.selectedCount_one": "{{count}} selected",
+  "pt/list.json::list.selectedCount_other": "{{count}} selected",
+  "pt/list.json::list.bulkDelete": "Delete",
+  "pt/list.json::list.clearSelection": "Clear",
+  "pt/list.json::list.bulkDeleteTitle_one": "Delete {{count}} row?",
+  "pt/list.json::list.bulkDeleteTitle_other": "Delete {{count}} rows?",
+  "pt/list.json::list.bulkDeleteConsequence": "These will be deleted: {{names}}. Any that something still refers to are kept, and named with why.",
+  "pt/list.json::list.bulkRefused_one": "{{count}} was not deleted:",
+  "pt/list.json::list.bulkRefused_other": "{{count}} were not deleted:",
+  "pt/list.json::list.dismiss": "Dismiss"
 }
