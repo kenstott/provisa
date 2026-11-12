@@ -20,6 +20,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import "./GrpcPage.css";
 import { requestFailed, serverMessage, type ServerMessageShape } from "../i18n/serverMessage";
 import { Tip } from "../components/Tip";
+import { CancelButton } from "../components/form/CancelButton";
 
 type OperationType = "query" | "mutation" | "command";
 type LeftTab = "body" | "proto";
@@ -399,9 +400,7 @@ export function GrpcPage() {
         const p = parseProto(text);
         // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
         // before matching against the bare typeName the proto actually exposes.
-        const preferred = handoff
-          ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "")
-          : "";
+        const preferred = handoff ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "") : "";
         const navM = preferred
           ? p.methods.find((m) => m.typeName === preferred && m.operation === "query")
           : null;
@@ -689,14 +688,18 @@ export function GrpcPage() {
               {t("grpcPage.selectAtLeastOneFunc")}
             </Text>
           )}
-          <Button
-            size="xs"
-            data-testid="grpc-send-btn"
-            onClick={handleRun}
-            disabled={running || !selectedMethod || !roleId || !!protoError || funcsRequired}
-          >
-            {running ? t("grpcPage.cancel") : t("grpcPage.send")}
-          </Button>
+          {running ? (
+            <CancelButton onClick={handleRun} disabled testId="grpc-send-btn" />
+          ) : (
+            <Button
+              size="xs"
+              data-testid="grpc-send-btn"
+              onClick={handleRun}
+              disabled={!selectedMethod || !roleId || !!protoError || funcsRequired}
+            >
+              {t("grpcPage.send")}
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -719,81 +722,81 @@ export function GrpcPage() {
             </Tabs.List>
           </Tabs>
           {leftTab === "body" && isAggOrGroupBy && selectedMethod && (
-              <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
-                {selectedMethod.typeName.endsWith("GroupBy") && (
-                  <MultiSelect
-                    aria-label={t("grpcPage.groupByColumns")}
-                    data-testid="grpc-groupby-picker"
-                    size="xs"
-                    placeholder={t("grpcPage.groupByColumns")}
-                    data={groupByColumnOptions}
-                    value={groupByCols}
-                    onChange={setGroupByCols}
-                    searchable
-                    clearable
-                  />
-                )}
-                {selectedMethod.typeName.endsWith("GroupBy") && (
-                  <>
-                    <Checkbox
-                      mt="sm"
-                      size="xs"
-                      data-testid="grpc-include-nodes-checkbox"
-                      label={t("grpcPage.includeNodes")}
-                      checked={includeNodes}
-                      onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
-                    />
-                    {includeNodes && (
-                      <MultiSelect
-                        mt="xs"
-                        aria-label={t("grpcPage.includeFields")}
-                        data-testid="grpc-include-picker"
-                        size="xs"
-                        placeholder={t("grpcPage.includeFields")}
-                        data={includeOptions}
-                        value={includeFields}
-                        onChange={setIncludeFields}
-                        searchable
-                        clearable
-                      />
-                    )}
-                  </>
-                )}
-                <Checkbox.Group
-                  data-testid="grpc-funcs-picker"
-                  value={selectedFuncs}
-                  onChange={setSelectedFuncs}
-                  label={t("grpcPage.aggregateFunctions")}
-                  mt="sm"
-                  mb="sm"
-                >
-                  <Group gap="xs" mt={8} mb={4}>
-                    {AGG_FUNCS.map((fn) => (
-                      <Checkbox
-                        key={fn}
-                        value={fn}
-                        label={fn}
-                        size="xs"
-                        data-testid={`grpc-func-${fn}`}
-                      />
-                    ))}
-                  </Group>
-                </Checkbox.Group>
+            <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
+              {selectedMethod.typeName.endsWith("GroupBy") && (
                 <MultiSelect
-                  mt="xs"
-                  aria-label={t("grpcPage.aggregateColumns")}
-                  data-testid="grpc-columns-picker"
+                  aria-label={t("grpcPage.groupByColumns")}
+                  data-testid="grpc-groupby-picker"
                   size="xs"
-                  label={t("grpcPage.aggregateColumns")}
-                  placeholder={t("grpcPage.aggregateColumns")}
-                  data={aggColumnOptions}
-                  value={selectedAggColumns}
-                  onChange={setSelectedAggColumns}
+                  placeholder={t("grpcPage.groupByColumns")}
+                  data={groupByColumnOptions}
+                  value={groupByCols}
+                  onChange={setGroupByCols}
                   searchable
                   clearable
                 />
-              </div>
-            )}
+              )}
+              {selectedMethod.typeName.endsWith("GroupBy") && (
+                <>
+                  <Checkbox
+                    mt="sm"
+                    size="xs"
+                    data-testid="grpc-include-nodes-checkbox"
+                    label={t("grpcPage.includeNodes")}
+                    checked={includeNodes}
+                    onChange={(e) => setIncludeNodes(e.currentTarget.checked)}
+                  />
+                  {includeNodes && (
+                    <MultiSelect
+                      mt="xs"
+                      aria-label={t("grpcPage.includeFields")}
+                      data-testid="grpc-include-picker"
+                      size="xs"
+                      placeholder={t("grpcPage.includeFields")}
+                      data={includeOptions}
+                      value={includeFields}
+                      onChange={setIncludeFields}
+                      searchable
+                      clearable
+                    />
+                  )}
+                </>
+              )}
+              <Checkbox.Group
+                data-testid="grpc-funcs-picker"
+                value={selectedFuncs}
+                onChange={setSelectedFuncs}
+                label={t("grpcPage.aggregateFunctions")}
+                mt="sm"
+                mb="sm"
+              >
+                <Group gap="xs" mt={8} mb={4}>
+                  {AGG_FUNCS.map((fn) => (
+                    <Checkbox
+                      key={fn}
+                      value={fn}
+                      label={fn}
+                      size="xs"
+                      data-testid={`grpc-func-${fn}`}
+                    />
+                  ))}
+                </Group>
+              </Checkbox.Group>
+              <MultiSelect
+                mt="xs"
+                aria-label={t("grpcPage.aggregateColumns")}
+                data-testid="grpc-columns-picker"
+                size="xs"
+                label={t("grpcPage.aggregateColumns")}
+                placeholder={t("grpcPage.aggregateColumns")}
+                data={aggColumnOptions}
+                value={selectedAggColumns}
+                onChange={setSelectedAggColumns}
+                searchable
+                clearable
+              />
+            </div>
+          )}
           {leftTab === "body" ? (
             <GrpcCodeView
               language="json"

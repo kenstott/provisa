@@ -29,6 +29,7 @@ import { TAG_PARAM_SEPARATOR, baseTagId, tagParam } from "../types/admin";
 import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useTagQueries";
 import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
+import { CancelButton } from "./form/CancelButton";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
 // (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
@@ -375,14 +376,7 @@ export function TagControl({
                       >
                         {t("tagControl.apply")}
                       </Button>
-                      <Button
-                        size="compact-xs"
-                        variant="default"
-                        onClick={closeForm}
-                        data-testid={`tag-cancel-${tag.id}`}
-                      >
-                        {t("tagControl.cancel")}
-                      </Button>
+                      <CancelButton onClick={closeForm} testId={`tag-cancel-${tag.id}`} />
                     </Group>
                   </Stack>
                 );

@@ -245,6 +245,9 @@ describe("FormLayout", () => {
     const buttons = Array.from(footer.querySelectorAll("button"));
     expect(buttons.map((b) => b.textContent)).toEqual([t("common.save"), t("common.cancel")]);
     for (const b of buttons) expect(b.querySelector("svg")).not.toBeNull();
+    // The one Cancel: bordered and full size, the same as in a panel's head.
+    expect(buttons[1]).toHaveAttribute("data-variant", "default");
+    expect(buttons[1]).toHaveAttribute("data-size", "sm");
   });
 
   describe("as a detail panel's actions", () => {
@@ -271,7 +274,7 @@ describe("FormLayout", () => {
       );
     const head = () => screen.getByTestId("pane-title").parentElement as HTMLElement;
 
-    it("sits in the panel's head beside the name, borderless and compact, with the same ids", async () => {
+    it("sits in the panel's head beside the name, Save borderless and compact, Cancel the one Cancel, with the same ids", async () => {
       inPanel(
         <FormFooter
           panel
@@ -285,17 +288,18 @@ describe("FormLayout", () => {
       const cancel = screen.getByTestId("the-cancel");
       expect(head()).toContainElement(save);
       expect(head()).toContainElement(cancel);
-      // Icon and word, as at a form's foot; only the look is lighter.
+      // Icon and word, as at a form's foot.
       expect([save.textContent, cancel.textContent]).toEqual([
         t("common.save"),
         t("common.cancel"),
       ]);
-      for (const b of [save, cancel]) {
-        expect(b.querySelector("svg")).not.toBeNull();
-        expect(b).toHaveAttribute("data-variant", "subtle");
-        expect(b).toHaveAttribute("data-size", "compact-sm");
-      }
-      // Both borderless: Save is marked as the primary (and tinted as one), Cancel is not.
+      for (const b of [save, cancel]) expect(b.querySelector("svg")).not.toBeNull();
+      // Save takes the head's look; Cancel is bordered and full size, as everywhere.
+      expect(save).toHaveAttribute("data-variant", "subtle");
+      expect(save).toHaveAttribute("data-size", "compact-sm");
+      expect(cancel).toHaveAttribute("data-variant", "default");
+      expect(cancel).toHaveAttribute("data-size", "sm");
+      // Save is marked as the primary (and tinted as one), Cancel is not.
       expect(save).toHaveAttribute("data-primary", "true");
       expect(cancel).not.toHaveAttribute("data-primary");
       expect(save.closest(".form-footer")).toHaveClass("form-footer--head");
