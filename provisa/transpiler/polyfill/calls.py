@@ -16,7 +16,8 @@ only in a FROM clause. lag and lead of a window of no order: Trino requires one,
 answer is of the rows' order as read, which no form names. string_agg of a delimiter that is no
 constant text, or of bytea: Trino's listagg takes a constant separator, and no bytes. json_object
 of arrays of keys and values: sqlglot reads it as key-value pairs, which Trino takes of a text key
-only. And the functions of the server Trino has no form of, sent as written."""
+only. And the functions of the server Trino has no form of, sent as written (current_schemas,
+refused on ClickHouse too, is its family's: provisa.transpiler.polyfill.clickhouse)."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -71,7 +72,6 @@ def _of_arrays(_node: exp.Expr, args: list[exp.Expr]) -> bool:
 
 
 _SERVER = {
-    "current_schemas": "The schemas of the search path.",
     "pg_conf_load_time": "The time the server's configuration was last read.",
     "pg_my_temp_schema": "The oid of the session's temporary schema.",
     "pg_postmaster_start_time": "The time the server started.",

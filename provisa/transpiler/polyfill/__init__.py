@@ -22,6 +22,7 @@ from provisa.transpiler.polyfill import (
     arrays,
     calls,
     casts,
+    clickhouse,
     collations,
     dates,
     json_values,
@@ -72,6 +73,7 @@ GRID = Grid(
     + server.FEATURES
     + ranges.FEATURES
     + json_values.FEATURES
+    + clickhouse.FEATURES
 )
 
 __all__ = [

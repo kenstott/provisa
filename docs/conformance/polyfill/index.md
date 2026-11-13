@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-144 of the grid's 144 features are native on PostgreSQL and left out.
+145 of the grid's 145 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-82 of the grid's 144 features are native on DuckDB and left out.
+83 of the grid's 145 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -270,7 +270,7 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN strlen($n) &gt; 63 THEN err
 
 ## [Trino](trino.md)
 
-1 of the grid's 144 features are native on Trino and left out.
+2 of the grid's 145 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -605,7 +605,6 @@ current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
@@ -628,11 +627,12 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-1 of the grid's 144 features are native on Presto and left out.
+2 of the grid's 145 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -967,7 +967,6 @@ current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
@@ -990,11 +989,12 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-1 of the grid's 144 features are native on Athena and left out.
+2 of the grid's 145 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1329,7 +1329,6 @@ current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
@@ -1352,11 +1351,12 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-69 of the grid's 144 features are native on ClickHouse and left out.
+68 of the grid's 145 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1640,11 +1640,13 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: ClickHouse&#x27;s own currentSchemas answers its database, not PostgreSQL&#x27;s search path.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-81 of the grid's 144 features are native on Snowflake and left out.
+82 of the grid's 145 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1912,7 +1914,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Databricks](databricks.md)
 
-81 of the grid's 144 features are native on Databricks and left out.
+82 of the grid's 145 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2180,7 +2182,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [BigQuery](bigquery.md)
 
-81 of the grid's 144 features are native on BigQuery and left out.
+82 of the grid's 145 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2448,7 +2450,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-81 of the grid's 144 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+82 of the grid's 145 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2716,7 +2718,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Redshift](redshift.md)
 
-81 of the grid's 144 features are native on Redshift and left out.
+82 of the grid's 145 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2984,7 +2986,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [MySQL](mysql.md)
 
-81 of the grid's 144 features are native on MySQL and left out.
+82 of the grid's 145 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3252,7 +3254,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SingleStore](singlestore.md)
 
-81 of the grid's 144 features are native on SingleStore and left out.
+82 of the grid's 145 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3520,7 +3522,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SQLite](sqlite.md)
 
-81 of the grid's 144 features are native on SQLite and left out.
+82 of the grid's 145 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3788,7 +3790,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Oracle](oracle.md)
 
-81 of the grid's 144 features are native on Oracle and left out.
+82 of the grid's 145 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4056,7 +4058,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Hive](hive.md)
 
-81 of the grid's 144 features are native on Hive and left out.
+82 of the grid's 145 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4324,7 +4326,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Exasol](exasol.md)
 
-81 of the grid's 144 features are native on Exasol and left out.
+82 of the grid's 145 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4592,7 +4594,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Druid](druid.md)
 
-81 of the grid's 144 features are native on Druid and left out.
+82 of the grid's 145 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
