@@ -155,7 +155,10 @@ PAGES: dict[str, PollyPage] = {
     "/library": PollyPage("the reference library"),
     "/admin/metadata-export": PollyPage("metadata export"),
     "/admin/import": PollyPage("import"),
-    "/admin/tags": PollyPage("tags"),
+    "/admin/tags": PollyPage(
+        "tags. The tag form's Required switch (tags-required) makes every object of the kinds "
+        "in Applies to carry the tag; one without it is a missing row in the tags report"
+    ),
     "/admin/classification-kinds": PollyPage("classification kinds"),
     "/admin/reports": PollyPage("reports"),
     "/admin/security": PollyPage("security settings"),

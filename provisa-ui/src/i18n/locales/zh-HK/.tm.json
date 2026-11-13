@@ -8695,6 +8695,8 @@
   "zh-HK/tagsTab.json::tagsTab.scope_table": "Table",
   "zh-HK/tagsTab.json::tagsTab.scope_term": "Glossary term",
   "zh-HK/tagsTab.json::tagsTab.systemTag": "System tag — read only",
+  "zh-HK/tagsTab.json::tagsTab.requiredLabel": "Required",
+  "zh-HK/tagsTab.json::tagsTab.requiredDesc": "Every object of the kinds in Applies to must carry this tag. One without it shows as missing in the tags report.",
   "zh-HK/team.json::teamPage.accessTab": "Access",
   "zh-HK/team.json::teamPage.activeStatus": "Active",
   "zh-HK/team.json::teamPage.attributes.add": "Add",

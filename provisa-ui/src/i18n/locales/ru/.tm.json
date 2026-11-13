@@ -8657,6 +8657,8 @@
   "ru/tagsTab.json::tagsTab.scope_table": "Table",
   "ru/tagsTab.json::tagsTab.scope_term": "Glossary term",
   "ru/tagsTab.json::tagsTab.systemTag": "System tag — read only",
+  "ru/tagsTab.json::tagsTab.requiredLabel": "Required",
+  "ru/tagsTab.json::tagsTab.requiredDesc": "Every object of the kinds in Applies to must carry this tag. One without it shows as missing in the tags report.",
   "ru/team.json::teamPage.accessTab": "Access",
   "ru/team.json::teamPage.activeStatus": "Active",
   "ru/team.json::teamPage.attributes.add": "Add",

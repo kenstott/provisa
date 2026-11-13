@@ -38,6 +38,8 @@
     "policy_hidden": "Verborgen",
     "policy_optional": "Optioneel",
     "policy_required": "Verplicht",
+    "requiredLabel": "Verplicht",
+    "requiredDesc": "Elk object van de soorten onder ‘Geldt voor’ moet deze tag hebben. Een object zonder de tag staat als ontbrekend in het tagrapport.",
     "reasonPolicyBadge": "Reden: {{policy}}",
     "expiresPolicyBadge": "Verval: {{policy}}",
     "createButton": "Tag aanmaken",

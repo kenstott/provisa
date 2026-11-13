@@ -233,6 +233,7 @@ query TagsQuery {
       description
     }
     requiresCitation
+    required
     needsReview
     citations {
       documentId
