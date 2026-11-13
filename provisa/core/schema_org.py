@@ -667,6 +667,9 @@ tags = Table(
     Column("param_policy", Text, nullable=False, server_default="none"),
     # REQ-1943: the Sensitive data option.
     Column("sensitive", Boolean, nullable=False, server_default=false()),
+    # REQ-2208: each assignment must cite a library document or section; one that does not is a
+    # gap, never refused.
+    Column("requires_citation", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -2513,6 +2516,41 @@ reference_document_tags = Table(
     CheckConstraint(
         "object_type IN ('document', 'section')",
         name="reference_document_tags_object_type_check",
+    ),
+)
+
+# REQ-2208: citations of reference library documents and their sections, one shape for whatever
+# cites the library: a tag's definition (citer_kind "tag", object_key "") and each assignment of a
+# tag (citer_kind "tag_assignment", object_key the assignment's). The section is named by heading or
+# page, the whole document by neither; cite_key is that name. text_sha256 is of the section's text
+# when cited, so a revised section flags its citer for review (provisa.reference_library.citations).
+# The document's title and source are kept, so a citation outlives the document.
+reference_citations = Table(
+    "reference_citations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("citer_kind", Text, nullable=False),
+    Column("tag_id", Text),  # the BASE tag id
+    Column("object_key", Text, nullable=False, server_default=""),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("document_title", Text, nullable=False),
+    Column("document_source", Text, nullable=False),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("cite_key", Text, nullable=False),
+    Column("text_sha256", Text, nullable=False),
+    Column("cited_by", Text),
+    Column("cited_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
+    CheckConstraint(
+        "citer_kind IN ('tag', 'tag_assignment')",
+        name="reference_citations_citer_kind_check",
     ),
 )
 

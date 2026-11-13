@@ -116,6 +116,7 @@ from provisa.api.admin.types import (
     SourceType,
     SystemHealthType,
     TableAccessType,
+    LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
     TagType,
@@ -557,6 +558,34 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
         except DomainLookupError:
             continue
     return [r for r in rows if visible(r)]
+
+
+def citation_type(citation: Any) -> LibraryCitationType:  # REQ-2208
+    """A library citation (reference_library.citations.Citation) as the admin API answers it."""
+    return LibraryCitationType(
+        document_id=citation.document_id,
+        document_title=citation.document_title,
+        document_source=citation.document_source,
+        section_heading=citation.section_heading,
+        section_page=citation.section_page,
+        text_sha256=citation.text_sha256,
+        cited_by=citation.cited_by,
+        cited_at=citation.cited_at.isoformat(),
+        state=citation.state,
+        needs_review=citation.needs_review,
+    )
+
+
+async def readable_tag_assignments(
+    request: Any, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2208
+    """:func:`_readable_assignments` for a REST handler's ``request``: the one read gate on tag
+    assignments, wherever they are listed."""
+    import types as _types
+
+    return await _readable_assignments(
+        cast(StrawberryInfo, _types.SimpleNamespace(context={"request": request})), conn, rows
+    )
 
 
 async def _readable_assignments(
@@ -1068,6 +1097,7 @@ class Query:  # REQ-021, REQ-042
             # REQ-1467: one read for every tag's values, grouped here — a per-tag read would be a
             # query per row to serve a table that holds a handful of values in total.
             param_rows = await tag_repo.list_all_param_values(cast("Connection", conn))
+            cited = await tag_repo.definition_citations(cast("Connection", conn))  # REQ-2208
         by_tag: dict[str, list[TagParamValueType]] = {}
         for p in param_rows:
             by_tag.setdefault(p["tag_id"], []).append(
@@ -1085,6 +1115,9 @@ class Query:  # REQ-021, REQ-042
                 param_policy=r["param_policy"],
                 param_values=by_tag.get(r["id"], []),
                 sensitive=bool(r["sensitive"]),
+                requires_citation=bool(r["requires_citation"]),  # REQ-2208
+                citations=[citation_type(c) for c in cited.get(r["id"], [])],
+                needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
         ]
@@ -1102,6 +1135,13 @@ class Query:  # REQ-021, REQ-042
                 *await tag_repo.list_library_assignments(cast("Connection", conn)),
             ]
             rows = await _readable_assignments(info, cast("Connection", conn), rows)
+            # REQ-2208: each assignment's citations, and the tags that require one.
+            cited = await tag_repo.assignment_citations(cast("Connection", conn))
+            tag_rows = {t["id"]: t for t in await tag_repo.list_all(cast("Connection", conn))}
+
+        def _cited(r: dict) -> list:
+            return cited.get((r["base_tag_id"], r["object_key"]), [])
+
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],
@@ -1123,6 +1163,10 @@ class Query:  # REQ-021, REQ-042
                 rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
                 role_id=r.get("role_id"),
                 metric_name=r.get("metric_name"),
+                object_key=r["object_key"],  # REQ-2208
+                citations=[citation_type(c) for c in _cited(r)],
+                needs_review=any(c.needs_review for c in _cited(r)),
+                citation_gap=tag_repo.citation_gap(tag_rows.get(r["base_tag_id"]), _cited(r)),
             )
             for r in rows
         ]

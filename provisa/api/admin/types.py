@@ -235,6 +235,26 @@ class TagParamValueType:  # REQ-1467
 
 
 @strawberry.type
+class LibraryCitationType:  # REQ-2208
+    """A citation of a reference library document, or a section of it named by its heading or,
+    when it has none, its page. ``text_sha256`` is of the section's text when it was cited; the
+    document's title and source are kept, so the citation outlives the document. ``state`` is
+    "current", "drifted" (the section's text changed) or "broken" (the section or the document is
+    gone); ``needs_review`` is any but current."""
+
+    document_id: int | None
+    document_title: str
+    document_source: str
+    section_heading: str | None
+    section_page: int | None
+    text_sha256: str
+    cited_by: str | None
+    cited_at: str
+    state: str
+    needs_review: bool
+
+
+@strawberry.type
 class TagType:  # REQ-1373, REQ-1375
     id: str
     description: str
@@ -251,6 +271,11 @@ class TagType:  # REQ-1373, REQ-1375
     param_policy: str = "none"
     sensitive: bool = False  # REQ-1943: the Sensitive data option
     param_values: list[TagParamValueType] = strawberry.field(default_factory=list)
+    # REQ-2208: each assignment must cite a library document or section (a gap when it does not).
+    requires_citation: bool = False
+    # REQ-2208: the sections that define the tag, and whether one of them changed or is gone.
+    citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
+    needs_review: bool = False
 
 
 @strawberry.type
@@ -278,6 +303,12 @@ class TagAssignmentType:  # REQ-1377
     rls_rule_id: int | None = None
     role_id: str | None = None
     metric_name: str | None = None
+    # REQ-2208 (CITATIONS PER ASSIGNMENT): the assignment's canonical key, its own citations, whether
+    # one of them changed or is gone, and whether it lacks the citation its tag requires.
+    object_key: str | None = None
+    citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
+    needs_review: bool = False
+    citation_gap: bool = False
 
 
 @strawberry.type
@@ -1132,6 +1163,18 @@ class TagInput:  # REQ-1373
     expires_policy: str = "optional"
     param_policy: str = "none"  # REQ-1467: none | required
     sensitive: bool = False  # REQ-1943: the Sensitive data option
+    # REQ-2208: each assignment must cite a library document or section (a gap, never refused).
+    requires_citation: bool = False
+
+
+@strawberry.input
+class LibraryCitationInput:  # REQ-2208
+    """A reference library document to cite, or a section of it: by its heading, or by its page
+    when it has none; neither cites the whole document."""
+
+    document_id: int
+    section_heading: str | None = None
+    section_page: int | None = None
 
 
 @strawberry.input
