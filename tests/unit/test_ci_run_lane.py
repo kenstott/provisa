@@ -926,3 +926,69 @@ def test_the_smoke_check_runs_in_the_smoke_workflow_and_in_no_suite_lane():
     workflow = (REPO / ".github" / "workflows" / "smoke.yml").read_text()
     assert "pytest -m isolated tests/smoke/test_main_is_startable.py" in " ".join(workflow.split())
     assert "playwright: chromium" in workflow
+
+
+@pytest.mark.parametrize("lane", sorted(_runner().SUITE))
+def test_a_suite_lane_stops_starting_tests_before_its_job_limit_cancels_it(lane):
+    """core 3/6 of release 509 ran its tests one after another until its 150-minute job limit
+    cancelled it: no junit, no durations, and no log. A suite lane starts tests only for its
+    budget, so the last one started ends inside the job's limit with the job's other steps."""
+    run_lane = _runner()
+    budget = run_lane.budget_s(lane)
+    assert budget is not None and budget > 0
+    limit = run_lane.SUITE[lane][1] * 60
+    assert budget + run_lane.TEST_TIMEOUT_S + run_lane.JOB_STEPS_S <= limit
+    cmd = run_lane.command(lane, None, [])
+    assert cmd[cmd.index("tests.lane_budget") - 1] == "-p"
+
+
+def _session_under_budget(tmp_path, deadline: float):
+    import os
+    import subprocess
+
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "test_two.py").write_text(
+        "def test_one():\n    pass\n\n\ndef test_two():\n    pass\n"
+    )
+    env = {**os.environ, "PROVISA_LANE_DEADLINE": str(deadline), "PYTHONPATH": str(REPO)}
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(tmp_path / "pytest.ini"),
+            "-p",
+            "tests.lane_budget",
+            "-p",
+            "no:cacheprovider",
+            "--durations=5",
+            "--junitxml",
+            str(tmp_path / "junit.xml"),
+            str(tmp_path / "test_two.py"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def test_past_its_budget_a_lane_fails_naming_the_tests_it_did_not_run(tmp_path):
+    import time
+
+    done = _session_under_budget(tmp_path, time.time() - 1)
+    out = done.stdout + done.stderr
+    assert done.returncode == 1, out
+    assert "lane budget spent: 2 of 2 tests not run, from test_two.py::test_one" in out
+    assert (tmp_path / "junit.xml").is_file()
+
+
+def test_inside_its_budget_a_lane_runs_every_test(tmp_path):
+    import time
+
+    done = _session_under_budget(tmp_path, time.time() + 3600)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "2 passed" in done.stdout

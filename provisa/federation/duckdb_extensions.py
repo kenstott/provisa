@@ -262,6 +262,10 @@ class StagedManifestMissing(RuntimeError):
 #: has (REQ-1142, THE SERVER TIER STAGES AT START).
 _installed_at_start: frozenset[str] | None = None
 
+#: Every extension this server process has tried to INSTALL, whether or not it installed: one that
+#: did not is not tried again on every engine build.
+_tried: frozenset[str] = frozenset()
+
 
 def staged_extensions() -> frozenset[str] | None:
     """The extensions a connector may count on for the running DuckDB version and platform: those
@@ -383,22 +387,26 @@ def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
     return [*install_statements(extension, from_community=from_community), load]
 
 
-def install_extension_set() -> frozenset[str] | None:
-    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
-    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
-    the engine counts a connector as attachable only when its extensions did. An extension that
-    does not install (no build for the running DuckDB) is named in the log and left out, so the
-    source shows it when added. None where a staged directory holds the set: nothing to install."""
-    global _installed_at_start
-    if extension_directory() is not None:
-        return None
+def _wanted(connectors: list[Connector]) -> dict[str, bool]:
+    """Each extension ``connectors`` need -> whether it is installed from community."""
     wanted: dict[str, bool] = {}
-    for connector in duckdb_engine_connectors():
+    for connector in connectors:
         for need in _needs(connector):
             community = bool(connector.install_from_community) and need == connector.extension
             wanted[need] = wanted.get(need, False) or community
-    installed: set[str] = set()
+    return wanted
+
+
+def _install(wanted: dict[str, bool]) -> frozenset[str]:
+    """INSTALL each of ``wanted`` this process has not tried yet, each on a connection of its own,
+    and add what installed to what the server counts on. An extension that does not install (no
+    build for the running DuckDB) is named in the log and left out, and not tried again."""
+    global _installed_at_start, _tried
+    tried = _tried if _installed_at_start is not None else frozenset()
+    installed: set[str] = set(_installed_at_start or ())
     for extension, from_community in sorted(wanted.items()):
+        if extension in tried:
+            continue
         con = connect()
         try:
             for statement in install_statements(extension, from_community=from_community):
@@ -409,8 +417,32 @@ def install_extension_set() -> frozenset[str] | None:
             installed.add(extension)
         finally:
             con.close()
+    _tried = tried | wanted.keys()
     _installed_at_start = frozenset(installed)
     return _installed_at_start
+
+
+def install_extension_set() -> frozenset[str] | None:
+    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
+    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
+    the engine counts a connector as attachable only when its extensions did. An extension that
+    does not install (no build for the running DuckDB) is named in the log and left out, so the
+    source shows it when added. None where a staged directory holds the set: nothing to install."""
+    if extension_directory() is not None:
+        return None
+    return _install(_wanted(duckdb_engine_connectors()))
+
+
+def attachable_extensions(connectors: list[Connector]) -> frozenset[str] | None:
+    """The extensions the engine built from ``connectors`` may count on (staged_extensions), where
+    a server that installed its set at start also installs, once, an extension a connector
+    declared since then needs (REQ-1177: a custom connector config/custom_connectors.yaml declares
+    is read again on every engine build). Without this the engine judged that connector against a
+    set no one had tried its extension for, and named the extension unavailable for this DuckDB."""
+    staged = staged_extensions()
+    if staged is None or extension_directory() is not None:
+        return staged
+    return _install(_wanted(connectors))
 
 
 def install_and_load(
