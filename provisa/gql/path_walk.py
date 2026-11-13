@@ -81,9 +81,11 @@ def _hops(
     objects: tuple[exp.Expression, exp.Expression] | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     *,
     backward: bool = False,
+    every_hop: exp.Expression | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Each step a walk may take, ``(rel_id, a, b)`` from ``a`` to ``b``: a relationship of one
-    of ``types`` (any, for None) its own way (from its end to its start, ``backward``), and the
+    of ``types`` (any, for None) that holds ``every_hop`` (the walk's inline property map,
+    _every_hop_filter), its own way (from its end to its start, ``backward``), and the
     other way too when ``undirected`` (a
     relationship to its own start once). With ``objects`` (the relations of the session's node
     objects and of its relationships' properties, _node_objects and _rel_properties), each step
@@ -107,6 +109,8 @@ def _hops(
             step = step.where(
                 exp.In(this=_col("type", "_r"), expressions=[exp.Literal.string(t) for t in types])
             )
+        if every_hop is not None:
+            step = step.where(every_hop.copy())
         return step
 
     forward = way("from_id", "to_id")
@@ -490,6 +494,50 @@ class SessionWalkMixin:  # REQ-348
         for arm in arms[1:]:
             union = exp.Union(this=union, expression=arm, distinct=False)
         return exp.Subquery(this=union)
+
+    def _every_hop_filter(
+        self, walk: SessionWalk, types: list[str] | None, every_hop: dict[str, Any]
+    ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The condition a session relationship (``_r``) holds to be a hop of a walk whose
+        inline property map is ``every_hop`` (each key's value as SQL, REQ-348): its row of its
+        type's relation holds every key's value. A type with no property of a key takes no hop.
+        None for a walk with no map."""
+        if not every_hop:
+            return None
+        wanted = set(types) if types is not None else None
+        arms: dict[str, exp.Select] = {}
+        for r in self._lm.relationships.values():
+            via = r.via
+            if via is None or via.catalog_name != walk.catalog_name or via.table_name in arms:
+                continue
+            if wanted is not None and r.rel_type not in wanted:
+                continue
+            if any(key not in via.attributes for key in every_hop):
+                continue
+            assert via.identity_column is not None, via.table_name
+            relation = exp.Table(
+                this=exp.Identifier(this=via.table_name, quoted=True),
+                db=exp.Identifier(this=via.schema_name, quoted=True),
+                catalog=exp.Identifier(this=via.catalog_name, quoted=True),
+            )
+            arms[via.table_name] = (
+                exp.select(_col(via.identity_column, "_v"))
+                .from_(exp.alias_(relation, "_v"))
+                .where(
+                    exp.and_(
+                        *(
+                            exp.EQ(this=_col(via.attributes[key], "_v"), expression=value.copy())
+                            for key, value in every_hop.items()
+                        )
+                    )
+                )
+            )
+        if not arms:
+            return exp.false()
+        held: exp.Expression = None  # type: ignore[assignment]
+        for arm in arms.values():
+            held = arm if held is None else exp.Union(this=held, expression=arm, distinct=False)
+        return exp.In(this=_col("rel_id", "_r"), query=exp.Subquery(this=held))
 
     def _session_hop_ends(self, type_name: str | None, domain: str | None) -> list[str]:
         """The labels a session hop's end may be read by: its type's, its domain's, or any."""
@@ -896,7 +944,12 @@ class SessionWalkMixin:  # REQ-348
         )
         nodes = self._node_objects(walk, self._start_labels(src_node)) if named else None
         objects = (nodes, self._rel_properties(walk, types)) if nodes is not None else None
-        hops = _hops(walk, types, undirected, objects, backward=backward)
+        every_hop = self._every_hop_filter(
+            walk,
+            types,
+            self._every_hop_values(rel, CypherTranslateError),  # type: ignore[attr-defined]
+        )
+        hops = _hops(walk, types, undirected, objects, backward=backward, every_hop=every_hop)
         t, h = "t", "_h"
         if min_hops == 0:
             if self._is_held_value(src_node):
