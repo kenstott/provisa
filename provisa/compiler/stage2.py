@@ -247,6 +247,30 @@ def tag_row_predicate(role: dict, readable_in: frozenset[str] | None) -> exp.Exp
     return exp.and_(*terms, copy=False)
 
 
+def library_row_predicate(  # REQ-2208
+    role: dict, readable_in: frozenset[str] | None, relation: str
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """Which rows of a library relation (security.rights.LIBRARY_ROW_VIEWS) ``role`` reads: those
+    whose document it reads, as a library document is read (``read_document_domains``, the
+    glossary's rule), and of a relation whose rows may name an object, a row naming one
+    (``object_key`` set) only where it reads the tag on that object (:func:`tag_row_predicate`)."""
+    from provisa.security.rights import LIBRARY_ROW_VIEWS, META_DOMAIN_ID
+
+    terms: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+    if readable_in is not None:
+        terms.append(_readable_term_predicate("read_document_domains", frozenset(readable_in)))
+    if LIBRARY_ROW_VIEWS[(META_DOMAIN_ID, relation)]:
+        no_object = exp.Is(this=exp.column("object_key"), expression=exp.Null())
+        terms.append(
+            exp.paren(
+                exp.Or(this=no_object, expression=exp.paren(tag_row_predicate(role, readable_in)))
+            )
+        )
+    if not terms:
+        return exp.true()
+    return exp.and_(*terms, copy=False)
+
+
 def _in_list(column: Rule, values: Sequence[Rule]) -> exp.In:
     return exp.In(this=column, expressions=list(values))
 
@@ -715,6 +739,15 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         tag_rows = tag_row_predicate(role, readable_in)
         for tid in tag_relations:
             _and_rule(gov, tid, tag_rows.copy())
+
+    # REQ-2208 (decision 2026-11-13): a library relation's row is read where its document is, and
+    # where the tag on the object it names is.
+    from provisa.security.rights import LIBRARY_ROW_VIEWS
+
+    for tm in ctx.tables.values():
+        key = (getattr(tm, "domain_id", None), getattr(tm, "table_name", ""))
+        if key in LIBRARY_ROW_VIEWS:
+            _and_rule(gov, tm.table_id, library_row_predicate(role, readable_in, key[1]))
 
     # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
     # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
