@@ -23997,23 +23997,35 @@
   feature: connector-catalog-files-and-lake
   priority: SHOULD
   type: behavioral
-  description: File connector sources accept a directory glob pattern to enumerate CSV files. Discovered
-    files are introspected to extract schema (column names and types). Multiple CSV files matching the
-    glob are consolidated into a single logical table when registered. (Amended 2026-10-03, WILDCARD PLACEMENT:)
-    Where the wildcard is written decides its meaning. On a SOURCE's path it filters; discovery offers
-    one table per matched file, and the steward registers each. On a TABLE's file_glob it merges; every
-    matched file is one logical table. Every matched file must carry the same column set; a file that
-    differs is refused by name, never null-filled. A table may declare a source-file column carrying each
-    row's file. The glob's change signal is the matched-file count, the latest modification time and the
-    total size. (Amended 2026-10-03, NATIVE READ:) A files source and its glob tables are served by the
-    bundled Calcite file adapter whatever the engine. The adapter already lists one table per file for
-    a wildcard on the schema directory and merges CSV, JSON and Parquet matches for a table whose url
-    is a glob. It gains a by-name refusal for a file whose columns differ and the optional source-file
-    column. Provisa passes a table's file_glob and source_file_column into the adapter's table definition.
-    A replica, wherever one is needed, is read from the file adapter's connection like any source's table;
-    there is no second reader and no glob-specific routing. A platform with no adapter bundle has no files
-    sources, the same condition as every files source. It ships by an engine release of the calcite fork
-    and a RELEASE_TAG bump in provisa/runtime_deps/pgwire_bundles.py.
+  description: 'File connector sources accept a directory glob pattern to enumerate CSV files. Discovered
+    files are introspected to extract schema (column names and types). Multiple CSV files matching the glob
+    are consolidated into a single logical table when registered. (Amended 2026-10-03, WILDCARD PLACEMENT:)
+    Where the wildcard is written decides its meaning. On a SOURCE''s path it filters; discovery offers
+    one table per matched file, and the steward registers each. On a TABLE''s file_glob it merges; every
+    matched file is one logical table. Every matched file must carry the same column set; a file that differs
+    is refused by name, never null-filled. A table may declare a source-file column carrying each row''s
+    file. The glob''s change signal is the matched-file count, the latest modification time and the total
+    size. (Amended 2026-10-03, NATIVE READ:) A files source and its glob tables are served by the bundled
+    Calcite file adapter whatever the engine. The adapter already lists one table per file for a wildcard
+    on the schema directory and merges CSV, JSON and Parquet matches for a table whose url is a glob. It
+    gains a by-name refusal for a file whose columns differ and the optional source-file column. Provisa
+    passes a table''s file_glob and source_file_column into the adapter''s table definition. A replica,
+    wherever one is needed, is read from the file adapter''s connection like any source''s table; there
+    is no second reader and no glob-specific routing. A platform with no adapter bundle has no files sources,
+    the same condition as every files source. It ships by an engine release of the calcite fork and a RELEASE_TAG
+    bump in provisa/runtime_deps/pgwire_bundles.py. (Amended 2026-11-13, A SOURCE''S GLOB DECIDES ITS FILES:)
+    Maintainer 2026-11-12: a files source whose path is a glob offers and serves only the files the glob
+    matches, in discovery, registration and reads; a glob matching nothing is refused by name when the source
+    is saved; a table''s own file_glob still makes one table of many files. (Amended 2026-11-13, COMBINING
+    FILES IS ITS OWN ACTION:) Maintainer 2026-11-12: a table over many files is made by picking the files
+    (two or more in the table picker, or a glob typed) and choosing Combine into one table; the form shows
+    the files matched and the columns they share, asks for the new table''s name (no existing table is picked
+    to stand for it), and optionally the source-file column; files whose columns differ are named before
+    registering. The glob is derived from the picked files or kept as typed. (Amended 2026-11-13, TEST REPORTS
+    ARE A SOURCE:) Maintainer 2026-11-13: the files source reads JUnit XML test reports (what pytest, vitest,
+    Playwright and Java write) from a folder, bucket or glob as three tables, runs, cases and results, recognised
+    by the report''s root element; Provisa reads reports and never runs tests; pytest is a brand over it.
+    A result can be the evidence a tag assignment cites (REQ-2208).'
   use_case: File glob patterns enable users to query across multiple CSV files without manual discovery
     or registration of individual files.
   code:
@@ -51687,65 +51699,49 @@
   feature: row-security-and-masking-masking
   priority: MUST
   type: behavioral
-  description: 'Masking has a consistent form. A column masked this way shows a fake in place of each
-    real value: the same real value always shows the same fake and different real values show different
-    fakes, so joins, grouping and distinct counts through the column give the results they would give
-    on the real values, while the real value is never shown. The mask names the kind of fake to show --
-    a person''s name, an email address, a phone number, a street address, an identifier and so on, or
-    one of the kinds below -- and the fake is a realistic generated value of that kind, so masked data
-    keeps the look of the real data. Fakes of the identifier, email and phone kinds carry a short part
-    derived from the keyed digest of the real value, so distinct real values give distinct fakes; person
-    names may collide, as real names do. Two columns joined by a relationship and both faked agree on
-    the kind of fake and on whether it is stable, so a join between them still matches.
-
-
-    Where a fake is computed. Every fake a reader receives is computed by the engine of the region serving
-    that reader, at the read; no region serves fakes computed anywhere else. Data another region owns
-    that this region may read under the rules is read real at the address the model gives and faked here,
-    as the reader''s row and column rules are applied here. Because the fake is computed inside the engine,
-    ordering, filtering, grouping, joining and aggregating through a faked column work on the fakes the
-    reader sees and never on the real values.
-
-
-    The platform key. A fake is a keyed function of the real value; without the key it cannot be turned
-    back into the value. The key is one platform key, platform-wide, kept as a guarded secret setting
-    in the platform state store (REQ-1932, REQ-1327). It is created at the platform''s first start when
-    absent, or taken from the deployment''s key where one is given; a stored key that differs from the
-    deployment''s refuses the start, naming both fingerprints. Each engine receives the key through a
-    mounted key file named by the key''s fingerprint, never through statement text or a log; only the
-    fingerprint may appear in a statement, and the key is never written into statement text, a log or
-    a query history.
-
-
-    Consistency. Fakes are consistent within a region: the same real value shows the same fake wherever
-    it is read there, including data another region owns; a region''s fakes may change when its engine
-    is replaced, and two regions need not show the same fake. It is desirable, though not required, that
-    a faked text value be the same on every engine and in every region; that holds when every engine computes
-    it by one portable definition -- the platform key, a published keyed digest, and word lists and templates
-    shipped with Provisa and versioned with it -- rather than a library''s own random generator, whose
-    output differs by language and version.
-
-
-    Stable fakes. A column''s fake may be declared stable. A stable fake is computed by every engine from
-    the portable definition, so the same real value shows the same fake on every engine, in every region
-    and across an engine''s replacement; a fake not declared stable is computed by the serving engine
-    by its own method and is consistent within its region only. The word lists and templates of the portable
-    definition are versioned, and a release that changes them never changes the fakes of an existing stable
-    column silently. An engine that cannot compute the portable definition refuses a statement reading
-    a stable fake, naming the column; it never shows a fake that is not stable in its place.
-
-
-    Fakes from a profile. A numeric or temporal column''s kind of fake may name a data profile of it (REQ-1934).
-    Its fake is the profile''s distribution at a uniform point: for masking the point is drawn from the
-    keyed digest of the real value, so a value always shows the same fake; for a synthetic dataset (REQ-1939)
-    it is drawn from the dataset''s seed and the row. A column with few distinct values draws from the
-    profile''s value frequencies rather than its sketch. The result is cast to the column''s type and
-    scale, and an integer-only column stays integer. A stable fake pins the profile run it reads and changes
-    only when the operator re-pins it. A serving region with no run of the named profile refuses the read,
-    naming it.
-
-
-    Declared distributions. A numeric or temporal column''s kind of fake may instead declare its distribution
+  description: 'Masking has a consistent form. A column masked this way shows a fake in place of each real
+    value: the same real value always shows the same fake and different real values show different fakes,
+    so joins, grouping and distinct counts through the column give the results they would give on the real
+    values, while the real value is never shown. The mask names the kind of fake to show -- a person''s
+    name, an email address, a phone number, a street address, an identifier and so on, or one of the kinds
+    below -- and the fake is a realistic generated value of that kind, so masked data keeps the look of
+    the real data. Fakes of the identifier, email and phone kinds carry a short part derived from the keyed
+    digest of the real value, so distinct real values give distinct fakes; person names may collide, as
+    real names do. Two columns joined by a relationship and both faked agree on the kind of fake and on
+    whether it is stable, so a join between them still matches. Where a fake is computed. Every fake a reader
+    receives is computed by the engine of the region serving that reader, at the read; no region serves
+    fakes computed anywhere else. Data another region owns that this region may read under the rules is
+    read real at the address the model gives and faked here, as the reader''s row and column rules are applied
+    here. Because the fake is computed inside the engine, ordering, filtering, grouping, joining and aggregating
+    through a faked column work on the fakes the reader sees and never on the real values. The platform
+    key. A fake is a keyed function of the real value; without the key it cannot be turned back into the
+    value. The key is one platform key, platform-wide, kept as a guarded secret setting in the platform
+    state store (REQ-1932, REQ-1327). It is created at the platform''s first start when absent, or taken
+    from the deployment''s key where one is given; a stored key that differs from the deployment''s refuses
+    the start, naming both fingerprints. Each engine receives the key through a mounted key file named by
+    the key''s fingerprint, never through statement text or a log; only the fingerprint may appear in a
+    statement, and the key is never written into statement text, a log or a query history. Consistency.
+    Fakes are consistent within a region: the same real value shows the same fake wherever it is read there,
+    including data another region owns; a region''s fakes may change when its engine is replaced, and two
+    regions need not show the same fake. It is desirable, though not required, that a faked text value be
+    the same on every engine and in every region; that holds when every engine computes it by one portable
+    definition -- the platform key, a published keyed digest, and word lists and templates shipped with
+    Provisa and versioned with it -- rather than a library''s own random generator, whose output differs
+    by language and version. Stable fakes. A column''s fake may be declared stable. A stable fake is computed
+    by every engine from the portable definition, so the same real value shows the same fake on every engine,
+    in every region and across an engine''s replacement; a fake not declared stable is computed by the serving
+    engine by its own method and is consistent within its region only. The word lists and templates of the
+    portable definition are versioned, and a release that changes them never changes the fakes of an existing
+    stable column silently. An engine that cannot compute the portable definition refuses a statement reading
+    a stable fake, naming the column; it never shows a fake that is not stable in its place. Fakes from
+    a profile. A numeric or temporal column''s kind of fake may name a data profile of it (REQ-1934). Its
+    fake is the profile''s distribution at a uniform point: for masking the point is drawn from the keyed
+    digest of the real value, so a value always shows the same fake; for a synthetic dataset (REQ-1939)
+    it is drawn from the dataset''s seed and the row. A column with few distinct values draws from the profile''s
+    value frequencies rather than its sketch. The result is cast to the column''s type and scale, and an
+    integer-only column stays integer. A stable fake pins the profile run it reads and changes only when
+    the operator re-pins it. A serving region with no run of the named profile refuses the read, naming
+    it. Declared distributions. A numeric or temporal column''s kind of fake may instead declare its distribution
     directly, with no profile: percentiles (min, p5, p25, p50, p75, p95 and max, any three or more, joined
     piecewise-linearly), normal (mean and standard deviation, optionally bounded by min and max), log-normal
     (median and p95, or mu and sigma, optionally bounded), uniform (min and max), triangular (min, mode
@@ -51753,133 +51749,140 @@
     point drawn from the keyed digest of the value when masking, or from the seed and row when synthesising,
     mapped through the distribution -- and its result is cast to the column''s type and scale, an integer
     column staying integer. Arguments are checked at save, and ones that cannot describe a distribution
-    (points out of order, a minimum above a maximum, a standard deviation not above zero) are refused
-    by name. Being pure functions of their arguments, these kinds compute alike on every engine and may
-    be stable.
-
-
-    Pattern. The pattern kind fills the value shapes a profile run recorded for the column.
-
-
-    Categories. A column''s fake kind may be categories, in three forms. categories((shoes, bra, sweater))
-    names the values; a faked read shows a value from the list and a synthetic dataset draws the column''s
-    values from it, at their measured shares, a named value with no measured share drawing an even share
-    of what remains. categories((shoes, bra, sweater), (.1, .6, .3)) names the values and their shares,
-    and a synthetic dataset draws at those shares over any measured ones; the shares must be as many as
-    the values, each between 0 and 1, and sum to 1, and any other list is refused by name when the fake
-    is saved. categories() takes the column''s values and their shares from measurement. categories()
-    on an empty table is refused by name, asking for its values to be declared.
-
-
-    Booleans. A boolean column may declare the bool fake: bool(.8) gives true eight times in ten; bool()
-    takes the measured share of true, and is even on an empty table.
-
-
-    Measured values and shares. Where a fake takes values or shares from measurement -- categories(),
+    (points out of order, a minimum above a maximum, a standard deviation not above zero) are refused by
+    name. Being pure functions of their arguments, these kinds compute alike on every engine and may be
+    stable. Pattern. The pattern kind fills the value shapes a profile run recorded for the column. Categories.
+    A column''s fake kind may be categories, in three forms. categories((shoes, bra, sweater)) names the
+    values; a faked read shows a value from the list and a synthetic dataset draws the column''s values
+    from it, at their measured shares, a named value with no measured share drawing an even share of what
+    remains. categories((shoes, bra, sweater), (.1, .6, .3)) names the values and their shares, and a synthetic
+    dataset draws at those shares over any measured ones; the shares must be as many as the values, each
+    between 0 and 1, and sum to 1, and any other list is refused by name when the fake is saved. categories()
+    takes the column''s values and their shares from measurement. categories() on an empty table is refused
+    by name, asking for its values to be declared. Booleans. A boolean column may declare the bool fake:
+    bool(.8) gives true eight times in ten; bool() takes the measured share of true, and is even on an empty
+    table. Measured values and shares. Where a fake takes values or shares from measurement -- categories(),
     the shares of categories((values)), bool(), and the distance of after, before, greater_than and less_than
     when none is given -- they come from the column''s latest profile run, else, with no profile run or
     no full value-frequency table, from the table itself when the values are generated, read as the organisation''s
-    administrator through the governed pipeline as a profile is.
-
-
-    Bucket, hash and encrypt. These kinds are each a function of the value alone, so a faked read computes
-    them at read time and grouping, sorting and filtering work on their results. bucket replaces a value
-    with the range it falls in -- bucket(10) by a fixed width, bucket((0, 18, 65)) by named edges, truncate(month)
-    for a date or time, prefix(3) for a code -- and cannot be reversed. hash replaces a value with a keyed
-    digest under the platform key held inside the engine, the same value giving the same digest so joins
-    on it still match, and cannot be reversed. encrypt replaces a value with a deterministic encryption
-    under that key that keeps the value''s format (digits stay digits, its length kept), so it passes
-    the column''s type and joins still match; it is reversed only inside Provisa, for a reader granted
-    the column unmasked, never by a client. A synthetic dataset applies each of them to generated values,
-    never to real ones. Shuffling a column''s values between rows is not a fake kind: it is not a function
-    of the value and still shows the real values.
-
-
+    administrator through the governed pipeline as a profile is. Bucket, hash and encrypt. These kinds are
+    each a function of the value alone, so a faked read computes them at read time and grouping, sorting
+    and filtering work on their results. bucket replaces a value with the range it falls in -- bucket(10)
+    by a fixed width, bucket((0, 18, 65)) by named edges, truncate(month) for a date or time, prefix(3)
+    for a code -- and cannot be reversed. hash replaces a value with a keyed digest under the platform key
+    held inside the engine, the same value giving the same digest so joins on it still match, and cannot
+    be reversed. encrypt replaces a value with a deterministic encryption under that key that keeps the
+    value''s format (digits stay digits, its length kept), so it passes the column''s type and joins still
+    match; it is reversed only inside Provisa, for a reader granted the column unmasked, never by a client.
+    A synthetic dataset applies each of them to generated values, never to real ones. Shuffling a column''s
+    values between rows is not a fake kind: it is not a function of the value and still shows the real values.
     After and before. A date or time column may declare after(column, distance) or before(column, distance),
-    naming another date or time column of the same table. Its value is the named column''s value moved
-    later, or earlier, by the distance -- a fixed interval such as 3 days, or a range such as 1 to 10
-    days drawn evenly -- and with no distance given, by the difference between the two columns as measured.
-    A synthetic dataset generates the named column first; a faked read computes it from the named column''s
-    faked value, so the order between the two holds in every faked and generated row.
-
-
-    Greater_than and less_than. A numeric column may declare greater_than(column, distance) or less_than(column,
-    distance), naming another numeric column of the same table. Its value is the named column''s value
-    plus, or minus, the distance -- a fixed amount, or a range drawn evenly -- and with no distance given,
-    the difference between the two columns as measured. The named column is generated, or faked, first,
-    so the order holds in every faked and generated row. An accepted constraint that one number never
-    exceeds another is generated this way (REQ-1939).
-
-
-    The sql fake. A column may declare sql(expression), a value derived from other columns of the same
-    row, for example sql(quantity * price). The expression is a subset of SQL, written in the governed
-    dialect and translated for each engine as any governed statement is: one scalar expression over the
-    current row''s columns, with arithmetic, string, date and time, comparison and conditional operations
-    and functions from a published list; no subquery, no other table, no aggregate or window, and nothing
-    whose result can differ between two reads of the same row. The columns it names are generated, or
-    faked, first and the expression is computed over those values, so a faked read computes it from the
-    values its reader sees and a synthetic row''s derived value agrees with its own other values. An expression
-    outside the subset or naming a column the table does not hold is refused by name when the fake is
-    saved. A profile reports the share of its sampled rows for which the expression held.
-
-
-    The sql_group fake. A column may declare sql_group(expression, fake=...), a value computed across rows: the sql subset with window functions over partitions of the same table, and sums, counts and
-    the like over a parent''s children through a declared relationship. It constructs a rule that spans
-    rows rather than checking it: the last row of each customer taking the remainder so the customer''s
-    amounts net to zero, a running balance, a sequence number within an order, an invoice total summing
-    its lines. Its fake parameter is a row-level fake, for example sql_group(expression, fake=bool()),
-    and is required; sql_group without it is refused by name. In synthetic generation the fake parameter
-    draws the column''s value, which the expression may name as self, so a rule can adjust only the rows
-    it needs and keep the drawn value on the rest.
-
-
-    The sequence fake. A column may declare sequence((new, paid, shipped), entity, order, fake=...), naming
+    naming another date or time column of the same table. Its value is the named column''s value moved later,
+    or earlier, by the distance -- a fixed interval such as 3 days, or a range such as 1 to 10 days drawn
+    evenly -- and with no distance given, by the difference between the two columns as measured. A synthetic
+    dataset generates the named column first; a faked read computes it from the named column''s faked value,
+    so the order between the two holds in every faked and generated row. Greater_than and less_than. A numeric
+    column may declare greater_than(column, distance) or less_than(column, distance), naming another numeric
+    column of the same table. Its value is the named column''s value plus, or minus, the distance -- a fixed
+    amount, or a range drawn evenly -- and with no distance given, the difference between the two columns
+    as measured. The named column is generated, or faked, first, so the order holds in every faked and generated
+    row. An accepted constraint that one number never exceeds another is generated this way (REQ-1939).
+    The sql fake. A column may declare sql(expression), a value derived from other columns of the same row,
+    for example sql(quantity * price). The expression is a subset of SQL, written in the governed dialect
+    and translated for each engine as any governed statement is: one scalar expression over the current
+    row''s columns, with arithmetic, string, date and time, comparison and conditional operations and functions
+    from a published list; no subquery, no other table, no aggregate or window, and nothing whose result
+    can differ between two reads of the same row. The columns it names are generated, or faked, first and
+    the expression is computed over those values, so a faked read computes it from the values its reader
+    sees and a synthetic row''s derived value agrees with its own other values. An expression outside the
+    subset or naming a column the table does not hold is refused by name when the fake is saved. A profile
+    reports the share of its sampled rows for which the expression held. The sql_group fake. A column may
+    declare sql_group(expression, fake=...), a value computed across rows: the sql subset with window functions
+    over partitions of the same table, and sums, counts and the like over a parent''s children through a
+    declared relationship. It constructs a rule that spans rows rather than checking it: the last row of
+    each customer taking the remainder so the customer''s amounts net to zero, a running balance, a sequence
+    number within an order, an invoice total summing its lines. Its fake parameter is a row-level fake,
+    for example sql_group(expression, fake=bool()), and is required; sql_group without it is refused by
+    name. In synthetic generation the fake parameter draws the column''s value, which the expression may
+    name as self, so a rule can adjust only the rows it needs and keep the drawn value on the rest. The
+    sequence fake. A column may declare sequence((new, paid, shipped), entity, order, fake=...), naming
     the states in their order, the column whose value groups an entity''s rows, and the column that orders
     them. In synthetic generation each entity''s rows take the states in order, the first row the first
-    state, never going back; an entity with fewer rows than states stops part-way, as an order not yet
-    shipped does, and the number of rows an entity is generated with is capped at the number of states.
-    Its fake parameter is a row-level fake, for example fake=categories((new, paid, shipped)); with none
-    given it takes categories of its own states, drawn evenly.
-
-
-    Faked reads of row-spanning fakes. A faked read of a sql_group or sequence column shows the column
-    through its fake parameter, the rule across rows being skipped, since a read creates no rows and a
-    window over a filtered read would see only the rows read. A relationship''s conditional fan-out (REQ-1939)
-    applies to synthetic generation only, a faked read creating no rows.
-
-
-    Order of evaluation. The fakes that name other columns -- after, before, greater_than, less_than and
-    sql -- are relative; sql_group and sequence are group fakes; every other fake is independent. A row''s
-    independent values are computed first; its relative values follow, each after every column it names,
-    in the order those references require; group fakes are computed after the rows they span exist, in
-    the order their references require. A set of fakes whose references form a cycle -- a chain of after,
-    before, greater_than, less_than, sql or sql_group that names itself -- is refused by name when any
-    of them is saved, naming the columns in the cycle.
-
-
-    Filling fakes from a profile. The operator declares each column''s kind of fake, and the table editor
-    offers to fill them from the table''s latest data profile (REQ-1934) as it offers to generate descriptions.
-    One action in the table edit form fills each column without a declaration with a kind chosen from
-    the profile''s plausible types, the column''s name and its tags: numeric and temporal columns the
-    profile-shaped fake pinned to that run, which the operator may change to any declared distribution;
-    email, person-name, phone and address columns their kinds; a code-like column the pattern kind; long
-    free text sentences to the profiled lengths. It proposes categories, listing the recorded values,
-    only where the profile shows real repetition: few distinct values, each held by many rows; where
-    the evidence is thin, as in a small table, it proposes nothing and the operator decides. A column
-    tagged pii with no confident match is left undeclared and marked in the form. Columns already declared
-    are left as they are. Nothing is saved by the action: the filled fields are the form''s, which the
-    operator tunes in the column editor and saves as any edit, a versioned model change, with no separate
-    review step.
-
-
-    A test-data environment. An environment (REQ-1487) may be marked test data, by an org_admin holding
-    environment_management. In a test-data environment every column with a declared kind of fake shows
-    fakes to every role, including the roles the column is otherwise unmasked to, and every column tagged
-    pii with no declared kind of fake shows NULL; no role choice changes this. A fake declared in a test-data
-    environment is stable unless declared otherwise, since test data is extracted, kept and compared over
-    time. Fakes there are computed by the serving engine like every other fake, so ordering, filtering,
-    grouping, joining and aggregating work on them. The Environments page of the admin shows a Test data
-    switch on each environment with one line on what it does. Comparisons, ranges and sorts over a faked column are over its faked values, which define their own order; no fake keeps the order of the real values. A stable fake gives the same values, so the same order and the same results, on every engine and in every region; a fake not declared stable gives them within one engine and region. Each column has a fake and, optionally, a synthetic rule laid over it. The fake is what a faked read shows -- a column with none shows its real value -- and the guidance is to fake as little as possible, the identifying columns, so every other column keeps its real values and relationships. The synthetic rule applies only to synthetic generation (REQ-1939) and, where declared, takes the place of the fake there; where none is declared, generation uses the column''s fake, and where the column has neither, generates the column from its profile. The kinds that make sense only over a generated table -- sql_group, sequence -- are synthetic rules and are refused by name as a fake; since a faked read shows the column''s fake or its real value, they take no fake parameter. Every other kind may be either. Filling fakes from a profile proposes fakes only for identifying columns -- those tagged pii and those whose plausible type is a person''s name, an email, a phone number, an address, a government identifier or an account number -- and may propose synthetic rules for the rest, every proposal editable and nothing saved until the operator saves. Stable applies to the fake. The table editor''s column list has two modes, Metadata -- the columns as they are described, typed, shown, masked and tagged -- and Test data, the same rows showing each column''s fake (blank where the real value is shown), synthetic rule, Stable switch and a sample value computed by the serving engine as the editor may read it, with a pii column that has no fake marked. In Test data mode a simple fake is edited in its cell, and choosing a fake or a synthetic rule opens a dialog for that column with the kinds and methods by name and category with their arguments, the Stable switch, the synthetic rule, a preview of sample values each gives, the refusals the save would give as they arise, and Fill from profile for that column alone. Fill from profile on the list fills every column at once, each still editable before the table is saved. A stable fake is refused by name, when saved, where it could not be identical everywhere: a method with arguments outside the published stable set, pattern(), a kind whose values are measured where it is read -- categories(), bool(), after or before with no distance -- and a relative fake that reads a column whose fake is not stable. Each stable column records the version of the portable definition it was saved with, and keeps it until the operator saves it again. Every fake is seeded by the value''s keyed digest combined with a hash of the fake''s own definition -- its kind or method, its arguments, the column''s data type by family and, for a stable fake, its definition version -- so two columns faked from the same value draw independently, and changing a definition changes its fakes deterministically; a fake is thus a pure function of the value, the fake''s definition and the column''s data type, the same wherever it is computed, and may be substituted for wherever all three match. Two columns related by a relationship agree only where their whole definitions are the same, and the save refuses a relationship whose columns'' definitions differ, naming both.'
+    state, never going back; an entity with fewer rows than states stops part-way, as an order not yet shipped
+    does, and the number of rows an entity is generated with is capped at the number of states. Its fake
+    parameter is a row-level fake, for example fake=categories((new, paid, shipped)); with none given it
+    takes categories of its own states, drawn evenly. Faked reads of row-spanning fakes. A faked read of
+    a sql_group or sequence column shows the column through its fake parameter, the rule across rows being
+    skipped, since a read creates no rows and a window over a filtered read would see only the rows read.
+    A relationship''s conditional fan-out (REQ-1939) applies to synthetic generation only, a faked read
+    creating no rows. Order of evaluation. The fakes that name other columns -- after, before, greater_than,
+    less_than and sql -- are relative; sql_group and sequence are group fakes; every other fake is independent.
+    A row''s independent values are computed first; its relative values follow, each after every column
+    it names, in the order those references require; group fakes are computed after the rows they span exist,
+    in the order their references require. A set of fakes whose references form a cycle -- a chain of after,
+    before, greater_than, less_than, sql or sql_group that names itself -- is refused by name when any of
+    them is saved, naming the columns in the cycle. Filling fakes from a profile. The operator declares
+    each column''s kind of fake, and the table editor offers to fill them from the table''s latest data
+    profile (REQ-1934) as it offers to generate descriptions. One action in the table edit form fills each
+    column without a declaration with a kind chosen from the profile''s plausible types, the column''s name
+    and its tags: numeric and temporal columns the profile-shaped fake pinned to that run, which the operator
+    may change to any declared distribution; email, person-name, phone and address columns their kinds;
+    a code-like column the pattern kind; long free text sentences to the profiled lengths. It proposes categories,
+    listing the recorded values, only where the profile shows real repetition: few distinct values, each
+    held by many rows; where the evidence is thin, as in a small table, it proposes nothing and the operator
+    decides. A column tagged pii with no confident match is left undeclared and marked in the form. Columns
+    already declared are left as they are. Nothing is saved by the action: the filled fields are the form''s,
+    which the operator tunes in the column editor and saves as any edit, a versioned model change, with
+    no separate review step. A test-data environment. An environment (REQ-1487) may be marked test data,
+    by an org_admin holding environment_management. In a test-data environment every column with a declared
+    kind of fake shows fakes to every role, including the roles the column is otherwise unmasked to, and
+    every column tagged pii with no declared kind of fake shows NULL; no role choice changes this. A fake
+    declared in a test-data environment is stable unless declared otherwise, since test data is extracted,
+    kept and compared over time. Fakes there are computed by the serving engine like every other fake, so
+    ordering, filtering, grouping, joining and aggregating work on them. The Environments page of the admin
+    shows a Test data switch on each environment with one line on what it does. Comparisons, ranges and
+    sorts over a faked column are over its faked values, which define their own order; no fake keeps the
+    order of the real values. A stable fake gives the same values, so the same order and the same results,
+    on every engine and in every region; a fake not declared stable gives them within one engine and region.
+    Each column has a fake and, optionally, a synthetic rule laid over it. The fake is what a faked read
+    shows -- a column with none shows its real value -- and the guidance is to fake as little as possible,
+    the identifying columns, so every other column keeps its real values and relationships. The synthetic
+    rule applies only to synthetic generation (REQ-1939) and, where declared, takes the place of the fake
+    there; where none is declared, generation uses the column''s fake, and where the column has neither,
+    generates the column from its profile. The kinds that make sense only over a generated table -- sql_group,
+    sequence -- are synthetic rules and are refused by name as a fake; since a faked read shows the column''s
+    fake or its real value, they take no fake parameter. Every other kind may be either. Filling fakes from
+    a profile proposes fakes only for identifying columns -- those tagged pii and those whose plausible
+    type is a person''s name, an email, a phone number, an address, a government identifier or an account
+    number -- and may propose synthetic rules for the rest, every proposal editable and nothing saved until
+    the operator saves. Stable applies to the fake. The table editor''s column list has two modes, Metadata
+    -- the columns as they are described, typed, shown, masked and tagged -- and Test data, the same rows
+    showing each column''s fake (blank where the real value is shown), synthetic rule, Stable switch and
+    a sample value computed by the serving engine as the editor may read it, with a pii column that has
+    no fake marked. In Test data mode a simple fake is edited in its cell, and choosing a fake or a synthetic
+    rule opens a dialog for that column with the kinds and methods by name and category with their arguments,
+    the Stable switch, the synthetic rule, a preview of sample values each gives, the refusals the save
+    would give as they arise, and Fill from profile for that column alone. Fill from profile on the list
+    fills every column at once, each still editable before the table is saved. A stable fake is refused
+    by name, when saved, where it could not be identical everywhere: a method with arguments outside the
+    published stable set, pattern(), a kind whose values are measured where it is read -- categories(),
+    bool(), after or before with no distance -- and a relative fake that reads a column whose fake is not
+    stable. Each stable column records the version of the portable definition it was saved with, and keeps
+    it until the operator saves it again. Every fake is seeded by the value''s keyed digest combined with
+    a hash of the fake''s own definition -- its kind or method, its arguments, the column''s data type by
+    family and, for a stable fake, its definition version -- so two columns faked from the same value draw
+    independently, and changing a definition changes its fakes deterministically; a fake is thus a pure
+    function of the value, the fake''s definition and the column''s data type, the same wherever it is computed,
+    and may be substituted for wherever all three match. Two columns related by a relationship agree only
+    where their whole definitions are the same, and the save refuses a relationship whose columns'' definitions
+    differ, naming both. (Amended 2026-11-13, THE FAKE LIST OFFERS WHAT THE COLUMN CAN HOLD:) Maintainer
+    2026-11-12: the Test data dialog''s Fake and Synthetic rule lists offer only kinds and methods whose
+    values the column''s type can hold, decided by the same check that refuses a declaration, so the list
+    and the refusal never disagree. (Amended 2026-11-13, THE SAVED TEXT IS CALLED SAVED AS:) Maintainer
+    2026-11-12: the Test data dialog''s text form of a fake or rule is labelled Saved as, hinted as written
+    from the choice above and editable by hand, shown once under its own list, collapsed under Edit as text
+    until a choice is made or it is opened; the Stable switch is disabled with its reason when the chosen
+    fake cannot be stable.'
   use_case: A data scientist, or an LLM acting under its own identity, works on masked data that behaves
     like the real data (joins match, counts are right, values look real) without any personal data reaching
     them. An analyst joins a masked customer table to a masked orders table and gets the row counts the
@@ -57139,7 +57142,11 @@
     the source table''s columns unprefixed and a traversal rooted at the target would read them under the
     wrong names. (Amended 2026-10-29, A DROP THAT HAS NO PATH:) A Cypher class drop with no path, as a SPARQL
     drop, is refused by name and adds nothing. A parameterized table cannot be dropped onto a frame, so
-    a drop asks for no arguments: the sentence binding arguments on every hop''s copy is withdrawn.'
+    a drop asks for no arguments: the sentence binding arguments on every hop''s copy is withdrawn. (Amended
+    2026-11-13, A DROP''S PATH STAYS IN THE SELECTED DOMAINS:) Maintainer 2026-11-12 (also REQ-2135): the
+    paths a pill dropped on a graph frame writes, and the paths between two nodes dragged together, pass
+    only through labels of the selected domains and never through a system domain''s nodes unless an end
+    of the path is of that domain; with no such path the drop says so by name and changes nothing.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -75055,7 +75062,15 @@
     table is, on the admin''s own reads and in the ways to reach it that the admin shows, with that role''s
     masks, row rules and limits applied, marked as a draft wherever it is shown, and the read audited as
     a draft preview. Every other role is unchanged: no schema offers it a draft and no statement of its
-    reads one. This adds to A DRAFT''S OWNERS MAY LOOK AT IT (2026-10-08), which stays.'
+    reads one. This adds to A DRAFT''S OWNERS MAY LOOK AT IT (2026-10-08), which stays. (Amended 2026-11-13,
+    HOW FAR A DRAFT IS SERVED:) Maintainer 2026-11-12: a statement that names a draft runs through the existing
+    draft-preview path on every query surface (SQL over HTTP and pgwire, MCP, GraphQL, REST) for a caller
+    holding table registration reaching the draft''s domain, the right the draft preview already requires:
+    nothing is kept (no plan, cached response or replica) and it is audited as a draft preview; that caller''s
+    GraphQL and REST surface includes drafts, marked draft, and the admin''s ways-to-reach read marks a
+    draft. Catalog listings (the pgwire catalog, the MCP table list) and exports omit drafts. The gate names
+    a right, not a role (REQ-1337): org_admin holds it everywhere; a domain steward holding it sees the
+    drafts of their own domains.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -81022,7 +81037,15 @@
     PANEL HEAD HAS A BORDER:) Maintainer 2026-11-12, revising the rule of earlier the same day: no button
     in a detail panel''s action bar (its head) has a border. Save and Cancel there are drawn as the head''s
     other actions are: no border and no fill, the icon and the word. The filled Save and the bordered Cancel
-    stay where a form ends: a page form''s foot and a dialog. One component still holds each look.'
+    stay where a form ends: a page form''s foot and a dialog. One component still holds each look. (Amended
+    2026-11-13, STOPPING EVERY SERVICE ASKS FIRST:) Maintainer 2026-11-12: Admin > Maintenance''s Stop all
+    services asks for confirmation with the standard confirm dialog, saying what stops, before it acts.
+    (Amended 2026-11-13, A NEW OBJECT OPENS EMPTY; DUPLICATE IS ASKED FOR:) Maintainer 2026-11-12: on every
+    list page with a + Object button and a detail panel, + Object opens an empty form with the picked type''s
+    defaults, carrying nothing from a selected object; Duplicate is a head action of the panel that opens
+    the create form prefilled from that object, with a new identity required and nothing dependent copied.
+    A duplicated source keeps credentials as the same secret references, never copied values, and copies
+    no registered tables. A page with no create form states its exception.'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
@@ -81445,7 +81468,14 @@
     a typed row may still be loose, as a json column. (Amended 2026-11-10, TYPES FROM CODE OR FROM A RUNTIME
     CATALOG:) Maintainer 2026-11-10: a code resolver''s row types come either from its code or from its
     @catalog (REQ-2221), in a named native type system; rows from @rows are checked against them. Neither
-    is a loose row type.'
+    is a loose row type. (Amended 2026-11-13, AN OPTIONAL SDK PER LANGUAGE:) Maintainer 2026-11-12 (also
+    REQ-1993, REQ-2200, REQ-2227): each code-source language has a small types-only package (decorators
+    or attributes for table, command, stream and columns; typed pushdown parameters; row, batch and stream
+    result types; the caller context; Provisa''s column data types) an author may import. It is an addition:
+    code that imports nothing of Provisa''s keeps working, tagged as today. A decorator and the docstring
+    tag produce the same manifest through the one reader; at runtime the SDK does nothing. The SDK has a
+    local check command that runs the server''s own reader. It is published from this repository with each
+    release, has no dependencies, and is allowed by default in the build sandbox.'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -81654,7 +81684,24 @@
   feature: commands-and-functions-sql-commands
   priority: SHOULD
   type: behavioral
-  description: 'A query command can run a MongoDB aggregation pipeline whose output has no stable shape (implementation kind source_query). The command holds the native query as its binding, in the same {"inputCollection", "pipeline"} form a pipeline table holds (REQ-1980). Its arguments are the command''s typed arguments, each a "{{name}}" placeholder in the pipeline, and a call converts each one to its type and binds it into the pipeline as a BSON value, never into its text. A call returns the documents the pipeline gives, as JSON, so each may have its own shape. A command that declares output columns has its rows checked against them on the way out, as every command''s output contract is. Registration refuses a pipeline command whose native query names an argument the command does not declare, leaves a declared argument unused, or writes ($out, $merge), and one that is not a query. The command is assigned to roles and placed in a domain like any other command.'
+  description: 'A query command can run a MongoDB aggregation pipeline whose output has no stable shape
+    (implementation kind source_query). The command holds the native query as its binding, in the same {"inputCollection",
+    "pipeline"} form a pipeline table holds (REQ-1980). Its arguments are the command''s typed arguments,
+    each a "{{name}}" placeholder in the pipeline, and a call converts each one to its type and binds it
+    into the pipeline as a BSON value, never into its text. A call returns the documents the pipeline gives,
+    as JSON, so each may have its own shape. A command that declares output columns has its rows checked
+    against them on the way out, as every command''s output contract is. Registration refuses a pipeline
+    command whose native query names an argument the command does not declare, leaves a declared argument
+    unused, or writes ($out, $merge), and one that is not a query. The command is assigned to roles and
+    placed in a domain like any other command. (Amended 2026-11-13, A NATIVE SQL COMMAND ON A RELATIONAL
+    SOURCE:) Maintainer 2026-11-13: a source_query command on a relational source holds native SQL in that
+    source''s own dialect (binding {"sql"}), one statement or several; it runs directly on the source, never
+    through the engine or the semantic pipeline; the call''s typed arguments are bound as values, never
+    spliced as text; several statements run in one native transaction on that source: all commit or none;
+    it may write (kind mutation, writes_table declared as for any writing command) or read; it returns the
+    last statement''s rows against its declared output, or nothing when it declares none; it is governed
+    at the call exactly as a source procedure is (assigned roles, command_execution, domain, approval),
+    not statement by statement. It spans one source and one call; a client''s BEGIN and COMMIT stay no-ops.'
   use_case: 'A developer registers a search_facets command running $searchMeta with a facet over genre and year, its text a typed argument; a GraphQL client calls it with the text and receives the facet buckets as JSON, whose shape depends on the facets the pipeline asks for.'
   scenario: 'Given a MongoDB source and a query command search_facets whose binding runs $searchMeta over movies with the argument q (text)
 
@@ -81814,7 +81861,11 @@
     marked latest, and latest needs a successful set of release assets, so a release whose packaging fails
     is not latest. Landings on main continue throughout. (Maintainer 2026-11-08.) (Amended 2026-11-09, ONE
     ALPHA AT A TIME:) Maintainer 2026-11-09: the nightly cuts no new alpha while an earlier alpha is open.
-    An alpha is open until it ships or is abandoned, and the night is skipped.'
+    An alpha is open until it ships or is abandoned, and the night is skipped. (Amended 2026-11-13, A RELEASE
+    RUNS ITS FULL SUITES ONCE PER BATCH OF LANDINGS:) Maintainer 2026-11-13: a push to a release branch
+    runs only Lint and Requirements CI; the lander has already run Unit and UI Unit on the commit it pushes.
+    The full suites (integration, UI e2e, conformance, image and audit) run once on the tip, by dispatch,
+    when no landing on the release is pending. A landing on a release no longer starts the full suites.'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -88401,7 +88452,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     columns as the panel allows. (Amended 2026-11-12, A TERM''S STATE HINTS SIT BESIDE THEIR VALUES:) Maintainer
     2026-11-12: the two advisories at the top of a term''s page (the term is a draft; the term reaches no
     physical column) are not banners. Each sentence is helper text beside the value it explains (Status,
-    Grounding). A state advisory is never a banner to dismiss.'
+    Grounding). A state advisory is never a banner to dismiss. (Amended 2026-11-13, A DRAFT''S EXPLANATION
+    IS A TIP:) Maintainer 2026-11-13, from the ontology term panel (REQ-2130): the explanation of a draft
+    term''s status is the hover tip of its Draft badge, not a paragraph under the Status field, so the row
+    is one line high like its neighbours.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -90617,171 +90671,173 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     is counted as not runnable by design. (Amended 2026-10-27, A SURFACE AT ITS BASELINE FAILS ON ANY UNEXCLUDED
     FAILURE:) Maintainer 2026-10-27: a surface whose every failing case is either fixed or excluded by a
     by-design group fails its conformance job on any failure no group excludes, so a regression turns CI
-    red rather than lowering a score silently; pgwire is the first. A surface still carrying open failures
+    red rather than lowering a score silently; pgwire is the first. [SUPERSEDED by REQ-2167, 2026-11-13
+    -- every conformance run is gated against its committed expected-failures list (A CONFORMANCE RUN FAILS
+    ON A DROP). Kept here for history; do not implement against it.] A surface still carrying open failures
     reports its score as before until it reaches that point, and the lead compares its score to main''s
-    before landing. TCK scenarios whose setup builds their graph with statements run in one ephemeral session
-    per scenario (REQ-2176): the setup''s writes build session nodes and relationships and the query reads
-    them; setups needing a write form the session does not yet take wait for it. (Amended 2026-10-27, PGWIRE''S
-    CATALOG FUNCTIONS:) Maintainer 2026-10-27: pgwire serves the PostgreSQL catalog functions a client calls
-    (psql, pgAdmin, DBeaver, pgjdbc), standalone as well as inside a catalog statement. SQL functions are
-    otherwise the serving engine''s own: a PostgreSQL-only function with no engine equivalent that no client
-    calls (type operators and I/O, geometric, math, JSON, text search, XML, range, network, large object
-    and index access-method functions) is not provided, by design. Of the administrative functions clients
-    call, pg_cancel_backend and pg_terminate_backend act on Provisa''s own pgwire sessions (cancelling the
-    session''s running statement, or closing it), on a session the caller owns unless the caller is an administrator;
-    every other administrative function with an effect (pg_reload_conf, pg_read_file, pg_read_binary_file,
-    pg_stat_file, pg_create_restore_point, the advisory locks) is refused naming it, and no function reads
-    the server''s files. (Amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED:) Every conformance
-    suite reports each of its cases in exactly one of three outcomes: passed; skipped by design, a case
-    a recorded decision excludes, each by-design group citing its requirement and decision; or failed. Nothing
-    else: a case that cannot run and has no by-design decision is failed, and a by-design case is never
-    counted as failed. Each suite''s result file and summary give the three counts the same way (passed,
-    by_design, failed), its pass rate is passed over passed plus failed, and the landing gate and its baselines
-    read those counts for every suite alike. (Amended 2026-10-28, THE CATALOG''S BOOTSTRAP OWNER IS PROVISA:)
-    The pgwire catalog''s bootstrap role (oid 10) is named provisa, not postgres: pg_get_userbyid(10) and
-    every owner column answer provisa. The pgwire conformance report lists it as skipped by design. (Amended
-    2026-10-29, A CASE THE CLIENT NEVER SENDS OR THE SUITE SKIPS FOR EVERY SERVER IS SKIPPED BY DESIGN:)
-    Maintainer 2026-10-29: a case the client library under test refuses or drops itself, so the request
-    never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before Prepare,
-    GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips for every
-    server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests), is skipped
-    by design, not failed. Its by-design group cites the client or suite behaviour that keeps it from running.
-    (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer 2026-10-30:
-    pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are called by
-    clients, so they are served, not refused. Each answers as a PostgreSQL server with no such file or sequence
-    would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise PostgreSQL''s own
-    error. None reads a server file or changes anything. (Amended 2026-10-29, WHAT IS SERVED AND WHAT WAITS
-    ON A TYPE:) Maintainer 2026-10-30: pg_catalog functions are served, including those no known client
-    calls: the functions behind operators, casts spelled as functions, wire format functions and ordinary
-    functions. That no client calls one is not a reason to skip it. Functions over a type the engine does
-    not hold stay skipped by design: geometric, text search, range and multirange, XML and money. The reason
-    recorded for each group names the missing type. (Amended 2026-10-29, EACH MISSING TYPE IS DECIDED ONE
-    BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND WHAT WAITS ON A TYPE: geometric,
-    text search, range and multirange, XML and money are not settled. The maintainer reviews each type and
-    decides; until then they stay open, not skipped by design. Everything else in that amendment stands.
-    (Amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS:) Maintainer 2026-10-30: advisory locks are real
-    locks held per process for now, and the docs say two Provisa processes do not exclude each other. float8
-    text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions with nothing to act on
-    answer as PostgreSQL does on a server so configured: pg_create_restore_point and pg_backup_start as
-    wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create as a read-only transaction,
-    pg_read_file as a role without pg_read_server_files. (Amended 2026-10-29, FUNCTIONS ARE COMPILER PUSHDOWN:)
-    Maintainer 2026-10-30: pgwire function support is an improvement to compiler pushdown. A function is
-    expressed in the compiler and transpiler through the semantic IR, as SQL for each dialect, so every
-    transport and every engine that can run it gets it. A UDF is never implemented within the pgwire module.
-    Wire encoding stays in the encoder. (Amended 2026-10-29, XML AND MONEY ARE SERVED:) Maintainer 2026-10-30,
-    replacing the earlier skip of XML and money: both are served with real results. XML generation is per-dialect
-    macros in the transpiler and reaches every transport. XML parsing and xpath are engine functions on
-    DuckDB, native where a dialect has them, and refused by name elsewhere; nothing reaches a source to
-    fail there. query_to_xml and its kin read through the governed pipeline and take constant arguments
-    only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer 2026-10-30: functions are
-    one macro table in the transpiler. On a direct route to a source with no form for a function, the statement
-    goes to the federation engine, and it is refused by name only when no engine can run it. A source''s
-    own function sharing a name in the table stays refused until a source can declare its functions. (Amended
-    2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS:) Maintainer 2026-10-31: a pg_catalog function not served
-    is a gap, not a deliberate difference. No pg_catalog function is listed as skipped by design, whatever
-    its family and whether or not a client calls it: each one not served counts as failed until it is served,
-    and a probe that cannot call a function is a gap in the probe. The conformance page reports them as
-    failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31: 571 pg_catalog functions cannot
-    be called on PostgreSQL itself (517 take an internal argument, 54 are refused in every form). They stay
-    reported as failed. The lowest reachable failed count for catalog functions is therefore 571, and that
-    is the goal. (Amended 2026-10-29, THE GOAL IS THE GUARANTEED LIST:) Maintainer 2026-10-31: for pg_catalog
-    functions the goal is reversed. The replay runs on every engine with no expansions; the functions that
-    pass on all of them are the guaranteed list, which is what Provisa promises anywhere, and each engine
-    has its own list beneath it. Expansions are a judgement made function by function, not a target. A function
-    not served still counts as failed, and is refused by name where its answer would differ. This replaces
-    THE GOAL IS 571 as a target. (Amended 2026-10-29, INTERNAL FUNCTIONS:) Maintainer 2026-10-31: a pg_catalog
-    function PostgreSQL itself cannot call from SQL (an internal argument, a trigger or binary upgrade context)
-    is an internal function. It needs no support and is not a gap: it is reported as skipped by design under
-    Internal functions, the one function group allowed, and the probe proves each one against PostgreSQL.
-    This narrows PG_CATALOG FUNCTIONS ARE GAPS to functions SQL can call. (Amended 2026-10-29, INDEXES BELONG
-    TO THE DATABASE:) Maintainer 2026-10-31: Provisa does not handle indexes; they are the source database''s.
-    Index access method and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, brin_summarize_range
-    and kin) need no support and are reported as skipped by design under Index functions. Index metadata
-    is not affected: pg_index, pg_get_indexdef and the like stay supported by REQ-2190. (Amended 2026-10-29,
-    WHAT THE TWO FUNCTION GROUPS HOLD:) Lead 2026-10-31: Internal functions and Index functions are the
-    two function groups allowed. Internal holds a function with an internal argument, or one PostgreSQL
-    refuses for its context, each proved against PostgreSQL; a function refused only for this server''s
-    state or configuration (standby, wal_level) stays failed, about 558 in all. Index functions holds index
-    support and maintenance functions that are not general: a hash function a client calls directly stays
-    failed. This corrects the 571 of THE GOAL IS 571. (Amended 2026-10-29, WHAT GUARANTEED MEANS:) Maintainer
-    2026-10-31: a function whose value cannot be compared (volatile, or session) is validated by its return
-    type and, where it is a string, its canonical form, against PostgreSQL''s own output. The guaranteed
-    list holds functions with answers compared or form checked on every engine; [SUPERSEDED by REQ-2167,
-    2026-11-02 -- a call with no compared answer is not a test. Kept here for history; do not implement
-    against it.] a function only called is reported as called only. [END SUPERSEDED BLOCK] (Amended 2026-11-01,
-    NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01, through the lead: every index support function is
-    served or refused by name, so the Index functions group of skipped by design is removed. An unserved
-    index function is failed. The text above that reports them skipped by design, and that names two function
-    groups, is superseded; one group remains. (Amended 2026-11-02, lastval from the session''s own inserts:)
-    Maintainer 2026-11-02: lastval() is answered by Provisa, not the source. An INSERT through a pgwire
-    session that makes the source generate an identity or serial value is rewritten to return that value
-    (RETURNING, or the source''s own way of reporting a generated key), and the session keeps the last one.
-    lastval() returns it; before any such insert in the session it raises PostgreSQL''s own error (lastval
-    is not yet defined in this session). The rows the client asked for are unchanged by the rewrite. (Amended
-    2026-11-02, Sequence functions are not supported:) Maintainer 2026-11-02: nextval, currval and setval
-    are not supported through Provisa: Provisa does not model a source''s sequences. A call is refused by
-    name, and the conformance check counts them skipped by design under this decision. lastval() is the
-    exception, answered from the session''s own inserts as amended above. (Amended 2026-11-02, Six-argument
-    regexp_replace is not supported:) Maintainer 2026-11-02: regexp_replace(text, text, text, integer, integer,
-    text), the PostgreSQL 16 form with a start position and an occurrence number, is not supported. A call
-    is refused by name, and the conformance check counts it skipped by design under this decision. The two-,
-    three- and four-argument forms are unchanged. (Amended 2026-11-02, Side-effect functions:) Maintainer
-    2026-11-02: a function that returns void, or whose purpose is a side effect, is tested by its side effect,
-    compared with PostgreSQL doing the same. If the side effect cannot be observed through a client, the
-    function is not testable, and the conformance check reports it in a skipped-by-design group of that
-    name. Side-effect functions are expected to work only on the PostgreSQL engine; on every other engine
-    they are skipped by design under this decision. (Amended 2026-11-02, Only compared answers pass:) Maintainer
-    2026-11-02: a call whose answer was not compared is not a test. Every overload is reported as passed,
-    skipped by design or failed. Passed means its answer was compared with PostgreSQL''s, or, for a value
-    that cannot be compared, its result type and canonical form were, or, for a side-effect function on
-    the PostgreSQL engine, its side effect was. [SUPERSEDED by REQ-2167, 2026-11-03 -- a function the check
-    did not test has not failed either. Kept here for history; do not implement against it.] Anything else
-    that is not in a skipped-by-design group is failed, with its reason. [END SUPERSEDED BLOCK] (Amended
-    2026-11-03, Privileges, visibility and notifications:) Maintainer 2026-11-03: (1) has_table_privilege
-    and the column variants answer false for a write on PostgreSQL''s own system catalogs, for every role,
-    the Provisa session role included, whatever is_superuser reports: nobody writes a system catalog through
-    Provisa (REQ-127); the conformance check reports these skipped by design under this decision. (2) A
-    privilege function asked about another model role answers from that role''s grants in the model, the
-    same way for every privilege function; it never answers NULL for a known role. (3) pg_table_is_visible
-    and the other *_is_visible functions follow search_path exactly as PostgreSQL does: a domain''s table
-    is visible only when search_path names its schema. (4) LISTEN, NOTIFY and pg_notify are refused by name:
-    Provisa''s pgwire has no notification channel; the conformance check reports them skipped by design
-    under this decision. (Amended 2026-11-03, Every rewrite goes through SQLGlot:) Maintainer 2026-11-03:
-    every pg_catalog rewrite and every PostgreSQL form is made on SQLGlot''s tree, never on the statement''s
-    text, because the engine path and every direct source''s path all go through SQLGlot: a form written
-    once on the tree serves every dialect it is generated for, and the function check run on each engine
-    therefore tests the direct path for that platform too. A text substitution (a regular expression or
-    string replace over SQL) is a defect, whatever it fixes. (Amended 2026-11-03, Not tested is its own
-    count:) Maintainer 2026-11-03: an overload whose answer the check did not compare was not tested, so
-    it has neither passed nor failed: it is reported as not tested, with its reason, as a gap in the check,
-    beside passed, skipped by design and failed. Failed means a compared answer differed, the engine errored,
-    or the function was refused with no decision behind it. (Amended 2026-11-03, Server administration functions:)
-    Maintainer 2026-11-03: functions PostgreSQL refuses for the test server''s own state or configuration
-    are skipped by design on every engine, under a group of this name: WAL replay control (pg_wal_replay_pause,
-    pg_wal_replay_resume, pg_is_wal_replay_paused, pg_get_wal_replay_pause_state), logical decoding (pg_logical_slot_get_changes,
-    pg_logical_slot_peek_changes and their binary forms), pg_sync_replication_slots, pg_last_committed_xact,
-    pg_ls_logdir, pg_replication_origin_session_reset and pg_stop_making_pinned_objects. The conformance
-    check names each in that group with PostgreSQL''s refusal as the reason. (Amended 2026-11-03, Storage,
-    fixture objects and server files:) Maintainer 2026-11-03: (1) storage functions (pg_relation_size, pg_table_size,
-    pg_indexes_size, pg_total_relation_size, pg_database_size, pg_tablespace_size, pg_relation_filenode,
-    pg_relation_filepath) answer NULL and are skipped by design under a group "Provisa holds no storage".
-    (2) Functions about objects only the PostgreSQL fixture server creates (a foreign-data wrapper, a foreign
-    server, statistics objects, partitions, a replication slot, a statistics reset) count under the existing
-    group "The catalog is the model''s". (3) pg_read_file and pg_read_binary_file are skipped by design
-    under a group citing the rule that no function reads the server''s files. (4) The conformance fixture
-    model grants the probe''s role writes on its fixture table, so the privilege checks compare like with
-    like. (Amended 2026-11-03, Time zones follow upstream tzdata; REFERENCES is never granted:) Maintainer
-    2026-11-03: pg_timezone_names lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships it.
-    The check compares the names both lists share, and the names that differ only through a distribution''s
-    tzdata packaging (Debian drops the backward links and adds localtime and posixrules) are skipped by
-    design. Provisa never grants the REFERENCES privilege, so has_*_privilege(..., ''REFERENCES'') answering
-    ''f'' is correct, and those cases are skipped by design citing this rule. (Amended 2026-11-03, Backend
-    session statistics are the engine''s:) Maintainer 2026-11-03: the pg_stat_get_backend_* functions and
-    pg_stat_get_backend_idset() report on the engine''s own sessions (their activity, client addresses,
-    start times), not the model. Provisa refuses them by name, and the check skips them by design under
-    the server administration group: serving them would show one tenant other sessions'' activity. (Amended
-    2026-11-04, Server state, internal types and the check''s own call shapes:) Maintainer 2026-11-04: (1)
-    A function that reads PostgreSQL''s own server state is skipped by design: there is no single server
+    before landing. [END SUPERSEDED BLOCK] TCK scenarios whose setup builds their graph with statements
+    run in one ephemeral session per scenario (REQ-2176): the setup''s writes build session nodes and relationships
+    and the query reads them; setups needing a write form the session does not yet take wait for it. (Amended
+    2026-10-27, PGWIRE''S CATALOG FUNCTIONS:) Maintainer 2026-10-27: pgwire serves the PostgreSQL catalog
+    functions a client calls (psql, pgAdmin, DBeaver, pgjdbc), standalone as well as inside a catalog statement.
+    SQL functions are otherwise the serving engine''s own: a PostgreSQL-only function with no engine equivalent
+    that no client calls (type operators and I/O, geometric, math, JSON, text search, XML, range, network,
+    large object and index access-method functions) is not provided, by design. Of the administrative functions
+    clients call, pg_cancel_backend and pg_terminate_backend act on Provisa''s own pgwire sessions (cancelling
+    the session''s running statement, or closing it), on a session the caller owns unless the caller is
+    an administrator; every other administrative function with an effect (pg_reload_conf, pg_read_file,
+    pg_read_binary_file, pg_stat_file, pg_create_restore_point, the advisory locks) is refused naming it,
+    and no function reads the server''s files. (Amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED:)
+    Every conformance suite reports each of its cases in exactly one of three outcomes: passed; skipped
+    by design, a case a recorded decision excludes, each by-design group citing its requirement and decision;
+    or failed. Nothing else: a case that cannot run and has no by-design decision is failed, and a by-design
+    case is never counted as failed. Each suite''s result file and summary give the three counts the same
+    way (passed, by_design, failed), its pass rate is passed over passed plus failed, and the landing gate
+    and its baselines read those counts for every suite alike. (Amended 2026-10-28, THE CATALOG''S BOOTSTRAP
+    OWNER IS PROVISA:) The pgwire catalog''s bootstrap role (oid 10) is named provisa, not postgres: pg_get_userbyid(10)
+    and every owner column answer provisa. The pgwire conformance report lists it as skipped by design.
+    (Amended 2026-10-29, A CASE THE CLIENT NEVER SENDS OR THE SUITE SKIPS FOR EVERY SERVER IS SKIPPED BY
+    DESIGN:) Maintainer 2026-10-29: a case the client library under test refuses or drops itself, so the
+    request never reaches Provisa (for Flight SQL, the ADBC driver''s Bind with no Prepare, Bind before
+    Prepare, GetStatistics, GetObjects constraints and xdbc nullability), and a case the driver suite skips
+    for every server (for Bolt, the encrypted, Kerberos, enterprise-edition and kill-the-server tests),
+    is skipped by design, not failed. Its by-design group cites the client or suite behaviour that keeps
+    it from running. (Amended 2026-10-29, CLIENT-CALLED SERVER FUNCTIONS ANSWER LIKE POSTGRESQL:) Maintainer
+    2026-10-30: pg_reload_conf, pg_create_restore_point, pg_read_binary_file, pg_stat_file and setval are
+    called by clients, so they are served, not refused. Each answers as a PostgreSQL server with no such
+    file or sequence would: strict NULL for a NULL argument, pg_reload_conf returns true, and otherwise
+    PostgreSQL''s own error. None reads a server file or changes anything. (Amended 2026-10-29, WHAT IS
+    SERVED AND WHAT WAITS ON A TYPE:) Maintainer 2026-10-30: pg_catalog functions are served, including
+    those no known client calls: the functions behind operators, casts spelled as functions, wire format
+    functions and ordinary functions. That no client calls one is not a reason to skip it. Functions over
+    a type the engine does not hold stay skipped by design: geometric, text search, range and multirange,
+    XML and money. The reason recorded for each group names the missing type. (Amended 2026-10-29, EACH
+    MISSING TYPE IS DECIDED ONE BY ONE:) Maintainer 2026-10-30, replacing the skip in WHAT IS SERVED AND
+    WHAT WAITS ON A TYPE: geometric, text search, range and multirange, XML and money are not settled. The
+    maintainer reviews each type and decides; until then they stay open, not skipped by design. Everything
+    else in that amendment stands. (Amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS:) Maintainer 2026-10-30:
+    advisory locks are real locks held per process for now, and the docs say two Provisa processes do not
+    exclude each other. float8 text form matches PostgreSQL: 2, not 2.0, and NaN, not nan. Server functions
+    with nothing to act on answer as PostgreSQL does on a server so configured: pg_create_restore_point
+    and pg_backup_start as wal_level minimal, slot and origin creation as max_replication_slots 0, lo_create
+    as a read-only transaction, pg_read_file as a role without pg_read_server_files. (Amended 2026-10-29,
+    FUNCTIONS ARE COMPILER PUSHDOWN:) Maintainer 2026-10-30: pgwire function support is an improvement to
+    compiler pushdown. A function is expressed in the compiler and transpiler through the semantic IR, as
+    SQL for each dialect, so every transport and every engine that can run it gets it. A UDF is never implemented
+    within the pgwire module. Wire encoding stays in the encoder. (Amended 2026-10-29, XML AND MONEY ARE
+    SERVED:) Maintainer 2026-10-30, replacing the earlier skip of XML and money: both are served with real
+    results. XML generation is per-dialect macros in the transpiler and reaches every transport. XML parsing
+    and xpath are engine functions on DuckDB, native where a dialect has them, and refused by name elsewhere;
+    nothing reaches a source to fail there. query_to_xml and its kin read through the governed pipeline
+    and take constant arguments only. (Amended 2026-10-29, A FUNCTION WITH NO FORM ON A SOURCE:) Maintainer
+    2026-10-30: functions are one macro table in the transpiler. On a direct route to a source with no form
+    for a function, the statement goes to the federation engine, and it is refused by name only when no
+    engine can run it. A source''s own function sharing a name in the table stays refused until a source
+    can declare its functions. (Amended 2026-10-29, PG_CATALOG FUNCTIONS ARE GAPS:) Maintainer 2026-10-31:
+    a pg_catalog function not served is a gap, not a deliberate difference. No pg_catalog function is listed
+    as skipped by design, whatever its family and whether or not a client calls it: each one not served
+    counts as failed until it is served, and a probe that cannot call a function is a gap in the probe.
+    The conformance page reports them as failed. (Amended 2026-10-29, THE GOAL IS 571:) Maintainer 2026-10-31:
+    571 pg_catalog functions cannot be called on PostgreSQL itself (517 take an internal argument, 54 are
+    refused in every form). They stay reported as failed. The lowest reachable failed count for catalog
+    functions is therefore 571, and that is the goal. (Amended 2026-10-29, THE GOAL IS THE GUARANTEED LIST:)
+    Maintainer 2026-10-31: for pg_catalog functions the goal is reversed. The replay runs on every engine
+    with no expansions; the functions that pass on all of them are the guaranteed list, which is what Provisa
+    promises anywhere, and each engine has its own list beneath it. Expansions are a judgement made function
+    by function, not a target. A function not served still counts as failed, and is refused by name where
+    its answer would differ. This replaces THE GOAL IS 571 as a target. (Amended 2026-10-29, INTERNAL FUNCTIONS:)
+    Maintainer 2026-10-31: a pg_catalog function PostgreSQL itself cannot call from SQL (an internal argument,
+    a trigger or binary upgrade context) is an internal function. It needs no support and is not a gap:
+    it is reported as skipped by design under Internal functions, the one function group allowed, and the
+    probe proves each one against PostgreSQL. This narrows PG_CATALOG FUNCTIONS ARE GAPS to functions SQL
+    can call. (Amended 2026-10-29, INDEXES BELONG TO THE DATABASE:) Maintainer 2026-10-31: Provisa does
+    not handle indexes; they are the source database''s. Index access method and index maintenance functions
+    (btree, GiST, GIN, SP-GiST, BRIN support, brin_summarize_range and kin) need no support and are reported
+    as skipped by design under Index functions. Index metadata is not affected: pg_index, pg_get_indexdef
+    and the like stay supported by REQ-2190. (Amended 2026-10-29, WHAT THE TWO FUNCTION GROUPS HOLD:) Lead
+    2026-10-31: Internal functions and Index functions are the two function groups allowed. Internal holds
+    a function with an internal argument, or one PostgreSQL refuses for its context, each proved against
+    PostgreSQL; a function refused only for this server''s state or configuration (standby, wal_level) stays
+    failed, about 558 in all. Index functions holds index support and maintenance functions that are not
+    general: a hash function a client calls directly stays failed. This corrects the 571 of THE GOAL IS
+    571. (Amended 2026-10-29, WHAT GUARANTEED MEANS:) Maintainer 2026-10-31: a function whose value cannot
+    be compared (volatile, or session) is validated by its return type and, where it is a string, its canonical
+    form, against PostgreSQL''s own output. The guaranteed list holds functions with answers compared or
+    form checked on every engine; [SUPERSEDED by REQ-2167, 2026-11-02 -- a call with no compared answer
+    is not a test. Kept here for history; do not implement against it.] a function only called is reported
+    as called only. [END SUPERSEDED BLOCK] (Amended 2026-11-01, NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01,
+    through the lead: every index support function is served or refused by name, so the Index functions
+    group of skipped by design is removed. An unserved index function is failed. The text above that reports
+    them skipped by design, and that names two function groups, is superseded; one group remains. (Amended
+    2026-11-02, lastval from the session''s own inserts:) Maintainer 2026-11-02: lastval() is answered by
+    Provisa, not the source. An INSERT through a pgwire session that makes the source generate an identity
+    or serial value is rewritten to return that value (RETURNING, or the source''s own way of reporting
+    a generated key), and the session keeps the last one. lastval() returns it; before any such insert in
+    the session it raises PostgreSQL''s own error (lastval is not yet defined in this session). The rows
+    the client asked for are unchanged by the rewrite. (Amended 2026-11-02, Sequence functions are not supported:)
+    Maintainer 2026-11-02: nextval, currval and setval are not supported through Provisa: Provisa does not
+    model a source''s sequences. A call is refused by name, and the conformance check counts them skipped
+    by design under this decision. lastval() is the exception, answered from the session''s own inserts
+    as amended above. (Amended 2026-11-02, Six-argument regexp_replace is not supported:) Maintainer 2026-11-02:
+    regexp_replace(text, text, text, integer, integer, text), the PostgreSQL 16 form with a start position
+    and an occurrence number, is not supported. A call is refused by name, and the conformance check counts
+    it skipped by design under this decision. The two-, three- and four-argument forms are unchanged. (Amended
+    2026-11-02, Side-effect functions:) Maintainer 2026-11-02: a function that returns void, or whose purpose
+    is a side effect, is tested by its side effect, compared with PostgreSQL doing the same. If the side
+    effect cannot be observed through a client, the function is not testable, and the conformance check
+    reports it in a skipped-by-design group of that name. Side-effect functions are expected to work only
+    on the PostgreSQL engine; on every other engine they are skipped by design under this decision. (Amended
+    2026-11-02, Only compared answers pass:) Maintainer 2026-11-02: a call whose answer was not compared
+    is not a test. Every overload is reported as passed, skipped by design or failed. Passed means its answer
+    was compared with PostgreSQL''s, or, for a value that cannot be compared, its result type and canonical
+    form were, or, for a side-effect function on the PostgreSQL engine, its side effect was. [SUPERSEDED
+    by REQ-2167, 2026-11-03 -- a function the check did not test has not failed either. Kept here for history;
+    do not implement against it.] Anything else that is not in a skipped-by-design group is failed, with
+    its reason. [END SUPERSEDED BLOCK] (Amended 2026-11-03, Privileges, visibility and notifications:) Maintainer
+    2026-11-03: (1) has_table_privilege and the column variants answer false for a write on PostgreSQL''s
+    own system catalogs, for every role, the Provisa session role included, whatever is_superuser reports:
+    nobody writes a system catalog through Provisa (REQ-127); the conformance check reports these skipped
+    by design under this decision. (2) A privilege function asked about another model role answers from
+    that role''s grants in the model, the same way for every privilege function; it never answers NULL for
+    a known role. (3) pg_table_is_visible and the other *_is_visible functions follow search_path exactly
+    as PostgreSQL does: a domain''s table is visible only when search_path names its schema. (4) LISTEN,
+    NOTIFY and pg_notify are refused by name: Provisa''s pgwire has no notification channel; the conformance
+    check reports them skipped by design under this decision. (Amended 2026-11-03, Every rewrite goes through
+    SQLGlot:) Maintainer 2026-11-03: every pg_catalog rewrite and every PostgreSQL form is made on SQLGlot''s
+    tree, never on the statement''s text, because the engine path and every direct source''s path all go
+    through SQLGlot: a form written once on the tree serves every dialect it is generated for, and the function
+    check run on each engine therefore tests the direct path for that platform too. A text substitution
+    (a regular expression or string replace over SQL) is a defect, whatever it fixes. (Amended 2026-11-03,
+    Not tested is its own count:) Maintainer 2026-11-03: an overload whose answer the check did not compare
+    was not tested, so it has neither passed nor failed: it is reported as not tested, with its reason,
+    as a gap in the check, beside passed, skipped by design and failed. Failed means a compared answer differed,
+    the engine errored, or the function was refused with no decision behind it. (Amended 2026-11-03, Server
+    administration functions:) Maintainer 2026-11-03: functions PostgreSQL refuses for the test server''s
+    own state or configuration are skipped by design on every engine, under a group of this name: WAL replay
+    control (pg_wal_replay_pause, pg_wal_replay_resume, pg_is_wal_replay_paused, pg_get_wal_replay_pause_state),
+    logical decoding (pg_logical_slot_get_changes, pg_logical_slot_peek_changes and their binary forms),
+    pg_sync_replication_slots, pg_last_committed_xact, pg_ls_logdir, pg_replication_origin_session_reset
+    and pg_stop_making_pinned_objects. The conformance check names each in that group with PostgreSQL''s
+    refusal as the reason. (Amended 2026-11-03, Storage, fixture objects and server files:) Maintainer 2026-11-03:
+    (1) storage functions (pg_relation_size, pg_table_size, pg_indexes_size, pg_total_relation_size, pg_database_size,
+    pg_tablespace_size, pg_relation_filenode, pg_relation_filepath) answer NULL and are skipped by design
+    under a group "Provisa holds no storage". (2) Functions about objects only the PostgreSQL fixture server
+    creates (a foreign-data wrapper, a foreign server, statistics objects, partitions, a replication slot,
+    a statistics reset) count under the existing group "The catalog is the model''s". (3) pg_read_file and
+    pg_read_binary_file are skipped by design under a group citing the rule that no function reads the server''s
+    files. (4) The conformance fixture model grants the probe''s role writes on its fixture table, so the
+    privilege checks compare like with like. (Amended 2026-11-03, Time zones follow upstream tzdata; REFERENCES
+    is never granted:) Maintainer 2026-11-03: pg_timezone_names lists the pinned upstream IANA tzdata, as
+    upstream PostgreSQL ships it. The check compares the names both lists share, and the names that differ
+    only through a distribution''s tzdata packaging (Debian drops the backward links and adds localtime
+    and posixrules) are skipped by design. Provisa never grants the REFERENCES privilege, so has_*_privilege(...,
+    ''REFERENCES'') answering ''f'' is correct, and those cases are skipped by design citing this rule.
+    (Amended 2026-11-03, Backend session statistics are the engine''s:) Maintainer 2026-11-03: the pg_stat_get_backend_*
+    functions and pg_stat_get_backend_idset() report on the engine''s own sessions (their activity, client
+    addresses, start times), not the model. Provisa refuses them by name, and the check skips them by design
+    under the server administration group: serving them would show one tenant other sessions'' activity.
+    (Amended 2026-11-04, Server state, internal types and the check''s own call shapes:) Maintainer 2026-11-04:
+    (1) A function that reads PostgreSQL''s own server state is skipped by design: there is no single server
     to test, since the answer is whichever engine''s runs. That covers WAL, replication and recovery, log
     files, the hba and ident files, shared memory and memory contexts, locks, I/O and SLRU statistics, wait
     events, server directory listings, prepared transactions, and the pg_stat_get_xact_* transaction counters
@@ -90836,7 +90892,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and array_agg ordered by text can list values in another order than PostgreSQL (''12,Hello,abc'' where
     PostgreSQL gives ''12,abc,Hello''). This is a deliberate engine difference, listed as one in the conformance
     results and the docs, not a wrong answer to fix. min and max over text keep their existing en_US key
-    and refusal.'
+    and refusal. (Amended 2026-11-13, A CONFORMANCE RUN FAILS ON A DROP:) 2026-11-13: each conformance workflow
+    ends in a gate against a committed expected-failures list (its total and its cases); it fails on an
+    unlisted failure, on a listed case that now passes, on a filtered or partial run, and on a missing report
+    or list. The drivers surface keeps its per-test list.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -91844,7 +91903,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     CREATE INDEX on a model label (a governed table, not in the scratch store) is refused by name. SHOW
     INDEXES lists the session''s indexes and the built-in ones on its tables (each table''s key, rels on
     from_id, to_id and type, node_labels on label and node_id), the built-in ones marked so; DROP INDEX
-    name drops a session index and refuses a built-in one. No right beyond the session''s own is needed.'
+    name drops a session index and refuses a built-in one. No right beyond the session''s own is needed.
+    (Amended 2026-11-13, A SESSION''S KEPT PLANS FOLLOW ITS TABLES'' SHAPES:) 2026-11-13 (also REQ-615):
+    a statement governed in a session holding temporary tables is kept for that session as its tables are
+    shaped (name and columns), not per generation; a write that leaves the columns as they were is served
+    the same plan; cached answers stay keyed by generation.'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
@@ -95637,7 +95700,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     midpoint between its top and bottom column; a folded table sits level with its one more-columns node.
     Each data product sits at the midpoint between the top and bottom column of its tables. Nodes of one
     lane whose midpoints fall closer than the node gap keep their order and move apart by the least amount.
-    Terms then align to the columns by the lowest-angle score, as stated. There is no setting.'
+    Terms then align to the columns by the lowest-angle score, as stated. There is no setting. (Amended
+    2026-11-13, THE GRID IS OFF AT FIRST:) Maintainer 2026-11-13: every 3D graph draws no floor grid until
+    the reader turns Grid on; the choice is remembered and restored, and Set Defaults returns it to off.'
 - id: REQ-2240
   status: proposed
   target: 2026-Q4

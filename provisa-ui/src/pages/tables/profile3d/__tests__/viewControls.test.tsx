@@ -289,29 +289,32 @@ describe.each(VIEWS)("$name's view controls", (v) => {
 });
 
 describe.each(VIEWS.filter((v) => v.grid))("$name's Grid toggle", (v) => {
-  it("shows its state, sets the scene's floor grid and keeps it as the pill did", async () => {
-    const view = render(v.draw());
-    await waitFor(() => expect(scene(v.kind).setGrid).toHaveBeenLastCalledWith(true));
-    const grid = within(stackOf(v)).getByTestId(`${v.id}-grid`);
-    expect(grid).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(grid);
-    expect(grid).toHaveAttribute("aria-pressed", "false");
+  const gridButton = () => within(stackOf(v)).getByTestId(`${v.id}-grid`);
+
+  it("is off at first, on after a remount once turned on, off after a remount once turned off again", async () => {
+    const first = render(v.draw());
     await waitFor(() => expect(scene(v.kind).setGrid).toHaveBeenLastCalledWith(false));
-    view.unmount();
+    expect(gridButton()).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(gridButton());
+    expect(gridButton()).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(scene(v.kind).setGrid).toHaveBeenLastCalledWith(true));
+    first.unmount();
+    const second = render(v.draw());
+    await waitFor(() => expect(gridButton()).toHaveAttribute("aria-pressed", "true"));
+    fireEvent.click(gridButton());
+    expect(gridButton()).toHaveAttribute("aria-pressed", "false");
+    second.unmount();
     render(v.draw());
-    await waitFor(() =>
-      expect(within(stackOf(v)).getByTestId(`${v.id}-grid`)).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      ),
-    );
+    await waitFor(() => expect(gridButton()).toHaveAttribute("aria-pressed", "false"));
+  });
+
+  it("goes back to off on Set Defaults", async () => {
+    render(v.draw());
+    await waitFor(() => expect(scene(v.kind).setGrid).toHaveBeenCalled());
+    fireEvent.click(gridButton());
+    expect(gridButton()).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByTestId(`${v.id}-reset-settings`));
-    await waitFor(() =>
-      expect(within(stackOf(v)).getByTestId(`${v.id}-grid`)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      ),
-    );
+    await waitFor(() => expect(gridButton()).toHaveAttribute("aria-pressed", "false"));
   });
 });
 
