@@ -80,6 +80,7 @@ from provisa.api.admin.types import (
     TableRegistrationOutcome,
     BulkDeleteResult,
     ColumnInput,
+    LibraryCitationInput,
     TagAssignmentInput,
     TagInput,
     TagParamValueInput,
@@ -957,6 +958,7 @@ async def _save_tag(
         expires_policy=input.expires_policy,
         param_policy=input.param_policy,
         sensitive=input.sensitive,
+        requires_citation=input.requires_citation,  # REQ-2208
     )
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -983,12 +985,8 @@ async def _save_tag(
             # column carrying the tag -- in every domain, so the right must reach them all
             # (REQ-1944).
             require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
-        elif was_sensitive:
-            # REQ-1944: a sensitive tag's definition is maintained by whoever governs
-            # sensitive columns across the org, or by a table editor as before.
-            _require_sensitive_tag_definer(info)
         else:
-            require_capability(info, "table_registration")
+            _require_tag_definer(info, was_sensitive)
         await tag_repo.upsert(cast("Connection", conn), model)
     await _refresh_config_tags()
     return MutationResult(
@@ -1506,6 +1504,16 @@ def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) ->
         require_capability(info, "table_registration")
 
 
+def _require_tag_definer(info: StrawberryInfo, sensitive: bool) -> None:  # REQ-1944, REQ-2208
+    """Editing a tag's definition, its option left as it is: a sensitive tag's is maintained by
+    whoever governs sensitive columns across the org, or by a table editor as before
+    (:func:`_require_sensitive_tag_definer`); any other tag's by a table editor."""
+    if sensitive:
+        _require_sensitive_tag_definer(info)
+    else:
+        require_capability(info, "table_registration")
+
+
 def _require_sensitive_tag_definer(info: StrawberryInfo) -> None:  # REQ-1944
     """Editing a sensitive tag's definition (not its option): a table editor as before, or a
     holder of sensitive_data reaching every domain -- the tag hides columns in all of them."""
@@ -1572,6 +1580,164 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 
     assert table_id is not None  # _assignment_target_problem: a column names its table
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
+
+
+# ---------------------------------------------------------------------------
+# Citations of the reference library by tags and their assignments (REQ-2208)
+# ---------------------------------------------------------------------------
+
+
+def _assignment_model(input: TagAssignmentInput) -> Any:
+    """The assignment a ``TagAssignmentInput`` names (its object; the why is not read)."""
+    from provisa.core.models import TagAssignment as TagAssignmentModel
+
+    return TagAssignmentModel(
+        tag_id=input.tag_id,
+        object_type=input.object_type,
+        source_id=input.source_id,
+        table_id=input.table_id,
+        column_name=input.column_name,
+        relationship_id=input.relationship_id,
+        command_name=input.command_name,
+        term_id=input.term_id,
+        product_id=input.product_id,
+        document_id=input.document_id,
+        section_heading=input.section_heading,
+        section_page=input.section_page,
+        rls_rule_id=input.rls_rule_id,
+        role_id=input.role_id,
+        metric_name=input.metric_name,
+    )
+
+
+async def _require_assignment_editor(
+    info: StrawberryInfo, conn: "Connection", model: Any, tag_row: dict
+) -> "MutationResult | None":  # REQ-2208
+    """What changing the assignment ``model`` asks, as assignTag asks it: the surface's right, the
+    target's domains, a term's curation, and the tag's own right on that object. A target that
+    is not there is answered as one."""
+    _require_tag_editor(info, model.object_type)
+    problem = _assignment_target_problem(model)
+    if problem is not None:
+        return problem
+    refused = await _require_tag_target_domains(info, conn, model)
+    if refused is not None:
+        return refused
+    if model.object_type == "term":
+        assert model.term_id is not None
+        await _require_term_tagger(info, conn, model.term_id)
+    await _require_tag_assignment_right(
+        info,
+        conn,
+        tag_row,
+        model.object_type,
+        model.table_id,
+        model.term_id,
+        model.product_id,
+        await _rule_domains_of(conn, model),
+    )
+    return None
+
+
+async def _unread_document(
+    info: StrawberryInfo, conn: "Connection", document_id: int
+) -> "MutationResult | None":  # REQ-2208
+    """A cited document must be one the caller reads, as the Library page reads it (its
+    domains): one it may not read is answered as one the library does not hold."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.reference_library import store
+    from provisa.reference_library.retrieve import readable
+
+    document = await store.document(conn, document_id)
+    scope = allowed_domains_request(info.context["request"])
+    if document is not None and readable(scope, frozenset(document.domains)):
+        return None
+    return MutationResult(
+        success=False,
+        message=f"the reference library holds no document {document_id}",
+        code="reference_library.not_found",
+        params={"documentId": document_id},
+    )
+
+
+def _caller_id(info: StrawberryInfo) -> str | None:
+    request = info.context["request"]
+    identity = getattr(getattr(request, "state", None), "identity", None)
+    return getattr(identity, "user_id", None)
+
+
+async def _change_citation(
+    info: StrawberryInfo,
+    tag_id: str,
+    assignment: "TagAssignmentInput | None",
+    citation: LibraryCitationInput,
+    *,
+    adding: bool,
+) -> MutationResult:  # REQ-2208
+    """Add or take off a citation on a tag's definition (``assignment`` None) or on one of its
+    assignments, with the right that edits that definition or that assignment."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    place = citations.Place(citation.document_id, citation.section_heading, citation.section_page)
+    params: dict[str, Any] = {"tag": tag_id, "documentId": citation.document_id}
+    if assignment is None:
+        _require_tag_editor(info)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        c = cast("Connection", conn)
+        tag_row = await tag_repo.get(c, tag_id)
+        if tag_row is None:
+            return MutationResult(
+                success=False,
+                message=f"Tag {tag_id!r} not found",
+                code="schema.tag_not_found",
+                params={"tag": tag_id},
+            )
+        model = None
+        if assignment is None:
+            _require_tag_definer(info, bool(tag_row["sensitive"]))
+        else:
+            model = _assignment_model(assignment)
+            refused = await _require_assignment_editor(info, c, model, tag_row)
+            if refused is not None:
+                return refused
+            params["objectKey"] = model.object_key()
+        refused = await _unread_document(info, c, citation.document_id)
+        if refused is not None:
+            return refused
+        removed = True
+        try:
+            if model is None and adding:
+                await tag_repo.cite_definition(c, tag_id, place, _caller_id(info))
+            elif model is None:
+                removed = await tag_repo.uncite_definition(c, tag_id, place)
+            elif adding:
+                await tag_repo.cite_assignment(c, model, place, _caller_id(info))
+            else:
+                removed = await tag_repo.uncite_assignment(c, model, place)
+        except tag_repo.CitationTargetNotFound as missing:
+            return MutationResult(
+                success=False,
+                message=str(missing),
+                code="schema.tag_assignment_not_found",
+                params=params,
+            )
+        except library.LibraryRefused as exc:
+            return MutationResult(success=False, message=str(exc), code=exc.code, params=params)
+    if not adding and not removed:
+        return MutationResult(
+            success=False,
+            message=f"Tag {tag_id!r} does not cite that document or section",
+            code="tag.citation_not_found",
+            params=params,
+        )
+    return MutationResult(
+        success=True,
+        message=f"Tag {tag_id!r} citation {'added' if adding else 'removed'}",
+        code="tag.citation_added" if adding else "tag.citation_removed",
+        params=params,
+    )
 
 
 async def _rule_domains_of(conn: "Connection", model: Any) -> set[str] | None:  # REQ-2208
@@ -3848,6 +4014,34 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.tag_unassigned",
             params={"tag": input.tag_id, "objectKey": model.object_key()},
         )
+
+    @strawberry.mutation
+    async def cite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """The tag's definition cites a library document or section (the one that defines it);
+        citing it again records the section's text as it is now, confirming a flagged one."""
+        return await _change_citation(info, tag_id, None, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, tag_id, None, citation, adding=False)
+
+    @strawberry.mutation
+    async def cite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """One assignment of a tag cites a library document or section that traces or confirms
+        it; citing it again records the section's text as it is now."""
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=False)
 
     @strawberry.mutation
     async def upsert_tag_param_value(

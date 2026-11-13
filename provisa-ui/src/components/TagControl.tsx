@@ -26,10 +26,17 @@ import { notifications } from "@mantine/notifications";
 import { Pencil, Tag as TagIcon } from "lucide-react";
 import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
 import { TAG_PARAM_SEPARATOR, baseTagId, tagParam } from "../types/admin";
-import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useTagQueries";
+import {
+  useAssignTag,
+  useTagAssignments,
+  useTagCitations,
+  useTags,
+  useUnassignTag,
+} from "../hooks/useTagQueries";
 import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
 import { CancelButton } from "./form/CancelButton";
+import { CitationLink, CitationSection, CitationState, TagCitations } from "./TagCitations";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
 // (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
@@ -99,6 +106,7 @@ export function TagControl({
   const { tagAssignments } = useTagAssignments();
   const { assignTag } = useAssignTag();
   const { unassignTag } = useUnassignTag();
+  const { citeAssignment, unciteAssignment } = useTagCitations();
 
   // Which tag's inline reason/expiry form is open in the picker, plus its draft values.
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
@@ -260,41 +268,115 @@ export function TagControl({
           !!assignment?.expiresOn &&
           isPastDate(assignment.expiresOn);
         return (
-          <TipSurface
-            key={tag.id}
-            content={
-              <Stack gap={0}>
-                <Text size="xs">{tag.description}</Text>
-                {assignment?.reason &&
-                  (tag.id === PII_TAG_ID && objectType === "column" ? (
-                    <Text size="xs">
-                      {t("tagControl.piiSetHere", { reason: assignment.reason })}
-                    </Text>
-                  ) : (
-                    <Text size="xs">{assignment.reason}</Text>
-                  ))}
-                {tag.id === PII_TAG_ID && piiTerm && (
-                  <Text size="xs">{t("tagControl.piiViaTerm", { term: piiTerm })}</Text>
-                )}
-                {assignment?.expiresOn && (
-                  <Text size="xs">
-                    {t("tagControl.plannedRemoval", { date: assignment.expiresOn })}
+          <Group key={tag.id} gap="0.15rem" wrap="nowrap" display="inline-flex">
+            {/* The chip opens its detail: where the tag is defined, linked into the Library, and
+                what this assignment cites. */}
+            <Popover withinPortal position="bottom-start" shadow="md">
+              <Popover.Target>
+                <TipSurface
+                  content={
+                    <Stack gap={0}>
+                      <Text size="xs">{tag.description}</Text>
+                      {assignment?.reason &&
+                        (tag.id === PII_TAG_ID && objectType === "column" ? (
+                          <Text size="xs">
+                            {t("tagControl.piiSetHere", { reason: assignment.reason })}
+                          </Text>
+                        ) : (
+                          <Text size="xs">{assignment.reason}</Text>
+                        ))}
+                      {tag.id === PII_TAG_ID && piiTerm && (
+                        <Text size="xs">{t("tagControl.piiViaTerm", { term: piiTerm })}</Text>
+                      )}
+                      {assignment?.expiresOn && (
+                        <Text size="xs">
+                          {t("tagControl.plannedRemoval", { date: assignment.expiresOn })}
+                        </Text>
+                      )}
+                      {tag.citations.map((c) => (
+                        <Text
+                          size="xs"
+                          key={`${c.documentId}-${c.sectionHeading}-${c.sectionPage}`}
+                        >
+                          {t("tagCitations.definedBy", { title: c.documentTitle })} ·{" "}
+                          <CitationSection c={c} />
+                        </Text>
+                      ))}
+                    </Stack>
+                  }
+                >
+                  <Badge
+                    size="xs"
+                    variant={overdue ? "filled" : "light"}
+                    color={pillColor(tag)}
+                    component="button"
+                    type="button"
+                    style={{ cursor: "pointer" }}
+                    data-testid={`tag-pill-${tag.id}`}
+                  >
+                    {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
+                      registry id alone would show every parameterized pill as the same word. */}
+                    {assignment ? assignment.tagId : tag.id}
+                  </Badge>
+                </TipSurface>
+              </Popover.Target>
+              <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
+                <Stack gap="xs" data-testid={`tag-detail-${tag.id}`}>
+                  <Text size="xs" fw={600}>
+                    {t("tagCitations.definedByLabel")}
                   </Text>
-                )}
-              </Stack>
-            }
-          >
-            <Badge
-              size="xs"
-              variant={overdue ? "filled" : "light"}
-              color={pillColor(tag)}
-              data-testid={`tag-pill-${tag.id}`}
-            >
-              {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
-                  registry id alone would show every parameterized pill as the same word. */}
-              {assignment ? assignment.tagId : tag.id}
-            </Badge>
-          </TipSurface>
+                  {tag.citations.length === 0 && (
+                    <Text size="xs" c="dimmed">
+                      {t("tagCitations.none")}
+                    </Text>
+                  )}
+                  {tag.citations.map((c) => (
+                    <Group
+                      key={`${c.documentId}-${c.sectionHeading}-${c.sectionPage}`}
+                      gap="0.25rem"
+                    >
+                      <CitationLink c={c} testId={`tag-definition-link-${tag.id}`} />
+                      <CitationState c={c} />
+                    </Group>
+                  ))}
+                  {assignment && (
+                    <>
+                      <Text size="xs" fw={600}>
+                        {t("tagCitations.citedHere")}
+                      </Text>
+                      <TagCitations
+                        testId={`tag-citations-${tag.id}`}
+                        citations={assignment.citations ?? []}
+                        readOnly={readOnly}
+                        onAdd={(place) => citeAssignment(buildInput(assignment.tagId), place)}
+                        onRemove={(c) => unciteAssignment(buildInput(assignment.tagId), c)}
+                        onConfirm={(c) => citeAssignment(buildInput(assignment.tagId), c)}
+                      />
+                    </>
+                  )}
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
+            {assignment?.citationGap && (
+              <Tip text={t("tagCitations.gapHelp")}>
+                <Badge size="xs" variant="light" color="yellow" data-testid={`tag-gap-${tag.id}`}>
+                  {t("tagCitations.gap")}
+                </Badge>
+              </Tip>
+            )}
+            {assignment?.needsReview && (
+              <Tip text={t("tagCitations.reviewHelp")}>
+                <Badge
+                  size="xs"
+                  variant="light"
+                  color="orange"
+                  data-testid={`tag-review-${tag.id}`}
+                >
+                  {t("tagCitations.needsReview")}
+                </Badge>
+              </Tip>
+            )}
+          </Group>
         );
       })}
       {!readOnly && (

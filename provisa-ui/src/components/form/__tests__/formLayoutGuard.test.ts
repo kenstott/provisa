@@ -39,6 +39,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
+  "components/TagCitations.tsx":
+    "one reusable control: the document and section pickers of a citation, in a tag's editor and in the detail of a tag on an object",
   "components/DataAddressSwitcher.tsx":
     "the data address switch in the page header, with a typed address in its menu",
   "components/entitlements/EntitlementPicker.tsx":
@@ -564,9 +566,7 @@ describe("every component follows the form rules", () => {
   });
 
   it.each(
-    files.filter(
-      (f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL,
-    ),
+    files.filter((f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL),
   )("%s", (file) => {
     const violations = violationsOf(file);
     expect(violations, describeViolations(file, violations)).toEqual([]);

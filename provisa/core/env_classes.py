@@ -194,6 +194,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "reference_passages",
         # REQ-2208: the tags on its documents and their sections, which go where the documents go.
         "reference_document_tags",
+        # REQ-2208: the citations of its documents and their sections, by tags' definitions and
+        # assignments, which go where the documents they cite go.
+        "reference_citations",
         # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
         # made again from its own terms wherever they are missing or stale.
         "glossary_term_vectors",

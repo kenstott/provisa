@@ -1,0 +1,11 @@
+{
+  "total": 337,
+  "expected": [
+    {
+      "case": "tests.test_statement.TestStatement::test_parameter_execute[provisa:flightsql]",
+      "job": "J1277",
+      "since": "2026-11-13",
+      "reason": "adbc_driver_manager.OperationalError: UNKNOWN: [FlightSQL] Invalid Input Error: Values were not provided for the following parameters: 1. Detail: Python exception: Traceback (most recent call last):"
+    }
+  ]
+}

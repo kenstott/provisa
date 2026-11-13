@@ -18,10 +18,12 @@ import {
   Button,
   Checkbox,
   Group,
+  Input,
   Pagination,
   SegmentedControl,
   Select,
   Stack,
+  Switch,
   Table,
   TextInput,
   Title,
@@ -36,6 +38,7 @@ import {
   useDeleteTags,
   useUpsertTagParamValue,
   useDeleteTagParamValue,
+  useTagCitations,
 } from "../../hooks/useTagQueries";
 import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../types/admin";
 import { baseTagId } from "../../types/admin";
@@ -45,8 +48,9 @@ import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { useListSelection } from "../list/listSelection";
 import { ListBulkBar } from "../list/ListBulkBar";
-import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { matchesQuery } from "../../lib/searchItems";
 
@@ -88,6 +92,7 @@ export function TagsTab() {
   const refusal = useDependentsDialog();
   const { upsertTagParamValue } = useUpsertTagParamValue();
   const { deleteTagParamValue } = useDeleteTagParamValue();
+  const { citeDefinition, unciteDefinition } = useTagCitations();
 
   const [rememberedScope, setRememberedScope] = useRememberedChoice<TagObjectType>(
     "filter.tags.scope",
@@ -117,6 +122,7 @@ export function TagsTab() {
   const [formReasonPolicy, setFormReasonPolicy] = useState<TagFieldPolicy>("optional");
   const [formExpiresPolicy, setFormExpiresPolicy] = useState<TagFieldPolicy>("optional");
   const [formParamPolicy, setFormParamPolicy] = useState<TagParamPolicy>("none");
+  const [formRequiresCitation, setFormRequiresCitation] = useState(false);
   // REQ-1467: which tag's value list is open, and the draft new value/description beneath it.
   const [valuesTagId, setValuesTagId] = useState<string | null>(null);
   const [newValue, setNewValue] = useState("");
@@ -152,6 +158,8 @@ export function TagsTab() {
   const selection = useListSelection(filtered.map((tag) => tag.id));
   const deleteTags = useDeleteTags();
 
+  const editingTag = tags.find((g) => g.id === editingId) ?? null;
+
   const resetForm = () => {
     setEditingId(null);
     setFormId("");
@@ -160,6 +168,7 @@ export function TagsTab() {
     setFormReasonPolicy("optional");
     setFormExpiresPolicy("optional");
     setFormParamPolicy("none");
+    setFormRequiresCitation(false);
   };
 
   const closeForm = () => {
@@ -181,6 +190,7 @@ export function TagsTab() {
     setFormReasonPolicy(tag.reasonPolicy);
     setFormExpiresPolicy(tag.expiresPolicy);
     setFormParamPolicy(tag.paramPolicy);
+    setFormRequiresCitation(tag.requiresCitation);
     setShowForm(true);
   };
 
@@ -195,6 +205,7 @@ export function TagsTab() {
       formReasonPolicy,
       formExpiresPolicy,
       formParamPolicy,
+      formRequiresCitation,
     );
     if (result.success) {
       notifications.show({ color: "green", message: t("tagsTab.saved", { id: formId.trim() }) });
@@ -355,6 +366,31 @@ export function TagsTab() {
               data-testid="tags-param-policy"
             />
           </FormField>
+          <FormChecks>
+            <FormField help={t("tagCitations.requiresCitationDesc")} size="medium">
+              <Switch
+                label={t("tagCitations.requiresCitationLabel")}
+                checked={formRequiresCitation}
+                onChange={(e) => setFormRequiresCitation(e.currentTarget.checked)}
+                data-testid="tags-requires-citation"
+              />
+            </FormField>
+          </FormChecks>
+          {/* A tag's definition cites the library sections that define it: put on a saved tag. */}
+          {editingTag && (
+            <FormField hint={t("tagCitations.definedByDesc")} size="long">
+              <Stack gap="0.25rem">
+                <Input.Label>{t("tagCitations.definedByLabel")}</Input.Label>
+                <TagCitations
+                  testId="tags-defined-by"
+                  citations={editingTag.citations}
+                  onAdd={(place) => citeDefinition(editingTag.id, place)}
+                  onRemove={(c) => unciteDefinition(editingTag.id, c)}
+                  onConfirm={(c) => citeDefinition(editingTag.id, c)}
+                />
+              </Stack>
+            </FormField>
+          )}
           <FormFooter
             onSave={handleSubmit}
             onCancel={closeForm}
@@ -412,8 +448,28 @@ export function TagsTab() {
           <ListRow key={tag.id} testId={`tags-row-${tag.id}`} selected={tag.id === linkedTag}>
             <Table.Td>
               {tag.id}
-              {(tag.reasonPolicy !== "optional" || tag.expiresPolicy !== "optional") && (
+              {(tag.reasonPolicy !== "optional" ||
+                tag.expiresPolicy !== "optional" ||
+                tag.requiresCitation ||
+                tag.needsReview) && (
                 <Group gap={4} mt={2}>
+                  {tag.requiresCitation && (
+                    <Badge size="xs" variant="light" color="gray">
+                      {t("tagCitations.requiresCitationBadge")}
+                    </Badge>
+                  )}
+                  {tag.needsReview && (
+                    <Tip text={t("tagCitations.definitionReviewHelp")}>
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="orange"
+                        data-testid={`tags-needs-review-${tag.id}`}
+                      >
+                        {t("tagCitations.needsReview")}
+                      </Badge>
+                    </Tip>
+                  )}
                   {tag.reasonPolicy !== "optional" && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagsTab.reasonPolicyBadge", {
