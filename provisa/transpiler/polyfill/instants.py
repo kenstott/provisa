@@ -189,10 +189,21 @@ def _checked(argument: exp.Expr, operand: _Operand) -> _Read | None:
     return _written(value, operand)
 
 
-def raised(function: str, dialect: str, pattern: str | None = None) -> exp.Expr:
+#: ClickHouse's types of what a call answers, where a raise in its place is read as a value.
+INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+DAY = "Nullable(Date32)"
+
+
+def raised(
+    function: str, dialect: str, pattern: str | None = None, returns: str | None = None
+) -> exp.Expr:
     """ClickHouse's raise of 0A000 for a value outside the bound, as the call's answer; ``pattern``
-    the call's, where ``function()`` does not parse (an aggregate takes an argument)."""
+    the call's, where ``function()`` does not parse (an aggregate takes an argument). ``returns``:
+    the type of the call's answer, so a call that reads it (date_trunc, toYear) types the raise as
+    the value it stands for, and ClickHouse raises it rather than refuse the statement's types."""
     form = ch_fail("0A000", out_of_bound(function)).format(condition="1")
+    if returns is not None:
+        form = f"CAST({form} AS {returns})"
     return replacement(form, dialect, pattern or f"{function}()")
 
 
@@ -231,13 +242,15 @@ def _rewrite(
     strict: bool = True,
     plain: bool = False,
     names: frozenset[str] = frozenset(),
+    returns: str | None = None,
 ) -> Callable[[exp.Expr, str], exp.Expr | None]:
     """The rewrite of a call of ``function`` of ``kinds``, its ``form`` of $a, $b, $c, $d.
     ``zoned``: its answer reads a value in the session's zone, so it answers on UTC only.
     ``bounded``: its answer reads the value, so a literal outside the bound raises (isfinite reads
     only that there is one). ``strict``: a NULL argument answers NULL, so a literal outside the
     bound beside one is not read; otherwise any literal outside raises. ``plain``: the row names no
-    pattern, so it reads only arguments :func:`_plain` holds."""
+    pattern, so it reads only arguments :func:`_plain` holds. ``returns``: ClickHouse's type of
+    its answer, where it is no boolean (:func:`raised`)."""
     holes = "abcd"[: len(kinds)]
     pattern = f"{function}({', '.join('$' + h for h in holes)})"
 
@@ -254,7 +267,7 @@ def _rewrite(
         if current_zone.get() is not None and (zoned or literal):
             return None  # read in the session's zone: refused by name off UTC
         if bounded and _Read.OUTSIDE in read and not (strict and _Read.NULL in read):
-            return raised(function, dialect, pattern)
+            return raised(function, dialect, pattern, returns)
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
     return rewrite
@@ -265,7 +278,8 @@ def _comparison(function: str, kinds: tuple[str, str], body: str) -> Callable[..
     a = _AS_INSTANT[kinds[0]].format("$a")
     b = _AS_INSTANT[kinds[1]].format("$b")
     mixed = kinds != ("timestamptz", "timestamptz")
-    compared = _rewrite(function, kinds, body.format(a=a, b=b), zoned=mixed)
+    returns = INSTANT if body in (_LARGER, _SMALLER) else None
+    compared = _rewrite(function, kinds, body.format(a=a, b=b), zoned=mixed, returns=returns)
     compared.__doc__ = f"{function} of two values held as DateTime64(6, 'UTC'), in their bound."
     compared.__qualname__ = f"compared_{function}"
     compared.__name__ = compared.__qualname__
@@ -353,14 +367,18 @@ def zoned_instant(
 ) -> tuple[bool, exp.Expr | None]:
     """Whether a row answers a call of ``function`` that reads the instant ``argument`` in the
     session's zone (on UTC only, of a value this module reads), and the raise it answers with
-    where the value is a literal outside the bound; ``pattern`` the call's."""
+    where the value is a literal outside the bound, an instant; ``pattern`` the call's."""
     read = _checked(argument, _OF["timestamptz"])
     if read is None or current_zone.get() is not None:
         return False, None
-    return True, raised(function, dialect, pattern) if read is _Read.OUTSIDE else None
+    return True, raised(function, dialect, pattern, INSTANT) if read is _Read.OUTSIDE else None
 
 
 # --- one instant -------------------------------------------------------------------------------
+
+
+#: What a function of one instant answers, where it is no boolean.
+_RETURNS = {"max": INSTANT, "min": INSTANT, "date": DAY, "timestamp": INSTANT, "timezone": INSTANT}
 
 
 def _of_one(
@@ -373,7 +391,10 @@ def _of_one(
     bounded: bool = True,
     plain: bool = False,
 ) -> Rewrite:
-    rewrite = _rewrite(function, ("timestamptz",), form, zoned=zoned, bounded=bounded, plain=plain)
+    rewrite = _rewrite(
+        function, ("timestamptz",), form, zoned=zoned, bounded=bounded, plain=plain,
+        returns=_RETURNS.get(function),
+    )  # fmt: skip
     rewrite.__doc__ = purpose
     rewrite.__qualname__ = name
     rewrite.__name__ = name
@@ -640,10 +661,10 @@ def at_zone(node: exp.Expr, dialect: str) -> exp.Expr | None:
         if instant is None:
             continue
         if not _inside(instant):
-            return raised("timezone", dialect, pattern)
+            return raised("timezone", dialect, pattern, INSTANT)
         wall = instant.replace(tzinfo=datetime.timezone.utc).astimezone(at).replace(tzinfo=None)
         if not _inside(wall):
-            return raised("timezone", dialect, pattern)
+            return raised("timezone", dialect, pattern, INSTANT)
     form = f"toDateTime64(toString(toTimeZone($a, '{name}')), 6, 'UTC')"
     return graft(replacement(form, dialect, pattern), {"a": value})
 
@@ -685,7 +706,7 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     scale = 10 ** (6 - int(written.this))
     for instant in instants:
         if instant is not None and not (_inside(instant) and _inside(_rounded(instant, scale))):
-            return raised("timestamptz", dialect, pattern)
+            return raised("timestamptz", dialect, pattern, INSTANT)
     if scale == 1:
         return graft(replacement("$a", dialect, pattern), {"a": value})
     micros = f"(toUnixTimestamp64Micro($a) - {_PG_EPOCH_MICROS})"

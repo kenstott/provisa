@@ -2188,6 +2188,11 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
             reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
             return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+        if isinstance(node, exp.Date) and not node.args.get("zone"):
+            # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
+            # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
+            # The new node is not walked again: its value is said here.
+            return exp.Anonymous(this="toDate32", expressions=[node.this.transform(said)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",

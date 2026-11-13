@@ -261,7 +261,7 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
     """``node``'s answer for an instant ``value``; None where the zone cannot move it. A zone the
     engine has no spelling of is refused here, where a form is written in it."""
     is_text = isinstance(node, exp.Cast) and node.to.this in _TEXTS
-    is_day = isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
+    is_day = _is_day(node)
     written_on_utc = is_text or (engine.own_day_differs and (is_day or _is_trunc(node, engine)))
     if current_zone.get() is None and not written_on_utc:
         return None
@@ -313,15 +313,58 @@ def _written(node: exp.Expr, dialect: str) -> str:
     return node.copy().transform(held).sql(dialect=dialect)
 
 
+#: Where a form holds a value a call computes, on ClickHouse: the value itself is grafted there.
+_HELD_VALUE = f"{_MARKED}zoned_value"
+
+
+def _computed(value: exp.Expr) -> bool:
+    """Whether ``value`` holds a call a function's form writes later (REQ-2236): one written here
+    as ClickHouse's text would lose the types the statement says of its arguments, so the grid's
+    row of it would not read them, and a value outside its bound would be held at the range's end."""
+    return any(
+        isinstance(node, exp.Anonymous)
+        or (isinstance(node, exp.Func) and not isinstance(node, exp.Cast))
+        for node in value.walk()
+    )
+
+
+def _is_day(node: exp.Expr) -> bool:
+    return isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
+
+
+def _with_value(node: exp.Expr) -> exp.Expr:
+    """``node`` with its value the place :data:`_HELD_VALUE` marks."""
+    marked = node.copy()
+    value = marked.expression if isinstance(marked, exp.Extract) else marked.this
+    value.replace(exp.column(_HELD_VALUE))
+    return marked
+
+
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
     value = node.expression if isinstance(node, exp.Extract) else node.this
     plain = _plain_form(node, value, engine, dialect)
-    instant = _instant_form(node, value, engine, dialect) if _may_be_instant(value) else None
+    held = dialect == "clickhouse" and _computed(value)
+    instant = (
+        _instant_form(node, exp.column(_HELD_VALUE) if held else value, engine, dialect)
+        if _may_be_instant(value)
+        else None
+    )
     if instant is None:
         return None if plain is None else sqlglot.parse_one(plain, read=dialect)
-    asked = engine.is_instant(_written(value, dialect))
-    otherwise = _written(node, dialect) if plain is None else plain
+    v = _HELD_VALUE if held else _written(value, dialect)
+    asked = engine.is_instant(v)
+    if dialect == "clickhouse" and _is_day(node):
+        # Its own Date (DATE(), CAST AS DATE) holds 1970 to 2149: a day is Date32's.
+        otherwise = f"toDate32({v})"
+    elif plain is None:
+        otherwise = _written(_with_value(node) if held else node, dialect)
+    else:
+        otherwise = plain
     form = sqlglot.parse_one(f"CASE WHEN {asked} THEN {instant} ELSE {otherwise} END", read=dialect)
+    if held:
+        form = form.transform(
+            lambda n: value.copy() if isinstance(n, exp.Column) and n.name == _HELD_VALUE else n
+        )
     if isinstance(node, exp.Cast) and node.to.this in _TEXTS:
         # The text the statement says it is, which a function's overload reads (sha256(c::varchar)
         # is refused), and c::varchar(5) the text cut.

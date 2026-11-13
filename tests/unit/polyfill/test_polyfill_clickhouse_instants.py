@@ -508,3 +508,63 @@ def test_off_utc_a_call_of_an_instant_is_refused_by_name(off_utc, sql):
 def test_a_timestamp_keeps_its_own_form(sql):
     # The rows read an instant; a timestamp's call is the old table's still.
     assert "DateTime64(6, 'UTC')" in transpile(sql, "clickhouse")
+
+
+# --- the day of an instant a call computes (J1303's open item) ----------------------------------
+
+
+def _pair(function: str, a: str, b: str) -> str:
+    return f'pg_catalog."{function}"({a}::{_TZ}, {b}::{_TZ})'
+
+
+#: Each spelling of the day of a value: pg_catalog's call (the grid's walk), the bare call and the
+#: cast (each read in the session's zone, zoned_instants).
+_DAYS = (
+    lambda v: f'SELECT pg_catalog."date"({v}) AS v',
+    lambda v: f"SELECT date({v}) AS v",
+    lambda v: f"SELECT ({v})::date AS v",
+)
+
+
+@pytest.mark.parametrize("day", _DAYS)
+@pytest.mark.parametrize(
+    ("value", "answer"),
+    [
+        # ClickHouse's DATE() is toDate, a Date of 1970 to 2149: these days were answered as
+        # 2129-11-19 and 2060-07-26 before. Its day is now Date32's, PostgreSQL 17's answer.
+        (_pair("timestamptz_larger", "'1950-06-15 12:00:00+00'", "'1940-01-01 00:00:00+00'"),
+         datetime.date(1950, 6, 15)),
+        (_pair("timestamptz_smaller", "'2250-06-15 12:00:00+00'", "'2240-01-01 00:00:00+00'"),
+         datetime.date(2240, 1, 1)),
+        (_pair("timestamptz_larger", "'1900-01-01 00:00:00+00'", "'1900-01-01 00:00:00+00'"),
+         datetime.date(1900, 1, 1)),
+        (_pair("timestamptz_smaller", "'2299-12-31 23:59:59.999999+00'", "NULL"), None),
+        (_pair("timestamptz_larger", "'2299-12-31 23:59:59.999999+00'", "'2000-01-01 00:00:00+00'"),
+         datetime.date(2299, 12, 31)),
+        # A date a call computes: was 2129-11-20.
+        ("'1950-06-15'::date + 1", datetime.date(1950, 6, 16)),
+    ],
+)  # fmt: skip
+def test_the_day_of_a_value_a_call_computes_answers_postgresql(runtime, day, value, answer):
+    assert _one(runtime, day(value)) == answer
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    [
+        *_DAYS,
+        lambda v: f"SELECT ({v})::text AS v",
+        lambda v: f"SELECT date_trunc('day', {v}) AS v",
+    ],
+)
+@pytest.mark.parametrize(
+    ("function", "value"),
+    [
+        # The inner call's own bound: answered as 2299-12-31 and 1900-01-01 before, a clamped day.
+        ("timestamptz_larger", _pair("timestamptz_larger", "'2024-06-15 12:00:00+00'", "'2300-01-01 00:00:00+00'")),
+        ("timestamptz_smaller", _pair("timestamptz_smaller", "'2024-06-15 12:00:00+00'", "'1800-01-01 00:00:00+00'")),
+    ],
+)  # fmt: skip
+def test_the_day_of_a_call_past_the_bound_raises_the_call(runtime, spelled, function, value):
+    error = _raised(runtime, spelled(value))
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
