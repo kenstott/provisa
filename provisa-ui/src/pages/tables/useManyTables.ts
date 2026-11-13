@@ -32,6 +32,7 @@ import {
   type InputNeeded,
 } from "./registrationDefaults";
 import { registeredColumns } from "./registrationColumns";
+import type { Combined } from "./useCombineFiles";
 
 /** What discovery said of one listed table. */
 export type Reading =
@@ -119,23 +120,37 @@ export function useManyTables(choice: ManyTablesChoice) {
   const ticked = pickable
     .map((tbl) => tbl.name)
     .filter((n) => ready(n) && (picked === null ? choice.pickReady === true : picked.includes(n)));
-  const setTicked = (names: string[]) => setPicked(names);
+  const setTicked: (names: string[]) => void = setPicked;
 
-  /** One read table as a registration with the defaults it takes when registered alone. */
-  const registrationOfTable = async (name: string): Promise<Registration> => {
-    const tbl = offered.find((o) => o.name === name) as TableMetadata;
-    const read = readings[name] as Extract<Reading, { state: "read" }>;
+  /** One read table as a registration with the defaults it takes when registered alone; or,
+   * `combined`, one table of its own name over the files of a glob, with this table's columns. */
+  const registrationOfTable = async (
+    name: string,
+    combined?: Combined,
+  ): Promise<Registration> => {
+    const tbl: TableMetadata | undefined = offered.find((o) => o.name === name);
+    const reading = readings[name];
+    // A combined table's columns are a listed file's; one registered already was not read here.
+    const read: Extract<Reading, { state: "read" }> =
+      reading?.state === "read"
+        ? reading
+        : {
+            state: "read",
+            columns: await readColumns(sourceId, schemaName, name),
+            needs: null,
+          };
     const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
-    const alias = await choice.suggestTableAlias(name, choice.domainId, sourceId);
+    const tableName = combined?.name ?? name;
+    const alias = await choice.suggestTableAlias(tableName, choice.domainId, sourceId);
     const uniqueConstraints = await fetchTableUniqueConstraints(sourceId, schemaName, name);
     return registrationOf({
       sourceId,
       domainId: choice.domainId,
       regionInput: choice.regionInput,
       schemaName,
-      tableName: name,
+      tableName,
       alias,
-      description: tbl.comment ?? "",
+      description: combined ? "" : (tbl?.comment ?? ""),
       watermarkColumn: defaultWatermark(columns, choice.sourceType),
       // A collection's vectors go with it to the panel, where each names its model; one left
       // without a model is not registered (registrationInput).
@@ -144,22 +159,32 @@ export function useManyTables(choice: ManyTablesChoice) {
         null,
       ),
       uniqueConstraints,
-      pagingKind: tbl.pagingKind ?? null,
-      pagination: tbl.pagination ?? null,
-      pagingCeilingRows: tbl.pagingCeilingRows ?? null,
-      extra: { discover: false },
+      pagingKind: tbl?.pagingKind ?? null,
+      pagination: tbl?.pagination ?? null,
+      pagingCeilingRows: tbl?.pagingCeilingRows ?? null,
+      extra: {
+        discover: false,
+        // REQ-788: the files the one table reads, and the column naming each row's file.
+        ...(combined
+          ? {
+              fileGlob: combined.glob,
+              sourceFileColumn: combined.sourceFileColumn || undefined,
+            }
+          : {}),
+      },
     });
   };
 
-  /** Each ticked table registered with its defaults, in one action; what each answered. */
-  const register = async (): Promise<TableRegistrationOutcome[]> => {
+  /** Each ticked table registered with its defaults, in one action, or the files of `combined`
+   * as one table; what each answered. */
+  const register = async (combined?: Combined): Promise<TableRegistrationOutcome[]> => {
     setRegistering(true);
     try {
       // One table after another: the alias each is suggested is one lazy query, and a second
       // call while one is in flight aborts it.
       const inputs: Record<string, unknown>[] = [];
-      for (const name of ticked) {
-        const registration = await registrationOfTable(name);
+      for (const name of combined ? [combined.reference] : ticked) {
+        const registration = await registrationOfTable(name, combined);
         // As the editor's Save sends a table registered alone (useCreateTable).
         const draft = draftFromRegistration(registration);
         inputs.push(registrationInput(draft, registration, draft.cacheTtl ?? null));
@@ -170,12 +195,14 @@ export function useManyTables(choice: ManyTablesChoice) {
     }
   };
 
-  /** The one action: each ticked table registered. Some registered: `onRegistered` hears what
-   * each answered. None registered: each table is named with why, as the form's problem. */
+  /** The one action: each ticked table registered, or (`combined`) the files combined into one
+   * table. Some registered: `onRegistered` hears what each answered. None registered: each table
+   * is named with why, as the form's problem. */
   const registerAll = async (
     domainId: string,
     onRegistered: (outcomes: TableRegistrationOutcome[]) => void,
     setError: (e: string | null) => void,
+    combined?: Combined,
   ) => {
     setError(null);
     if (!domainId) {
@@ -183,7 +210,7 @@ export function useManyTables(choice: ManyTablesChoice) {
       return;
     }
     try {
-      const outcomes = await register();
+      const outcomes = await register(combined);
       if (outcomes.some((o) => o.result.success)) {
         onRegistered(outcomes);
         return;

@@ -13,6 +13,7 @@
 // it matches, the columns they share and the files whose columns differ.
 
 import { useQuery } from "@apollo/client/react";
+import { useDebouncedValue } from "@mantine/hooks";
 import { FileGlobPreview as FILE_GLOB_PREVIEW } from "../../hooks/admin.graphql";
 
 export interface FilesDiffer {
@@ -36,23 +37,27 @@ export interface FileGlobPreview {
 }
 
 /** The preview of a typed `glob` (its files named by the `tables` listed), or of the glob
- * derived from the `tables` picked; nothing is asked while `sourceId` is null. */
+ * derived from the `tables` picked; nothing is asked while `sourceId` is null. A glob being typed
+ * is asked once the typing pauses. */
 export function useFileGlobPreview(
   sourceId: string | null,
   glob: string | null,
   tables: string[],
 ): { preview: FileGlobPreview | null; checking: boolean; error: string | null } {
+  const [asked] = useDebouncedValue(glob, 300);
   const { data, loading, error } = useQuery<{ fileGlobPreview: FileGlobPreview }>(
     FILE_GLOB_PREVIEW,
     {
-      variables: { sourceId, glob, tables },
-      skip: !sourceId,
+      variables: { sourceId, glob: asked, tables },
+      skip: !sourceId || (!asked && tables.length === 0),
       fetchPolicy: "no-cache",
     },
   );
+  // An answer is of the glob asked; while the typed one has not been asked yet, it is checking.
+  const settled = asked === glob;
   return {
-    preview: data?.fileGlobPreview ?? null,
-    checking: loading,
+    preview: settled ? (data?.fileGlobPreview ?? null) : null,
+    checking: loading || !settled,
     error: error?.message ?? null,
   };
 }
