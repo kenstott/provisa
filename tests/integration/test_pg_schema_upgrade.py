@@ -417,7 +417,10 @@ _CREATE_ONLY = {
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"
     ),
+    "data_product_bids": "id request_id kind cancels product_id offer_id offer_version terms requester reason hook payload status decided_by decided_at decline_reason granted created_at",
     "data_product_commands": "product_id command_name",
+    "data_product_offers": "id product_id name role_id data_level sample_views dq_results profiles open duration_days version published_by review created_at updated_at",
+    "data_product_offer_contracts": "offer_id table_id contract",
     "data_product_tables": "product_id table_id",
     "data_products": "id domain_id name",
     "dbt_manifests": "source_id definitions updated_at",
@@ -469,6 +472,7 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",
     "graph_sessions": "user_id generation stored tables graph roles assigned rights used_at",
