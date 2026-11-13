@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "התרשים אינו זמין"
+    "unavailable": "התרשים אינו זמין",
+    "fitWidth": "התאמה לרוחב",
+    "canvasLabel": "תרשים תוכנית השאילתה"
   }
 }

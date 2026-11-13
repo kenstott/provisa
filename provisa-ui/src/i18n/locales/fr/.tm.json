@@ -10348,5 +10348,7 @@
   "fr/glossaryTab.json::glossaryTab.relatedToDialogExample": "Example: instead of Salary related to Department, add Employee: Salary is part of Employee, and Employee is part of Department. Now a question about a department's salaries can be answered.",
   "fr/graph3d.json::graph3d.lateralHelp": "Show the lines that link terms without ranking them: related, synonym, preferred term, translation and antonym.",
   "fr/graph3d.json::graph3d.hopsAll": "All",
-  "fr/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops"
+  "fr/graph3d.json::graph3d.overBudgetHops": "More than {{count}} to draw; choose fewer hops",
+  "fr/mermaidDiagram.json::mermaidDiagram.fitWidth": "Fit width",
+  "fr/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram"
 }

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: a4d75bee-e67d-4878-8476-9df28a86e4fa
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -37,7 +38,9 @@ describe("the plan diagram's uses", () => {
 
   it("only the one component draws Mermaid", () => {
     const drawers = sources(SRC)
-      .filter((f) => /import\(\s*["']mermaid["']\s*\)|from\s+["']mermaid["']/.test(readFileSync(f, "utf8")))
+      .filter((f) =>
+        /import\(\s*["']mermaid["']\s*\)|from\s+["']mermaid["']/.test(readFileSync(f, "utf8")),
+      )
       .map((f) => relative(SRC, f));
     expect(drawers).toEqual(["components/MermaidDiagram.tsx"]);
   });

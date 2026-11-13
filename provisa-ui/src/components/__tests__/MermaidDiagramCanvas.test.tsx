@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 5f7cef96-39bc-4f7a-8fa6-588dfa806ea8
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -16,6 +17,7 @@ import { MantineProvider } from "@mantine/core";
 import { theme } from "../../theme/theme";
 import { MermaidDiagram } from "../MermaidDiagram";
 import { READABLE_ZOOM } from "../provisa-graph/viewport";
+import { HINT_BAND } from "../mermaidFit";
 import { graphTokens } from "../provisa-graph/tokens";
 import { mockSvg, sizeStages, viewOf } from "./mermaidMock";
 
@@ -88,8 +90,8 @@ describe("plan diagram controls", () => {
     const { container } = await drawn(<MermaidDiagram chart={LARGE} />);
     fireEvent.click(screen.getByRole("button", { name: "Fit all" }));
     const whole = viewOf(container);
-    // The whole 4000x3000 image inside the 800x500 stage, a 10px margin round it.
-    expect(close(whole.zoom, Math.min((STAGE_W - 20) / 4000, (STAGE_H - 20) / 3000))).toBe(true);
+    // The whole 4000x3000 image inside the 800x500 stage: a 10px margin round it, the hint's band above.
+    expect(close(whole.zoom, Math.min((STAGE_W - 20) / 4000, (STAGE_H - HINT_BAND - 10) / 3000))).toBe(true);
     expect(whole.zoom).toBeLessThan(READABLE_ZOOM);
     expect(whole.x).toBeGreaterThanOrEqual(0);
     expect(whole.x + 4000 * whole.zoom).toBeLessThanOrEqual(STAGE_W);
@@ -116,7 +118,9 @@ describe("plan diagram controls", () => {
     const stage = container.querySelector(".plan-stage") as HTMLElement;
     const before = viewOf(container);
     act(() => {
-      stage.dispatchEvent(new WheelEvent("wheel", { deltaY: 100, bubbles: true, cancelable: true }));
+      stage.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: 100, bubbles: true, cancelable: true }),
+      );
     });
     const moved = viewOf(container);
     expect(moved.y).toBeLessThan(before.y);
@@ -173,8 +177,11 @@ describe("plan diagram controls", () => {
     const p2 = container.querySelector('g.node[id*="-flowchart-p2-"]') as Element;
     fireEvent.click(p2.querySelector("rect") as Element);
     expect(onNodeClick).toHaveBeenCalledWith("p2");
+    const before = viewOf(container);
     rerender(<MermaidDiagram chart={LARGE} onNodeClick={onNodeClick} selected="p2" />);
     await waitFor(() => expect(p2.classList.contains("plan-node-selected")).toBe(true));
+    // Picked where the reader is looking: the view stays as it is.
+    expect(viewOf(container)).toEqual(before);
   });
 
   it("a node selected from outside is brought into view", async () => {

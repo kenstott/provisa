@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: a38f7606-5b9a-4f43-be61-869299e6435d
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -73,7 +74,9 @@ describe("plan diagram and operator list", () => {
     expect(scrolled).toHaveBeenCalled();
     expect(screen.getByTestId("analyze-row-0").getAttribute("aria-selected")).toBe("false");
     expect(
-      container.querySelector('g.node[id*="-flowchart-p3-"]')?.classList.contains("plan-node-selected"),
+      container
+        .querySelector('g.node[id*="-flowchart-p3-"]')
+        ?.classList.contains("plan-node-selected"),
     ).toBe(true);
   });
 
@@ -88,7 +91,9 @@ describe("plan diagram and operator list", () => {
       expect(x > 0 && x < 800 && y > 0 && y < 500).toBe(true);
     });
     expect(
-      container.querySelector('g.node[id*="-flowchart-p3-"]')?.classList.contains("plan-node-selected"),
+      container
+        .querySelector('g.node[id*="-flowchart-p3-"]')
+        ?.classList.contains("plan-node-selected"),
     ).toBe(true);
     expect(screen.getByTestId("analyze-row-2").getAttribute("aria-selected")).toBe("true");
   });
