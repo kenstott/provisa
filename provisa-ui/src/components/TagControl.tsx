@@ -26,6 +26,7 @@ import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
 import { CitationSection } from "./TagCitations";
 import { TagAssignmentForm, type TagAssignmentDraft } from "./TagAssignmentForm";
+import { useScreenTags, type ScreenTag } from "../mcp/screenState";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
 // (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
@@ -152,6 +153,31 @@ export function TagControl({
     section: `${documentId}-${sectionHeading ?? `p${sectionPage}`}`,
   }[objectType];
 
+  // The object as the tags report keys it (kind:id, TagAssignment.object_key); null while a part of
+  // it is not known yet, as for an object not yet saved.
+  const known = (...parts: unknown[]) => parts.every((p) => p !== undefined && p !== null);
+  const objectKey: string | null = {
+    source: known(sourceId) ? `source:${sourceId}` : null,
+    table: known(tableId) ? `table:${tableId}` : null,
+    column: known(tableId, columnName) ? `column:${tableId}:${columnName}` : null,
+    relationship: known(relationshipId) ? `relationship:${relationshipId}` : null,
+    command: known(commandName) ? `command:${commandName}` : null,
+    product: known(productId) ? `product:${productId}` : null,
+    term: known(termId) ? `term:${termId}` : null,
+    rls_rule: known(rlsRuleId) ? `rls_rule:${rlsRuleId}` : null,
+    role: known(roleId) ? `role:${roleId}` : null,
+    metric: known(metricName) ? `metric:${metricName}` : null,
+    document: known(documentId) ? `document:${documentId}` : null,
+    section: !known(documentId)
+      ? null
+      : known(sectionHeading)
+        ? `section:${documentId}:heading:${sectionHeading}`
+        : known(sectionPage)
+          ? `section:${documentId}:page:${sectionPage}`
+          : null,
+  }[objectType];
+  const controlTestId = `tag-control-${objectType}-${identifier}`;
+
   const objectAssignments = tagAssignments.filter(matches);
   // REQ-2145: pii on a column goes through its own flow -- on its term, or on the column alone.
   const columnPii = (tag: Tag) => objectType === "column" && tag.id === PII_TAG_ID;
@@ -166,6 +192,28 @@ export function TagControl({
   // REQ-1443: a derived tag reports what the object's own registration already says, so there is
   // nothing to check or clear — the server refuses the assignment and offering it would put a
   // control on screen whose only outcome is an error.
+  // Polly's read_screen: the object's tags as its chips show them, ids and flags only.
+  const screenTags: ScreenTag[] = assignedTags.map((tag) => {
+    const assignment = assignmentByTagId.get(tag.id);
+    return {
+      id: assignment ? assignment.tagId : tag.id,
+      via: tag.derived ? "derived" : assignment ? "assigned" : "inherited",
+      citationGap: !!assignment?.citationGap,
+      needsReview: !!assignment?.needsReview,
+      expired: !!assignment?.expiresOn && isPastDate(assignment.expiresOn),
+    };
+  });
+  useScreenTags(
+    objectKey === null
+      ? null
+      : {
+          kind: objectType,
+          key: objectKey,
+          control: controlTestId,
+          readOnly: !!readOnly,
+          tags: screenTags,
+        },
+  );
   const applicableTags = tags.filter((tag) => tag.appliesTo.includes(objectType) && !tag.derived);
 
   const buildInput = (tagId: string): TagAssignment => ({
@@ -255,7 +303,7 @@ export function TagControl({
       gap="0.25rem"
       wrap="wrap"
       display="inline-flex"
-      data-testid={`tag-control-${objectType}-${identifier}`}
+      data-testid={controlTestId}
       onClick={(e) => e.stopPropagation()}
     >
       {assignedTags.map((tag) => {

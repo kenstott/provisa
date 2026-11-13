@@ -187,6 +187,40 @@ describe("Polly's steps on the screen", () => {
     expect(out.steps).toEqual(['The screen has 2 of the button named "Add"; name it by test id.']);
   });
 
+  it("names one of several same test ids by the element it is within", async () => {
+    // Each object's tag chips are inside its own tag control: the chip of one object, by both.
+    const pressed = vi.fn();
+    render(
+      <div>
+        <div data-testid="tag-control-table-1">
+          <button type="button" data-testid="tag-pill-pii" onClick={() => pressed(1)} />
+        </div>
+        <div data-testid="tag-control-table-2">
+          <button type="button" data-testid="tag-pill-pii" onClick={() => pressed(2)} />
+        </div>
+      </div>,
+    );
+    const many = await runUiActions([{ do: "press", target: { testId: "tag-pill-pii" } }], pace());
+    expect(many.steps).toEqual([
+      'The screen has 2 of the element with test id "tag-pill-pii"; name the one by "within", ' +
+        "the test id of the element it is in.",
+    ]);
+    const parsed = parseUiActions([
+      { do: "press", target: { testId: "tag-pill-pii", within: "tag-control-table-2" } },
+    ]);
+    expect(parsed).toEqual([
+      { do: "press", target: { testId: "tag-pill-pii", within: "tag-control-table-2" }, changes: false },
+    ] satisfies UiAction[]);
+    const one = await runUiActions(parsed as UiAction[], pace());
+    expect(one.success).toBe(true);
+    expect(pressed).toHaveBeenCalledWith(2);
+    const none = await runUiActions(
+      [{ do: "press", target: { testId: "tag-pill-pii", within: "tag-control-table-3" } }],
+      pace(),
+    );
+    expect(none.steps).toEqual(['The screen has no element with test id "tag-control-table-3".']);
+  });
+
   it("answers back a malformed step by its position", () => {
     expect(parseUiActions([{ do: "press", target: { testId: "x" } }])).toEqual([
       { do: "press", target: { testId: "x" }, changes: false },

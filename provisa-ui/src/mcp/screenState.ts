@@ -37,11 +37,40 @@ export interface ScreenGrid {
   partial: boolean;
 }
 
+/** How a tag got onto an object: put there (assigned), from the glossary term a column means
+ * (inherited), or read off the object's own registration (derived). */
+export type TagVia = "assigned" | "inherited" | "derived";
+
+/** One tag an object on screen carries, as its chip shows it. */
+export interface ScreenTag {
+  /** The tag's id, with its parameter when the assignment carries one ("entity:customer"). */
+  id: string;
+  via: TagVia;
+  /** The tag requires a citation and this assignment cites nothing. */
+  citationGap: boolean;
+  /** A place the assignment cites changed or is gone. */
+  needsReview: boolean;
+  /** The assignment's expiry date has passed. */
+  expired: boolean;
+}
+
+/** An object on screen with tag chips: its kind and key (as the tags report keys it, kind:id),
+ * the test id of its tag control (to name its chips and picker within it), and its tags. */
+export interface ScreenTaggedObject {
+  kind: string;
+  key: string;
+  control: string;
+  /** No picker: the tags are read here, not edited. */
+  readOnly: boolean;
+  tags: ScreenTag[];
+}
+
 /** A page's main inputs, named as the page names them; JSON values only. */
 export type ScreenInputs = Record<string, unknown>;
 
 const editors = new Map<string, ScreenEditor>();
 const grids = new Map<symbol, ScreenGrid>();
+const tagged = new Map<symbol, ScreenTaggedObject>();
 /** How to read each page's inputs: read at the moment the screen is read, since the OpenAPI page's
  * inputs live in its docs frame and change without the page rendering. A page may publish from
  * more than one place (Tables and its ERD), so a route's readers are merged. */
@@ -126,6 +155,21 @@ export function useScreenGrid(grid: ScreenGrid): void {
   }, [columns, rows, partial]);
 }
 
+/** Publish an object's tags while the calling tag control is mounted; null publishes nothing (an
+ * object not yet saved has no key). Read with the screen, only while its control is on screen. */
+export function useScreenTags(object: ScreenTaggedObject | null): void {
+  // By value: the control builds this object on every render, and only a change is a new publish.
+  const text = object === null ? null : JSON.stringify(object);
+  useEffect(() => {
+    if (text === null) return;
+    const id = Symbol("tags");
+    tagged.set(id, JSON.parse(text) as ScreenTaggedObject);
+    return () => {
+      tagged.delete(id);
+    };
+  }, [text]);
+}
+
 const FIELD_SELECTOR = "input, textarea, select";
 // Polly's own chat and the code editors are not form fields: the editors are reported from their
 // own state above.
@@ -149,6 +193,16 @@ function fieldValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectEleme
   return el.value;
 }
 
+function screenTags(): ScreenTaggedObject[] {
+  const seen = new Set<string>();
+  return [...tagged.values()].filter((object) => {
+    const el = document.querySelector<HTMLElement>(`[data-testid="${CSS.escape(object.control)}"]`);
+    if (el === null || !onScreen(el) || seen.has(object.key)) return false;
+    seen.add(object.key);
+    return true;
+  });
+}
+
 function screenFields(): ScreenField[] {
   const fields: ScreenField[] = [];
   for (const el of document.querySelectorAll<HTMLInputElement>(FIELD_SELECTOR)) {
@@ -170,6 +224,8 @@ export interface Screen {
   inputs: ScreenInputs | null;
   fields: ScreenField[];
   results: ScreenGrid[];
+  /** Each object on screen with tag chips, and its tags. */
+  tags: ScreenTaggedObject[];
 }
 
 /** Resolves true once `route`'s editor or inputs have published, false after `waitMs`. */
@@ -215,5 +271,6 @@ export async function readScreen(waitMs: number): Promise<Screen | string> {
     inputs: readers.length > 0 ? Object.assign({}, ...readers.map(({ read }) => read())) : null,
     fields: screenFields(),
     results: [...grids.values()],
+    tags: screenTags(),
   };
 }

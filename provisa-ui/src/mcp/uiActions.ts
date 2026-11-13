@@ -24,7 +24,9 @@
 
 import "./uiActions.css";
 
-export type UiTarget = { testId: string } | { role: string; name: string };
+/** An element by its test id, `within` the one element with another test id when the screen has
+ * several (each object's tag chips are inside its own tag control); or by its role and name. */
+export type UiTarget = { testId: string; within?: string } | { role: string; name: string };
 
 export type UiAction =
   | { do: "fill"; target: UiTarget; value: string }
@@ -55,9 +57,9 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** What a target is: `element with test id "x"`, `button named "Save"`. */
 function targetNoun(target: UiTarget): string {
-  return "testId" in target
-    ? `element with test id "${target.testId}"`
-    : `${target.role} named "${target.name}"`;
+  if (!("testId" in target)) return `${target.role} named "${target.name}"`;
+  const inside = target.within ? ` within "${target.within}"` : "";
+  return `element with test id "${target.testId}"${inside}`;
 }
 
 /** How a target reads in a step's report. */
@@ -141,13 +143,23 @@ type Found = { el: HTMLElement } | { refusal: string };
 
 function find(target: UiTarget): Found {
   if ("testId" in target) {
+    let scope: ParentNode = document;
+    if (target.within !== undefined) {
+      const outer = find({ testId: target.within });
+      if ("refusal" in outer) return outer;
+      scope = outer.el;
+    }
     const all = [
-      ...document.querySelectorAll<HTMLElement>(`[data-testid="${CSS.escape(target.testId)}"]`),
+      ...scope.querySelectorAll<HTMLElement>(`[data-testid="${CSS.escape(target.testId)}"]`),
     ].filter((el) => !hidden(el));
     if (all.length === 1) return { el: all[0] };
     return all.length === 0
       ? { refusal: `The screen has no ${targetNoun(target)}.` }
-      : { refusal: `The screen has ${all.length} elements with test id "${target.testId}".` };
+      : {
+          refusal:
+            `The screen has ${all.length} of the ${targetNoun(target)}; name the one by ` +
+            `"within", the test id of the element it is in.`,
+        };
   }
   const selector = ROLE_SELECTORS[target.role];
   if (selector === undefined) {
@@ -354,7 +366,9 @@ export function parseUiActions(raw: unknown): UiAction[] | string {
     const t = target as Record<string, unknown>;
     const parsedTarget: UiTarget | null =
       typeof t.testId === "string"
-        ? { testId: t.testId }
+        ? typeof t.within === "string"
+          ? { testId: t.testId, within: t.within }
+          : { testId: t.testId }
         : typeof t.role === "string" && typeof t.name === "string"
           ? { role: t.role, name: t.name }
           : null;
