@@ -17,7 +17,12 @@ answer is of the rows' order as read, which no form names. string_agg of a delim
 constant text, or of bytea: Trino's listagg takes a constant separator, and no bytes. json_object
 of arrays of keys and values: sqlglot reads it as key-value pairs, which Trino takes of a text key
 only. And the functions of the server Trino has no form of, sent as written (current_schemas,
-refused on ClickHouse too, is its family's: provisa.transpiler.polyfill.clickhouse)."""
+refused on ClickHouse too, is its family's: provisa.transpiler.polyfill.clickhouse).
+
+ClickHouse (run 43410717058): its groupConcat takes a constant separator, and its json_object no
+arrays, so string_agg and json_object are refused there as on Trino; pg_conf_load_time,
+pg_my_temp_schema and pg_postmaster_start_time have no form there either. generate_series in a select
+list is ClickHouse's arrayJoin of its range (:func:`series`)."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -27,6 +32,8 @@ import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import clickhouse, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 
 FAMILY = "calls of no Trino form"
 
@@ -40,6 +47,39 @@ def _in_a_select_list(node: exp.Expr, _args: list[exp.Expr]) -> bool:
     while isinstance(child.parent, _SELECTED_THROUGH):
         child = child.parent
     return isinstance(child.parent, exp.Select) and child.arg_key == "expressions"
+
+
+#: What a select list's call passes through on ClickHouse: by pg_catalog too.
+_CH_SELECTED_THROUGH = (*_SELECTED_THROUGH, exp.Dot)
+_INTEGERS = frozenset({"smallint", "integer", "bigint"})
+_SERIES = "generate_series($a, $b, $s)"
+#: The series of integers from $a to $b by $s, both ends included, as ClickHouse's range (whose end
+#: is not): no rows of a NULL bound or step, and PostgreSQL's error of a step of 0.
+_CH_SERIES = (
+    "arrayJoin(if(isNull($a) OR isNull($b) OR isNull($s), [], "
+    "range(ifNull($a, 0), ifNull($b, 0) + if(ifNull($s, 1) > 0, 1, -1), "
+    "ifNull($s, 1) + throwIf(ifNull($s = 0, 0), "
+    "'postgresql-error 22023: step size cannot equal zero<end of postgresql-error>'))))"
+)
+
+
+def series(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """generate_series of integers in a select list, as ClickHouse's arrayJoin of its range; of
+    any other type there, refused by name; anywhere else, kept."""
+    call = trino.called(node)
+    if call is None or "generate_series" not in call[0] or not 2 <= len(call[1]) <= 3:  # noqa: PLR2004
+        return None
+    child = node
+    while isinstance(child.parent, _CH_SELECTED_THROUGH):
+        child = child.parent
+    if not (isinstance(child.parent, exp.Select) and child.arg_key == "expressions"):
+        return None
+    args = call[1]
+    if not all(trino.said(arg) in _INTEGERS for arg in args):
+        raise Refused(trino.no_form("generate_series", dialect))
+    step = args[2] if len(args) == 3 else exp.Literal.number(1)  # noqa: PLR2004
+    bindings = {"a": args[0], "b": args[1], "s": step}
+    return graft(replacement(_CH_SERIES, dialect, _SERIES), bindings)
 
 
 def _of_no_order(node: exp.Expr, _args: list[exp.Expr]) -> bool:
@@ -79,14 +119,50 @@ _SERVER = {
     "postgresql_fdw_validator": "Whether the options of a foreign-data wrapper are valid.",
 }
 
+#: The server functions ClickHouse has no form of either (run 43410717058 sent each as written).
+_NO_CLICKHOUSE_FORM = frozenset(
+    {"pg_conf_load_time", "pg_my_temp_schema", "pg_postmaster_start_time"}
+)
+
 FEATURES: tuple[Feature, ...] = (
-    trino.refused_feature(
+    Feature(
         "generate_series",
         FAMILY,
         "A series of integers, as rows.",
-        "In a select list, refused by name: Trino reads a set of rows only in a FROM clause.",
-        "generate_series in a select list: refused by name, as Trino unnests only in FROM.",
-        _in_a_select_list,
+        read=Side(
+            rules=(
+                Rule(
+                    None,
+                    {
+                        **trino.on_trino(
+                            trino.refusing(
+                                "generate_series",
+                                "generate_series in a select list: refused by name, as Trino "
+                                "unnests only in FROM.",
+                                _in_a_select_list,
+                            )
+                        ),
+                        "clickhouse": Rewrite(series),
+                    },
+                ),
+            ),
+            limitations={
+                **dict.fromkeys(
+                    trino.TRINO,
+                    (
+                        Limitation(
+                            "In a select list, refused by name: Trino reads a set of rows only in "
+                            "a FROM clause."
+                        ),
+                    ),
+                ),
+                "clickhouse": (
+                    Limitation(
+                        "In a select list, of integers only: of any other type, refused by name."
+                    ),
+                ),
+            },
+        ),
     ),
     *(
         Feature(
@@ -132,6 +208,7 @@ FEATURES: tuple[Feature, ...] = (
         "takes a constant separator and no bytes.",
         "string_agg of bytea or of a delimiter that is no constant: refused by name.",
         _of_no_listagg,
+        (*trino.TRINO, "clickhouse"),
     ),
     trino.refused_feature(
         "json_object",
@@ -140,9 +217,16 @@ FEATURES: tuple[Feature, ...] = (
         "Of arrays, refused by name: Trino builds an object of text keys only.",
         "json_object of arrays: refused by name.",
         _of_arrays,
+        (*trino.TRINO, "clickhouse"),
     ),
     *(
-        trino.by_name(name, FAMILY, summary, "Refused by name: Trino has no form of it.")
+        trino.by_name(
+            name,
+            FAMILY,
+            summary,
+            "Refused by name: the dialect has no form of it.",
+            (*trino.TRINO, "clickhouse") if name in _NO_CLICKHOUSE_FORM else trino.TRINO,
+        )
         for name, summary in _SERVER.items()
     ),
 )

@@ -122,35 +122,40 @@ def of_said(types: Iterable[str]) -> Callable[[exp.Expr, list[exp.Expr]], bool]:
 
 
 def refused_feature(
-    function: str, family: str, summary: str, limitation: str, purpose: str, applies
+    function: str,
+    family: str,
+    summary: str,
+    limitation: str,
+    purpose: str,
+    applies,
+    dialects: tuple[str, ...] = TRINO,
 ) -> Feature:
-    """A row that refuses ``function`` on Trino where ``applies`` holds, every other call kept."""
+    """A row that refuses ``function`` on ``dialects`` (Trino's) where ``applies`` holds, every
+    other call kept."""
     return Feature(
         function,
         family,
         summary,
         read=Side(
-            rules=(Rule(None, on_trino(refusing(function, purpose, applies))),),
-            limitations=dict.fromkeys(TRINO, (Limitation(limitation),)),
+            rules=(Rule(None, dict.fromkeys(dialects, refusing(function, purpose, applies))),),
+            limitations=dict.fromkeys(dialects, (Limitation(limitation),)),
         ),
     )
 
 
-def by_name(function: str, family: str, summary: str, limitation: str) -> Feature:
-    """A row that refuses every call of ``function`` on Trino, by its name, whatever its
-    arguments, every other dialect keeping what it had."""
+def by_name(
+    function: str, family: str, summary: str, limitation: str, dialects: tuple[str, ...] = TRINO
+) -> Feature:
+    """A row that refuses every call of ``function`` on ``dialects`` (Trino's), by its name,
+    whatever its arguments, every other dialect keeping what it had."""
+    refused = refusing(function, f"{function}: {limitation}", lambda *_: True)
     return Feature(
         function,
         family,
         summary,
         read=Side(
-            rules=(
-                Rule(
-                    None,
-                    on_trino(refusing(function, f"{function}: {limitation}", lambda *_: True)),
-                ),
-            ),
-            limitations=dict.fromkeys(TRINO, (Limitation(limitation),)),
+            rules=(Rule(None, dict.fromkeys(dialects, refused)),),
+            limitations=dict.fromkeys(dialects, (Limitation(limitation),)),
         ),
     )
 

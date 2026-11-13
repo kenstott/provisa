@@ -30,7 +30,8 @@ import sqlglot.expressions as exp
 from provisa.core.pg_error import END, MARK
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refused, Rewrite
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 
 FAMILY = "integers and numbers"
 
@@ -158,10 +159,25 @@ _INTEGERS = frozenset({"smallint", "integer", "bigint"})
 _JSON = frozenset({"json", "jsonb"})
 
 
+def ch_fail(sqlstate: str, message: str) -> str:
+    """ClickHouse's raise of PostgreSQL's error ``sqlstate`` with ``message`` where ``condition``
+    holds: throwIf, which answers 0 where it does not, so a form adds it to its answer."""
+    text = f"{MARK} {sqlstate}: {message}{END}".replace("'", "''")
+    return "throwIf(ifNull({condition}, 0), '" + text + "')"
+
+
+#: ClickHouse's name of each type a cast row writes, as a Nullable: every value may be NULL.
+_CLICKHOUSE_TYPES = {
+    "DECIMAL(38, 0)": "Nullable(Decimal(38, 0))",
+    "BOOLEAN": "Nullable(Bool)",
+}
+
+
 def _cast_of(function: str, sources: frozenset[str], sql_type: str):
     """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a json or
-    jsonb value, refused by name: Trino's cast reads a JSON scalar PostgreSQL refuses; of anything
-    else, kept."""
+    jsonb value, refused by name: Trino's and ClickHouse's casts read a JSON scalar PostgreSQL
+    refuses; of anything else, kept (an argument no statement says the type of is ClickHouse's
+    unknown function, an engine error)."""
 
     def cast(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
@@ -172,6 +188,9 @@ def _cast_of(function: str, sources: frozenset[str], sql_type: str):
             raise Refused(trino.no_form(function, dialect))
         if type_said not in sources:
             return None
+        if dialect == "clickhouse":
+            form = f"CAST($v AS {_CLICKHOUSE_TYPES[sql_type]})"
+            return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
         return trino.written(f"CAST($v AS {sql_type})", f"{function}($v)", {"v": call[1][0]})
 
     cast.__doc__ = f"{function} of an integer: its cast to {sql_type}; of a json value, refused."
@@ -186,10 +205,16 @@ def _cast_feature(function: str, summary: str, sources: frozenset[str], sql_type
         summary,
         read=Side(
             rules=(
-                Rule(f"{function}($v)", trino.trino_only(_cast_of(function, sources, sql_type))),
+                Rule(
+                    f"{function}($v)",
+                    {
+                        **trino.trino_only(_cast_of(function, sources, sql_type)),
+                        "clickhouse": _cast_of(function, sources, sql_type),
+                    },
+                ),
             ),
             limitations=dict.fromkeys(
-                trino.TRINO,
+                (*trino.TRINO, "clickhouse"),
                 (Limitation("Of a json or jsonb value, refused by name."),),
             ),
         ),
@@ -214,10 +239,18 @@ OID = Feature(
         rules=(
             Rule(
                 "oid($v)",
-                trino.trino_only(
-                    f"CASE WHEN $v < 0 OR $v > 4294967295 THEN {fail('22003', 'OID out of range')} "
-                    "ELSE CAST($v AS BIGINT) END"
-                ),
+                {
+                    **trino.trino_only(
+                        f"CASE WHEN $v < 0 OR $v > 4294967295 "
+                        f"THEN {fail('22003', 'OID out of range')} "
+                        "ELSE CAST($v AS BIGINT) END"
+                    ),
+                    "clickhouse": "CAST($v + "
+                    + ch_fail("22003", "OID out of range").format(
+                        condition="$v < 0 OR $v > 4294967295"
+                    )
+                    + " AS Nullable(Int64))",
+                },
             ),
         )
     ),
@@ -240,6 +273,8 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return None  # refused by name before (provisa.transpiler.engine_refusals)
         raise Refused(trino.no_form("random", dialect))
     sql_type = "BIGINT" if "bigint" in said else "INTEGER"
+    if dialect == "clickhouse":
+        return graft(replacement(_ch_random(sql_type), dialect, _RANDOM), {"lo": lo, "hi": hi})
     form = (
         "CASE WHEN $lo > $hi THEN "
         f"{fail('22023', 'lower bound must be less than or equal to upper bound')} "
@@ -251,14 +286,39 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return trino.written(form, _RANDOM, {"lo": lo, "hi": hi})
 
 
+def _ch_random(sql_type: str) -> str:
+    """ClickHouse's form of random between two integers: the bound checks raise beside the draw."""
+    # Int64 whatever the bounds: the answer lies between them, and the call says its type.
+    del sql_type
+    ch_type = "Nullable(Int64)"
+    reversed_ = ch_fail("22023", "lower bound must be less than or equal to upper bound")
+    too_wide = ch_fail("0A000", "random does not read this value")
+    return (
+        "CAST($lo + least(toInt64(floor(randCanonical() * (toFloat64($hi - $lo) + 1))), "
+        "$hi - $lo) + "
+        + reversed_.format(condition="$lo > $hi")
+        + " + "
+        + too_wide.format(condition=f"toDecimal128($hi, 0) - toDecimal128($lo, 0) >= {_EXACT}")
+        + f" AS {ch_type})"
+    )
+
+
 RANDOM = Feature(
     "random",
     FAMILY,
     "A uniform random integer between two bounds, both included.",
     read=Side(
-        rules=(Rule(_RANDOM, trino.trino_only(Rewrite(random_between))),),
+        rules=(
+            Rule(
+                _RANDOM,
+                {
+                    **trino.trino_only(Rewrite(random_between)),
+                    "clickhouse": Rewrite(random_between),
+                },
+            ),
+        ),
         limitations=dict.fromkeys(
-            trino.TRINO,
+            (*trino.TRINO, "clickhouse"),
             (
                 Limitation(
                     "Bounds 2^53 or more apart, and bounds of no said integer type, refused by "
