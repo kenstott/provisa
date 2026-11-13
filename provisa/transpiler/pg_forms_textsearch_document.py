@@ -248,7 +248,8 @@ def _stage(e: Engine, words: str, step: Callable[[str, str, str], str], done: st
     """One step of the stemmer over ``words``, each ``[word, R1, R2, whether it is done]``: a
     list a step at a time keeps each lambda one deep, as a nested let per step is not."""
     r1, r2 = e.number.format("_y[2]"), e.number.format("_y[3]")
-    word = f"CASE WHEN _y[4] = '1' THEN _y[1] ELSE {step('_y[1]', r1, r2)} END"
+    # the word bound once: a step names it scores of times
+    word = f"CASE WHEN _y[4] = '1' THEN _y[1] ELSE {e.let.format('_w', '_y[1]', step('_w', r1, r2))} END"
     finished = f"CASE WHEN _y[4] = '1' OR {done} THEN '1' ELSE '0' END" if done else "_y[4]"
     return e.map.format(words, "_y", e.array.format(f"{word}, _y[2], _y[3], {finished}"))
 
