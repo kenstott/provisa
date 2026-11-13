@@ -11,7 +11,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { TextInput } from "@mantine/core";
-import { labelColor } from "./graph-model";
+import { labelColor, labelTextColor } from "./graph-model";
 import { DatabaseIcon, HistoryIcon, StarIcon, ExportIcon, SlidersIcon } from "./GraphIcons";
 import { GraphViewSettings } from "./GraphViewSettings";
 import type { RelLineOverride } from "./graph-model";
@@ -344,7 +344,7 @@ export function Sidebar({
           <button
             type="button"
             className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
-            style={{ background: color }}
+            style={{ background: color, color: labelTextColor(color) }}
             draggable
             data-testid={`graph-label-${compoundLabel}`}
             onDragStart={(e) => e.dataTransfer.setData("text/x-provisa-label", compoundLabel)}
@@ -473,7 +473,7 @@ export function Sidebar({
                               <button
                                 type="button"
                                 className={`graph-label-pill${highlightedLabel === lbl ? " graph-label-pill--highlight" : ""}`}
-                                style={{ background: color }}
+                                style={{ background: color, color: labelTextColor(color) }}
                                 draggable
                                 onDragStart={(e) =>
                                   e.dataTransfer.setData("text/x-provisa-domain", lbl)
