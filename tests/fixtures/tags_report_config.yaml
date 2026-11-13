@@ -50,4 +50,4 @@ roles:
   - id: sales_reader
     description: Reads the sales domain and its catalog.
     capabilities: [catalog_read]
-    domain_access: [trs, meta]
+    domain_access: [trs]
