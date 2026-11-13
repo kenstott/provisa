@@ -967,6 +967,7 @@ async def _save_tag(
         param_policy=input.param_policy,
         sensitive=input.sensitive,
         requires_citation=input.requires_citation,  # REQ-2208
+        required=input.required,  # REQ-2208 (THE TAGS REPORT)
     )
     pool = await _get_pool()
     async with pool.acquire() as conn:
