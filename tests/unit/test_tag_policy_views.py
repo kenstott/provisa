@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import insert, text
+from sqlglot import exp
 
 from provisa.api._catalog_descriptions import COLUMN_DESCRIPTIONS, TABLE_DESCRIPTIONS
 from provisa.api._meta_seed import META_RELATIONSHIPS
@@ -44,7 +45,7 @@ from provisa.security.rights import LIBRARY_ROW_VIEWS, META_DOMAIN_ID
 
 PERSONAL = "Personal data"
 RETENTION = "Retention"
-VIEWS = ("tag_citations", "section_tags", "policy_coverage")
+VIEWS = ("library_documents", "tag_citations", "section_tags", "policy_coverage")
 
 TAGS = (
     Tag(id="personal", applies_to=["column", "section"]),
@@ -177,11 +178,27 @@ async def _read(db, view: str, role: dict, readable_in: frozenset[str] | None) -
 # --------------------------------------------------------------------------- the relations
 
 
-def test_the_three_views_are_meta_tables_read_by_the_library_rule():
+def test_the_library_views_are_meta_tables_read_by_the_library_rule():
     for view in VIEWS:
         assert view in _META_TABLE_VIEWS
         assert view in _META_TABLES
     assert set(LIBRARY_ROW_VIEWS) == {(META_DOMAIN_ID, v) for v in VIEWS}
+
+
+# --------------------------------------------------------------------------- library_documents
+
+
+@pytest.mark.asyncio
+async def test_library_documents_has_one_row_per_document_with_its_domains(library):
+    db, privacy, handbook = library
+    rows = {r["id"]: r for r in await _all(db, "library_documents")}
+    assert set(rows) == {privacy, handbook}
+    assert (rows[privacy]["title"], rows[privacy]["domains"]) == ("privacy", "hr, sales")
+    assert (rows[handbook]["status"], rows[handbook]["source"]) == (
+        "kept",
+        "https://example.com/handbook",
+    )
+    assert rows[handbook]["read_document_domains"] == "|hr|"
 
 
 # --------------------------------------------------------------------------- tag_citations
@@ -401,6 +418,32 @@ _EDGES = {
         "place_key",
         "policy_coverage",
     ),
+    "meta:tag_citations:document": ("tag_citations", "document_id", "id", "library_documents"),
+    "meta:section_tags:document": ("section_tags", "document_id", "id", "library_documents"),
+    "meta:policy_coverage:document": (
+        "policy_coverage",
+        "document_id",
+        "id",
+        "library_documents",
+    ),
+    "meta:library_documents:tag_citations": (
+        "library_documents",
+        "id",
+        "document_id",
+        "tag_citations",
+    ),
+    "meta:library_documents:section_tags": (
+        "library_documents",
+        "id",
+        "document_id",
+        "section_tags",
+    ),
+    "meta:library_documents:policy_coverage": (
+        "library_documents",
+        "id",
+        "document_id",
+        "policy_coverage",
+    ),
     "meta:tag_instances:policy_coverage": (
         "tag_instances",
         "id",
@@ -479,3 +522,41 @@ def test_every_view_and_column_is_described(view):
     described = COLUMN_DESCRIPTIONS.get(view, {})
     columns = _output_columns(_META_TABLE_VIEWS[view])
     assert [c for c in columns if not described.get(c)] == []
+
+
+async def _walk(db, role: dict, readable_in: frozenset[str] | None, title: str) -> list[str]:
+    """The columns a reader reaches from a document by its title, over the seeded edges
+    document -> coverage -> column, each relation read under its own row rule."""
+    seeded = {r[0]: (r[3], r[4]) for r in META_RELATIONSHIPS}
+    doc_col, cov_doc = seeded["meta:library_documents:policy_coverage"]
+    cov_col, col_col = seeded["meta:policy_coverage:column"]
+
+    def rule(view: str, alias: str) -> str:
+        predicate = library_row_predicate(role, readable_in, view)
+        for column in predicate.find_all(exp.Column):
+            column.set("table", exp.to_identifier(alias))
+        return predicate.sql(dialect="postgres")
+
+    async with db.acquire() as conn:
+        await conn.execute_core(text(_META_TABLE_VIEWS["table_columns"]))
+        rows = await conn.execute_core(
+            text(
+                f"SELECT DISTINCT c.column_key FROM library_documents d "
+                f"JOIN policy_coverage p ON p.{cov_doc} = d.{doc_col} "
+                f"JOIN table_columns_meta c ON c.{col_col} = p.{cov_col} "
+                f"WHERE d.title = :title AND {rule('library_documents', 'd')} "
+                f"AND {rule('policy_coverage', 'p')}"
+            ).bindparams(title=title)
+        )
+        return sorted(r[0] for r in rows.fetchall())
+
+
+@pytest.mark.asyncio
+async def test_a_document_reaches_its_relevant_columns_over_the_relationships(library):
+    db = library[0]
+    assert await _walk(db, _role("auditor"), None, "privacy") == ["1:email", "1:total", "2:name"]
+    assert await _walk(db, _role("clerk"), frozenset({"sales"}), "privacy") == [
+        "1:email",
+        "1:total",
+    ]
+    assert await _walk(db, _role("clerk"), frozenset({"finance"}), "privacy") == []

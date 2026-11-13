@@ -411,7 +411,9 @@ Group by `base_tag_id` to see each tag's quality, or by `domain_id` or `object_k
 
 ### Tags, library sections and objects
 
-Three meta tables connect the reference library to the model. You query them through SQL, GraphQL or Cypher like any other meta table, and Polly and MCP clients read them the same way.
+Four meta tables connect the reference library to the model. You query them through SQL, GraphQL or Cypher like any other meta table, and Polly and MCP clients read them the same way.
+
+`meta.library_documents` has one row per library document: its title, source, status, and the domains it is read in.
 
 `meta.tag_citations` has one row per citation of a library document or section. `citer` is `definition` when a tag's definition cites the place, and `assignment` when the tag's assignment to an object cites it. An assignment's row names the object as `tag_instances` does. `state` is `current`, `drifted` when the section's text changed after it was cited, or `broken` when the section or document is gone. `needs_review` is true for any state other than `current`.
 
@@ -427,7 +429,7 @@ Three meta tables connect the reference library to the model. You query them thr
 
 Each coverage row names the object by kind, key, id, name, domain and table, as `tag_instances` does, with `via` saying how the tag got onto the object. A citation's path also carries the citation's state in `citation_state`.
 
-You see a row only where you read its document. A row that names an object also needs you to read the tag on that object, by the rule the tags report uses. A citation of a tag's definition needs the document alone.
+You see a document, and any row about it, only where you read that document. A row that names an object also needs you to read the tag on that object, by the rule the tags report uses. A citation of a tag's definition needs the document alone.
 
 To find the columns relevant to document 12:
 
@@ -446,7 +448,17 @@ FROM meta.tag_citations
 WHERE citer = 'definition' AND state <> 'current';
 ```
 
-In GraphQL and Cypher, a coverage row and a citation reach their `tag_instances` row, their tag, and the registered table and column the object is or belongs to. A tagged section reaches the objects covered from it. A table, a column and a tag instance reach the paths that cover them. The library documents are not a table of their own, so a row names its document by id and title.
+In GraphQL and Cypher, a document reaches its coverage rows, section tags and citations, and each of those reaches the document back. A coverage row and a citation also reach their `tag_instances` row, their tag, and the registered table and column the object is or belongs to. So you can walk from a document to its coverage and on to each column. A tagged section reaches the objects covered from it. A table, a column and a tag instance reach the paths that cover them.
+
+The same walk in SQL:
+
+```sql
+SELECT DISTINCT c.column_key, p.link
+FROM meta.library_documents d
+JOIN meta.policy_coverage p ON p.document_id = d.id
+JOIN meta.table_columns c ON c.column_key = p.column_key
+WHERE d.title = 'Privacy policy';
+```
 
 ## Table preview
 

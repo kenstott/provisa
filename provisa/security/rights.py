@@ -816,6 +816,7 @@ TAG_ROW_VIEWS: frozenset[tuple[str, str]] = frozenset(
 #: (its ``object_key`` set) is read only where the tag on that object is too, by the tags report's
 #: rule (compiler.stage2.library_row_predicate).
 LIBRARY_ROW_VIEWS: dict[tuple[str, str], bool] = {
+    (META_DOMAIN_ID, "library_documents"): False,
     (META_DOMAIN_ID, "tag_citations"): True,
     (META_DOMAIN_ID, "section_tags"): False,
     (META_DOMAIN_ID, "policy_coverage"): True,

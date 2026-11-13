@@ -428,6 +428,23 @@ _INSTANCE_COLUMNS = """i.id AS tag_instance_id, i.object_kind, i.object_key, i.o
 _INSTANCE_READ_COLUMNS = "i.read_all_domains, i.read_any_domains, i.read_term_domains, i.read_roles"
 
 
+def _library_documents_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per library document, with its domains; read where
+    the document is (``read_document_domains``), as the rows about it are."""
+    return f"""
+        CREATE OR REPLACE VIEW library_documents AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT d.id, d.title, d.source, d.source_kind, d.status, d.added_by, d.added_at,
+               d.refreshed_at,
+               (SELECT STRING_AGG(x.domain_id, ', ' ORDER BY x.domain_id)
+                FROM reference_document_domains x WHERE x.document_id = d.id) AS domains,
+               dd.domains AS read_document_domains
+        FROM reference_documents d
+        LEFT JOIN document_domains dd ON dd.document_id = d.id
+    """
+
+
 def _tag_citations_sql() -> str:
     """REQ-2208 (decision 2026-11-13): one row per citation of the library, a tag's definition's or
     an assignment's, with its state as the one statement reads it (citation_states). An
@@ -1227,6 +1244,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # each citation with its state, each tag on a document or section, and each path from a section
     # to an object. Read as the tags report is and where the document is (LIBRARY_ROW_VIEWS).
     # After tag_instances, which they read.
+    "library_documents": _library_documents_sql(),
     "tag_citations": _tag_citations_sql(),
     "section_tags": _section_tags_sql(),
     "policy_coverage": _policy_coverage_sql(),

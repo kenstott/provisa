@@ -189,3 +189,34 @@ async def test_a_role_reading_one_domain_reads_the_relevant_columns_there_only(s
             (columns["orders.email"], "shared tag"),
         ]
     ), rows
+
+
+def _walk(policy: int) -> str:
+    """From the document to its columns over the seeded edges document -> coverage -> column,
+    joined on the columns each relationship row names."""
+    from provisa.api._meta_seed import META_RELATIONSHIPS
+
+    seeded = {r[0]: (r[3], r[4]) for r in META_RELATIONSHIPS}
+    doc_col, cov_doc = seeded["meta:library_documents:policy_coverage"]
+    cov_col, col_col = seeded["meta:policy_coverage:column"]
+    return (
+        "SELECT DISTINCT c.column_key FROM meta.library_documents d "
+        f"JOIN meta.policy_coverage p ON p.{cov_doc} = d.{doc_col} "
+        f"JOIN meta.table_columns c ON c.{col_col} = p.{cov_col} "
+        f"WHERE d.id = {policy}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("role", "reached"),
+    [
+        ("org_admin", ["orders.id", "orders.email", "staff.name"]),
+        ("sales_reader", ["orders.id", "orders.email"]),
+    ],
+)
+async def test_a_document_reaches_its_relevant_columns_over_the_relationships(
+    server, role, reached
+):
+    srv, policy, columns = server
+    rows = await _rows(srv, _walk(policy), role)
+    assert sorted(r["column_key"] for r in rows) == sorted(columns[c] for c in reached), rows

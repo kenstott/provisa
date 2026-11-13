@@ -2398,6 +2398,7 @@ _META_TABLES = [
     "tag_instances",  # REQ-2208: one row per tag on an object, and per required tag missing; view
     # REQ-2208 (decision 2026-11-13): each citation of the library, each tag on a document or
     # section, each path from a section to an object; views
+    "library_documents",
     "tag_citations",
     "section_tags",
     "policy_coverage",

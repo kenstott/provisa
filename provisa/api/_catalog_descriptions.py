@@ -84,6 +84,9 @@ _META: dict[str, str] = {
     "tag_instances": "Every tag on every object, assigned, inherited from a glossary term or "
     "derived, and every required tag an object lacks, with its citations and status",
     # REQ-2208 (decision 2026-11-13)
+    "library_documents": "Every document in the reference library, with the domains it is read "
+    "in. Its policyCoverage, sectionTags and citations relationships reach the objects, tags and "
+    "citations connected to it",
     "tag_citations": "Every citation of a library document or section, by a tag's definition or "
     "by an assignment of a tag to an object, with whether the cited text is current, changed or "
     "gone",
@@ -279,6 +282,18 @@ _LIBRARY_PLACE_COLUMNS: dict[str, str] = {
     "otherwise",
     "read_document_domains": "The domains the document is read in (|a|b|), as a glossary term's "
     "are: a reader sees the row only where it reads the document",
+}
+_LIBRARY_DOCUMENT_COLUMNS: dict[str, str] = {
+    "id": "The library document",
+    "title": "The document's title",
+    "source": "The document's file name or URL",
+    "source_kind": "file or url",
+    "status": "proposed or kept",
+    "added_by": "Who added the document",
+    "added_at": "When the document was added",
+    "refreshed_at": "When the document's content was last refreshed",
+    "domains": "The domains the document is read in, * for the whole organisation",
+    "read_document_domains": _LIBRARY_PLACE_COLUMNS["read_document_domains"],
 }
 _TAG_CITATION_COLUMNS: dict[str, str] = {
     "id": "Identity of the citation",
@@ -659,6 +674,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "tag_instances": _TAG_INSTANCE_COLUMNS,
     "tags_report": _TAG_INSTANCE_COLUMNS,
     # REQ-2208 (decision 2026-11-13)
+    "library_documents": _LIBRARY_DOCUMENT_COLUMNS,
     "tag_citations": _TAG_CITATION_COLUMNS,
     "section_tags": _SECTION_TAG_COLUMNS,
     "policy_coverage": _POLICY_COVERAGE_COLUMNS,
