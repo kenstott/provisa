@@ -410,6 +410,11 @@ def _lexeme_difference(e: Engine, a: str, b: str) -> str:
     )
 
 
+def _apart(e: Engine, a: str, b: str) -> str:
+    """:func:`_lexeme_difference` of ``a`` and ``b``, each read once: it names each a dozen times."""
+    return e.let.format("_la", a, e.let.format("_lb", b, _lexeme_difference(e, "_la", "_lb")))
+
+
 def _entry_compare(e: Engine, raw: bool) -> str:
     """silly_cmp_tsvector, of the two entries ``_a[_i]`` and ``_b[_i]`` that differ: its own answer
     where ``raw``, else its sign."""
@@ -421,7 +426,7 @@ def _entry_compare(e: Engine, raw: bool) -> str:
     has_marks = f"{ma} <> ''"
     return (
         f"CASE WHEN ({ma} = '') <> ({mb} = '') THEN {_sign(has_marks)} "
-        f"WHEN {la} <> {lb} THEN {_lexeme_difference(e, la, lb) if raw else _sign(f'{la} < {lb}')} "
+        f"WHEN {la} <> {lb} THEN {_apart(e, la, lb) if raw else _sign(f'{la} < {lb}')} "
         f"ELSE {marks} END"
     )
 
