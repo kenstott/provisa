@@ -166,6 +166,9 @@ _REDUCE = {
     "spark": "aggregate",
     "snowflake": "REDUCE",
 }
+#: The dialects an aggregate of ranges binds its group's joined texts on, read once: its fold
+#: written out at each read of them is more than Trino compiles (QUERY_EXCEEDED_COMPILER_LIMIT).
+_BOUND_ONCE = frozenset({"trino", "athena"})
 #: A dialect's row of sort keys, its sort of a list of rows, and how a row's field ``{n}`` of
 #: ``{a}`` is read: the dialects whose sort compares rows. Snowflake's ARRAY_SORT does not.
 _SORT = {
@@ -1199,8 +1202,10 @@ class _Writer:
         self._list_form(rtype, operation)
 
         def step(state: exp.Expr, item: exp.Expr) -> exp.Expr:
-            met = self.intersect(self.parsed(state, rtype), self.parsed(item, rtype))
-            return self.text(replace(met, null=exp.false()))
+            a, a_bound = self._read_once(self.parsed(state, rtype))
+            b, b_bound = self._read_once(self.parsed(item, rtype))
+            met = self.intersect(a, b)
+            return self.bound(self.text(replace(met, null=exp.false())), [*a_bound, *b_bound])
 
         fold = self.reduce(self._ranges_list(joined), _string("(,)"), step, rtype, operation)
         has_empty = exp.GT(this=_strpos(joined, "empty"), expression=_int(0))
@@ -1218,6 +1223,32 @@ class _Writer:
             rtype,
             operation,
         )
+
+    def _read_once(self, value: _R) -> tuple[_R, list[tuple[str, exp.Expr]]]:
+        """``value`` with each bound's value a lambda's variable, and the bindings, on the dialects
+        that bind (_BOUND_ONCE): an operation names a bound many times over, and Trino does not
+        compile a fold that reads each at every naming. Elsewhere, as it is."""
+        if self.dialect not in _BOUND_ONCE:
+            return value, []
+        bindings: list[tuple[str, exp.Expr]] = []
+
+        def side(bound: _Side) -> _Side:
+            name = self.fresh("b")
+            bindings.append((name, bound.value))
+            read = exp.column(name)
+            text = _text_cast(read) if value.rtype.discrete else bound.text
+            return _Side(bound.inf, read, bound.inc, text)
+
+        return replace(value, lower=side(value.lower), upper=side(value.upper)), bindings
+
+    def bound(self, body: exp.Expr, bindings: list[tuple[str, exp.Expr]]) -> exp.Expr:
+        """``body`` with each name of ``bindings`` bound to its value, read once: a lambda applied
+        to a one-item array (Trino's own let)."""
+        for name, value in reversed(bindings):
+            each = exp.Lambda(this=body, expressions=[exp.to_identifier(name)])
+            mapped = _call("transform", exp.Array(expressions=[value.copy()]), each)
+            body = _call("element_at", mapped, _int(1))
+        return body
 
     def _delimited(self, text: exp.Expr) -> exp.Expr:
         """A multirange's ranges, each apart from the next by a bar; no braces, no quotes."""
@@ -1995,15 +2026,31 @@ class _Rewrite:
         w, rtype = self.writer, value.rtype
         text = w.text(value)
         joined = w.joined(text)
+        # Trino: an intersection's group of texts aggregated once and bound to a lambda's variable,
+        # which each read of them names; written out at each read, the form is more than Trino
+        # compiles. range_agg, and an intersection of multiranges, compile as they are.
+        bound = (
+            w.dialect in _BOUND_ONCE and name == "range_intersect_agg" and not isinstance(value, _M)
+        )
+        read = exp.column(w.fresh("j")) if bound else joined
         if name == "range_agg":
-            folded = w.canonical(joined, rtype, name)
+            folded = w.canonical(read, rtype, name)
         elif isinstance(value, _M):
-            folded = w.multirange_intersect_all(joined, rtype, name)
+            folded = w.multirange_intersect_all(read, rtype, name)
         else:
-            folded = w.intersect_all(joined, rtype, name)
-        # No value at all is NULL, as a strict aggregate's result is.
-        nothing = _eq(exp.Count(this=text.copy()), _int(0))
-        return _case([(nothing, _null())], folded)
+            folded = w.intersect_all(read, rtype, name)
+        if not bound:
+            # No value at all is NULL, as a strict aggregate's result is.
+            nothing = _eq(exp.Count(this=text.copy()), _int(0))
+            return _case([(nothing, _null())], folded)
+        # No row, or none but NULLs: array_join leaves a NULL out, so the joined text is NULL of
+        # no row and empty of NULLs alone; a range's text is never empty.
+        nothing = _eq(exp.Coalesce(this=read.copy(), expressions=[_string("")]), _string(""))
+        body = exp.Lambda(
+            this=_case([(nothing, _null())], folded), expressions=[exp.to_identifier(read.name)]
+        )
+        each = _call("transform", exp.Array(expressions=[joined]), body)
+        return _call("element_at", each, _int(1))
 
     def _of_values(self, column: exp.Column) -> _Value | None:
         """A column of a VALUES list the statement casts to a range or multirange type, read as

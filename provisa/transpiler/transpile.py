@@ -2161,7 +2161,7 @@ def literals_as_said(tree: exp.Expr) -> exp.Expr:  # REQ-2171
 
 
 #: A timestamp on ClickHouse: its DateTime has no fraction, and Arrow reads it as a count of seconds.
-_CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+_CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171

@@ -2157,6 +2157,8 @@ def _polyfilled_by_rule(
     called = target.name.lower() if isinstance(target, exp.Anonymous) else applied.feature.name
     form = applied.form
     if polyfill.column_of(dialect) is None:
+        if applied.rule.unlisted_keep:
+            return None  # the row polyfills its columns only: this dialect keeps what it had
         raise FunctionRefused(called, dialect)
     if form is None:
         return node  # the engine's own, as the statement writes it (by pg_catalog on DuckDB)
@@ -2168,6 +2170,8 @@ def _polyfilled_by_rule(
             # A rule's own pattern: its arguments in their forms first, as a form's holes are
             # bound, since the walk does not descend into what a rule writes.
             argued = target.copy()
+            # The copy reads where the call stands (a window's, a filter's), as the call does.
+            argued.parent, argued.arg_key = target.parent, target.arg_key
             for argument in list(argued.iter_expressions()):
                 argument.replace(argument.transform(rewrite))
             written = form.function(argued, dialect)
@@ -2674,71 +2678,6 @@ def _strict_null(name: str, arity: int, dialect: str) -> exp.Expr | None:
     return exp.null() if dialect == "clickhouse" and name in _ARRAY_INPUT else None
 
 
-#: The functions not STRICT in pg_proc that answer NULL of a NULL array all the same: each tests
-#: its array argument for NULL first (PostgreSQL 17's array_userfuncs.c and arrayfuncs.c).
-_NULL_OF_A_NULL_ARRAY = frozenset(
-    {"array_position", "array_positions", "array_remove", "array_replace", "array_to_string"}
-)
-#: The functions not STRICT in pg_proc that answer NULL where every argument is a NULL array:
-#: array_cat answers the other argument where one is not (array_userfuncs.c, and its grid row).
-_NULL_OF_NULL_ARRAYS = frozenset({"array_cat"})
-
-
-@functools.cache
-def _strict_arities() -> frozenset[tuple[str, int]]:
-    """Each (name, argument count) whose every overload pg_proc lists as STRICT: a NULL argument
-    is answered NULL without the function running."""
-    from provisa.pgwire.catalog_pg17_procs import PROCS
-
-    strict: dict[tuple[str, int], bool] = {}
-    for row in PROCS:
-        key = (row[1], row[15])
-        strict[key] = strict.get(key, True) and bool(row[11])
-    return frozenset(key for key, every in strict.items() if every)
-
-
-def _is_null_array(value: exp.Expr) -> bool:
-    """Whether an argument is a NULL cast to an array type."""
-    node = value.unnest()
-    return (
-        isinstance(node, exp.Cast)
-        and node.to.is_type(exp.DataType.Type.ARRAY)
-        and isinstance(node.this.unnest(), exp.Null)
-    )
-
-
-def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None:
-    """The name and arguments of ``target``, a call: as the table reads it, or as the polyfill
-    grid's rule it matches binds them (array_length is sqlglot's ArraySize)."""
-    call = _call(target)
-    if call is not None:
-        return call
-    try:
-        applied = polyfill.GRID.read(target, dialect)
-    except polyfill_notation.Refused:
-        return None  # a rewrite's refusal: _polyfilled raises it as the row's
-    if applied is None or applied.rule.pattern is None:
-        return None
-    return applied.feature.name, [applied.bindings[p] for p in applied.rule.holes()]
-
-
-def _of_a_null_array(target: exp.Expr, dialect: str) -> str | None:
-    """The name of ``target`` where it is a call PostgreSQL answers NULL for its NULL array
-    argument: of a function STRICT at its argument count, or one of ``_NULL_OF_A_NULL_ARRAY``
-    with the NULL its first argument; None for any other node. ClickHouse has no NULL of an array
-    (an Array is never Nullable), so such a call is the NULL it answers."""
-    call = _called(target, dialect)
-    if call is None:
-        return None
-    name, args = call
-    if name in _NULL_OF_A_NULL_ARRAY:
-        return name if args and _is_null_array(args[0]) else None
-    if name in _NULL_OF_NULL_ARRAYS:
-        return name if args and all(_is_null_array(a) for a in args) else None
-    strict = (name, len(args)) in _strict_arities()
-    return name if strict and any(_is_null_array(a) for a in args) else None
-
-
 def _is_null(value: exp.Expr) -> bool:
     """Whether an argument is a NULL, of any type the statement says."""
     node = value.unnest()
@@ -2815,7 +2754,10 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return _argument(values[part.name]).copy()
         return part
 
-    return sqlglot.parse_one(_EDGE_FORMS[key], read="postgres").transform(bound)
+    form = _EDGE_FORMS[key]
+    if dialect == "clickhouse":  # its length is unsigned, which no position mixes with a signed n
+        form = form.replace("LENGTH(v)", "CAST(LENGTH(v) AS BIGINT)")
+    return sqlglot.parse_one(form, read="postgres").transform(bound)
 
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
@@ -2905,8 +2847,6 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and dialect in _DUCKDB
         ):
             return _columns_of(node, rewrite)
-        if isinstance(node, exp.Window) and isinstance(node.this, exp.Ntile):
-            return exp.cast(node, "INT")  # PostgreSQL's is an integer, every engine's a bigint
         if isinstance(node, exp.RegexpReplace) and dialect in _FROM_THE_END:
             parts = (node.this, node.expression, node.args["replacement"])
             if any(_is_null(part) for part in parts):
@@ -2929,10 +2869,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
-        nulled = _of_a_null_array(target, dialect) if dialect == "clickhouse" else None
-        if nulled is not None:
+        first = polyfill.GRID.read_first(target, dialect)  # a grid rule over every call
+        if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
-            return exp.alias_(exp.null(), nulled) if in_select else exp.null()
+            return first.rewritten if in_select else first.rewritten.unalias()
         polyfilled = _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
@@ -2982,3 +2922,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         return written
 
     return tree.transform(rewrite, copy=False)
+
+
+#: The name and arguments of a call the table may hold, for the grid's rules that read calls.
+call_of = _call

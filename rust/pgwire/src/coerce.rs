@@ -46,6 +46,10 @@ pub enum Coercer {
     EnumArray,
     /// cast_types.interval_of_text: interval_out's text, which an engine holds an interval as
     IntervalText,
+    /// cast_types.bytes_of_text: a string an engine holds bytes as, as those bytes
+    TextBytes,
+    /// cast_types.clock_of_text: time_out's text, which an engine holds a time as
+    ClockText,
 }
 
 pub fn coercer_of(name: &str) -> R<Coercer> {
@@ -66,6 +70,8 @@ pub fn coercer_of(name: &str) -> R<Coercer> {
         "duckdb_inet" => Coercer::DuckdbInet,
         "enum_array" => Coercer::EnumArray,
         "interval_text" => Coercer::IntervalText,
+        "text_bytes" => Coercer::TextBytes,
+        "clock_text" => Coercer::ClockText,
         _ => match name.strip_prefix("pad:").and_then(|n| n.parse().ok()) {
             Some(n) => Coercer::Pad(n),
             None => return Err(EncErr::Value(format!("no coercer named {name:?}"))),
@@ -206,6 +212,17 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
             }
             other => other,
         },
+        Coercer::TextBytes => match v {
+            PyVal::Str(s) => PyVal::Bytes(s.into_bytes()),
+            other => other,
+        },
+        Coercer::ClockText => match v {
+            PyVal::Str(s) => PyVal::Time(
+                clock_of_text(&s)
+                    .ok_or_else(|| EncErr::Value(format!("invalid input syntax for type time: \"{s}\"")))?,
+            ),
+            other => other,
+        },
     })
 }
 
@@ -233,6 +250,32 @@ pub fn interval_fields(text: &str) -> Option<(i128, i128, i128)> {
         at += 2;
     }
     (!text.is_empty()).then_some((months, days, micros))
+}
+
+/// time_out's text, "HH:MM:SS[.ffffff]", as its microseconds since midnight; None for any other
+/// text, and for 24:00:00, which is no time of day. As cast_types.clock_of_text reads it.
+pub fn clock_of_text(text: &str) -> Option<i64> {
+    let b = text.as_bytes();
+    let two = |at: usize| -> Option<i64> {
+        let (h, l) = (*b.get(at)?, *b.get(at + 1)?);
+        (h.is_ascii_digit() && l.is_ascii_digit()).then(|| i64::from(h - b'0') * 10 + i64::from(l - b'0'))
+    };
+    if b.len() < 8 || b[2] != b':' || b[5] != b':' {
+        return None;
+    }
+    let (hours, minutes, seconds) = (two(0)?, two(3)?, two(6)?);
+    if hours > 23 || minutes > 59 || seconds > 59 {
+        return None;
+    }
+    let fraction = match &b[8..] {
+        [] => 0,
+        [b'.', digits @ ..] if (1..=6).contains(&digits.len()) && digits.iter().all(u8::is_ascii_digit) => {
+            let padded = format!("{:0<6}", std::str::from_utf8(digits).ok()?);
+            padded.parse::<i64>().ok()?
+        }
+        _ => return None,
+    };
+    Some(((hours * 60 + minutes) * 60 + seconds) * 1_000_000 + fraction)
 }
 
 /// "[+-]H:MM:SS[.ffffff]" as its signed microseconds.

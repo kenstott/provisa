@@ -30,7 +30,8 @@ import sqlglot.expressions as exp
 from provisa.core.pg_error import END, MARK
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refused, Rewrite
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 
 FAMILY = "integers and numbers"
 
@@ -91,9 +92,15 @@ INT8SHL = Feature(
         rules=(
             Rule(
                 "int8shl($a, $b)",
-                trino.trino_only(
-                    "bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))"
-                ),
+                {
+                    **trino.trino_only(
+                        "bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))"
+                    ),
+                    # The old table's form wraps through 2^64, which ClickHouse reads as no exact
+                    # literal: int8shl(3, 3) answered 0 (run 43424649612). bitShiftLeft wraps an
+                    # Int64 as C does.
+                    "clickhouse": "bitShiftLeft(CAST($a AS Nullable(Int64)), bitAnd($b, 63))",
+                },
             ),
         )
     ),
@@ -158,20 +165,100 @@ _INTEGERS = frozenset({"smallint", "integer", "bigint"})
 _JSON = frozenset({"json", "jsonb"})
 
 
+def ch_fail(sqlstate: str, message: str) -> str:
+    """ClickHouse's raise of PostgreSQL's error ``sqlstate`` with ``message`` where ``condition``
+    holds: throwIf, which answers 0 where it does not, so a form adds it to its answer."""
+    text = f"{MARK} {sqlstate}: {message}{END}".replace("'", "''")
+    return "throwIf(ifNull({condition}, 0), '" + text + "')"
+
+
+#: ClickHouse's name of each type a cast row writes, as a Nullable: every value may be NULL.
+_CLICKHOUSE_TYPES = {
+    "DECIMAL(38, 0)": "Nullable(Decimal(38, 0))",
+    "BOOLEAN": "Nullable(Bool)",
+}
+
+
+#: A JSON number, as RFC 8259 writes one, and the whitespace JSON allows around it. ClickHouse's
+#: isValidJSON refuses a number past a double's range, which PostgreSQL's jsonb holds exactly.
+_SPACE = "[[:space:]]*"
+_JSON_NUMBER = f"^{_SPACE}-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][-+]?[0-9]+)?{_SPACE}$"
+#: Each kind of JSON value ClickHouse's JSONType names, as PostgreSQL's error names it.
+_JSON_KINDS = {
+    "String": "string",
+    "Null": "null",
+    "Bool": "boolean",
+    "Array": "array",
+    "Object": "object",
+}
+#: PostgreSQL's type name of each function's result, as its error names it.
+_PG_NAMES = {"bool": "boolean", "numeric": "numeric"}
+
+
+def _ch_jsonb_cast(function: str) -> str:
+    """bool or numeric of a jsonb value ClickHouse holds as its text: NULL of NULL; bool of a JSON
+    boolean its value; numeric of a JSON number its own digits (PostgreSQL's numeric holds them
+    exactly, so no Decimal bounds them; a negative zero is zero). Every other kind raises
+    PostgreSQL's error (22023); a number with an exponent (PostgreSQL's digits shifted) raises
+    0A000; text that is no JSON raises 22P02, as PostgreSQL's input did. Each raise is a throwIf
+    beside the answer: ClickHouse evaluates every branch of a CASE."""
+    name = _PG_NAMES[function]
+    number = f"match($v, '{_JSON_NUMBER}')"
+    valid = "isValidJSON($v)"
+    raises = [
+        ch_fail("22P02", "invalid input syntax for type json").format(
+            condition=f"NOT {number} AND NOT {valid}"
+        )
+    ]
+    answered = "Bool" if function == "bool" else None
+    kinds = {k: v for k, v in _JSON_KINDS.items() if k != answered}
+    for kind, said in kinds.items():
+        raises.append(
+            ch_fail("22023", f"cannot cast jsonb {said} to type {name}").format(
+                condition=f"NOT {number} AND {valid} AND toString(JSONType($v)) = '{kind}'"
+            )
+        )
+    text = "replaceRegexpAll($v, '[[:space:]]', '')"
+    if function == "bool":
+        raises.append(
+            ch_fail("22023", f"cannot cast jsonb numeric to type {name}").format(condition=number)
+        )
+        answer = f"CAST({text} = 'true' AS Nullable(Bool))"
+    else:
+        raises.append(
+            ch_fail("0A000", "numeric does not read this value").format(
+                condition=f"{number} AND match($v, '[eE]')"
+            )
+        )
+        answer = f"if(match({text}, '^-0([.]0+)?$'), substring({text}, 2), {text})"
+    checked = " + ".join(raises)
+    typed = "Nullable(Bool)" if function == "bool" else "Nullable(String)"
+    nothing = f"CAST(NULL AS {typed})"  # a bare NULL is no type pgwire describes as the call's
+    return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
+
+
 def _cast_of(function: str, sources: frozenset[str], sql_type: str):
-    """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a json or
-    jsonb value, refused by name: Trino's cast reads a JSON scalar PostgreSQL refuses; of anything
-    else, kept."""
+    """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a jsonb
+    value on ClickHouse, :func:`_ch_jsonb_cast`; of a json value there, and of either on Trino,
+    refused by name (Trino's cast reads a JSON scalar PostgreSQL refuses, and PostgreSQL casts no
+    json to these); of anything else, kept (an argument no statement says the type of is
+    ClickHouse's unknown function, an engine error)."""
 
     def cast(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
         if call is None or len(call[1]) != 1:
             return None
         type_said = trino.said(call[1][0])
+        if type_said == "jsonb" and dialect == "clickhouse":
+            form = _ch_jsonb_cast(function)
+            return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
         if type_said in _JSON:
             raise Refused(trino.no_form(function, dialect))
         if type_said not in sources:
             return None
+        if dialect == "clickhouse":
+            form = f"CAST($v AS {_CLICKHOUSE_TYPES[sql_type]})"
+            return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
         return trino.written(f"CAST($v AS {sql_type})", f"{function}($v)", {"v": call[1][0]})
 
     cast.__doc__ = f"{function} of an integer: its cast to {sql_type}; of a json value, refused."
@@ -186,14 +273,39 @@ def _cast_feature(function: str, summary: str, sources: frozenset[str], sql_type
         summary,
         read=Side(
             rules=(
-                Rule(f"{function}($v)", trino.trino_only(_cast_of(function, sources, sql_type))),
+                Rule(
+                    f"{function}($v)",
+                    {
+                        **trino.trino_only(_cast_of(function, sources, sql_type)),
+                        "clickhouse": _cast_of(function, sources, sql_type),
+                    },
+                ),
             ),
-            limitations=dict.fromkeys(
-                trino.TRINO,
-                (Limitation("Of a json or jsonb value, refused by name."),),
-            ),
+            limitations={
+                **dict.fromkeys(
+                    trino.TRINO, (Limitation("Of a json or jsonb value, refused by name."),)
+                ),
+                "clickhouse": (Limitation(_CLICKHOUSE_JSONB[function]),),
+            },
         ),
     )
+
+
+#: What differs from PostgreSQL on ClickHouse, where a jsonb value is held as its unchecked text.
+_UNCHECKED = (
+    "Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is "
+    "stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without "
+    "PostgreSQL's detail line."
+)
+_CLICKHOUSE_JSONB = {
+    "bool": "Of a jsonb value: a JSON true or false answers its value, NULL answers NULL, and any "
+    "other kind raises PostgreSQL's error (22023). " + _UNCHECKED + " Of a json value, refused by "
+    "name.",
+    "numeric": "Of a jsonb value: a JSON number answers its own digits, at any precision and "
+    "scale, never rounded; NULL answers NULL, and any other kind raises PostgreSQL's error "
+    "(22023). A number written with an exponent (1e3), which PostgreSQL answers with its digits "
+    "shifted (1000), is refused with 0A000. " + _UNCHECKED + " Of a json value, refused by name.",
+}
 
 
 NUMERIC = _cast_feature(
@@ -214,10 +326,18 @@ OID = Feature(
         rules=(
             Rule(
                 "oid($v)",
-                trino.trino_only(
-                    f"CASE WHEN $v < 0 OR $v > 4294967295 THEN {fail('22003', 'OID out of range')} "
-                    "ELSE CAST($v AS BIGINT) END"
-                ),
+                {
+                    **trino.trino_only(
+                        f"CASE WHEN $v < 0 OR $v > 4294967295 "
+                        f"THEN {fail('22003', 'OID out of range')} "
+                        "ELSE CAST($v AS BIGINT) END"
+                    ),
+                    "clickhouse": "CAST($v + "
+                    + ch_fail("22003", "OID out of range").format(
+                        condition="$v < 0 OR $v > 4294967295"
+                    )
+                    + " AS Nullable(Int64))",
+                },
             ),
         )
     ),
@@ -240,6 +360,8 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return None  # refused by name before (provisa.transpiler.engine_refusals)
         raise Refused(trino.no_form("random", dialect))
     sql_type = "BIGINT" if "bigint" in said else "INTEGER"
+    if dialect == "clickhouse":
+        return graft(replacement(_ch_random(sql_type), dialect, _RANDOM), {"lo": lo, "hi": hi})
     form = (
         "CASE WHEN $lo > $hi THEN "
         f"{fail('22023', 'lower bound must be less than or equal to upper bound')} "
@@ -251,14 +373,39 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return trino.written(form, _RANDOM, {"lo": lo, "hi": hi})
 
 
+def _ch_random(sql_type: str) -> str:
+    """ClickHouse's form of random between two integers: the bound checks raise beside the draw."""
+    # Int64 whatever the bounds: the answer lies between them, and the call says its type.
+    del sql_type
+    ch_type = "Nullable(Int64)"
+    reversed_ = ch_fail("22023", "lower bound must be less than or equal to upper bound")
+    too_wide = ch_fail("0A000", "random does not read this value")
+    return (
+        "CAST($lo + least(toInt64(floor(randCanonical() * (toFloat64($hi - $lo) + 1))), "
+        "$hi - $lo) + "
+        + reversed_.format(condition="$lo > $hi")
+        + " + "
+        + too_wide.format(condition=f"toDecimal128($hi, 0) - toDecimal128($lo, 0) >= {_EXACT}")
+        + f" AS {ch_type})"
+    )
+
+
 RANDOM = Feature(
     "random",
     FAMILY,
     "A uniform random integer between two bounds, both included.",
     read=Side(
-        rules=(Rule(_RANDOM, trino.trino_only(Rewrite(random_between))),),
+        rules=(
+            Rule(
+                _RANDOM,
+                {
+                    **trino.trino_only(Rewrite(random_between)),
+                    "clickhouse": Rewrite(random_between),
+                },
+            ),
+        ),
         limitations=dict.fromkeys(
-            trino.TRINO,
+            (*trino.TRINO, "clickhouse"),
             (
                 Limitation(
                     "Bounds 2^53 or more apart, and bounds of no said integer type, refused by "

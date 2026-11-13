@@ -159,6 +159,7 @@ def _to_float(value: Any) -> Any:
 
 
 _INTEGERS = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT})
+_INTEGER_ARRAYS = frozenset({BVType.SMALLINTARRAY, BVType.INTEGERARRAY, BVType.BIGINTARRAY})
 _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
 
 #: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
@@ -177,6 +178,28 @@ def _clock_of(value: Any) -> Any:
         return value
     count = int.from_bytes(value, "little", signed=True)
     return (datetime.datetime.min + datetime.timedelta(microseconds=count)).time()
+
+
+def bytes_of_text(value: Any) -> Any:
+    """A call's bytea an engine holds as a string of its bytes (ClickHouse's String, which Arrow
+    reads as text): the bytes the string is."""
+    return value.encode("utf-8") if isinstance(value, str) else value
+
+
+#: time_out's text: hours, minutes, seconds and up to six digits of a fraction.
+_CLOCK_TEXT = re.compile(r"(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?", re.ASCII)
+
+
+def clock_of_text(value: Any) -> Any:
+    """A call's time an engine holds as time_out's text (ClickHouse's time is its text) as the time
+    it is. 24:00:00, which PostgreSQL's time holds, is no time of day here, and is refused."""
+    if not isinstance(value, str):
+        return value
+    clock = _CLOCK_TEXT.fullmatch(value)
+    if clock is None or int(clock[1]) > 23 or int(clock[2]) > 59 or int(clock[3]) > 59:
+        raise ValueError(f'invalid input syntax for type time: "{value}"')
+    micros = int((clock[4] or "").ljust(6, "0"))
+    return datetime.time(int(clock[1]), int(clock[2]), int(clock[3]), micros)
 
 
 #: interval_out's text (IntervalStyle postgres): an amount and its unit, or the clock.
@@ -286,10 +309,24 @@ _RETURNED: dict[str, CastType] = {
     "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
     "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
-    "bytea": CastType(17, -1, BVType.BYTES, frozenset({BVType.BYTES})),
-    "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, frozenset({BVType.INTEGERARRAY})),
+    # ClickHouse holds bytes as a String, which Arrow reads as its text.
+    "bytea": CastType(
+        17, -1, BVType.BYTES, frozenset({BVType.BYTES, BVType.TEXT}), of_text=bytes_of_text
+    ),
+    # An array of integers an engine names by none of its widths (arrow_type_name's INTEGER[] of
+    # ClickHouse's Int64): the call's own type describes it.
+    "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, _INTEGER_ARRAYS),
+    "bigint[]": CastType(1016, -1, BVType.BIGINTARRAY, _INTEGER_ARRAYS),
+    "double precision[]": CastType(1022, -1, BVType.FLOATARRAY, frozenset({BVType.FLOATARRAY})),
+    "text[]": CastType(1009, -1, BVType.STRINGARRAY, frozenset({BVType.STRINGARRAY})),
+    # ClickHouse's time is its Time64, or the text a form writes of it (pg_forms_type_io).
     "time without time zone": CastType(
-        1083, -1, BVType.TIME, frozenset({BVType.TIME, BVType.BYTES}), _clock_of
+        1083,
+        -1,
+        BVType.TIME,
+        frozenset({BVType.TIME, BVType.BYTES, BVType.TEXT}),
+        _clock_of,
+        of_text=clock_of_text,
     ),
     "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
     "timestamp without time zone": CastType(
@@ -366,13 +403,31 @@ def _operand_type(operand: Any) -> CastType | None:
     return None
 
 
+def _null_alone(cast: Any) -> bool:
+    """Whether ``cast`` is of a NULL, through parentheses."""
+    import sqlglot.expressions as exp
+
+    value = cast.this
+    while isinstance(value, exp.Paren):
+        value = value.this
+    return isinstance(value, exp.Null)
+
+
+#: The array types a NULL cast describes, by PostgreSQL's name: those a call returns, and
+#: cstring[] (_cstring), which no call here returns.
+_NULL_ARRAYS: dict[str, CastType] = {
+    **{name: cast for name, cast in _RETURNED.items() if name.endswith("[]")},
+    "cstring[]": CastType(1263, -1, BVType.STRINGARRAY, frozenset({BVType.STRINGARRAY})),
+}
+
+
 def _result_type(expression: Any, columns: Any) -> CastType | None:
     """How a result column is described by its root: a money expression as PostgreSQL's operators
     type it, a cast by the cast's type, a call of a pg_catalog function by the type that function
     returns; None for any other column."""
     import sqlglot.expressions as exp
 
-    from provisa.pgwire.function_types import call_result_type, json_operator_type
+    from provisa.pgwire.function_types import argument_type, call_result_type, json_operator_type
     from provisa.transpiler.pg_money import money_type
 
     # A column of a table only the plan's shape types: a part of the expression is not known here.
@@ -382,6 +437,12 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     if typed is not None:
         return _RETURNED[typed]
     if isinstance(expression, exp.Cast):
+        if _null_alone(expression):
+            # ClickHouse holds no NULL of an array (an Array is never Nullable): it is sent a bare
+            # NULL (semantic_dialect), which the cast's array type describes.
+            null_array = _NULL_ARRAYS.get(argument_type(expression) or "")
+            if null_array is not None:
+                return null_array
         return _cast_type(expression.to)
     if isinstance(expression, XmlSerialize):
         return _cast_type(expression.args["to"])
