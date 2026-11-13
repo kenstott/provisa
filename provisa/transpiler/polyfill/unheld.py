@@ -17,7 +17,11 @@ is a 64-bit unsigned number: the old table's forms of it (provisa.transpiler.pg_
 and compare it as a number past a bigint, which Trino reads as no literal. A range or a multirange
 the statement says of a NULL reaches Trino as a type it does not have; unnest of a tsvector, held as its text, is
 refused likewise (run 43337203459). max and min of an inet, and
-of an xid8, are refused likewise; every other max and min is Trino's own."""
+of an xid8, are refused likewise; every other max and min is Trino's own.
+
+ClickHouse holds no range type either (a cast to one is an unknown type there, run 43410717058),
+and no inet: lower, upper and unnest of a range or multirange, and max and min of an inet or a cidr
+(whose order is not its text's), are refused by name on it likewise."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -111,8 +115,8 @@ UNNEST = Feature(
                     ),
                     "clickhouse": trino.refusing(
                         "unnest",
-                        "unnest of a tsvector: refused by name.",
-                        trino.of_said(("tsvector",)),
+                        "unnest of a multirange or tsvector: refused by name.",
+                        trino.of_said((*_RANGES, "tsvector")),
                     ),
                 },
             ),
@@ -127,38 +131,60 @@ UNNEST = Feature(
                     ),
                 ),
             ),
-            "clickhouse": (Limitation(f"{_TSVECTOR_ROWS} Of anything else, ClickHouse's own."),),
+            "clickhouse": (
+                Limitation(
+                    "Of a range or multirange the statement says: refused by name, as ClickHouse "
+                    f"has no such type. {_TSVECTOR_ROWS} Of anything else, ClickHouse's own."
+                ),
+            ),
         },
     ),
 )
+
+#: The dialects each of :data:`_OF_A_RANGE` and :data:`_AGGREGATES` is refused on, with the types
+#: refused there and the limitation it reads.
+_ON_TRINO_AND_CLICKHOUSE = {
+    "range": {
+        **dict.fromkeys(trino.TRINO, (_RANGES, "Trino")),
+        "clickhouse": (_RANGES, "ClickHouse"),
+    },
+    "order": {
+        **dict.fromkeys(trino.TRINO, (_UNORDERED, "Trino")),
+        "clickhouse": (("inet", "cidr"), "ClickHouse"),
+    },
+}
+
+
+def _refused_of(name: str, summary: str, kind: str) -> Feature:
+    """``name`` refused by name on Trino and ClickHouse where an argument is said to be of a type
+    the dialect does not hold (a range, or a type it does not order as PostgreSQL does)."""
+    on = _ON_TRINO_AND_CLICKHOUSE[kind]
+    said = "a range or multirange" if kind == "range" else "an inet, a cidr or an xid8"
+    rules: dict = {}
+    limitations: dict = {}
+    for dialect, (types, title) in on.items():
+        what = said if dialect != "clickhouse" or kind == "range" else "an inet or a cidr"
+        rules[dialect] = trino.refusing(
+            name,
+            f"{name} of {what}: refused by name, as {title} has no such type.",
+            trino.of_said(types),
+        )
+        limitations[dialect] = (
+            Limitation(
+                f"Of {what} the statement says: refused by name, as {title} has no such type. "
+                f"Of anything else, {title}'s own."
+            ),
+        )
+    return Feature(
+        name, FAMILY, summary, read=Side(rules=(Rule(None, rules),), limitations=limitations)
+    )
+
 
 FEATURES: tuple[Feature, ...] = (
     XID8,
     *(trino.by_name(name, FAMILY, summary, _XID8) for name, summary in _XID8_CALLS.items()),
     *(trino.by_name(name, FAMILY, summary, _LSN) for name, summary in _LSN_CALLS.items()),
-    *(
-        trino.refused_feature(
-            name,
-            FAMILY,
-            summary,
-            "Of a range or multirange the statement says: refused by name, as Trino has no such "
-            "type. Of anything else, Trino's own.",
-            f"{name} of a range or multirange: refused by name, as Trino has no such type.",
-            trino.of_said(_RANGES),
-        )
-        for name, summary in _OF_A_RANGE.items()
-    ),
+    *(_refused_of(name, summary, "range") for name, summary in _OF_A_RANGE.items()),
     UNNEST,
-    *(
-        trino.refused_feature(
-            name,
-            FAMILY,
-            summary,
-            "Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of "
-            "anything else, Trino's own.",
-            f"{name} of an inet, cidr or xid8: refused by name, as Trino has no such type.",
-            trino.of_said(_UNORDERED),
-        )
-        for name, summary in _AGGREGATES.items()
-    ),
+    *(_refused_of(name, summary, "order") for name, summary in _AGGREGATES.items()),
 )

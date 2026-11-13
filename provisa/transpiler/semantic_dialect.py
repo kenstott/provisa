@@ -165,6 +165,101 @@ def _clickhouse_regexp_replace(self: Generator, expression: exp.RegexpReplace) -
 ClickHouse.Generator.TRANSFORMS[exp.RegexpReplace] = _clickhouse_regexp_replace
 
 
+def _binding(node: exp.Expr) -> tuple[exp.Expr, exp.Expr, str] | None:
+    """A form's value held by a name (pg_forms_types._bound): ``(SELECT x FROM (SELECT v AS n)
+    AS bn)``, as (x, v, n); None for any other node."""
+    if not isinstance(node, exp.Subquery) or node.alias or not isinstance(node.this, exp.Select):
+        return None
+    select = node.this
+    source = select.args.get("from_") or select.args.get("from")
+    if len(select.expressions) != 1 or source is None or select.args.get("joins"):
+        return None
+    if any(select.args.get(k) for k in ("where", "group", "having", "order", "limit", "with_")):
+        return None
+    held = source.this
+    if not isinstance(held, exp.Subquery) or not isinstance(held.this, exp.Select):
+        return None
+    inner = held.this
+    if len(inner.expressions) != 1 or not isinstance(inner.expressions[0], exp.Alias):
+        return None
+    if any(inner.args.get(k) for k in ("from_", "from", "where", "joins", "group")):
+        return None
+    name = inner.expressions[0].alias
+    if held.alias != f"b{name}":
+        return None
+    return select.expressions[0], inner.expressions[0].this, name
+
+
+def _nested_binding(node: exp.Expr) -> bool:
+    """Whether a binding holds another or is held by one: ClickHouse correlates a subquery with the
+    query just outside it only."""
+    inside = any(_binding(n) is not None for n in node.this.find_all(exp.Subquery))
+    outside, held_by = False, node.parent
+    while held_by is not None and not outside:
+        outside = _binding(held_by) is not None
+        held_by = held_by.parent
+    return inside or outside
+
+
+def _throw_of(branch: exp.Expr) -> exp.Anonymous | None:
+    """The throwIf(1, ...) a CASE branch answers (provisa.transpiler.function_macros._thrown)."""
+    node = branch.this if isinstance(branch, exp.Cast) else branch
+    if isinstance(node, exp.Anonymous) and node.name == "throwIf" and node.expressions:
+        first = node.expressions[0]
+        if isinstance(first, exp.Literal) and first.this == "1":
+            return node
+    return None
+
+
+def _thrown_when_chosen(tree: exp.Expr) -> exp.Expr:
+    """Each CASE branch that throws, throwing only where the CASE chooses it: ClickHouse computes
+    every branch of a CASE within a lambda, so a throwIf(1, ...) threw whatever was chosen."""
+    for case in tree.find_all(exp.Case):
+        earlier: list[exp.Expr] = []
+        for branch in case.args.get("ifs") or []:
+            throw = _throw_of(branch.args["true"])
+            if throw is not None:
+                chosen = exp.and_(
+                    branch.this.copy(),
+                    *(exp.not_(exp.func("ifNull", c.copy(), exp.false())) for c in earlier),
+                )
+                throw.set(
+                    "expressions", [exp.func("ifNull", chosen, exp.false()), *throw.expressions[1:]]
+                )
+            earlier.append(branch.this)
+    return tree
+
+
+#: Marks a binding held by one written as a lambda, which is then a lambda too.
+_IN_A_LAMBDA = "clickhouse_binding_in_a_lambda"
+
+
+def _clickhouse_subquery(self: Generator, expression: exp.Subquery) -> str:
+    """A form's nested binding of a value to a name, as ClickHouse's lambda of the name applied to
+    the value (``arrayElement(arrayMap(n -> x, [v]), 1)``): an expression, which a lambda within it
+    reads the name of, where a subquery within a subquery could not."""
+    bound = _binding(expression)
+    if bound is None or not (expression.meta.get(_IN_A_LAMBDA) or _nested_binding(expression)):
+        return self.subquery_sql(expression)
+    answer, value, name = bound
+    for held in (*answer.find_all(exp.Subquery), *value.find_all(exp.Subquery)):
+        if _binding(held) is not None:
+            held.meta[_IN_A_LAMBDA] = True
+    mapped = exp.Anonymous(
+        this="arrayMap",
+        expressions=[
+            exp.Lambda(
+                this=_thrown_when_chosen(answer.copy()), expressions=[exp.to_identifier(name)]
+            ),
+            exp.Array(expressions=[value.copy()]),
+        ],
+    )
+    return self.sql(exp.Anonymous(this="arrayElement", expressions=[mapped, exp.Literal.number(1)]))
+
+
+ClickHouse.Generator.TRANSFORMS[exp.Subquery] = _clickhouse_subquery
+
+
 def _root_read_back(name: str) -> None:
     build = Postgres.Parser.FUNCTIONS[name]
 
@@ -275,3 +370,7 @@ Postgres.Generator.TRANSFORMS[exp.JSONExtract] = _json_arrow_read_back
 
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
 from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads
+
+#: REQ-2167: ClickHouse has no inet type: an inet is held as its text there, as a cidr is
+#: (pg_held_types), and pgwire names the column by the statement's cast.
+ClickHouse.Generator.TYPE_MAPPING[exp.DataType.Type.INET] = "String"

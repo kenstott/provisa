@@ -89,8 +89,8 @@ PG_COLLATION_FOR = Feature(
 #: The orders of text and character by the database's collation (en_US.UTF-8, as pg_database
 #: says), each with its summary. Trino has no collation: its order of text is by code points, and
 #: it reads no COLLATE clause (run 43307392116 sent one, a syntax error there). Each is refused by
-#: name on Trino; every other dialect keeps the old table's form (provisa.transpiler
-#: .pg_forms_types). An order by bytes (text_pattern_lt and its kin) is answered there as before.
+#: name on Trino and on ClickHouse; every other dialect keeps the old table's form
+#: (provisa.transpiler.pg_forms_types). An order by bytes (text_pattern_lt and its kin) is answered there as before.
 _COLLATED_ORDERS = {
     "text_lt": "One text before another in the database's collation.",
     "text_le": "One text before or equal to another in the database's collation.",
@@ -107,14 +107,29 @@ _COLLATED_ORDERS = {
     "bpchar_smaller": "The earlier of two character strings in the database's collation.",
 }
 
-COLLATED_ORDERS: tuple[Feature, ...] = tuple(
-    trino.by_name(
-        name,
-        FAMILY,
-        summary,
-        "Refused by name: Trino has no collation, and orders text by its code points.",
+#: ClickHouse compares no text by a collation either: a COLLATE clause in a comparison is a syntax
+#: error there (run 43410717058), and its own order of text is by bytes.
+_NO_COLLATION = {
+    **dict.fromkeys(trino.TRINO, "Trino has no collation, and orders text by its code points"),
+    "clickhouse": "ClickHouse compares no text by a collation, and orders text by its bytes",
+}
+
+
+def _collated_order(name: str, summary: str) -> Feature:
+    rules = {
+        dialect: trino.refusing(name, f"{name}: refused by name: {why}.", lambda *_: True)
+        for dialect, why in _NO_COLLATION.items()
+    }
+    limitations = {
+        dialect: (Limitation(f"Refused by name: {why}."),) for dialect, why in _NO_COLLATION.items()
+    }
+    return Feature(
+        name, FAMILY, summary, read=Side(rules=(Rule(None, rules),), limitations=limitations)
     )
-    for name, summary in _COLLATED_ORDERS.items()
+
+
+COLLATED_ORDERS: tuple[Feature, ...] = tuple(
+    _collated_order(name, summary) for name, summary in _COLLATED_ORDERS.items()
 )
 
 FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR, *COLLATED_ORDERS)
