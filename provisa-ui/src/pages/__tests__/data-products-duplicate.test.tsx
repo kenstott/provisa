@@ -145,7 +145,11 @@ const TABLES = [
 ];
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
-  useDomains: () => ({ domains: [{ id: "care", description: "" }], loading: false, refetch: vi.fn() }),
+  useDomains: () => ({
+    domains: [{ id: "care", description: "" }],
+    loading: false,
+    refetch: vi.fn(),
+  }),
   useTables: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
   useSources: () => ({ sources: none, loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: none, loading: false, refetch: vi.fn() }),
@@ -190,9 +194,9 @@ describe("Duplicate, in a data product's panel head", () => {
     open();
     fireEvent.click(await screen.findByTestId("duplicate-pet_health"));
     const card = await screen.findByTestId("data-product-create-card");
-    expect(card.querySelector<HTMLInputElement>('[data-testid="data-product-id-input"]')).toHaveValue(
-      "pet_health-copy",
-    );
+    expect(
+      card.querySelector<HTMLInputElement>('[data-testid="data-product-id-input"]'),
+    ).toHaveValue("pet_health-copy");
     expect(
       card.querySelector<HTMLInputElement>('[data-testid="data-product-name-input"]'),
     ).toHaveValue("Pet Health");

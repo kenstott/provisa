@@ -126,9 +126,10 @@ describe("every detail panel that offers Edit in its head offers Duplicate", () 
   for (const { name, text } of editing) {
     it(name, () => {
       if (name in STATED_EXCEPTIONS) {
-        expect(offersDuplicate(text), `${name} offers Duplicate: take it off STATED_EXCEPTIONS`).toBe(
-          false,
-        );
+        expect(
+          offersDuplicate(text),
+          `${name} offers Duplicate: take it off STATED_EXCEPTIONS`,
+        ).toBe(false);
         return;
       }
       if (name in NOT_YET_CONVERTED) {

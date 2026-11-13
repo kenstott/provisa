@@ -64,7 +64,13 @@ vi.mock("../api/actions", () => ({
   fetchActions: vi.fn(async () => ({ functions: [], webhooks: [] })),
 }));
 
-const VALUES = ["nightly", "Nightly Rollup", "0 2 * * *", "INSERT INTO audit.d SELECT 1", "nightly-copy"];
+const VALUES = [
+  "nightly",
+  "Nightly Rollup",
+  "0 2 * * *",
+  "INSERT INTO audit.d SELECT 1",
+  "nightly-copy",
+];
 const openRow = () => fireEvent.click(screen.getByTestId("scheduled-task-row-nightly"));
 const panel = () => screen.getByTestId("scheduled-tasks-split-panel");
 

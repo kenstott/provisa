@@ -75,7 +75,12 @@ const EU_REGION: PlatformRegion = {
   purposes: ["residency"],
   data_addresses: ["https://data.eu.example.com"],
 };
-const US_REGION: PlatformRegion = { id: "us", description: "Analytics", purposes: ["latency"], data_addresses: [] };
+const US_REGION: PlatformRegion = {
+  id: "us",
+  description: "Analytics",
+  purposes: ["latency"],
+  data_addresses: [],
+};
 const GRANT: GrantView = {
   platform_regions: [EU_REGION, US_REGION],
   stores: STORES,
@@ -101,7 +106,12 @@ beforeEach(() => {
 });
 
 describe("Platform › Regions", () => {
-  const VALUES = ["eu", "Customer data that stays in the EU", "https://data.eu.example.com", "eucopy"];
+  const VALUES = [
+    "eu",
+    "Customer data that stays in the EU",
+    "https://data.eu.example.com",
+    "eucopy",
+  ];
   const panel = () => screen.getByTestId("platform-regions-split-panel");
 
   it("+ Add region opens empty after a region was selected", async () => {
@@ -125,7 +135,9 @@ describe("Platform › Regions", () => {
   it("offers Duplicate beside Edit and Delete, named Duplicate", async () => {
     render(<PlatformRegionsTab />);
     fireEvent.click(await screen.findByTestId("platform-region-row-eu"));
-    expect(await screen.findByTestId("platform-region-duplicate")).toHaveAccessibleName("Duplicate");
+    expect(await screen.findByTestId("platform-region-duplicate")).toHaveAccessibleName(
+      "Duplicate",
+    );
   });
 
   it("opens the add form filled from the region, under an id that takes no separator", async () => {

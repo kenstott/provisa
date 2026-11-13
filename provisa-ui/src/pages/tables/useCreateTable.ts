@@ -36,6 +36,8 @@ export function registrationInput(
   return {
     ...registration.input,
     ...buildTableUpdateInput(draft),
+    // A view's name is chosen in its form (a duplicate's is a new one); a table's is the source's.
+    tableName: draft.tableName,
     // A region is sent only where regions exist: the create step put one in its input then.
     ...("region" in registration.input ? { region: draft.region } : {}),
     cacheTtl: cacheTtl ?? undefined,

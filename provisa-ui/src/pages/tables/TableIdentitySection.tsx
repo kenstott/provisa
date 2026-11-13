@@ -21,6 +21,7 @@ import {
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
+import { UNREGISTERED_ID } from "./draftTable";
 import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
 
 /** The Identity section of a table's form: the same when it is created and when it is edited. */
@@ -39,6 +40,9 @@ export function TableIdentitySection({
   const { t } = useTranslation();
   const conventions = useNamingConventions();
   const [generatingDesc, setGeneratingDesc] = useState(false);
+  // A view not yet registered (a new one, or a duplicate) is named by its own name: it is the
+  // identity being chosen. A registered table or view keeps the name it was registered under.
+  const nameEditable = isView && editingTable.id === UNREGISTERED_ID;
   return (
     <FormLayout className="form-card" data-testid="table-section-identity-panel">
       <FormIdentifiers>
@@ -64,8 +68,18 @@ export function TableIdentitySection({
           <TextInput
             label={t("tableSections.table")}
             value={editingTable.tableName}
-            readOnly
-            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+            readOnly={!nameEditable}
+            required={nameEditable}
+            onChange={
+              nameEditable
+                ? (e) => setEditingTable({ ...editingTable, tableName: e.target.value })
+                : undefined
+            }
+            styles={
+              nameEditable
+                ? undefined
+                : { input: { color: "var(--text-muted)", cursor: "default" } }
+            }
             data-testid="table-edit-table"
           />
         </FormField>

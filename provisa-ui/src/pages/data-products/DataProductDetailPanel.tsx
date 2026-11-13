@@ -28,6 +28,7 @@ import type { DataProduct, ListedTable, Relationship } from "../../types/admin";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { Tip } from "../../components/Tip";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelActions } from "../../components/list/SplitPane";
 import type { DetailField } from "../../components/detail/DetailFields";
 import type { ProductLineage } from "../../api/lineage";
@@ -97,6 +98,8 @@ interface DataProductDetailPanelProps {
   onTagsChanged: () => void;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
+  /** Opens the create form filled from the product; given to a caller who may create products. */
+  onDuplicate?: () => void;
   /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
   // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
@@ -139,6 +142,7 @@ export function DataProductDetailPanel({
   editForm,
   onTagsChanged,
   onEdit,
+  onDuplicate,
   onDelete,
   products,
   members,
@@ -258,7 +262,7 @@ export function DataProductDetailPanel({
     });
   };
 
-  const actions = (canEdit || canDelete) && !editForm && (
+  const actions = (canEdit || canDelete || onDuplicate) && !editForm && (
     <PanelActions>
       {lifecycle.actions}
       {canEdit && (
@@ -274,6 +278,13 @@ export function DataProductDetailPanel({
             <Pencil size={14} />
           </ActionIcon>
         </Tip>
+      )}
+      {onDuplicate && (
+        <PanelDuplicate
+          name={p.id}
+          onDuplicate={onDuplicate}
+          testId={`data-product-detail-duplicate-${p.id}`}
+        />
       )}
       {canDelete && (
         <PanelDelete
@@ -410,12 +421,7 @@ export function DataProductDetailPanel({
         );
       case "requests":
         return (
-          <RequestsTab
-            key={bids}
-            productId={p.id}
-            datasets={datasets}
-            onLoaded={setRequests}
-          />
+          <RequestsTab key={bids} productId={p.id} datasets={datasets} onLoaded={setRequests} />
         );
       case "access":
         return <AccessSection core={core} reader={reader} />;
