@@ -1011,6 +1011,9 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # REQ-1943: the Sensitive data option. A column carrying a tag with it set is a sensitive
     # column, whose hiding only a holder of the sensitive_data right changes.
     sensitive: bool = False
+    # REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment must cite a library document or section;
+    # one that does not is reported as a gap, never refused.
+    requires_citation: bool = False
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
