@@ -38,6 +38,8 @@
     "policy_hidden": "छिपा",
     "policy_optional": "वैकल्पिक",
     "policy_required": "आवश्यक",
+    "requiredLabel": "आवश्यक",
+    "requiredDesc": "\"लागू होता है\" में दिए गए प्रकारों की हर वस्तु पर यह टैग होना चाहिए। जिस पर यह नहीं है, वह टैग रिपोर्ट में अनुपस्थित दिखता है।",
     "reasonPolicyBadge": "कारण: {{policy}}",
     "expiresPolicyBadge": "समाप्ति: {{policy}}",
     "createButton": "टैग बनाएँ",

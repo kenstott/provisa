@@ -849,6 +849,40 @@ class CrawlResultType:  # REQ-1785
 
 
 @strawberry.type
+class CombinedFileType:  # REQ-788
+    """One file a combined table reads, relative to its source's directory, and the listed table
+    it is."""
+
+    file: str
+    table: str
+
+
+@strawberry.type
+class FileColumnsDifferType:  # REQ-788
+    """A file whose columns differ from the others': what it lacks, what it adds, or why it could
+    not be read."""
+
+    file: str
+    missing: list[str]
+    extra: list[str]
+    error: str | None = None
+
+
+@strawberry.type
+class FileGlobPreviewType:  # REQ-788
+    """One table over many files, before it is registered: its glob, the files it reads, the
+    columns they share, the files that differ, and the files a derived glob adds to those picked."""
+
+    glob: str
+    files: list[CombinedFileType]
+    shared_columns: list[str]
+    differing: list[FileColumnsDifferType]
+    extra_files: list[str]
+    unmatched_tables: list[str]
+    reference_table: str | None = None
+
+
+@strawberry.type
 class KaggleDatasetType:  # REQ-1783
     """One Kaggle datasets/list search result — the token-gated picker's row shape (ref/id,
     title, subtitle). Deliberately separate from AvailableTableType/AvailableSchema: those back

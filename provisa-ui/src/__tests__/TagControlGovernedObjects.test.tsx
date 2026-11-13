@@ -43,6 +43,7 @@ function tag(id: string, appliesTo: TagObjectType[]): Tag {
     expiresPolicy: "hidden",
     paramPolicy: "none",
     requiresCitation: false,
+    required: false,
     citations: [],
     needsReview: false,
     paramValues: [],

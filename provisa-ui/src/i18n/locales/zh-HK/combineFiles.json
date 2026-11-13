@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "或符合的檔案",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "針對資料來源檔案的 glob，可合為一個表或每個檔案一個表。",
+    "modeLabel": "檔案的登記方式",
+    "perFile": "每個檔案一個表",
+    "combine": "合併為一個表",
+    "checking": "正在檢查檔案…",
+    "noMatch": "沒有檔案符合此 glob。",
+    "unmatched": "找不到 {{tables}} 對應的檔案。",
+    "matched_one": "{{glob}} 符合 {{count}} 個檔案",
+    "matched_other": "{{glob}} 符合 {{count}} 個檔案",
+    "sharedColumns": "共有的欄：{{columns}}",
+    "noSharedColumns": "它們沒有共有的欄。",
+    "differHeading": "這些檔案的欄不同，因此不能合為一個表。請排除它們，或輸入不符合它們的 glob：",
+    "differ": "{{file}} {{how}}",
+    "lacks": "缺少 {{columns}}",
+    "adds": "多出 {{columns}}",
+    "differUnreadable": "無法讀取 {{file}}：{{error}}",
+    "extra": "glob {{glob}} 亦符合 {{files}}，這些並非您選擇的。",
+    "includeExtra": "亦包括這些檔案",
+    "extraUnconfirmed": "請包括 glob 額外符合的檔案，或輸入只符合所需檔案的 glob。",
+    "nameLabel": "新表名稱",
+    "namePlaceholder": "complaints",
+    "nameRequired": "請為新表命名。",
+    "notRegistrable": "這些檔案不能登記為一個表。",
+    "sourceFileColumnLabel": "來源檔案欄",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "可選：記錄每行來自哪個檔案的欄。"
+  }
+}

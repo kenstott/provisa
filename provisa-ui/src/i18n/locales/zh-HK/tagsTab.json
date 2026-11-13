@@ -38,6 +38,8 @@
     "policy_hidden": "隱藏",
     "policy_optional": "可選",
     "policy_required": "必填",
+    "requiredLabel": "必填",
+    "requiredDesc": "「適用於」所列類型的每個物件都必須帶有此標籤。缺少此標籤的物件會在標籤報告中顯示為缺漏。",
     "reasonPolicyBadge": "原因：{{policy}}",
     "expiresPolicyBadge": "到期：{{policy}}",
     "createButton": "建立標籤",

@@ -15,6 +15,7 @@ import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import fcoseRaw from "cytoscape-fcose";
 import svgRaw from "cytoscape-svg";
+import provisaElk, { PROVISA_ELK } from "./elkLayout";
 
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
@@ -29,6 +30,7 @@ function register(type: "layout" | "core", name: string, m: CyExtModule): void {
 }
 register("layout", "elk", elkRaw as CyExtModule);
 register("layout", "fcose", fcoseRaw as CyExtModule);
+register("layout", PROVISA_ELK, provisaElk as unknown as CyExtModule);
 register("core", "svg", svgRaw as CyExtModule);
 
 export { cytoscape };

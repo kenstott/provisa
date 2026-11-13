@@ -46,6 +46,7 @@ declare module "*.graphql" {
   export const RLSRulesQuery: DocumentNode;
   export const AvailableSchemas: DocumentNode;
   export const AvailableTables: DocumentNode;
+  export const FileGlobPreview: DocumentNode;
   export const KaggleTokenValid: DocumentNode;
   export const KaggleDatasets: DocumentNode;
   export const StageKaggleDataset: DocumentNode;

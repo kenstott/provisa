@@ -79,6 +79,7 @@ const tag = (over: Partial<Tag> = {}): Tag => ({
   paramPolicy: "none",
   paramValues: [],
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   ...over,
