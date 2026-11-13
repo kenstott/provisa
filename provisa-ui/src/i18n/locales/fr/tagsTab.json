@@ -38,6 +38,8 @@
     "policy_hidden": "Masqué",
     "policy_optional": "Facultatif",
     "policy_required": "Obligatoire",
+    "requiredLabel": "Obligatoire",
+    "requiredDesc": "Tout objet des types indiqués dans « S'applique à » doit porter ce tag. Un objet sans ce tag apparaît comme manquant dans le rapport des tags.",
     "reasonPolicyBadge": "Motif : {{policy}}",
     "expiresPolicyBadge": "Expiration : {{policy}}",
     "createButton": "Créer le tag",

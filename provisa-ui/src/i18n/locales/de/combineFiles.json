@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "Oder Dateien passend zu",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Ein Glob über die Dateien der Quelle, als eine Tabelle oder eine pro Datei.",
+    "modeLabel": "Wie die Dateien registriert werden",
+    "perFile": "Eine Tabelle pro Datei",
+    "combine": "Zu einer Tabelle zusammenfassen",
+    "checking": "Dateien werden geprüft…",
+    "noMatch": "Keine Datei passt zu diesem Glob.",
+    "unmatched": "Für {{tables}} wurde keine Datei gefunden.",
+    "matched_one": "{{count}} Datei passt zu {{glob}}",
+    "matched_other": "{{count}} Dateien passen zu {{glob}}",
+    "sharedColumns": "Gemeinsame Spalten: {{columns}}",
+    "noSharedColumns": "Sie haben keine gemeinsame Spalte.",
+    "differHeading": "Die Spalten dieser Dateien weichen ab, daher können sie keine Tabelle bilden. Lassen Sie sie weg oder geben Sie einen Glob ein, der sie nicht erfasst:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "fehlt {{columns}}",
+    "adds": "ergänzt {{columns}}",
+    "differUnreadable": "{{file}} konnte nicht gelesen werden: {{error}}",
+    "extra": "Der Glob {{glob}} erfasst auch {{files}}, die Sie nicht ausgewählt haben.",
+    "includeExtra": "Auch diese einschließen",
+    "extraUnconfirmed": "Schließen Sie die zusätzlich erfassten Dateien ein oder geben Sie einen Glob ein, der nur die gewünschten Dateien erfasst.",
+    "nameLabel": "Name der neuen Tabelle",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Benennen Sie die neue Tabelle.",
+    "notRegistrable": "Diese Dateien können nicht als eine Tabelle registriert werden.",
+    "sourceFileColumnLabel": "Spalte für die Quelldatei",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Optional: eine Spalte mit der Datei, aus der jede Zeile stammt."
+  }
+}

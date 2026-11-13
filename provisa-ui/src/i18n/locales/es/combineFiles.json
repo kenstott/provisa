@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "O archivos que coincidan con",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Un glob sobre los archivos del origen, como una tabla o una por archivo.",
+    "modeLabel": "Cómo se registran los archivos",
+    "perFile": "Una tabla por archivo",
+    "combine": "Combinar en una tabla",
+    "checking": "Comprobando los archivos…",
+    "noMatch": "Ningún archivo coincide con este glob.",
+    "unmatched": "No se encontró ningún archivo para {{tables}}.",
+    "matched_one": "{{count}} archivo coincide con {{glob}}",
+    "matched_other": "{{count}} archivos coinciden con {{glob}}",
+    "sharedColumns": "Columnas en común: {{columns}}",
+    "noSharedColumns": "No comparten ninguna columna.",
+    "differHeading": "Las columnas de estos archivos difieren, así que no pueden ser una tabla. Déjelos fuera o escriba un glob que no los incluya:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "le falta {{columns}}",
+    "adds": "añade {{columns}}",
+    "differUnreadable": "No se pudo leer {{file}}: {{error}}",
+    "extra": "El glob {{glob}} también coincide con {{files}}, que no eligió.",
+    "includeExtra": "Incluirlos también",
+    "extraUnconfirmed": "Incluya los archivos que el glob también abarca o escriba un glob que abarque solo los archivos que desea.",
+    "nameLabel": "Nombre de la nueva tabla",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Ponga nombre a la nueva tabla.",
+    "notRegistrable": "Estos archivos no se pueden registrar como una tabla.",
+    "sourceFileColumnLabel": "Columna del archivo de origen",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Opcional: una columna con el archivo del que procede cada fila."
+  }
+}

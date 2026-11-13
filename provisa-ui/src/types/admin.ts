@@ -197,6 +197,9 @@ export interface Tag {
   paramValues: TagParamValue[];
   // Each assignment of the tag must cite a library document or section (a gap when it does not).
   requiresCitation: boolean;
+  // Every object of the kinds in appliesTo must carry the tag; one without it is a missing row in
+  // the tags report.
+  required: boolean;
   // The library sections that define the tag, and whether one of them changed or is gone.
   citations: LibraryCitation[];
   needsReview: boolean;
