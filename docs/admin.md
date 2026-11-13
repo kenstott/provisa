@@ -395,6 +395,20 @@ The left panel lists every registered table in the `ops` domain, sorted by alias
 
 **Deleting.** The trash icon appears only for custom reports. Seeded management views cannot be deleted from this interface.
 
+### Tags report
+
+`tags_report` has one row for each tag on each object. It also has a row for each required tag missing from an object of a kind the tag applies to. Polly and MCP clients read the same rows from the meta table `meta.tag_instances`.
+
+Each row carries the object's kind, id, domain and owner. Its name comes from the names table of the last model build. The row also carries the tag's definition, whether the tag is required, and whether its assignments must cite a library section. An assigned row adds the parameter, reason, expiry, purpose, review date, and who assigned it and when.
+
+The `via` column says how the tag got onto the object. `assigned` means someone put it there. `inherited` means the column's glossary term carries it. `derived` means Provisa computes it from the object's registered state, as it does for `fact`. `missing` marks a required tag the object lacks.
+
+Provisa computes the citation columns and the status each time you read the report and stores none of them. `citations_broken` counts cited sections that no longer exist. `citations_drifted` counts sections whose text changed after they were cited. `citation_missing` is true when the tag requires a citation and the assignment has none. A row whose required tag is missing, whose citations need any of this, or whose tag definition cites a section that changed has the status `needs attention`, and `status_reason` lists why. Every other row is `clean`.
+
+You see a row only when you can read the table it is about. Rows about other kinds of object, such as roles or row rules, appear only to roles that read the whole catalog.
+
+Group by `base_tag_id` to see each tag's quality, or by `domain_id` or `object_key` to see what needs attention there.
+
 ## Table preview
 
 Expand any table row on the Tables page. The **Preview** button opens a 90%-width modal with the table's live governed data.
