@@ -29,6 +29,9 @@ import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
 import { registrationOf } from "./registrationDefaults";
 import { useManyTables } from "./useManyTables";
+import { useCombineFiles } from "./useCombineFiles";
+import { CombineFilesSection } from "./CombineFilesSection";
+import { isFilesSourceType } from "./tableSectionFields";
 import { tableChoices } from "./tableChoices";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
@@ -57,6 +60,7 @@ import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible } from "./helpers";
 import { CheckerFields } from "./CheckerFields";
 import {
+  FieldGroup,
   FormChecks,
   FormField,
   FormFooter,
@@ -246,14 +250,18 @@ export function RegisterTableForm({
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
     listsTables ? sourceId : null,
   );
-  // REQ-2234: the Schema field is absent, not disabled, when the source has one schema.
+  // REQ-2234: the Schema field is absent, not disabled, when the source has one schema. The schema
+  // a listed table is registered under is then that one schema, read from the list itself: a
+  // copy of it kept in state (set by an effect once the list answered) could be empty while the
+  // form showed it, and the registration was refused as having no schema.
   const oneSchema = availableSchemas.length === 1;
+  const listedSchema = oneSchema ? availableSchemas[0] : schemaName;
   const {
     tables: availableTables,
     loading: loadingTables,
     starting: startingTables,
     startingTimedOut: startingTablesTimedOut,
-  } = useAvailableTables(listsTables && schemaName ? sourceId : null, schemaName || null);
+  } = useAvailableTables(listsTables && listedSchema ? sourceId : null, listedSchema || null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- form cascade reset: dependent fields cleared when source selection changes
@@ -301,13 +309,6 @@ export function RegisterTableForm({
       .then(setProfilerCatalog)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [isProfiler, sourceId, setError]);
-
-  useEffect(() => {
-    if (availableSchemas.length === 1) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-select the only available schema; not derivable without an effect because schemas load asynchronously
-      setSchemaName(availableSchemas[0]);
-    }
-  }, [availableSchemas, sourceId]);
 
   // An authored table's alias follows its name.
   useEffect(() => {
@@ -554,7 +555,7 @@ export function RegisterTableForm({
     sourceId,
     sourceType,
     domainId,
-    schemaName,
+    schemaName: listedSchema,
     regionInput,
     roleIds: roles.map((r) => r.id),
     offered: listsTables ? availableTables : [],
@@ -574,7 +575,41 @@ export function RegisterTableForm({
     onRegisterOne: (name) => void manyTables.registerAsDraft(name, onContinue, setError),
     opening: manyTables.opening,
   });
-  const listing = !schemaName || loadingTables;
+  // REQ-788: on a files source, files picked or a glob typed may be combined into one table.
+  const combine = useCombineFiles({
+    sourceId,
+    filesSource: listsTables && isFilesSourceType(sourceType),
+    offered: availableTables.map((tbl) => tbl.name),
+    picked: manyTables.ticked,
+  });
+  // A glob typed picks the listed tables of the files it matches.
+  const { setTicked } = manyTables;
+  const globTables =
+    combine.typedGlob.trim() && combine.preview
+      ? combine.preview.files.map((f) => f.table).join("\n")
+      : null;
+  useEffect(() => {
+    if (globTables !== null) setTicked(globTables ? globTables.split("\n") : []);
+  }, [globTables, setTicked]);
+  const registerCombined = () => {
+    const outcome = combine.combined(t);
+    if ("problem" in outcome) {
+      setError(outcome.problem);
+      return;
+    }
+    void manyTables.registerAll(domainId, onRegisteredMany, setError, outcome.combined);
+  };
+  const globHint = !combine.typedGlob.trim()
+    ? t("combineFiles.globHint")
+    : combine.checking || combine.preview === null
+      ? t("combineFiles.checking")
+      : combine.preview.files.length === 0
+        ? t("combineFiles.noMatch")
+        : t("combineFiles.matched", {
+            count: combine.preview.files.length,
+            glob: combine.preview.glob,
+          });
+  const listing = !listedSchema || loadingTables;
   // What the Tables field's hint says: still listing, or that there is nothing to pick.
   const tablesStatus = startingTablesTimedOut
     ? t("registerTableForm.tableStartingTimedOut")
@@ -754,6 +789,34 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
+        {/* The glob and the choice it offers wrap together, beside each other at every width. */}
+        {listsTables && isFilesSourceType(sourceType) && (
+          <FieldGroup>
+            <FormField size="medium" hint={globHint}>
+              <TextInput
+                label={t("combineFiles.globLabel")}
+                placeholder={t("combineFiles.globPlaceholder")}
+                value={combine.typedGlob}
+                onChange={(e) => combine.setTypedGlob(e.currentTarget.value)}
+                data-testid="register-tables-file-glob"
+              />
+            </FormField>
+            {combine.offeredChoice && (
+              <FormField size="medium">
+                <SegmentedControl
+                  aria-label={t("combineFiles.modeLabel")}
+                  value={combine.mode}
+                  onChange={(v) => combine.setMode(v as "perFile" | "combine")}
+                  data={[
+                    { value: "perFile", label: t("combineFiles.perFile") },
+                    { value: "combine", label: t("combineFiles.combine") },
+                  ]}
+                  data-testid="register-tables-combine-mode"
+                />
+              </FormField>
+            )}
+          </FieldGroup>
+        )}
         {authored && (
           <FormField size="medium">
             <TextInput
@@ -766,6 +829,19 @@ export function RegisterTableForm({
           </FormField>
         )}
       </FormIdentifiers>
+      {combine.combining && (
+        <CombineFilesSection
+          preview={combine.preview}
+          checking={combine.checking}
+          error={combine.error}
+          name={combine.name}
+          setName={combine.setName}
+          sourceFileColumn={combine.sourceFileColumn}
+          setSourceFileColumn={combine.setSourceFileColumn}
+          includeExtra={combine.includeExtra}
+          setIncludeExtra={combine.setIncludeExtra}
+        />
+      )}
       {productsMode && (
         <DbtPublicProducts key={sourceId} sourceId={sourceId} onPreview={onPreview} />
       )}
@@ -921,6 +997,15 @@ export function RegisterTableForm({
           ) : authored ? (
             <Button onClick={handleSubmit} data-testid="register-table-submit">
               {t("registerTableForm.continue")}
+            </Button>
+          ) : combine.combining ? (
+            <Button
+              onClick={registerCombined}
+              loading={manyTables.registering}
+              disabled={!combine.registrable}
+              data-testid="register-many-tables-submit"
+            >
+              {t("registerManyTables.register", { count: 1 })}
             </Button>
           ) : (
             <Button

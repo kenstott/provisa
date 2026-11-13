@@ -1813,3 +1813,24 @@ query SampleOpenapiColumns($sourceId: String!, $tableName: String!, $params: JSO
 query NamingConventions {
   namingConventions
 }
+
+# REQ-788: one table over many files of a files source, before it is registered.
+query FileGlobPreview($sourceId: String!, $glob: String, $tables: [String!]) {
+  fileGlobPreview(sourceId: $sourceId, glob: $glob, tables: $tables) {
+    glob
+    files {
+      file
+      table
+    }
+    sharedColumns
+    differing {
+      file
+      missing
+      extra
+      error
+    }
+    extraFiles
+    unmatchedTables
+    referenceTable
+  }
+}
