@@ -90,8 +90,7 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "pg_replication_origin_xact_setup": _ANY,
     "pg_sleep_for": _ANY,
     "pg_sleep_until": _ANY,
-    # An interval is no value of these engines.
-    "age": _ANY,
+    # An interval is no value of these engines. age is the polyfill grid's row (polyfill.server).
     "make_interval": _ANY,
     "time_from_parts": _ANY,
     "make_timestamptz": _ANY,

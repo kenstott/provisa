@@ -29,6 +29,7 @@ from provisa.transpiler.polyfill import (
     numbers,
     records,
     regex,
+    server,
     textsearch,
     type_io,
     unheld,
@@ -66,6 +67,7 @@ GRID = Grid(
     + dates.FEATURES
     + calls.FEATURES
     + casts.FEATURES
+    + server.FEATURES
 )
 
 __all__ = [
