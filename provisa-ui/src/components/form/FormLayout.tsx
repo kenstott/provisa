@@ -548,7 +548,7 @@ type ButtonExtras = { "data-testid"?: string; disabled?: boolean };
  *
  * `panel`: the form is a detail panel's content, and these are the panel's actions while it is
  * open. In a panel (`SplitPane`) the same two buttons then sit in its pinned head beside the
- * name -- Save borderless and compact, Cancel the one Cancel -- in place of a row at the form's foot;
+ * name -- both without border or fill, as the head's other actions are -- in place of a row at the form's foot;
  * outside a panel a form that says `panel` keeps the row at its foot. One implementation, the
  * same test ids either way. `problem` is what the form has to say of a save that did not go
  * through: in a panel a line under its head, else a line above the row.
@@ -589,8 +589,8 @@ export function FormFooter({
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
   const busy = saving || pending;
-  // Save is the one Save (SaveButton) and Cancel the one Cancel (CancelButton): the same in the
-  // head, at the foot and in a dialog.
+  // Save is the one Save (SaveButton) and Cancel the one Cancel (CancelButton): the filled Save and
+  // the bordered Cancel at a foot and in a dialog; in a panel's head each takes the head's style.
   const said = problem ? (
     <div className="form-problem" role="alert" data-testid="form-problem">
       {problem}
@@ -605,6 +605,7 @@ export function FormFooter({
           form={form}
           busy={busy}
           disabled={saveProps?.disabled === true}
+          head={inHead}
           testId={saveProps?.["data-testid"]}
         />
       )}
@@ -613,6 +614,7 @@ export function FormFooter({
         <CancelButton
           onClick={onCancel}
           disabled={busy || cancelProps?.disabled === true}
+          head={inHead}
           testId={cancelProps?.["data-testid"]}
         />
       )}

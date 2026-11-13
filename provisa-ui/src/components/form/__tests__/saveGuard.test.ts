@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// One Save (maintainer, 2026-11-12: a panel head shows the Save a form's foot shows).
-// components/form/SaveButton.tsx draws it: filled primary, the check, one size. No other file
-// labels a button with the shared Save word, so a head, a foot and a dialog cannot drift apart.
+// One Save (maintainer, 2026-11-12: in a panel head Save has no border and no fill, as the head's
+// other actions; the filled Save stays at a page form's foot and in a dialog). components/form/
+// SaveButton.tsx draws both: filled primary, the check, one size, unless it is `head`, where it
+// takes the head's style. No other file labels a button with the shared Save word.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -28,11 +29,11 @@ function componentFiles(dir: string): string[] {
 }
 
 describe("no file but the Save labels a button with the shared Save word", () => {
-  it("the Save itself is filled, full size and labelled with the shared word", () => {
+  it("the Save itself is filled and full size except in a head, and labelled with the shared word", () => {
     const text = readFileSync(join(SRC, THE_SAVE), "utf8");
     expect(text).toContain('t("common.save")');
-    expect(text).toContain('variant="filled"');
-    expect(text).toContain('size="sm"');
+    expect(text).toContain('head ? {} : { variant: "filled", size: "sm" }');
+    expect(text).toContain("head = false");
   });
 
   for (const file of componentFiles(SRC).filter((f) => f !== THE_SAVE)) {
