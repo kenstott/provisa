@@ -61,11 +61,10 @@ def _recv_timeout() -> int:
 # lockout as a lockout rather than as one more wrong password.
 _RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
 _ARGUMENT_ERROR = "Neo.ClientError.Statement.ArgumentError"
-# An HTTP status from the shared command executor, as the Neo4j error a Bolt client reads.
-_BOLT_CODE_FOR_STATUS = {
-    403: "Neo.ClientError.Security.Forbidden",
-    404: "Neo.ClientError.Procedure.ProcedureNotFound",
-}
+# A fault inside Provisa (not a statement the client got wrong): Neo4j's code for it, and a message
+# that carries nothing of the server's internals -- those are in the server log.
+_INTERNAL_ERROR = "Neo.DatabaseError.General.UnknownError"
+_INTERNAL_ERROR_MESSAGE = "An internal error occurred; see the server log."
 
 
 def _scheme_of(meta: dict) -> str:
@@ -955,32 +954,19 @@ class BoltSession:
                 # REQ-1905: whatever the RUN failed with, its deadline has passed.
                 self._fail_timed_out(deadline)
                 return
-            if isinstance(exc, PermissionError):
-                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
-                return
-            from starlette.exceptions import HTTPException as _HTTPException
+            from provisa.bolt.run_failure import client_failure
 
-            from provisa.cypher.command_call import CommandCallRefused
-
-            if isinstance(exc, _HTTPException):
-                # The shared executor's answer (a command call): said in Neo4j's terms.
-                self.send_failure(
-                    _BOLT_CODE_FOR_STATUS.get(exc.status_code, _ARGUMENT_ERROR), exc.detail
-                )
+            refused = client_failure(exc, _app_state.federation_engine)
+            if refused is not None:
+                # A statement refused on purpose, in its own words, as Cypher over HTTP answers
+                # it (provisa.bolt.run_failure): the client's to read and fix.
+                log.warning("[BOLT] RUN refused: %s", exc)
+                self.send_failure(*refused)
                 return
-            if isinstance(exc, CommandCallRefused):
-                self.send_failure(_ARGUMENT_ERROR, str(exc))
-                return
-            if isinstance(exc, databases.DatabaseCommandError):
-                self.send_failure(exc.code, str(exc))
-                return
-            import logging as _logging
-            import traceback as _tb
-
-            _logging.getLogger("uvicorn.error").warning(
-                "[BOLT] RUN failed: %s\n%s", exc, _tb.format_exc()
-            )
-            self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
+            # Anything else is a fault in Provisa, never the client's mistake: said as one, with
+            # no internals, and logged here once with its traceback.
+            log.error("[BOLT] RUN failed with an internal fault", exc_info=exc)
+            self.send_failure(_INTERNAL_ERROR, _INTERNAL_ERROR_MESSAGE)
             return
         finally:
             with shield.lock:  # execution is over: this thread is inside no deadline's scope
