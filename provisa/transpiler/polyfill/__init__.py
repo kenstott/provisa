@@ -24,11 +24,14 @@ from provisa.transpiler.polyfill import (
     casts,
     collations,
     dates,
+    json_values,
     money,
     network,
     numbers,
+    ranges,
     records,
     regex,
+    server,
     textsearch,
     type_io,
     unheld,
@@ -66,6 +69,9 @@ GRID = Grid(
     + dates.FEATURES
     + calls.FEATURES
     + casts.FEATURES
+    + server.FEATURES
+    + ranges.FEATURES
+    + json_values.FEATURES
 )
 
 __all__ = [
