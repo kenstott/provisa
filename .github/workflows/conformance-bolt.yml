@@ -9,11 +9,11 @@ name: Conformance (Bolt)
 # and decision) or failed (REQ-2167, amended 2026-10-28); a test the driver's suite skips for
 # every server is skipped by design in its suite group, citing the suite's reason, and failed if
 # no group names it. A failing test is data, written to the job summary and to the artifact
-# conformance-bolt.json (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md),
-# never a job failure. pytest's own line in the run step counts by pytest's outcomes; the three
-# counts are the Summarise step's. The job fails only when the Provisa instance did not start or no
-# test ran, until Bolt is at its baseline (scripts/conformance/by_design.py AT_BASELINE,
-# REQ-2167): then also on a failed test.
+# conformance-bolt.json (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md).
+# pytest's own line in the run step counts by pytest's outcomes; the three counts are the Summarise
+# step's. The job fails when the Provisa instance did not start or no test ran, and, at its last
+# step (scripts/conformance/baseline_gate.py), when a test fails that
+# scripts/conformance/expected/bolt.json does not list or a listed one passes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance), with password
 # auth: the driver signs in as the job user, whom a role mapping rule maps to bolt_examples, a role
@@ -21,9 +21,12 @@ name: Conformance (Bolt)
 # DELETE a cleanup empties their own graph and never reaches conformance.types_fixture.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  # Every push to a release branch runs this: it gates the release (REQ-1989). A push to main
+  # never does; main runs it nightly, so the expected-failures gate judges main every day.
   push:
     branches: ['release/**']
+  schedule:
+    - cron: '20 3 * * *'
   workflow_dispatch:
     inputs:
       ref:
@@ -197,3 +200,11 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/bolt.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a filtered or partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases bolt "$RUNNER_TEMP/report/conformance-bolt.json"

@@ -28,9 +28,12 @@ name: Conformance (drivers)
 # minimum bcrypt cost.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  # Every push to a release branch runs this: it gates the release (REQ-1989). A push to main
+  # never does; main runs it nightly, so each driver's expected-failure list judges main every day.
   push:
     branches: ['release/**']
+  schedule:
+    - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
       ref:

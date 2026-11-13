@@ -9,14 +9,19 @@ name: Conformance (GraphQL over HTTP)
 # scripts/conformance/fill_docs.py into docs/conformance/graphql.md). GraphQL over HTTP is at its
 # baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): every audit, whatever its
 # level, is passed, skipped by design or failed (amended 2026-10-28), and the job fails when an
-# audit fails, when the Provisa instance did not start, or when no audit ran.
+# audit fails that scripts/conformance/expected/graphql.json (empty) does not list, judged by
+# scripts/conformance/baseline_gate.py at its last step, when the Provisa instance did not start,
+# or when no audit ran.
 #
 # The instance is the pgwire conformance job's (see conformance-pgwire.yml).
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  # Every push to a release branch runs this: it gates the release (REQ-1989). A push to main
+  # never does; main runs it nightly, so the expected-failures gate judges main every day.
   push:
     branches: ['release/**']
+  schedule:
+    - cron: '20 4 * * *'
   workflow_dispatch:
     inputs:
       ref:
@@ -109,11 +114,6 @@ jobs:
             "http://127.0.0.1:$PROVISA_API_PORT/data/graphql" org_admin "$CONFORMANCE_AUTHORIZATION" \
             "$RUNNER_TEMP/report/conformance-graphql.json" "$RUNNER_TEMP/report/conformance-graphql.md" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-graphql.md" >> "$GITHUB_STEP_SUMMARY"
-          # REQ-2167: GraphQL over HTTP is at its baseline (by_design.AT_BASELINE): a failed audit
-          # fails the job.
-          if [ -z "${ran:-}" ]; then
-            .venv/bin/python scripts/conformance/baseline_gate.py graphql "$RUNNER_TEMP/report/conformance-graphql.json" || ran=$?
-          fi
           exit "${ran:-0}"
 
       - name: Upload results
@@ -136,3 +136,11 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/graphql.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a filtered or partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases graphql "$RUNNER_TEMP/report/conformance-graphql.json"
