@@ -509,14 +509,12 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
         "needs.plan.outputs.warehouse == 'true'", "inputs.tests == ''"
     )
     assert "ui-core-after.sh" in job["with"]["after"]
-    # The lanes workflow is started by the nightly schedule, on request, and by a push to a
-    # release branch, which it gates; never by a push to main.
+    # The lanes workflow is started by the nightly schedule and on request (a dispatch on a
+    # release branch gates it); never by a push.
     suite = yaml.safe_load((workflows / "integration-suite.yml").read_text())
-    assert set(suite[True]) == {"push", "schedule", "workflow_dispatch"}
-    assert suite[True]["push"] == {"branches": ["release/**"]}
+    assert set(suite[True]) == {"schedule", "workflow_dispatch"}
     core_ui = yaml.safe_load((workflows / "ui-e2e-core.yml").read_text())
-    assert set(core_ui[True]) == {"push", "workflow_dispatch", "workflow_call"}
-    assert core_ui[True]["push"] == {"branches": ["release/**"]}
+    assert set(core_ui[True]) == {"workflow_dispatch", "workflow_call"}
     for name in ("playwright", "provisioning"):
         assert "--project=core" in core_ui["jobs"][name]["with"]["run"], name
         assert "--project=warehouse" not in core_ui["jobs"][name]["with"]["run"], name

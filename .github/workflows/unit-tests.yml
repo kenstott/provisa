@@ -1,14 +1,15 @@
 name: Unit Tests
 
-# Runs on main, and on release/** where it gates a release (release-cut.yml reads the result).
+# Runs on main, and on dispatch for a release (release-cut.yml reads the result); a push to release/**
+# does not start it, the lander having run it on the merged sha before the push.
 # tests/unit/ — pure, no Docker/live-service dependency (verified: no test in this directory
 # carries an integration/e2e/requires_* marker). Runs on every push/PR so a regression is caught
 # in minutes, not only when the (much more expensive) e2e lanes happen to run — see
-# ui-e2e-core.yml/ui-e2e-trino.yml, which are workflow_dispatch/release-branch only.
+# ui-e2e-core.yml/ui-e2e-trino.yml, which are workflow_dispatch only.
 
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
