@@ -800,6 +800,15 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         (translator._element_list_kind), or of one item of one (translator._element_item_kind);
         None for any other expression."""
         kind = self._element_item_kind(expr) or self._element_list_kind(expr)
+        if (
+            kind is None
+            and isinstance(expr, FunctionCall)
+            and expr.name.lower() == "collect"
+            and len(expr.args) == 1
+            and isinstance(expr.args[0], FunctionCall)
+        ):
+            # collect(nodes(p)) of a walk: one list of them per row, each read as theirs is.
+            kind = self._element_list_kind(expr.args[0])
         return _ELEMENT_KINDS.get(kind or "")
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
