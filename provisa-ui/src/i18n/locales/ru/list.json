@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "Будут удалены: {{names}}. Те, на которые ещё что-то ссылается, сохранятся, с указанием причины.",
     "bulkRefused_one": "Не удалено: {{count}}",
     "bulkRefused_other": "Не удалено: {{count}}",
-    "dismiss": "Закрыть"
+    "dismiss": "Закрыть",
+    "duplicate": "Дублировать",
+    "duplicateNamed": "Дублировать {{name}}"
   }
 }

@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "Seront supprimés : {{names}}. Ceux auxquels un objet fait encore référence sont conservés, avec la raison.",
     "bulkRefused_one": "{{count}} n’a pas été supprimé :",
     "bulkRefused_other": "{{count}} n’ont pas été supprimés :",
-    "dismiss": "Fermer"
+    "dismiss": "Fermer",
+    "duplicate": "Dupliquer",
+    "duplicateNamed": "Dupliquer {{name}}"
   }
 }

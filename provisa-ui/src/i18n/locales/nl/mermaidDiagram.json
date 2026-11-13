@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "Diagram niet beschikbaar"
+    "unavailable": "Diagram niet beschikbaar",
+    "fitWidth": "Breedte passend maken",
+    "canvasLabel": "Diagram van het queryplan"
   }
 }

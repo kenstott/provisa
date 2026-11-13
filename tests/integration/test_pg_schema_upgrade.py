@@ -446,6 +446,17 @@ _CREATE_ONLY = {
     "events": "id source_table event_type payload created_at",
     "fake_adequacy_checks": "table_id column_name check_name checked_at status measure detail",
     "file_source_mtimes": "table_id source_mtime synced_at",
+    "glossary_ontology_alignments": (
+        "id import_id item_id term_id other_item_id rel_type item_is_source basis status "
+        "use_definition decided_by decided_at tenant_id"
+    ),
+    "glossary_ontology_imports": (
+        "id title file_name format domains summary imported_by imported_at applied_by applied_at "
+        "tenant_id"
+    ),
+    "glossary_ontology_items": (
+        "id import_id ordinal name kind definition iri payload status term_id tenant_id"
+    ),
     "glossary_term_domains": "id term_id domain_id tenant_id",
     "glossary_term_drafts": (
         "id scan_id ordinal name category sense definition definition_kind proposal match_term_id "

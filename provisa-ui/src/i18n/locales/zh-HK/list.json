@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "將會刪除：{{names}}。仍被其他物件引用的項目會保留，並說明原因。",
     "bulkRefused_one": "{{count}} 項未刪除：",
     "bulkRefused_other": "{{count}} 項未刪除：",
-    "dismiss": "關閉"
+    "dismiss": "關閉",
+    "duplicate": "複製",
+    "duplicateNamed": "複製 {{name}}"
   }
 }

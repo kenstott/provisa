@@ -44,6 +44,7 @@
     "purposeBody": "Uma fonte é uma conexão registrada a um sistema que contém dados — um banco de dados, um warehouse, um repositório de arquivos, uma API. Registrá-la permite que o Provisa leia seus esquemas e a consulte na mesma linguagem de qualquer outra fonte, sem copiar os dados para lugar nenhum.",
     "purposeAdd": "Adicionar uma fonte não registra tabelas por si só. Use Discover na linha para navegar pelos esquemas e registrar as tabelas que você quer governar.",
     "purposeAria": "Sobre as fontes de dados",
-    "registrationMissing": "{{list}} não contém nenhum registro da fonte {{source}}."
+    "registrationMissing": "{{list}} não contém nenhum registro da fonte {{source}}.",
+    "duplicateCredentialsNote": "As credenciais de {{source}} não são copiadas: introduza-as aqui, ou uma referência a um segredo."
   }
 }

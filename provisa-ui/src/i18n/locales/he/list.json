@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "יימחקו: {{names}}. כל מה שעדיין יש אליו הפניה יישמר, עם הסיבה.",
     "bulkRefused_one": "לא נמחקו: {{count}}",
     "bulkRefused_other": "לא נמחקו: {{count}}",
-    "dismiss": "סגירה"
+    "dismiss": "סגירה",
+    "duplicate": "שכפול",
+    "duplicateNamed": "שכפול {{name}}"
   }
 }

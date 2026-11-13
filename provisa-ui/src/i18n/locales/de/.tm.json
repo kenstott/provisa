@@ -10413,5 +10413,10 @@
   "de/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
   "de/findTerms.json::findTerms.stopTip": "Stop the scan",
   "de.json::common.stopped": "Stopped",
-  "de.json::common.stopQuery": "Stop the query"
+  "de.json::common.stopQuery": "Stop the query",
+  "de/list.json::list.duplicate": "Duplicate",
+  "de/list.json::list.duplicateNamed": "Duplicate {{name}}",
+  "de/sourcesPage.json::sourcesPage.duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret.",
+  "de/mermaidDiagram.json::mermaidDiagram.fitWidth": "Fit width",
+  "de/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram"
 }

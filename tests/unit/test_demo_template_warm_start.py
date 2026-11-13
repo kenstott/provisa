@@ -197,6 +197,7 @@ _NOT_ORG_SCHEMA_DDL = {
     "pgwire/server.py": "command tags",
     "pgwire/system_tables.py": "pgwire's in-process catalog",
     "transpiler/metadata_functions.py": "text a catalog answer returns",
+    "transpiler/polyfill/ranges.py": "names CREATE TYPE in a docstring",
     "federation/backend.py": "an engine's own schemas",
     "federation/bigquery_store.py": "a BigQuery store",
     "federation/clickhouse_connectors.py": "a ClickHouse engine",

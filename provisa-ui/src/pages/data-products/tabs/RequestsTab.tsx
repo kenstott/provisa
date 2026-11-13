@@ -12,6 +12,7 @@
 // for its offers in the product's own request queue, each accepted or declined as bid (a decline
 // states why), and who holds read on each of its datasets now (the tables page's access panel).
 
+import { DestructiveConfirmButton } from "../../../components/form/DestructiveConfirmButton";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -83,18 +84,17 @@ function DeclineForm({
         onCancel={onCancel}
         problem={error}
         action={
-          <Button
-            color="red"
+          <DestructiveConfirmButton
             disabled={reason.trim() === ""}
             onClick={() =>
               declineBid(productId, bid.id, reason.trim()).then(onDone, (e: unknown) =>
                 setError(message(e)),
               )
             }
-            data-testid={`bid-${bid.id}-decline-send`}
+            testId={`bid-${bid.id}-decline-send`}
           >
             {t("dataProductOffers.decline")}
-          </Button>
+          </DestructiveConfirmButton>
         }
       />
     </FormLayout>
