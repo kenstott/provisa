@@ -46,13 +46,16 @@ export interface SchemaPaths<E extends SchemaEdge> {
  * Every shortest path from a label of ``from`` to a label of ``to``, either way along a relationship,
  * as a Cypher drop's undirected hop reads one. A path has at least one hop: a label in both reaches
  * itself through a relationship, not by standing still. ``parameterized`` are the labels no step may
- * reach; a label of ``from`` is one the query already holds, with its arguments.
+ * reach; a label of ``from`` is one the query already holds, with its arguments. ``through``, where
+ * given, are the only labels a path may pass through between its ends (a Cypher drop's: the
+ * selected domains', REQ-2135); its ends are the query's and the drop's, whatever their domain.
  */
 export function shortestSchemaPaths<E extends SchemaEdge>(
   edges: readonly E[],
   from: readonly string[],
   to: readonly string[],
   parameterized: ReadonlySet<string>,
+  through?: ReadonlySet<string>,
 ): SchemaPaths<E> {
   const ends = new Map<string, { edge: E; other: string }[]>();
   const add = (label: string, edge: E, other: string) =>
@@ -68,7 +71,11 @@ export function shortestSchemaPaths<E extends SchemaEdge>(
     const next: string[] = [];
     for (const label of frontier)
       for (const { other } of ends.get(label) ?? [])
-        if (!distance.has(other) && !parameterized.has(other)) {
+        if (
+          !distance.has(other) &&
+          !parameterized.has(other) &&
+          (through === undefined || through.has(other))
+        ) {
           distance.set(other, (distance.get(label) as number) + 1);
           next.push(other);
         }

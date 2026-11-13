@@ -58,6 +58,10 @@ _ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ADMIN_SCHEMA = "test_req1295_admin"
 _TENANT_SCHEMA = "test_req1295_tenant"
 _ORG = "kstott"
+# The deployment org: the one the middleware below binds for the platform plane, and so the one
+# whose runtime its sign-in writes land in (REQ-2219 mirrors the token's entitlement lists there).
+# Keyed by this id rather than by ``app_state.org_id``, which other tests in the process rebind.
+_DEPLOYMENT_ORG = "root"
 
 
 def _prepare_sync():
@@ -126,9 +130,14 @@ def planes(monkeypatch):
         "org_admin": {"id": "org_admin", "capabilities": ["user_management", "usage"]},
     }
     root_roles = {"org_admin": {"id": "org_admin", "capabilities": ["platform_settings"]}}
+    # A served process boots its deployment id and the middleware's default org from the one
+    # control-plane config: the platform roles are read from the runtime under the first, and the
+    # sign-in's writes land in the runtime of the second. Other tests in the process rebind
+    # app_state.org_id, so it is pinned here (before the registry swap, so undo runs in reverse).
+    monkeypatch.setattr(app_state, "org_id", _DEPLOYMENT_ORG, raising=False)
     registry = OrgRegistry()
-    # The deployment's own runtime, under the id this process boots with.
-    registry.set(app_state.org_id, OrgRuntime(org_id=app_state.org_id, roles=root_roles))
+    # The deployment's own runtime.
+    registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, roles=root_roles))
     registry.set(
         _ORG,
         OrgRuntime(
@@ -164,7 +173,7 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
         assignments_source="provisa",
         default_assignments=[],
         multitenancy=True,
-        default_org_id="root",
+        default_org_id=_DEPLOYMENT_ORG,
     )
 
     @app.get("/whoami")

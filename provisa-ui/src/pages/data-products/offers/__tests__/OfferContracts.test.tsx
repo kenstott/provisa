@@ -40,8 +40,12 @@ vi.mock("../../../../api/dataProductContracts", () => ({
     fetchContractVersions(id, offer, member),
 }));
 const offers = vi.hoisted(() => ({ list: [] as Offer[] }));
+// Every section is mounted (Lineage and Related only once expanded): the reads the others make
+// answer nothing here.
 vi.mock("../../../../api/dataProductOffers", () => ({
   fetchOffers: () => Promise.resolve(offers.list),
+  fetchBids: () => Promise.resolve([]),
+  fetchProductProfiles: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {
@@ -163,6 +167,7 @@ const promise = (checker: number, checked: number, at: string | null): ProductDq
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: at ? "pass" : null,
   latest_run_at: at,
+  failing_checks: [],
 });
 
 const LINEAGE: ProductLineage = {

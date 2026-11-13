@@ -2,6 +2,7 @@
   "common": {
     "loading": "בטעינה...",
     "cancel": "ביטול",
+    "stop": "עצור",
     "save": "שמירה",
     "delete": "מחיקה",
     "confirm": "אישור",

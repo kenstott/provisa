@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { lifecycleProps } from "./lifecycleProps";
-import { openTab } from "./panelTabs";
+import { openSection } from "./panelSections";
 import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -81,7 +81,7 @@ function panel() {
       {...lifecycleProps()}
     />,
   );
-  openTab("related", "pet_health");
+  openSection("related", "pet_health");
 }
 
 describe("a Related Tables entry", () => {
