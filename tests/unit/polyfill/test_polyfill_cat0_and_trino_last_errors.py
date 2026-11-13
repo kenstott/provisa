@@ -270,8 +270,10 @@ def test_a_variadic_array_of_ranges_is_the_ranges_it_holds(base, array, ranges, 
 
 
 def test_a_variadic_array_of_ranges_holding_null_is_refused_as_postgresql_refuses_it():
-    with pytest.raises(Exception, match="multirange values cannot contain null members"):
-        _sent("SELECT int4multirange(VARIADIC '{\"[1,5)\",NULL}'::int4range[]) AS v")
+    """Where it runs, as PostgreSQL's constructor refuses a NULL range of its arguments."""
+    sent = _sent("SELECT int4multirange(VARIADIC '{\"[1,5)\",NULL}'::int4range[]) AS v")
+    assert "ARRAY(" not in sent.upper()
+    assert "22004: multirange values cannot contain null members" in sent
 
 
 @pytest.mark.parametrize("dialect", [*_TRINO, "clickhouse"])

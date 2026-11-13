@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 85831f13-ddc3-44a1-ab5c-9a95189acc81
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -92,7 +93,16 @@ _AGE_FORMS = {
     ),
 }
 #: What a form writes its argument within: the walk does not descend into what a rule writes.
-_PLAIN = (exp.Cast, exp.Literal, exp.Null, exp.Neg, exp.Paren, exp.DataType, exp.DataTypeParam)
+_PLAIN = (
+    exp.Cast,
+    exp.Literal,
+    exp.Boolean,
+    exp.Null,
+    exp.Neg,
+    exp.Paren,
+    exp.DataType,
+    exp.DataTypeParam,
+)
 _PLAIN_COLUMN = (exp.Column, exp.Identifier)
 
 
