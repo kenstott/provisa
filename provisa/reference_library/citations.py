@@ -179,10 +179,11 @@ async def cite(
         set_extra={"cited_at": func.now()},
     )
     found = await of_citers(conn, citer_kind, [tag_id] if tag_id is not None else None)
-    return next(c for c in found.get((tag_id, object_key), []) if _key(c) == place.key())
+    return next(c for c in found.get((tag_id, object_key), []) if citation_key(c) == place.key())
 
 
-def _key(citation: Citation) -> str:
+def citation_key(citation: Citation) -> str:
+    """The name of the place a held citation cites, as :meth:`Place.key` names it."""
     document_id = citation.document_id if citation.document_id is not None else -1
     return Place(document_id, citation.section_heading, citation.section_page).key()
 
@@ -191,12 +192,19 @@ async def uncite(
     conn: Connection, citer_kind: str, tag_id: str | None, object_key: str, place: Place
 ) -> bool:
     """Take the citer's citation of ``place`` off; False when it cites no such place."""
+    return await uncite_key(conn, citer_kind, tag_id, object_key, place.key())
+
+
+async def uncite_key(
+    conn: Connection, citer_kind: str, tag_id: str | None, object_key: str, cite_key: str
+) -> bool:
+    """Take the citer's citation named ``cite_key`` off; False when it cites no such place."""
     result = await conn.execute_core(
         delete(citations_t).where(
             citations_t.c.citer_kind == citer_kind,
             citations_t.c.tag_id == tag_id,
             citations_t.c.object_key == object_key,
-            citations_t.c.cite_key == place.key(),
+            citations_t.c.cite_key == cite_key,
         )
     )
     return (result.rowcount or 0) > 0

@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "表的数量",
-    "modeOne": "一张表",
-    "modeSeveral": "多张表",
     "tablesLabel": "表",
     "listing": "正在列出表…",
     "noTables": "此模式中没有表。",
-    "tickedCount_one": "已勾选 {{count}} 张表。每张表都按默认值注册。",
-    "tickedCount_other": "已勾选 {{count}} 张表。每张表都按默认值注册。",
     "reading": "正在读取其列…",
     "readFailed": "无法读取其列：{{error}}",
-    "registered": "已注册。",
     "needsDeclared": "需要输入：其数据源未描述列。请单独注册。",
     "needsNoColumns": "需要输入：未找到任何列。请单独注册。",
     "needsUntyped": "需要输入：未找到 {{columns}} 的类型。请单独注册。",
+    "needsCacheTtl": "需要输入：其数据源要求每个表单独设置缓存 TTL。请单独注册。",
+    "registerOne": "注册",
+    "registerOneLabel": "单独注册 {{table}}",
     "register_one": "注册 {{count}} 张表",
     "register_other": "注册 {{count}} 张表",
     "refused": "未注册 {{table}}：{{message}}",
     "skip": "跳过注册表",
-    "domainRequired": "请选择注册这些表所在的域。"
+    "domainRequired": "请选择注册这些表所在的域。",
+    "pickTables": "选择一个或多个表…",
+    "needsVectorModel": "需要输入：请为每个向量（{{columns}}）指定模型。请单独注册。"
   }
 }

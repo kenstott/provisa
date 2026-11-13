@@ -75,7 +75,10 @@ export function useSaveTag() {
     expiresPolicy: string,
     paramPolicy: string, // REQ-1467
     requiresCitation: boolean, // REQ-2208
+    // The whole set of the definition's citations, saved with the tag; left out, they stay.
+    citations?: CitationPlace[],
   ) => ({
+    citations: citations === undefined ? null : citations.map(citationInput),
     input: {
       id,
       description,
@@ -153,8 +156,15 @@ export function useAssignTag() {
     refetchQueries: [{ query: TAG_ASSIGNMENTS_QUERY }],
   });
   return {
-    assignTag: async (input: TagAssignment) => {
-      const result = await assignTag({ variables: { input: toAssignmentInput(input) } });
+    /** ``citations``, when given, is the whole set the assignment cites, saved with it in the
+     *  same call (REQ-2208); left out, the assignment's citations stay as they are. */
+    assignTag: async (input: TagAssignment, citations?: CitationPlace[]) => {
+      const result = await assignTag({
+        variables: {
+          input: toAssignmentInput(input),
+          citations: citations === undefined ? null : citations.map(citationInput),
+        },
+      });
       return (result.data?.assignTag ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
@@ -201,6 +211,30 @@ function toAssignmentInput(input: TagAssignment) {
 
 /** The place a citation names: a document, or a section of it by heading, or by page without one. */
 export type CitationPlace = Pick<LibraryCitation, "documentId" | "sectionHeading" | "sectionPage">;
+
+/** One name for the place a citation points to: its document, and its heading, page or whole. */
+export const citationKey = (c: CitationPlace) =>
+  `${c.documentId}-${
+    c.sectionHeading !== null
+      ? `h:${c.sectionHeading}`
+      : c.sectionPage !== null
+        ? `p:${c.sectionPage}`
+        : ""
+  }`;
+
+/** A citation picked in a form and not yet saved: its document's title and where it points. */
+export function pickedCitation(place: CitationPlace, documentTitle: string): LibraryCitation {
+  return {
+    ...place,
+    documentTitle,
+    documentSource: "",
+    textSha256: "",
+    citedBy: null,
+    citedAt: "",
+    state: "current",
+    needsReview: false,
+  };
+}
 
 function citationInput(place: CitationPlace) {
   return {

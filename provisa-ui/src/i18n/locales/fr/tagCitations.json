@@ -20,8 +20,6 @@
     "gapHelp": "Ce tag exige une citation, et cette affectation n’en a aucune.",
     "definedBy": "Défini par {{title}}",
     "definedByLabel": "Défini par",
-    "definedByDesc": "Les sections de la bibliothèque qui définissent ce tag.",
-    "citedHere": "Cité pour cet objet",
     "requiresCitationLabel": "Les affectations exigent une citation",
     "requiresCitationDesc": "Une affectation de ce tag sans section de la bibliothèque citée est signalée comme un manque.",
     "requiresCitationBadge": "Citation requise",
@@ -29,6 +27,10 @@
     "citedByOn": "Sur",
     "citedByDefinition": "Sa définition",
     "citedByGone": "Disparue",
-    "citedByWholeDocument": "Document entier"
+    "citedByWholeDocument": "Document entier",
+    "citationsLabel": "Pourquoi il est sur cet objet",
+    "neededForCoverage": "Requise pour la couverture",
+    "definitionLabel": "Pourquoi ce tag existe",
+    "definitionDesc": "Le document et la section qui disent pourquoi ce tag existe. Pourquoi il est sur un objet se dit dans les citations propres à cet objet."
   }
 }

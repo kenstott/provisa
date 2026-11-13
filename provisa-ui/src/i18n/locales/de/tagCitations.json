@@ -20,8 +20,6 @@
     "gapHelp": "Dieser Tag erfordert ein Zitat, und diese Zuweisung hat keines.",
     "definedBy": "Definiert durch {{title}}",
     "definedByLabel": "Definiert durch",
-    "definedByDesc": "Die Bibliotheksabschnitte, die diesen Tag definieren.",
-    "citedHere": "Für dieses Objekt zitiert",
     "requiresCitationLabel": "Zuweisungen erfordern ein Zitat",
     "requiresCitationDesc": "Eine Zuweisung dieses Tags ohne zitierten Bibliotheksabschnitt wird als Lücke markiert.",
     "requiresCitationBadge": "Zitat erforderlich",
@@ -29,6 +27,10 @@
     "citedByOn": "An",
     "citedByDefinition": "Seine Definition",
     "citedByGone": "Entfallen",
-    "citedByWholeDocument": "Gesamtes Dokument"
+    "citedByWholeDocument": "Gesamtes Dokument",
+    "citationsLabel": "Warum es an diesem Objekt ist",
+    "neededForCoverage": "Für die Abdeckung nötig",
+    "definitionLabel": "Warum dieser Tag existiert",
+    "definitionDesc": "Das Dokument und der Abschnitt, die sagen, warum dieser Tag existiert. Warum er an einem Objekt hängt, steht in den Zitaten dieses Objekts."
   }
 }

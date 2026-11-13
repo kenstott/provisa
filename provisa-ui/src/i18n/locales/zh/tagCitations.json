@@ -20,8 +20,6 @@
     "gapHelp": "此标签要求引用，而此分配没有。",
     "definedBy": "定义于 {{title}}",
     "definedByLabel": "定义于",
-    "definedByDesc": "定义此标签的库章节。",
-    "citedHere": "为此对象引用",
     "requiresCitationLabel": "分配须附引用",
     "requiresCitationDesc": "此标签的分配若没有引用库章节，将标记为缺口。",
     "requiresCitationBadge": "须附引用",
@@ -29,6 +27,10 @@
     "citedByOn": "位于",
     "citedByDefinition": "其定义",
     "citedByGone": "已不存在",
-    "citedByWholeDocument": "整份文档"
+    "citedByWholeDocument": "整份文档",
+    "citationsLabel": "为何用于此对象",
+    "neededForCoverage": "覆盖所需",
+    "definitionLabel": "此标签为何存在",
+    "definitionDesc": "说明此标签为何存在的文档和章节。它为何用于某个对象,请写在该对象自己的引用中。"
   }
 }

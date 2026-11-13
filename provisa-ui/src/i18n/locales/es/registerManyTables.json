@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "Cuántas tablas",
-    "modeOne": "Una tabla",
-    "modeSeveral": "Varias tablas",
     "tablesLabel": "Tablas",
     "listing": "Listando las tablas…",
     "noTables": "Este esquema no tiene tablas.",
-    "tickedCount_one": "{{count}} tabla marcada. Cada una se registra con los valores predeterminados.",
-    "tickedCount_other": "{{count}} tablas marcadas. Cada una se registra con los valores predeterminados.",
     "reading": "Leyendo sus columnas…",
     "readFailed": "No se pudieron leer sus columnas: {{error}}",
-    "registered": "Ya registrada.",
     "needsDeclared": "Requiere datos: su origen no describe sus columnas. Regístrela por separado.",
     "needsNoColumns": "Requiere datos: no se encontraron columnas. Regístrela por separado.",
     "needsUntyped": "Requiere datos: no se encontró un tipo para {{columns}}. Regístrela por separado.",
+    "needsCacheTtl": "Requiere datos: su origen necesita un TTL de caché para cada tabla. Regístrela por separado.",
+    "registerOne": "Registrar",
+    "registerOneLabel": "Registrar {{table}} por separado",
     "register_one": "Registrar {{count}} tabla",
     "register_other": "Registrar {{count}} tablas",
     "refused": "{{table}} no se registró: {{message}}",
     "skip": "Omitir el registro de tablas",
-    "domainRequired": "Elija el dominio en el que se registran las tablas."
+    "domainRequired": "Elija el dominio en el que se registran las tablas.",
+    "pickTables": "Seleccione una o más tablas…",
+    "needsVectorModel": "Requiere datos: indique el modelo de cada vector ({{columns}}). Regístrela por separado."
   }
 }

@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "Hoeveel tabellen",
-    "modeOne": "Eén tabel",
-    "modeSeveral": "Meerdere tabellen",
     "tablesLabel": "Tabellen",
     "listing": "Tabellen worden opgehaald…",
     "noTables": "Dit schema heeft geen tabellen.",
-    "tickedCount_one": "{{count}} tabel aangevinkt. Elke tabel wordt geregistreerd met de standaardwaarden.",
-    "tickedCount_other": "{{count}} tabellen aangevinkt. Elke tabel wordt geregistreerd met de standaardwaarden.",
     "reading": "Kolommen worden gelezen…",
     "readFailed": "De kolommen konden niet worden gelezen: {{error}}",
-    "registered": "Al geregistreerd.",
     "needsDeclared": "Invoer nodig: de bron beschrijft de kolommen niet. Registreer de tabel apart.",
     "needsNoColumns": "Invoer nodig: er zijn geen kolommen gevonden. Registreer de tabel apart.",
     "needsUntyped": "Invoer nodig: er is geen type gevonden voor {{columns}}. Registreer de tabel apart.",
+    "needsCacheTtl": "Invoer nodig: de bron vereist een Cache-TTL per tabel. Registreer de tabel apart.",
+    "registerOne": "Registreren",
+    "registerOneLabel": "{{table}} apart registreren",
     "register_one": "{{count}} tabel registreren",
     "register_other": "{{count}} tabellen registreren",
     "refused": "{{table}} is niet geregistreerd: {{message}}",
     "skip": "Registratie van tabellen overslaan",
-    "domainRequired": "Kies het domein waarin de tabellen worden geregistreerd."
+    "domainRequired": "Kies het domein waarin de tabellen worden geregistreerd.",
+    "pickTables": "Selecteer een of meer tabellen…",
+    "needsVectorModel": "Invoer nodig: geef het model van elke vector op ({{columns}}). Registreer de tabel apart."
   }
 }

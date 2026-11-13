@@ -123,11 +123,15 @@ async def serve_within_deadline(
         if not answer:
             raise
         # The request failed after its deadline had passed and nothing has been sent: what it
-        # failed with is reported here, and the client is answered with the timeout.
-        log.warning(
-            "%s %s failed after its request deadline passed; answering the timeout",
-            scope.get("method"),
-            scope.get("path"),
-            exc_info=True,
-        )
+        # failed with is reported here, and the client is answered with the timeout. A client
+        # that disconnected ended the deadline itself: nothing failed, and no one reads the reply.
+        if deadline.client_left:
+            log.info("%s %s ended: the client disconnected", scope.get("method"), scope.get("path"))
+        else:
+            log.warning(
+                "%s %s failed after its request deadline passed; answering the timeout",
+                scope.get("method"),
+                scope.get("path"),
+                exc_info=True,
+            )
         await _send_timeout(send, deadline)

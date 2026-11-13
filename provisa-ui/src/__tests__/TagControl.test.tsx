@@ -185,16 +185,19 @@ describe("TagControl", () => {
     expect(assignSpy).not.toHaveBeenCalled();
     // A column's pii first reads its term; with none, the tag's own form.
     fireEvent.click(await screen.findByTestId("tag-apply-pii"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "pii",
-      objectType: "column",
-      sourceId: undefined,
-      tableId: 7,
-      columnName: "name",
-      relationshipId: undefined,
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "pii",
+        objectType: "column",
+        sourceId: undefined,
+        tableId: 7,
+        columnName: "name",
+        relationshipId: undefined,
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
     expect(unassignSpy).not.toHaveBeenCalled();
   });
 
@@ -220,16 +223,19 @@ describe("TagControl", () => {
     });
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "finance",
-      objectType: "table",
-      sourceId: undefined,
-      tableId: 9,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: null,
-      expiresOn: "2027-06-30",
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "finance",
+        objectType: "table",
+        sourceId: undefined,
+        tableId: 9,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: null,
+        expiresOn: "2027-06-30",
+      },
+      [],
+    );
   });
 
   it("hidden expiresPolicy hides the expiry input", async () => {
@@ -255,16 +261,19 @@ describe("TagControl", () => {
     });
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "deprecated",
-      objectType: "table",
-      sourceId: undefined,
-      tableId: 8,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: "Superseded",
-      expiresOn: "2027-01-31",
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "deprecated",
+        objectType: "table",
+        sourceId: undefined,
+        tableId: 8,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: "Superseded",
+        expiresOn: "2027-01-31",
+      },
+      [],
+    );
   });
 
   it("unchecking an assigned tag calls unassignTag immediately", async () => {
@@ -305,16 +314,19 @@ describe("TagControl", () => {
     expect(reasonInput).toHaveValue("Legacy source");
     fireEvent.change(reasonInput, { target: { value: "Retiring Q3" } });
     fireEvent.click(screen.getByTestId("tag-apply-deprecated"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "deprecated",
-      objectType: "source",
-      sourceId: "pg",
-      tableId: undefined,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: "Retiring Q3",
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "deprecated",
+        objectType: "source",
+        sourceId: "pg",
+        tableId: undefined,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: "Retiring Q3",
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("command objectType: pills match by commandName, picker filters to command-scoped tags, assign carries commandName", async () => {
@@ -329,17 +341,20 @@ describe("TagControl", () => {
     expect(option).not.toBeChecked();
     fireEvent.click(option);
     fireEvent.click(screen.getByTestId("tag-apply-beta"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "beta",
-      objectType: "command",
-      sourceId: undefined,
-      tableId: undefined,
-      columnName: undefined,
-      relationshipId: undefined,
-      commandName: "refund_order",
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "beta",
+        objectType: "command",
+        sourceId: undefined,
+        tableId: undefined,
+        columnName: undefined,
+        relationshipId: undefined,
+        commandName: "refund_order",
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("command objectType: renders the pill for its own assignment", () => {
@@ -364,17 +379,20 @@ describe("TagControl", () => {
     fireEvent.click(await screen.findByRole("option", { name: "vendor" }));
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "entity:vendor",
-      objectType: "column",
-      sourceId: undefined,
-      tableId: 7,
-      columnName: "supplier",
-      relationshipId: undefined,
-      commandName: undefined,
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "entity:vendor",
+        objectType: "column",
+        sourceId: undefined,
+        tableId: 7,
+        columnName: "supplier",
+        relationshipId: undefined,
+        commandName: undefined,
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("editing an existing parameterized assignment seeds the picked value", async () => {
@@ -612,6 +630,7 @@ describe("TagControl: row rules, roles and metrics", () => {
           commandName: undefined,
           ...target,
         }),
+        [],
       );
     },
   );

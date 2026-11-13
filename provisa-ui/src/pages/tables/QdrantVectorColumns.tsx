@@ -11,12 +11,19 @@
 import { Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
-import type { ColumnForm } from "./types";
 import { useVectorModels, vectorOf } from "./useVectorModels";
 import { VectorModelCell } from "./VectorModelCell";
 
-/** REQ-2000: in the short register step of a Qdrant collection, each vector column names the
- * registered model it is an embedding of, chosen from the models of the vector's size. */
+/** One column as the vector editor reads it. */
+interface VectorColumn {
+  name: string;
+  path?: string | null;
+  embeddingModel?: string | null;
+}
+
+/** REQ-2000: in the Columns section of a Qdrant collection's table (unsaved, opened through
+ * Register, or saved), each vector column names the registered model it is an embedding of,
+ * chosen from the models of the vector's size. */
 export function QdrantVectorColumns({
   sourceId,
   collection,
@@ -25,7 +32,7 @@ export function QdrantVectorColumns({
 }: {
   sourceId: string;
   collection: string;
-  columns: ColumnForm[];
+  columns: VectorColumn[];
   onModel: (index: number, model: string) => void;
 }) {
   const { t } = useTranslation();

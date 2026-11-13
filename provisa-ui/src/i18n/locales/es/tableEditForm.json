@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Cancela una actualización, conservando la copia anterior, cuando la última ejecución de una tabla de comprobación que analiza una de las entradas de esta vista falló. Se ejecuta antes de la comprobación previa de arriba; ambas deben continuar.",
     "holdOnFailingChecksShowCode": "Mostrar su código",
     "holdOnFailingChecksHideCode": "Ocultar su código",
-    "holdOnFailingChecksCodeHelp": "La comprobación que aplica esta opción. Cópiela en la comprobación previa de arriba para cambiarla."
+    "holdOnFailingChecksCodeHelp": "La comprobación que aplica esta opción. Cópiela en la comprobación previa de arriba para cambiarla.",
+    "discoverHint": "Al guardar se leen las columnas que tiene el origen en vivo y se añaden las que le faltan a esta tabla; sus columnas se quedan como están. Ningún rol ve una columna añadida hasta que se le conceda."
   }
 }

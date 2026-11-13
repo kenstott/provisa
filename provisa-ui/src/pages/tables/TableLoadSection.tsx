@@ -25,6 +25,8 @@ import { TableLoadManagementFields } from "./TableLoadManagementFields";
 import { RefreshPolicyAlert } from "./TableSectionsRead";
 import { changeSignalChoices } from "./tableSectionFields";
 import type { CacheTtlEdit } from "./tableEditTypes";
+import { CDC_TYPES } from "./constants";
+import { isWatermarkEligible } from "./helpers";
 
 /** The Load and timeliness section of a table's form: the same when created and when edited. */
 export function TableLoadSection({
@@ -81,6 +83,35 @@ export function TableLoadSection({
             allowDeselect={false}
           />
         </FormField>
+        {/* REQ-2234: the watermark a table was registered with, edited here once it is
+            registered (Register Table asks none). */}
+        {!isView && (
+          <FormField
+            size="medium"
+            hint={
+              CDC_TYPES.has((editSource?.type ?? "").toLowerCase())
+                ? t("registerTableForm.watermarkHintOptional")
+                : t("registerTableForm.watermarkHintRequired")
+            }
+          >
+            <Select
+              label={t("registerTableForm.watermarkLabel")}
+              placeholder={
+                CDC_TYPES.has((editSource?.type ?? "").toLowerCase())
+                  ? t("registerTableForm.watermarkNoneTriggers")
+                  : t("registerTableForm.watermarkNoneSubscriptions")
+              }
+              data={editingTable.columns
+                .filter((c) => isWatermarkEligible(c.dataType ?? ""))
+                .map((c) => ({ value: c.columnName, label: `${c.columnName} (${c.dataType})` }))}
+              value={editingTable.watermarkColumn || null}
+              onChange={(v) => setEditingTable({ ...editingTable, watermarkColumn: v || null })}
+              clearable
+              comboboxProps={{ withinPortal: true }}
+              data-testid="table-edit-watermark"
+            />
+          </FormField>
+        )}
         {(editingTable.changeSignal === "probe" || editingTable.changeSignal === "ttl_probe") &&
           (() => {
             const src = sources.find((s) => s.id === editingTable.sourceId);

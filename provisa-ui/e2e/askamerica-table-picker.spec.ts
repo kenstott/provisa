@@ -30,7 +30,10 @@ import {
   discoveredColumnCount,
   openRegisterForm,
   openSourcesForm,
+  pickTable,
   submitSourceAndExpectListed,
+  tableOption,
+  tablesField,
 } from "./source-to-query-helpers";
 
 // The adapter listens seconds after it is started and answers information_schema then. This is
@@ -94,23 +97,21 @@ test.describe("AskAmerica: the Register Table pickers", () => {
 
     // 3. The table picker fills for the subject's schema.
     if ((await schemaSelect.inputValue()) !== "weather") await schemaSelect.selectOption("weather");
-    const tableSelect = page.getByTestId("register-table-table-select");
-    await expect(tableSelect.locator("option[value='nws_stations']")).toHaveCount(1, {
-      timeout: PICKER_FILLS_MS,
-    });
+    // REQ-2234: the Tables field, the standard multi-select, lists them.
+    const field = tablesField(page);
+    await expect(field).toBeEnabled({ timeout: PICKER_FILLS_MS });
+    await field.click();
+    await expect(tableOption(page, "nws_stations")).toBeVisible({ timeout: PICKER_FILLS_MS });
     const filledAfterMs = Date.now() - saved;
-    const weatherTables = await tableSelect
-      .locator("option")
-      .evaluateAll((options) =>
-        options.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ""),
-      );
-    expect(weatherTables.length).toBeGreaterThan(1);
+    const weatherTables = await page.getByRole("option").count();
+    expect(weatherTables).toBeGreaterThan(1);
     console.log(
-      `[askamerica picker] ${weatherTables.length} weather tables listed ${filledAfterMs} ms after save`,
+      `[askamerica picker] ${weatherTables} weather tables listed ${filledAfterMs} ms after save`,
     );
+    await page.keyboard.press("Escape");
 
     // 4. Picking a table shows its columns, from the source.
-    await tableSelect.selectOption("nws_stations");
+    await pickTable(page, "nws_stations");
     expect(await discoveredColumnCount(page)).toBeGreaterThan(1);
 
     // 5. A linker schema lists its own tables: the picker follows the schema, not the first answer.

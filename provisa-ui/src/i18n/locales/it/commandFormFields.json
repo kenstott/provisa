@@ -68,6 +68,8 @@
     "bindingTemplate": "Espressione SQL",
     "bindingTemplateHint": "Un'espressione SQL. Scrivi ogni argomento come {{placeholder}}; viene eseguita all'interno della query chiamante.",
     "argDefault": "Valore predefinito dell'argomento {{name}}",
-    "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)"
+    "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)",
+    "nativeSql": "SQL nativo",
+    "nativeSqlHint": "SQL nel dialetto proprio della sorgente, un’istruzione o più, eseguite sulla sorgente in un’unica transazione: vengono confermate tutte o nessuna. Scrivi un argomento come {{placeholder}}; ognuno è associato come valore. La risposta sono le righe dell’ultima istruzione."
   }
 }

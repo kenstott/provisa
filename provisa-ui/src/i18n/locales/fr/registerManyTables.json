@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "Combien de tables",
-    "modeOne": "Une table",
-    "modeSeveral": "Plusieurs tables",
     "tablesLabel": "Tables",
     "listing": "Liste des tables en cours…",
     "noTables": "Ce schéma ne contient aucune table.",
-    "tickedCount_one": "{{count}} table cochée. Chacune est enregistrée avec les valeurs par défaut.",
-    "tickedCount_other": "{{count}} tables cochées. Chacune est enregistrée avec les valeurs par défaut.",
     "reading": "Lecture de ses colonnes…",
     "readFailed": "Impossible de lire ses colonnes : {{error}}",
-    "registered": "Déjà enregistrée.",
     "needsDeclared": "Saisie requise : sa source ne décrit pas ses colonnes. Enregistrez-la séparément.",
     "needsNoColumns": "Saisie requise : aucune colonne n'a été trouvée. Enregistrez-la séparément.",
     "needsUntyped": "Saisie requise : aucun type trouvé pour {{columns}}. Enregistrez-la séparément.",
+    "needsCacheTtl": "Saisie requise : sa source exige un TTL du cache pour chaque table. Enregistrez-la séparément.",
+    "registerOne": "Enregistrer",
+    "registerOneLabel": "Enregistrer {{table}} séparément",
     "register_one": "Enregistrer {{count}} table",
     "register_other": "Enregistrer {{count}} tables",
     "refused": "{{table}} n'a pas été enregistrée : {{message}}",
     "skip": "Ignorer l'enregistrement des tables",
-    "domainRequired": "Choisissez le domaine dans lequel les tables sont enregistrées."
+    "domainRequired": "Choisissez le domaine dans lequel les tables sont enregistrées.",
+    "pickTables": "Sélectionnez une ou plusieurs tables…",
+    "needsVectorModel": "Saisie requise : indiquez le modèle de chaque vecteur ({{columns}}). Enregistrez-la séparément."
   }
 }

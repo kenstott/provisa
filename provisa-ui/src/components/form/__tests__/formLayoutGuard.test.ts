@@ -40,7 +40,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
   "components/TagCitations.tsx":
-    "one reusable control: the document and section pickers of a citation, in a tag's editor and in the detail of a tag on an object",
+    "one reusable control: the document and section pickers of a citation, in a tag's editor and in the form of a tag's assignment (TagAssignmentForm)",
   "components/DataAddressSwitcher.tsx":
     "the data address switch in the page header, with a typed address in its menu",
   "components/entitlements/EntitlementPicker.tsx":
@@ -110,7 +110,8 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
     "a term's relationship picked in the row that adds it, in the term's detail",
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
-  "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
+  "components/TagControl.tsx":
+    "the tag picker's ticks beside what it tags; each tag's assignment is TagAssignmentForm, a form",
   "components/ColumnPiiForm.tsx":
     "pii on a column, in TagControl's popover: on its term or on the column alone",
   "components/admin/GlossaryGroundedTables.tsx":

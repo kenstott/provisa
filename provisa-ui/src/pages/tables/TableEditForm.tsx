@@ -24,7 +24,7 @@ import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { roleTtlRowError, tableTtlSignalError } from "./roleTtl";
-import { FormFooter } from "../../components/form/FormLayout";
+import { FormChecks, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { ParametersPanel } from "./ParametersPanel";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { TableSectionTabs } from "./TableSectionTabs";
@@ -32,13 +32,15 @@ import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
 import { useTableSection, type TableSection } from "./tableSections";
 import { IdentityRead, LoadRead, QualityRead, QueryRead } from "./TableSectionsRead";
-import { isCheckerSource } from "./tableSectionFields";
+import { discoversColumns, isCheckerSource } from "./tableSectionFields";
+import { DiscoverColumnsField } from "./DiscoverColumnsField";
 import { TableIdentitySection } from "./TableIdentitySection";
 import { TableAssociationsSection } from "./TableAssociationsSection";
 import { TableLoadSection } from "./TableLoadSection";
 import { TableQuerySection } from "./TableQuerySection";
 import { TableQualitySection } from "./TableQualitySection";
 import { TableColumnsSection } from "./TableColumnsSection";
+import { DeclaredDraftColumns } from "./DeclaredDraftColumns";
 import type { CacheTtlEdit, UpdateEditCol } from "./tableEditTypes";
 
 interface TableEditFormProps {
@@ -78,6 +80,9 @@ interface TableEditFormProps {
   /** The section in view, kept by the page across the read view and the edit form. */
   section?: TableSection;
   onSectionChange?: (section: TableSection) => void;
+  /** REQ-1924: the table being created is an OpenAPI table whose operation declares no response
+   * schema: its columns are declared in the Columns section before it is registered. */
+  declaresColumns?: boolean;
 }
 
 export function TableEditForm({
@@ -104,6 +109,7 @@ export function TableEditForm({
   relationships,
   section: sectionIn,
   onSectionChange,
+  declaresColumns = false,
 }: TableEditFormProps) {
   const { t } = useTranslation();
   const [section, setSection] = useTableSection(sectionIn, onSectionChange);
@@ -178,6 +184,7 @@ export function TableEditForm({
             editingTable={editingTable}
             setEditingTable={setEditingTable}
             isView={isView}
+            source={editSource}
             describe={creating ? undefined : () => generateTableDescription(editingTable.id)}
           />
         ))}
@@ -236,6 +243,13 @@ export function TableEditForm({
             tableId={creating ? undefined : editingTable.id}
           />
         ))}
+      {section === "columns" && creating && declaresColumns && (
+        <DeclaredDraftColumns
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          visibleTo={roles.map((r) => r.id)}
+        />
+      )}
       {section === "columns" && (
         <TableColumnsSection
           editingTable={editingTable}
@@ -253,6 +267,20 @@ export function TableEditForm({
               onSave={hidingOnly ? undefined : saveWriteGrants}
               kept={creating}
             />
+          }
+          discover={
+            !hidingOnly &&
+            discoversColumns((editSource?.type ?? "").toLowerCase(), editingTable) && (
+              <FormLayout data-testid="table-edit-discover" style={{ marginBottom: "0.75rem" }}>
+                <FormChecks>
+                  <DiscoverColumnsField
+                    checked={editingTable.discover === true}
+                    onChange={(discover) => setEditingTable({ ...editingTable, discover })}
+                    help={t("tableEditForm.discoverHint")}
+                  />
+                </FormChecks>
+              </FormLayout>
+            )
           }
           scanTableId={creating ? undefined : editingTable.id}
           describeColumn={

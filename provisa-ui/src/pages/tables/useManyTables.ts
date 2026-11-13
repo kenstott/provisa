@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2234: several tables of a schema picked at once and registered in one action, each with the
-// defaults its registration alone would take. Discovery decides, table by table, whether a table
-// needs input from the person: one that does is listed, unticked, saying why, and is registered
-// on its own. A table registered already is listed, and cannot be picked again.
+// REQ-2234: one table or several of a schema picked in the standard multi-select and registered in
+// one action, each with the defaults its registration alone would take. Discovery decides, table
+// by table, whether a table needs input from the person: one that does is offered, cannot be
+// picked, says why, and is registered on its own. A table registered already is not offered.
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +22,7 @@ import {
 } from "../../api/admin";
 import { useReadColumns } from "../../hooks/useAvailableColumnsMetadataLazy";
 import { useRegisterTables, type TableRegistrationOutcome } from "../../hooks/useTableQueries";
-import { draftFromRegistration } from "./draftTable";
+import { draftFromRegistration, type Registration } from "./draftTable";
 import { registrationInput } from "./useCreateTable";
 import {
   defaultWatermark,
@@ -51,6 +51,20 @@ export interface ManyTablesChoice {
   offered: TableMetadata[];
   isRegistered: (table: { name: string }) => boolean;
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
+  /** REQ-1907: each table of the source needs its own Cache TTL to be registered (it lands, and
+   * the source states none for its ttl signal): none is registered with the others. */
+  needsCacheTtl?: boolean;
+  /** Every table that needs no input starts picked (a source just saved); else none does. */
+  pickReady?: boolean;
+}
+
+/** What keeps a listed table from being registered with the others; null when nothing does. */
+export function blockedBy(
+  reading: Reading | undefined,
+  needsCacheTtl: boolean,
+): InputNeeded | null {
+  if (reading?.state !== "read") return null;
+  return reading.needs ?? (needsCacheTtl ? { kind: "cacheTtl" } : null);
 }
 
 /** The picker's state: what each table needs, which are ticked, and the one action. */
@@ -60,9 +74,11 @@ export function useManyTables(choice: ManyTablesChoice) {
   const { registerTables } = useRegisterTables();
   const { sourceId, schemaName, offered, isRegistered } = choice;
   const [readings, setReadings] = useState<Record<string, Reading>>({});
-  // A table discovery says needs no input is ticked once it is read; the person may untick it.
-  const [unticked, setUnticked] = useState<Set<string>>(new Set());
+  // What the person picked; null until they pick, while `pickReady` decides what starts picked.
+  const [picked, setPicked] = useState<string[] | null>(null);
   const [registering, setRegistering] = useState(false);
+  // The table being opened to be registered on its own, while its defaults are gathered.
+  const [opening, setOpening] = useState<string | null>(null);
   const pickable = offered.filter((tbl) => !isRegistered(tbl));
   // The tables are read again only when which tables are listed changes, not at each render.
   const pickableKey = pickable.map((tbl) => tbl.name).join("\n");
@@ -75,14 +91,14 @@ export function useManyTables(choice: ManyTablesChoice) {
     let live = true;
     const queue = listed.current.filter((tbl) => pickableKey.split("\n").includes(tbl.name));
     setReadings(Object.fromEntries(queue.map((tbl) => [tbl.name, { state: "reading" }])));
-    setUnticked(new Set());
+    setPicked(null);
     const readNext = async (): Promise<void> => {
       const tbl = queue.shift();
       if (!tbl || !live) return;
       let reading: Reading;
       try {
         const columns = await readColumns(sourceId, schemaName, tbl.name);
-        reading = { state: "read", columns, needs: inputNeeded(tbl, columns) };
+        reading = { state: "read", columns, needs: inputNeeded(tbl, columns, choice.sourceType) };
       } catch (e) {
         reading = { state: "failed", error: e instanceof Error ? e.message : String(e) };
       }
@@ -95,15 +111,45 @@ export function useManyTables(choice: ManyTablesChoice) {
     return () => {
       live = false;
     };
-  }, [readColumns, sourceId, schemaName, pickableKey]);
+  }, [readColumns, sourceId, schemaName, pickableKey, choice.sourceType]);
 
-  const ready = (name: string) => {
-    const r = readings[name];
-    return r?.state === "read" && r.needs === null;
+  const needsCacheTtl = choice.needsCacheTtl === true;
+  const ready = (name: string) =>
+    readings[name]?.state === "read" && blockedBy(readings[name], needsCacheTtl) === null;
+  const ticked = pickable
+    .map((tbl) => tbl.name)
+    .filter((n) => ready(n) && (picked === null ? choice.pickReady === true : picked.includes(n)));
+  const setTicked = (names: string[]) => setPicked(names);
+
+  /** One read table as a registration with the defaults it takes when registered alone. */
+  const registrationOfTable = async (name: string): Promise<Registration> => {
+    const tbl = offered.find((o) => o.name === name) as TableMetadata;
+    const read = readings[name] as Extract<Reading, { state: "read" }>;
+    const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
+    const alias = await choice.suggestTableAlias(name, choice.domainId, sourceId);
+    const uniqueConstraints = await fetchTableUniqueConstraints(sourceId, schemaName, name);
+    return registrationOf({
+      sourceId,
+      domainId: choice.domainId,
+      regionInput: choice.regionInput,
+      schemaName,
+      tableName: name,
+      alias,
+      description: tbl.comment ?? "",
+      watermarkColumn: defaultWatermark(columns, choice.sourceType),
+      // A collection's vectors go with it to the panel, where each names its model; one left
+      // without a model is not registered (registrationInput).
+      columns: registeredColumns(
+        read.needs?.kind === "vectors" ? columns.map((c) => ({ ...c, selected: true })) : columns,
+        null,
+      ),
+      uniqueConstraints,
+      pagingKind: tbl.pagingKind ?? null,
+      pagination: tbl.pagination ?? null,
+      pagingCeilingRows: tbl.pagingCeilingRows ?? null,
+      extra: { discover: false },
+    });
   };
-  const ticked = pickable.map((tbl) => tbl.name).filter((n) => ready(n) && !unticked.has(n));
-  const setTicked = (names: string[]) =>
-    setUnticked(new Set(pickable.map((tbl) => tbl.name).filter((n) => !names.includes(n))));
 
   /** Each ticked table registered with its defaults, in one action; what each answered. */
   const register = async (): Promise<TableRegistrationOutcome[]> => {
@@ -113,27 +159,7 @@ export function useManyTables(choice: ManyTablesChoice) {
       // call while one is in flight aborts it.
       const inputs: Record<string, unknown>[] = [];
       for (const name of ticked) {
-        const tbl = offered.find((o) => o.name === name) as TableMetadata;
-        const read = readings[name] as Extract<Reading, { state: "read" }>;
-        const columns = discoveredColumns(read.columns, choice.roleIds, choice.sourceType);
-        const alias = await choice.suggestTableAlias(name, choice.domainId, sourceId);
-        const uniqueConstraints = await fetchTableUniqueConstraints(sourceId, schemaName, name);
-        const registration = registrationOf({
-          sourceId,
-          domainId: choice.domainId,
-          regionInput: choice.regionInput,
-          schemaName,
-          tableName: name,
-          alias,
-          description: tbl.comment ?? "",
-          watermarkColumn: defaultWatermark(columns, choice.sourceType),
-          columns: registeredColumns(columns, null),
-          uniqueConstraints,
-          pagingKind: tbl.pagingKind ?? null,
-          pagination: tbl.pagination ?? null,
-          pagingCeilingRows: tbl.pagingCeilingRows ?? null,
-          extra: { discover: false },
-        });
+        const registration = await registrationOfTable(name);
         // As the editor's Save sends a table registered alone (useCreateTable).
         const draft = draftFromRegistration(registration);
         inputs.push(registrationInput(draft, registration, draft.cacheTtl ?? null));
@@ -174,7 +200,47 @@ export function useManyTables(choice: ManyTablesChoice) {
     }
   };
 
-  return { readings, ticked, setTicked, registerAll, registering };
+  /**
+   * REQ-2234: a table that is not registered with the others -- it needs input, or a Cache TTL
+   * of its own -- is registered on its own: `open` is handed it as it will be registered, with
+   * the defaults discovery gives (an untyped column left untyped), and opens its detail panel in
+   * edit (TablesPage's startCreating), where what is missing is given. Its Save registers it, as
+   * a draft as every table registered through the admin is, with all of it.
+   */
+  const registerAsDraft = async (
+    tableName: string,
+    open: (registration: Registration) => void,
+    setError: (e: string | null) => void,
+  ): Promise<void> => {
+    setError(null);
+    if (!choice.domainId) {
+      setError(t("registerManyTables.domainRequired"));
+      return;
+    }
+    if (readings[tableName]?.state !== "read") return;
+    setOpening(tableName);
+    try {
+      const registration = await registrationOfTable(tableName);
+      // An OpenAPI table with no response schema: its columns are declared in the panel.
+      const declared = blockedBy(readings[tableName], needsCacheTtl)?.kind === "declared";
+      open(declared ? { ...registration, declaresColumns: true } : registration);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  return {
+    readings,
+    ticked,
+    setTicked,
+    registerAll,
+    registering,
+    needsCacheTtl,
+    registerAsDraft,
+    opening,
+  };
 }
 
 /** What a registration of several tables came to: the ids registered, and the tables refused. */

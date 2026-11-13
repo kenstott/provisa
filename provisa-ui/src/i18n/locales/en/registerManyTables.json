@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "How many tables",
-    "modeOne": "One table",
-    "modeSeveral": "Several tables",
     "tablesLabel": "Tables",
     "listing": "Listing the tables…",
     "noTables": "This schema has no tables.",
-    "tickedCount_one": "{{count}} table ticked. Each is registered with the defaults.",
-    "tickedCount_other": "{{count}} tables ticked. Each is registered with the defaults.",
     "reading": "Reading its columns…",
     "readFailed": "Its columns could not be read: {{error}}",
-    "registered": "Registered already.",
     "needsDeclared": "Needs input: its source does not describe its columns. Register it on its own.",
     "needsNoColumns": "Needs input: no columns were found. Register it on its own.",
     "needsUntyped": "Needs input: no type was found for {{columns}}. Register it on its own.",
+    "needsCacheTtl": "Needs input: its source needs a Cache TTL for each table. Register it on its own.",
+    "registerOne": "Register",
+    "registerOneLabel": "Register {{table}} on its own",
     "register_one": "Register {{count}} table",
     "register_other": "Register {{count}} tables",
     "refused": "{{table}} was not registered: {{message}}",
     "skip": "Skip registering tables",
-    "domainRequired": "Choose the domain the tables are registered in."
+    "domainRequired": "Choose the domain the tables are registered in.",
+    "pickTables": "Select one table or more…",
+    "needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own."
   }
 }

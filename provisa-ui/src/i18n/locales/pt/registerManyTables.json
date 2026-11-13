@@ -1,23 +1,22 @@
 {
   "registerManyTables": {
-    "modeLabel": "Quantas tabelas",
-    "modeOne": "Uma tabela",
-    "modeSeveral": "Várias tabelas",
     "tablesLabel": "Tabelas",
     "listing": "Listando as tabelas…",
     "noTables": "Este esquema não tem tabelas.",
-    "tickedCount_one": "{{count}} tabela marcada. Cada uma é registrada com os padrões.",
-    "tickedCount_other": "{{count}} tabelas marcadas. Cada uma é registrada com os padrões.",
     "reading": "Lendo as colunas…",
     "readFailed": "Não foi possível ler as colunas: {{error}}",
-    "registered": "Já registrada.",
     "needsDeclared": "Requer entrada: a origem não descreve as colunas. Registre-a separadamente.",
     "needsNoColumns": "Requer entrada: nenhuma coluna foi encontrada. Registre-a separadamente.",
     "needsUntyped": "Requer entrada: nenhum tipo foi encontrado para {{columns}}. Registre-a separadamente.",
+    "needsCacheTtl": "Requer entrada: a origem exige um TTL do cache para cada tabela. Registre-a separadamente.",
+    "registerOne": "Registrar",
+    "registerOneLabel": "Registrar {{table}} separadamente",
     "register_one": "Registrar {{count}} tabela",
     "register_other": "Registrar {{count}} tabelas",
     "refused": "{{table}} não foi registrada: {{message}}",
     "skip": "Pular o registro de tabelas",
-    "domainRequired": "Escolha o domínio em que as tabelas são registradas."
+    "domainRequired": "Escolha o domínio em que as tabelas são registradas.",
+    "pickTables": "Selecione uma ou mais tabelas…",
+    "needsVectorModel": "Requer entrada: indique o modelo de cada vetor ({{columns}}). Registre-a separadamente."
   }
 }

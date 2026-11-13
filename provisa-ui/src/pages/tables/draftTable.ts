@@ -33,6 +33,8 @@ export interface Registration {
   pagingCeilingRows: number | null;
   /** REQ-1934: a profiler result table's row rules, saved once the table exists. */
   rowRules: ProfilerRowRule[];
+  /** REQ-1924: an OpenAPI table with no response schema, whose columns the panel declares. */
+  declaresColumns?: boolean;
 }
 
 /** One column of a registration input, as the create step builds it. */
@@ -60,7 +62,7 @@ export const UNREGISTERED_ID = 0;
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
-function draftColumn(c: ColumnInput, i: number): TableColumn {
+export function draftColumn(c: ColumnInput, i: number): TableColumn {
   return {
     // Its position until the server gives it an id: what the form keys its rows on.
     id: i + 1,
@@ -139,6 +141,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     queryTemplate: str(i.queryTemplate),
     fileGlob: str(i.fileGlob),
     sourceFileColumn: str(i.sourceFileColumn),
+    importSet: str(i.importSet),
+    discover: i.discover === true,
     materialize: i.materialize === true,
     mvRefreshInterval: 300,
     mvDebounceQuiet: 0,

@@ -545,20 +545,56 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(conn.cancel):
                     cur.execute(_q(exec_sql), args)
+                    rows = self._fetched(cur)
+                return self._result(conn, cur, rows)
+
+    # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
+    async def execute_in_one_transaction(
+        self, statements: list[tuple[str, dict[str, Any]]], *, read_only: bool = False
+    ) -> QueryResult:  # REQ-1988
+        """Each statement, in psycopg's named-parameter form with its bound values, in order in
+        one transaction on one connection: all commit or, on any failure, none does. Answers the
+        last statement's result.
+
+        ``read_only`` makes the database itself refuse a write (SQLSTATE 25006): the transaction's
+        first statement is ``SET TRANSACTION READ ONLY``, which lasts to its end only, so the
+        pooled connection goes back read-write."""
+        if not statements:
+            raise ValueError("no statement to run")
+        with self._borrow() as conn, conn.transaction():
+            if read_only:
+                conn.execute(_q("SET TRANSACTION READ ONLY"))
+            if current_zone.get() is not None:
+                _tell_zone(conn, statements[0][0])
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(conn.cancel):
                     rows: list[tuple] = []
-                    if cur.description:
-                        # In chunks, not one fetchall(): converting a large result is a single
-                        # C call the request's deadline cannot end until it returns (REQ-1905,
-                        # measured at 0.9-3.5 s for 6M rows). Between chunks it can.
-                        while chunk := cur.fetchmany(_FETCH_CHUNK_ROWS):
-                            rows.extend(tuple(r) for r in chunk)
-                            request_deadline.check()
-                desc = cur.description or []
-                columns = [d.name for d in desc]
-                col_types = self._type_names(conn, [d.type_code for d in desc])
-                # A statement with no result set (a data write without RETURNING) reports how
-                # many rows it changed; the driver's count is the only place that is known.
-                affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
+                    for sql, params in statements:
+                        cur.execute(_q(sql), params)
+                        rows = self._fetched(cur)
+                return self._result(conn, cur, rows)
+
+    @staticmethod
+    def _fetched(cur: psycopg.Cursor[Any]) -> list[tuple]:
+        rows: list[tuple] = []
+        if cur.description:
+            # In chunks, not one fetchall(): converting a large result is a single C call the
+            # request's deadline cannot end until it returns (REQ-1905, measured at 0.9-3.5 s for
+            # 6M rows). Between chunks it can.
+            while chunk := cur.fetchmany(_FETCH_CHUNK_ROWS):
+                rows.extend(tuple(r) for r in chunk)
+                request_deadline.check()
+        return rows
+
+    def _result(
+        self, conn: psycopg.Connection[Any], cur: psycopg.Cursor[Any], rows: list[tuple]
+    ) -> QueryResult:
+        desc = cur.description or []
+        columns = [d.name for d in desc]
+        col_types = self._type_names(conn, [d.type_code for d in desc])
+        # A statement with no result set (a data write without RETURNING) reports how many rows
+        # it changed; the driver's count is the only place that is known.
+        affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
         return QueryResult(
             rows=rows, column_names=columns, column_types=col_types, rowcount=affected
         )

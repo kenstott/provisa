@@ -74,16 +74,24 @@ export function defaultWatermark(columns: ColumnForm[], sourceType: string): str
 export type InputNeeded =
   | { kind: "declared" }
   | { kind: "noColumns" }
-  | { kind: "untyped"; columns: string[] };
+  | { kind: "untyped"; columns: string[] }
+  // REQ-1907: not of the table but of its source: each table needs a Cache TTL of its own.
+  | { kind: "cacheTtl" }
+  // REQ-2000: a Qdrant collection's vectors each name the model they are an embedding of.
+  | { kind: "vectors"; columns: string[] };
 
 export function inputNeeded(
   offered: Pick<TableMetadata, "columnsDeclared">,
-  columns: Pick<ColumnMetadata, "name" | "dataType">[],
+  columns: (Pick<ColumnMetadata, "name" | "dataType"> & { path?: string | null })[],
+  sourceType = "",
 ): InputNeeded | null {
   if (offered.columnsDeclared) return { kind: "declared" };
   if (columns.length === 0) return { kind: "noColumns" };
   const untyped = columns.filter((c) => !c.dataType).map((c) => c.name);
-  return untyped.length > 0 ? { kind: "untyped", columns: untyped } : null;
+  if (untyped.length > 0) return { kind: "untyped", columns: untyped };
+  // A vector registered without its model is lost to the table: it is named first.
+  const vectors = columns.filter((c) => offeredUnselected(sourceType, c.path)).map((c) => c.name);
+  return vectors.length > 0 ? { kind: "vectors", columns: vectors } : null;
 }
 
 /** What the step chose, as a registration: what names the table, its columns and its paging. */

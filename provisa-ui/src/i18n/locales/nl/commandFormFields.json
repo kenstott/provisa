@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL-expressie",
     "bindingTemplateHint": "Eén SQL-expressie. Schrijf elk argument als {{placeholder}}; ze wordt uitgevoerd binnen de aanroepende query.",
     "argDefault": "Standaardwaarde van argument {{name}}",
-    "argDefaultPlaceholder": "Standaardwaarde (leeg laten als verplicht)"
+    "argDefaultPlaceholder": "Standaardwaarde (leeg laten als verplicht)",
+    "nativeSql": "Native SQL",
+    "nativeSqlHint": "SQL in het eigen dialect van de bron, één instructie of meerdere, uitgevoerd op de bron in één transactie: alle worden vastgelegd of geen enkele. Schrijf een argument als {{placeholder}}; elk wordt als waarde gebonden. Het antwoord zijn de rijen van de laatste instructie."
   }
 }

@@ -74,6 +74,7 @@ const TRANSPORTS = [
   "odata", // REQ-2193
   "sql_http",
   "cypher_http",
+  "sparql_http",
   "pgwire",
   "flight",
   "bolt",

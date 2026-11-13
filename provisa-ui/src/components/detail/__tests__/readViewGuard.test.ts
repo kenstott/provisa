@@ -173,6 +173,13 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/ViewDefinitionForm.tsx",
       "pages/tables/RegisterTableForm.tsx",
       "pages/tables/FilesGlobFieldset.tsx",
+      // REQ-2234: Register Table's fields its detail panel edits too.
+      "pages/tables/ImportSetField.tsx",
+      "pages/tables/DiscoverColumnsField.tsx",
+      // REQ-2234: editors Register Table no longer holds, in the panel's Columns section.
+      "pages/tables/QdrantVectorColumns.tsx",
+      "pages/tables/DeclaredDraftColumns.tsx",
+      "pages/tables/DeclaredColumns.tsx",
       "pages/tables/ModelingForm.tsx",
       "pages/tables/ProfilerPanel.tsx",
       "pages/tables/DataQualityPanel.tsx",
@@ -186,10 +193,13 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/testdata/TestDataColumns.tsx",
       "pages/tables/CalendarCreateModal.tsx",
       "pages/tables/ProfileConstraintsModal.tsx",
-      "pages/tables/NlTableSearch.tsx",
       "pages/tables/DescriptionField.tsx",
     ],
     notAField: {
+      "registerManyTables.tablesLabel":
+        "Register Table's pick of the tables to register, not a value of one table",
+      "declaredColumns.name": "a declared column's name: shown as the column in Columns",
+      "declaredColumns.type": "a declared column's type: shown as its Data Type in Columns",
       "tableEditForm.loadManagementHelp": "a hint beside the load fields, not a value",
       "recurrence.dayOfMonth":
         "a step of the builder that writes the recurrence: shown as Recurrence",
@@ -213,7 +223,7 @@ const PANELS: Readonly<Record<string, Panel>> = {
         "registration's cache TTL: shown in Load and timeliness as Cache TTL",
       "registerTableForm.neo4jTableNameLabel": "a neo4j table's name: shown in Identity as Table",
       "registerTableForm.discoverLabel":
-        "a registration act that reads the source's columns, not a value",
+        "an act that reads the source's columns at registration or at the editor's save, not a value",
       "modelingForm.attributesLabel":
         "a create step: the model is lowered to a view, read as that view",
       "modelingForm.domainLabel":
@@ -269,8 +279,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
         "creates a calendar, which the table names: shown as Calendar",
       "profileConstraintsModal.checkerLabel":
         "picks the checker a profile's constraints go to; stores nothing of the table",
-      "registerTableForm.nlSearchLabel":
-        "a search for a table to register; stores nothing of the table",
     },
   },
 };

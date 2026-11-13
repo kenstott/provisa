@@ -20,8 +20,6 @@
     "gapHelp": "このタグには引用が必要ですが、この割り当てにはありません。",
     "definedBy": "定義元: {{title}}",
     "definedByLabel": "定義元",
-    "definedByDesc": "このタグを定義するライブラリのセクション。",
-    "citedHere": "このオブジェクトの引用",
     "requiresCitationLabel": "割り当てに引用を必須にする",
     "requiresCitationDesc": "ライブラリのセクションを引用していないこのタグの割り当ては、不足として表示されます。",
     "requiresCitationBadge": "引用必須",
@@ -29,6 +27,10 @@
     "citedByOn": "対象",
     "citedByDefinition": "その定義",
     "citedByGone": "なし",
-    "citedByWholeDocument": "文書全体"
+    "citedByWholeDocument": "文書全体",
+    "citationsLabel": "このオブジェクトに付ける理由",
+    "neededForCoverage": "カバレッジに必要",
+    "definitionLabel": "このタグが存在する理由",
+    "definitionDesc": "このタグが存在する理由を示す文書とセクション。1 つのオブジェクトに付ける理由は、そのオブジェクト自身の引用に記入します。"
   }
 }

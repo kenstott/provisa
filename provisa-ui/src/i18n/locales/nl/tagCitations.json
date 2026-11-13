@@ -20,8 +20,6 @@
     "gapHelp": "Deze tag vereist een citaat en deze toewijzing heeft er geen.",
     "definedBy": "Gedefinieerd door {{title}}",
     "definedByLabel": "Gedefinieerd door",
-    "definedByDesc": "De bibliotheeksecties die deze tag definiëren.",
-    "citedHere": "Geciteerd voor dit object",
     "requiresCitationLabel": "Toewijzingen vereisen een citaat",
     "requiresCitationDesc": "Een toewijzing van deze tag zonder geciteerde bibliotheeksectie wordt als lacune gemarkeerd.",
     "requiresCitationBadge": "Citaat vereist",
@@ -29,6 +27,10 @@
     "citedByOn": "Op",
     "citedByDefinition": "De definitie ervan",
     "citedByGone": "Verdwenen",
-    "citedByWholeDocument": "Heel document"
+    "citedByWholeDocument": "Heel document",
+    "citationsLabel": "Waarom het op dit object staat",
+    "neededForCoverage": "Nodig voor dekking",
+    "definitionLabel": "Waarom deze tag bestaat",
+    "definitionDesc": "Het document en de sectie die zeggen waarom deze tag bestaat. Waarom hij op een object staat, komt in de eigen citaten van dat object."
   }
 }

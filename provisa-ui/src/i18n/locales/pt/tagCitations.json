@@ -20,8 +20,6 @@
     "gapHelp": "Esta tag exige uma citação, e esta atribuição não tem nenhuma.",
     "definedBy": "Definida por {{title}}",
     "definedByLabel": "Definida por",
-    "definedByDesc": "As seções da biblioteca que definem esta tag.",
-    "citedHere": "Citado para este objeto",
     "requiresCitationLabel": "As atribuições exigem uma citação",
     "requiresCitationDesc": "Uma atribuição desta tag sem seção da biblioteca citada é marcada como lacuna.",
     "requiresCitationBadge": "Citação obrigatória",
@@ -29,6 +27,10 @@
     "citedByOn": "Em",
     "citedByDefinition": "Sua definição",
     "citedByGone": "Removida",
-    "citedByWholeDocument": "Documento inteiro"
+    "citedByWholeDocument": "Documento inteiro",
+    "citationsLabel": "Por que está neste objeto",
+    "neededForCoverage": "Necessária para a cobertura",
+    "definitionLabel": "Por que esta etiqueta existe",
+    "definitionDesc": "O documento e a seção que dizem por que esta etiqueta existe. Por que ela está em um objeto vai nas citações desse objeto."
   }
 }
