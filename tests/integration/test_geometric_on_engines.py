@@ -28,6 +28,7 @@ import psycopg
 import pytest
 
 from provisa.transpiler.transpile import transpile
+from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.geometric_replay import (
     BY_FUNCTION,
     column_statement,
@@ -115,23 +116,11 @@ def _clickhouse_client():
     )
 
 
-def _on_every_function(check: Callable[[str], Any]) -> dict[str, str]:
-    """Every function's failure, reported together: requires_clickhouse starts and removes the
-    service for each test, 14 seconds that made one test a function take over an hour."""
-    failures: dict[str, str] = {}
-    for function in sorted(BY_FUNCTION):
-        try:
-            check(function)
-        except AssertionError as failed:
-            failures[function] = str(failed)[:2000]
-    return failures
-
-
 @pytest.mark.requires_clickhouse
 def test_geometric_forms_on_clickhouse():
     client = _clickhouse_client()
     run = lambda sql: client.query(sql).result_rows[0][0]  # noqa: E731
-    assert _on_every_function(lambda f: _check(f, "clickhouse", run)) == {}
+    assert failures_of_every_case(sorted(BY_FUNCTION), lambda f: _check(f, "clickhouse", run)) == {}
 
 
 def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -> None:
@@ -165,4 +154,7 @@ def test_geometric_columns_on_trino(trino_conn, function: str):
 def test_geometric_columns_on_clickhouse():
     client = _clickhouse_client()
     rows = lambda sql: [r[0] for r in client.query(sql).result_rows]  # noqa: E731
-    assert _on_every_function(lambda f: _on_columns(f, "clickhouse", rows)) == {}
+    assert (
+        failures_of_every_case(sorted(BY_FUNCTION), lambda f: _on_columns(f, "clickhouse", rows))
+        == {}
+    )
