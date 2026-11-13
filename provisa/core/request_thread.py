@@ -557,10 +557,44 @@ class RequestThreadMiddleware:
         # middleware; its receive spans are this middleware's (provisa.otel_compat).
         server_span = http_server_span()
 
+        # REQ-1882/J1270b: the watch on the client of an HTTP request (none for a WebSocket, whose
+        # messages are never http.*). It is given to the request's deadline by the transport
+        # middleware through the scope's state (client_watch).
+        watch = request_deadline.ClientWatch()
+        answered = False  # the whole response has been handed to the front loop
+        # The client's message after the body, awaited on this (the accepting) loop from the
+        # moment the body is complete: the server's answer is http.disconnect, when the client
+        # goes or once the response is sent. One reader: a later receive() of the request is
+        # given this same message.
+        after_body: list[asyncio.Task[Message]] = []
+
+        def _heard(message: Message) -> None:
+            if message["type"] == "http.disconnect" and not answered:
+                watch.gone()
+
+        async def _await_after_body() -> Message:
+            message = await receive()
+            _heard(message)
+            return message
+
+        def _body_complete() -> None:
+            if not after_body:
+                after_body.append(front.create_task(_await_after_body()))
+
         # Async on the request thread's loop by necessity: the ASGI receive/send channels belong to
         # the front loop's transport; the request loop awaits their completion there.
         async def _front_receive() -> Message:
-            return await receive()
+            # The one receive relay: a body message, or the message after the body, which the
+            # accepting loop already awaits for the watch (no second reader, no extra hand-over).
+            if after_body:
+                # Shielded: a receive() the request gives up on (``is_disconnected``) must not
+                # cancel the watch.
+                return await asyncio.shield(after_body[0])
+            message = await receive()
+            _heard(message)
+            if message["type"] == "http.request" and not message.get("more_body"):
+                _body_complete()
+            return message
 
         async def _front_send(message: Message) -> None:
             await send(message)
@@ -569,12 +603,10 @@ class RequestThreadMiddleware:
             for message in messages:
                 await send(message)
 
-        async def relayed_receive(
-            front_receive: Callable[[], Coroutine[Any, Any, Message]] = _front_receive,
-        ) -> Message:
+        async def relayed_receive() -> Message:
             with live_receive_span(server_span, scope["type"]) as span:
                 message = await asyncio.wrap_future(
-                    asyncio.run_coroutine_threadsafe(front_receive(), front)
+                    asyncio.run_coroutine_threadsafe(_front_receive(), front)
                 )
                 if span is not None:
                     span.set_attribute("asgi.event.type", message["type"])
@@ -599,39 +631,7 @@ class RequestThreadMiddleware:
                 await send({"type": "websocket.close", "code": _WS_TRY_AGAIN_LATER})
             return
 
-        watch = request_deadline.ClientWatch()
         scope.setdefault("state", {})[_CLIENT_WATCH] = watch
-        answered = False  # the whole response has been handed to the front loop
-        # The client's message after the body, awaited on this (the accepting) loop from the
-        # moment the body is complete: the server's answer is http.disconnect, when the client
-        # goes or once the response is sent. One reader: a later receive() of the request is
-        # given this same message.
-        after_body: list[asyncio.Task[Message]] = []
-
-        def _heard(message: Message) -> None:
-            if message["type"] == "http.disconnect" and not answered:
-                watch.gone()
-
-        async def _await_after_body() -> Message:
-            message = await receive()
-            _heard(message)
-            return message
-
-        def _body_complete() -> None:
-            if not after_body:
-                after_body.append(front.create_task(_await_after_body()))
-
-        async def _front_receive_watched() -> Message:
-            if after_body:
-                # Shielded: a receive() the request gives up on (``is_disconnected``) must not
-                # cancel the watch.
-                return await asyncio.shield(after_body[0])
-            message = await receive()
-            _heard(message)
-            if message["type"] == "http.request" and not message.get("more_body"):
-                _body_complete()
-            return message
-
         # The request body, read here on the accepting loop when it is small, so it travels with
         # the hand-off instead of costing a relay back.
         first: list[Message] = []
@@ -668,7 +668,7 @@ class RequestThreadMiddleware:
             # arrives as the client sends it, and a receive() after the body is a disconnect watch
             # (``request.is_disconnected()``, an SSE stream) — both are answered by the front
             # loop's transport when it has something to say.
-            return await relayed_receive(_front_receive_watched)
+            return await relayed_receive()
 
         held: list[Message] = []  # the response so far, not yet handed to the front loop
         streaming = False
