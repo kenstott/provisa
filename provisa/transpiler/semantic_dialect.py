@@ -100,6 +100,70 @@ def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
 ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated
 ClickHouse.Generator.TRANSFORMS[exp.Escape] = lambda self, expression: self.sql(expression.this)
 
+# REQ-2167: ClickHouse has no bitwise operator: & | ^ ~ << >> are syntax errors there, and a form of
+# the old table (provisa.transpiler.function_macros) writes them in PostgreSQL's SQL. Each is
+# ClickHouse's function of the same bits, of the operands' type.
+for _operator, _name in (
+    (exp.BitwiseAnd, "bitAnd"),
+    (exp.BitwiseOr, "bitOr"),
+    (exp.BitwiseXor, "bitXor"),
+    (exp.BitwiseLeftShift, "bitShiftLeft"),
+    (exp.BitwiseRightShift, "bitShiftRight"),
+):
+    ClickHouse.Generator.TRANSFORMS[_operator] = rename_func(_name)
+ClickHouse.Generator.TRANSFORMS[exp.BitwiseNot] = lambda self, e: self.func("bitNot", e.this)
+#: Integer division toward zero, as PostgreSQL's: ClickHouse's intDiv (it reads no INTDIV).
+ClickHouse.Generator.TRANSFORMS[exp.IntDiv] = rename_func("intDiv")
+#: The functions sqlglot writes by a name ClickHouse does not read, each by ClickHouse's own.
+ClickHouse.Generator.TRANSFORMS[exp.CumeDist] = rename_func("cume_dist")
+ClickHouse.Generator.TRANSFORMS[exp.Uuid] = lambda self, e: "generateUUIDv4()"
+#: bool_and and bool_or: the least and the greatest of the booleans, NULL of none, as each
+#: skips a NULL.
+ClickHouse.Generator.TRANSFORMS[exp.LogicalAnd] = rename_func("min")
+ClickHouse.Generator.TRANSFORMS[exp.LogicalOr] = rename_func("max")
+ClickHouse.Generator.TRANSFORMS[exp.ArrayAppend] = rename_func("arrayPushBack")
+ClickHouse.Generator.TRANSFORMS[exp.ArrayPrepend] = rename_func("arrayPushFront")
+#: array_position: the first index of the value, NULL where it is not there (indexOf's 0).
+ClickHouse.Generator.TRANSFORMS[exp.ArrayPosition] = lambda self, e: (
+    f"nullIf(indexOf({self.sql(e.this)}, {self.sql(e.expression)}), 0)"
+)
+
+
+#: ClickHouse's functions whose name it reads in one case only, by the name in any case: a form's
+#: call passes through PostgreSQL's text, which writes it upper-cased (pg_money's intDiv).
+_CLICKHOUSE_SPELLINGS = {name.lower(): name for name in ("intDiv",)}
+
+
+def _clickhouse_call(self: Generator, expression: exp.Anonymous) -> str:
+    """ROW(...) as ClickHouse's tuple, which it compares field by field as PostgreSQL does a row;
+    a call of a name ClickHouse reads in one case only, in that case; any other as it is."""
+    name = expression.name.lower()
+    if name == "row":
+        return self.func("tuple", *expression.expressions)
+    if name in _CLICKHOUSE_SPELLINGS:
+        return self.func(_CLICKHOUSE_SPELLINGS[name], *expression.expressions, normalize=False)
+    return self.anonymous_sql(expression)
+
+
+ClickHouse.Generator.TRANSFORMS[exp.Anonymous] = _clickhouse_call
+
+
+def _clickhouse_regexp_replace(self: Generator, expression: exp.RegexpReplace) -> str:
+    """A form's regexp_replace(s, p, r, 'g'): every match, ClickHouse's replaceRegexpAll, which
+    takes no flags. A statement's own call is read by the grid's row first (polyfill.regex)."""
+    modifiers = expression.args.get("modifiers")
+    if isinstance(modifiers, exp.Literal) and modifiers.is_string and modifiers.this == "g":
+        return self.func(
+            "replaceRegexpAll",
+            expression.this,
+            expression.expression,
+            expression.args["replacement"],
+        )
+    return self.function_fallback_sql(expression)
+
+
+ClickHouse.Generator.TRANSFORMS[exp.RegexpReplace] = _clickhouse_regexp_replace
+
 
 def _root_read_back(name: str) -> None:
     build = Postgres.Parser.FUNCTIONS[name]
