@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL через HTTP",
           "cypher_http": "Cypher через HTTP",
+          "sparql_http": "SPARQL через HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",

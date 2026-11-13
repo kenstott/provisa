@@ -5025,7 +5025,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(asyncio.TimeoutError)
     async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        log.error("Request timeout on %s %s", _req.method, _req.url.path)
+        from provisa.core import request_deadline as _deadline_of
+
+        deadline = _deadline_of.current()
+        if deadline is not None and deadline.client_left:
+            # The client disconnected and its statement was cancelled: nobody is waiting for
+            # this answer, and nothing failed on the server.
+            log.info("%s %s ended: the client disconnected", _req.method, _req.url.path)
+        else:
+            log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
 
     # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
@@ -5730,6 +5738,7 @@ def create_app() -> FastAPI:
     from provisa.api.request_timeout import serve_within_deadline
     from provisa.core import request_deadline as _request_deadline
     from provisa.core.limits import bound_request_transport, http_transport_for_path
+    from provisa.core.request_thread import client_watch
 
     class _RequestTransportMiddleware:
         def __init__(self, inner: Any) -> None:
@@ -5748,6 +5757,11 @@ def create_app() -> FastAPI:
                 bound_request_transport(transport),
                 _request_deadline.request(transport) as deadline,
             ):
+                # The client leaving ends this deadline: its statement is cancelled on the engine
+                # instead of running on for nobody (provisa.core.request_thread).
+                watch = client_watch(scope)
+                if watch is not None:
+                    watch.watch(deadline)
                 await serve_within_deadline(self._inner, scope, receive, send, deadline)
 
     # REQ-1524: one HTTP request is one model change. Registered before the transport middleware,
