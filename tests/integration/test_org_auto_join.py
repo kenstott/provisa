@@ -119,8 +119,9 @@ def _planes(monkeypatch, *org_rows: dict):
     monkeypatch.setattr(app_state, "org_id", _DEPLOYMENT_ORG, raising=False)
     registry = OrgRegistry()
     # The deployment's own runtime, built here: the platform rights are read from it (REQ-1327),
-    # and no earlier test is relied on to have registered it.
-    registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, roles={}))
+    # and a request that acts in no org reads its roles from its model store (platform_model_db),
+    # here the one schema holding both stores. No earlier test is relied on to have registered it.
+    registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, model_db=tenant_db, roles={}))
     for row in org_rows:
         registry.set(
             row["id"],
