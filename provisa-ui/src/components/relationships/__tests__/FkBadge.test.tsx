@@ -17,6 +17,7 @@ import { fireEvent, render, screen } from "../../../test-utils/render";
 import type { Relationship } from "../../../types/admin";
 import { RelationshipDetail } from "../RelationshipDetail";
 import { RelationshipRow } from "../RelationshipRow";
+import { ListTable } from "../../list/ListTable";
 
 const rel: Relationship = {
   id: 7,
@@ -73,17 +74,15 @@ function panel(r: Relationship) {
 
 function row(r: Relationship) {
   render(
-    <table>
-      <tbody>
-        <RelationshipRow
-          rel={r}
-          selected={false}
-          onToggle={vi.fn()}
-          tableDomainById={{}}
-          domainsEnabled={false}
-        />
-      </tbody>
-    </table>,
+    <ListTable>
+      <RelationshipRow
+        rel={r}
+        selected={false}
+        onToggle={vi.fn()}
+        tableDomainById={{}}
+        domainsEnabled={false}
+      />
+    </ListTable>,
   );
 }
 

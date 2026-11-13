@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Auto-tracked from FK constraint",
-    "fkBadge": "FK",
+    "fkBadge": "From FK",
+    "fkBadgeTitle": "Created from a foreign key in the source",
     "yes": "Yes",
     "no": "No",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Materialize",
     "excludeFromCypher": "Exclude from Cypher",
     "sqlName": "SQL Name",
-    "autoTracked": "Auto-tracked",
     "cardinalityWarning": "Warning: if this join returns more than one row per parent, only the first value will be used.",
     "toggleDetails": "Toggle relationship details",
     "junctionBadge": "props",
