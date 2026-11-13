@@ -178,9 +178,14 @@ def test_two_requests_at_once_are_on_two_threads_never_one(front):
 
 
 def test_a_small_request_is_handed_over_once_each_way(front, relays):
+    """The server's receive() is called twice, both on the accepting loop and neither a hand-over:
+    the body, read before the hand-off, and the client watch (REQ-1882, J1270b), which awaits the
+    message after the body there so a client that leaves cancels its statement. The request thread
+    still crosses to the accepting loop once: the complete response."""
     f = front(body=[b'{"query":"{ orders { id } }"}'])
     f.call(RequestThreadMiddleware(_echo, pool=RequestThreadPool()))
-    assert f.receives == [f.ident]  # the body was read by the accepting loop, before the hand-off
+    # The body read, then the watch: both on the accepting loop, neither relayed.
+    assert f.receives == [f.ident, f.ident]
     assert relays == ["_flush"]  # ONE relay back: the complete response
     assert set(f.send_threads) == {f.ident}
     assert [m["type"] for m in f.sent] == ["http.response.start", "http.response.body"]
