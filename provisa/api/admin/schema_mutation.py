@@ -1642,13 +1642,15 @@ async def _require_assignment_editor(
 async def _unread_document(
     info: StrawberryInfo, conn: "Connection", document_id: int
 ) -> "MutationResult | None":  # REQ-2208
-    """A cited document must be one the caller reads (its domains, as a term's): one it may not
-    read is answered as one the library does not hold."""
-    from provisa.api.admin.read_rights import reader_for
+    """A cited document must be one the caller reads, as the Library page reads it (its
+    domains): one it may not read is answered as one the library does not hold."""
+    from provisa.api.admin.capabilities import allowed_domains_request
     from provisa.reference_library import store
+    from provisa.reference_library.retrieve import readable
 
     document = await store.document(conn, document_id)
-    if document is not None and reader_for(info).term(set(document.domains)):
+    scope = allowed_domains_request(info.context["request"])
+    if document is not None and readable(scope, frozenset(document.domains)):
         return None
     return MutationResult(
         success=False,

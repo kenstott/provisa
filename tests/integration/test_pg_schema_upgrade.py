@@ -531,6 +531,10 @@ _CREATE_ONLY = {
         "scan_id table_id status started_at finished_at sampled_rows scanned_columns requested_by "
         "error"
     ),
+    "reference_citations": (
+        "id citer_kind tag_id object_key document_id document_title document_source "
+        "section_heading section_page cite_key text_sha256 cited_by cited_at tenant_id"
+    ),
     "reference_document_domains": "id document_id domain_id tenant_id",
     "reference_document_tags": (
         "id tag_id base_tag_id object_type document_id section_heading section_page object_key "

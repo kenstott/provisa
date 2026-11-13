@@ -283,7 +283,8 @@ async def _cited_by_tags(
         *await tag_repo.list_library_assignments(conn),
     ]
     rows = [r for r in held if (r["base_tag_id"], r["object_key"]) in by_assignment]
-    rows = await readable_tag_assignments(request, conn, rows)
+    if rows:
+        rows = await readable_tag_assignments(request, conn, rows)
     assignments = []
     for r in rows:
         for c in found:
