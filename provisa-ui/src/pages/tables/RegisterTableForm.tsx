@@ -27,14 +27,7 @@ import { QdrantVectorColumns } from "./QdrantVectorColumns";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { isFilesSourceType } from "./tableSectionFields";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  NumberInput,
-  SegmentedControl,
-  Select,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Button, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -744,7 +737,7 @@ export function RegisterTableForm({
                     s.id !== DERIVED_SOURCE_ID &&
                     !s.isSystem &&
                     (s.allowedDomains.length === 0 ||
-                    s.allowedDomains.some((d) => checkedDomains.has(d))),
+                      s.allowedDomains.some((d) => checkedDomains.has(d))),
                 )
                 .map((s) => (
                   <option key={s.id} value={s.id}>

@@ -10416,5 +10416,9 @@
   "zh-HK/list.json::list.duplicateNamed": "Duplicate {{name}}",
   "zh-HK/sourcesPage.json::sourcesPage.duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret.",
   "zh-HK/mermaidDiagram.json::mermaidDiagram.fitWidth": "Fit width",
-  "zh-HK/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram"
+  "zh-HK/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram",
+  "zh-HK/registerManyTables.json::registerManyTables.needsCacheTtl": "Needs input: its source needs a Cache TTL for each table. Register it on its own.",
+  "zh-HK/registerManyTables.json::registerManyTables.registerOne": "Register",
+  "zh-HK/registerManyTables.json::registerManyTables.registerOneLabel": "Register {{table}} on its own",
+  "zh-HK/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted."
 }

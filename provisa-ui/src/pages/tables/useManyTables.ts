@@ -57,7 +57,10 @@ export interface ManyTablesChoice {
 }
 
 /** What keeps a listed table from being registered with the others; null when nothing does. */
-export function blockedBy(reading: Reading | undefined, needsCacheTtl: boolean): InputNeeded | null {
+export function blockedBy(
+  reading: Reading | undefined,
+  needsCacheTtl: boolean,
+): InputNeeded | null {
   if (reading?.state !== "read") return null;
   return reading.needs ?? (needsCacheTtl ? { kind: "cacheTtl" } : null);
 }
