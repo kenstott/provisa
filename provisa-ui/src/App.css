@@ -857,8 +857,8 @@ main {
 .split-pane__head .mantine-Group-root {
   gap: 0.25rem;
 }
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root):disabled,
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-disabled] {
+.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
+.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
   background: transparent;
   border-color: transparent;
   opacity: 0.45;
@@ -867,7 +867,8 @@ main {
   min-height: 1px;
 }
 /* A form's Save and Cancel in the head of the panel it is open in, in place of the view's
- * actions: borderless and compact, beside the name, so the form has the panel's whole height. */
+ * actions: borderless and compact like the head's other actions, beside the name, so the form has
+ * the panel's whole height. */
 .form-footer.form-footer--head {
   flex: 0 0 auto;
   flex-wrap: nowrap;
@@ -875,11 +876,6 @@ main {
 }
 .form-footer.form-footer--head .mantine-Button-root {
   min-width: 0;
-}
-/* Both are borderless here; Save is the primary and is tinted as one. */
-.form-footer.form-footer--head .mantine-Button-root[data-primary]:not(:disabled) {
-  --button-color: var(--primary-hover);
-  color: var(--primary-hover);
 }
 /* What a form in the panel says of a save that did not go through: one line under the head. */
 .split-pane__notice {

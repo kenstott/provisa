@@ -20,19 +20,21 @@ import { useTranslation } from "react-i18next";
 export function CancelButton({
   onClick,
   disabled = false,
+  head = false,
   testId,
 }: {
   onClick: () => void;
   disabled?: boolean;
+  /** Drawn in a detail panel's head: the head's style (no border, no fill), not the foot's. */
+  head?: boolean;
   testId?: string;
 }) {
   const { t } = useTranslation();
   return (
     <Button
-      // Set here, not left to a theme: a panel's head makes its actions borderless and compact
-      // by default (PanelHeadStyle), and Cancel is the same there as anywhere.
-      variant="default"
-      size="sm"
+      // Set here, not left to a theme, for the foot and a dialog. In a head nothing is set: the
+      // head's theme (PanelHeadStyle) gives the one head style.
+      {...(head ? {} : { variant: "default", size: "sm" } as const)}
       type="button"
       onClick={onClick}
       disabled={disabled}

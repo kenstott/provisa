@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // Every action in a detail panel's head has ONE style, defined once (PanelHeadStyle): no
-// background, no border, one height. A page that gives a head action a variant or a size of its
+// background, no border, one height. The shared Save and Cancel (SaveButton, CancelButton) take
+// this style in a head too and no page styles them. A page that gives a head action a variant or a size of its
 // own brings back the mix of chips, boxes and bare icons this replaced, so it fails here.
 //
 // What is in a panel's head: what a view renders inside <PanelActions>, and the actions of a

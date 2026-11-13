@@ -245,9 +245,50 @@ describe("FormLayout", () => {
     const buttons = Array.from(footer.querySelectorAll("button"));
     expect(buttons.map((b) => b.textContent)).toEqual([t("common.save"), t("common.cancel")]);
     for (const b of buttons) expect(b.querySelector("svg")).not.toBeNull();
-    // The one Cancel: bordered and full size, the same as in a panel's head.
+    // At a foot: bordered and full size.
     expect(buttons[1]).toHaveAttribute("data-variant", "default");
     expect(buttons[1]).toHaveAttribute("data-size", "sm");
+  });
+
+  it("draws the filled Save and bordered Cancel at a form's foot and in a dialog, and each in the head's style in a panel's head", async () => {
+    const look = (b: HTMLElement) => ({
+      variant: b.getAttribute("data-variant"),
+      size: b.getAttribute("data-size"),
+    });
+    const props = { saveProps: { "data-testid": "s" }, cancelProps: { "data-testid": "c" } };
+    const foot = render(<FormFooter onSave={() => {}} onCancel={() => {}} {...props} />);
+    expect(look(screen.getByTestId("s"))).toEqual({ variant: "filled", size: "sm" });
+    expect(look(screen.getByTestId("c"))).toEqual({ variant: "default", size: "sm" });
+    foot.unmount();
+    // A dialog's row is the same footer, outside a panel.
+    const dialog = render(<FormFooter panel onSave={() => {}} onCancel={() => {}} {...props} />);
+    expect(look(screen.getByTestId("s"))).toEqual({ variant: "filled", size: "sm" });
+    expect(look(screen.getByTestId("c"))).toEqual({ variant: "default", size: "sm" });
+    dialog.unmount();
+    render(
+      <SplitPane
+        list={<div>list</div>}
+        title="orders"
+        onClose={() => {}}
+        storageKey="test-panel-same"
+        labels={{
+          panel: "Detail",
+          resize: "Resize",
+          expand: "Expand",
+          restore: "Restore",
+          close: "Close",
+          backToList: "Back",
+        }}
+        testId="pane"
+      >
+        <FormFooter panel onSave={() => {}} onCancel={() => {}} {...props} />
+      </SplitPane>,
+    );
+    const save = await screen.findByTestId("s");
+    const cancel = screen.getByTestId("c");
+    // No border, no fill: Mantine's subtle, compact, the head's one style.
+    expect(look(save)).toEqual({ variant: "subtle", size: "compact-sm" });
+    expect(look(cancel)).toEqual({ variant: "subtle", size: "compact-sm" });
   });
 
   describe("as a detail panel's actions", () => {
@@ -274,7 +315,7 @@ describe("FormLayout", () => {
       );
     const head = () => screen.getByTestId("pane-title").parentElement as HTMLElement;
 
-    it("sits in the panel's head beside the name, Save borderless and compact, Cancel the one Cancel, with the same ids", async () => {
+    it("sits in the panel's head beside the name, Save and Cancel in the head's style, with the same ids", async () => {
       inPanel(
         <FormFooter
           panel
@@ -294,14 +335,11 @@ describe("FormLayout", () => {
         t("common.cancel"),
       ]);
       for (const b of [save, cancel]) expect(b.querySelector("svg")).not.toBeNull();
-      // Save takes the head's look; Cancel is bordered and full size, as everywhere.
-      expect(save).toHaveAttribute("data-variant", "subtle");
-      expect(save).toHaveAttribute("data-size", "compact-sm");
-      expect(cancel).toHaveAttribute("data-variant", "default");
-      expect(cancel).toHaveAttribute("data-size", "sm");
-      // Save is marked as the primary (and tinted as one), Cancel is not.
-      expect(save).toHaveAttribute("data-primary", "true");
-      expect(cancel).not.toHaveAttribute("data-primary");
+      // Neither has a border or a fill: both are drawn as the head's other actions are.
+      for (const b of [save, cancel]) {
+        expect(b).toHaveAttribute("data-variant", "subtle");
+        expect(b).toHaveAttribute("data-size", "compact-sm");
+      }
       expect(save.closest(".form-footer")).toHaveClass("form-footer--head");
       // Nothing is left at the foot of the panel's content.
       expect(

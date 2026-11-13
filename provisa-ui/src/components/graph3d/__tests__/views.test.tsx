@@ -88,7 +88,7 @@ const reads = vi.hoisted(() => ({
   scopes: [] as QueryScope[],
   data: null as unknown,
   // Where a test has a read answer by its scope, as the server does.
-  dataOf: null as ((s: { focus: string | null }) => unknown) | null,
+  dataOf: null as ((s: { focus: string | null; layers: Set<string> }) => unknown) | null,
 }));
 vi.mock("../ontologyData", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ontologyData")>()),
@@ -96,7 +96,8 @@ vi.mock("../ontologyData", async (importOriginal) => ({
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: (_rows: unknown, s: { focus: string | null }) => reads.dataOf?.(s) ?? reads.data,
+  ontologyGraph: (_rows: unknown, s: { focus: string | null; layers: Set<string> }) =>
+    reads.dataOf?.(s) ?? reads.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -177,7 +178,9 @@ describe("a product's panel", () => {
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
     expect(nodeIds(drawn())).not.toContain("term:agent");
     // A column tied to a term drawn is itself; orders' total is one node.
-    expect(nodeIds(drawn())).toEqual(expect.arrayContaining(["c:customers.email", "fold:t:orders"]));
+    expect(nodeIds(drawn())).toEqual(
+      expect.arrayContaining(["c:customers.email", "fold:t:orders"]),
+    );
     fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "2" }));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:agent"));
   });
@@ -204,13 +207,11 @@ describe("a product's panel", () => {
     snippet(productPreset("c360"), "customer_360");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const control = screen.getByTestId("snip-depth");
-    expect(within(control).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual([
-      "1",
-      "2",
-      "3",
-      "4",
-      "all",
-    ]);
+    expect(
+      within(control)
+        .getAllByRole("radio")
+        .map((r) => r.getAttribute("value")),
+    ).toEqual(["1", "2", "3", "4", "all"]);
     fireEvent.click(within(control).getByRole("radio", { name: "4" }));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:c"));
     expect(nodeIds(drawn())).not.toContain("term:d");
@@ -536,7 +537,11 @@ describe("the Ontology page", () => {
       within(await screen.findByTestId("ontology-depth")).getByRole("radio", { name: "1" }),
     );
     await waitFor(() =>
-      expect(reads.scopes.at(-1)).toMatchObject({ focus: null, depth: 1, search: searchItems("customer") }),
+      expect(reads.scopes.at(-1)).toMatchObject({
+        focus: null,
+        depth: 1,
+        search: searchItems("customer"),
+      }),
     );
   });
 
@@ -583,6 +588,11 @@ describe("Open in ERD", () => {
 
 describe("Reset view", () => {
   it("folds every table back as well as resetting the camera", async () => {
+    // The Product map with its columns and terms on, as a reader saved it.
+    setStored(
+      "graph3d.product-map.org",
+      JSON.stringify({ layers: ["ontology", "domains", "columns", "data"] }),
+    );
     render(<ProductMapButton />);
     fireEvent.click(screen.getByTestId("product-map-open"));
     await waitFor(() => expect(made.scenes).toHaveLength(1));
@@ -599,19 +609,87 @@ describe("Reset view", () => {
 });
 
 describe("the Product map entry point", () => {
-  it("opens the whole ontology, every product among it", async () => {
+  /** Opens the Product map and waits for its scene. Its reads are answered as the server does:
+   * a column only once Columns is read, a term only once Ontology is. */
+  const openMap = async () => {
+    reads.dataOf = (s) => {
+      const kept = (n: GraphData["nodes"][number]) =>
+        (n.type !== "column" || s.layers.has("columns")) &&
+        (n.type !== "term" || s.layers.has("ontology"));
+      const nodes = FACTS.nodes.filter(kept);
+      const ids = new Set(nodes.map((n) => n.id));
+      return { nodes, edges: FACTS.edges.filter((e) => ids.has(e.a) && ids.has(e.b)) };
+    };
     render(<ProductMapButton />);
     expect(reads.scopes).toEqual([]);
     fireEvent.click(screen.getByTestId("product-map-open"));
     await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
+  };
+  const kinds = (g: GraphData) => [...new Set(g.nodes.map((n) => n.type))].sort();
+
+  it("opens on every product, its member tables and the links between products", async () => {
+    await openMap();
     expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
     // It belongs to no one product: it has no rest to show.
     expect(screen.queryByTestId("graph3d-rest")).not.toBeInTheDocument();
-    // Its Data layer is on: every product is drawn.
-    expect(reads.scopes.at(-1)?.layers).toContain("data");
+    // Its read asks for the products with their tables (Data) and their links, and no read asks
+    // for a column or a term: not what is drawn, nor what the controls choose from.
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toEqual(["data", "productLinks"]));
+    for (const s of reads.scopes)
+      for (const l of ["ontology", "domains", "columns"]) expect(s.layers).not.toContain(l);
+    // Products and their tables are drawn, with the link between the products; nothing else.
     await waitFor(() =>
-      expect(nodeIds(drawn())).toEqual(expect.arrayContaining(["p:c360", "p:billing"])),
+      expect(nodeIds(drawn())).toEqual(["p:billing", "p:c360", "t:customers", "t:orders"]),
     );
+    expect(kinds(drawn())).toEqual(["product", "table"]);
+    expect(drawn().edges.some((e) => e.kind === "product_link")).toBe(true);
+  });
+
+  it("reads and draws columns, and terms, once the reader turns them on", async () => {
+    await openMap();
+    await waitFor(() => expect(kinds(drawn())).toEqual(["product", "table"]));
+    const pick = async (value: string) => {
+      fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
+      fireEvent.click(await screen.findByTestId(`graph3d-layers-menu-option-${value}`));
+      fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
+    };
+    await pick("columns");
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toContain("columns"));
+    // A table's columns tied to no term drawn are one node (REQ-2174, amended 2026-11-07).
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    expect(reads.scopes.at(-1)?.layers).not.toContain("ontology");
+    await pick("ontology");
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toContain("ontology"));
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining(["term:customer", "c:customers.email"]),
+      ),
+    );
+  });
+
+  it("opens on a reader's saved settings, columns on where they had them", async () => {
+    setStored(
+      "graph3d.product-map.org",
+      JSON.stringify({ layers: ["ontology", "domains", "columns", "data"] }),
+    );
+    await openMap();
+    await waitFor(() =>
+      expect(reads.scopes.at(-1)?.layers).toEqual(["columns", "data", "domains", "ontology"]),
+    );
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining(["term:customer", "c:customers.email", "p:c360"]),
+      ),
+    );
+  });
+
+  it("leaves the Ontology page opening on the whole ontology, its terms and columns", async () => {
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() =>
+      expect(reads.scopes.at(-1)?.layers).toEqual(["columns", "domains", "ontology"]),
+    );
+    expect(reads.scopes.at(-1)?.products).toBe(false);
   });
 });

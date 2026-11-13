@@ -26,15 +26,16 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
-import { Button, Divider, Loader, Text } from "@mantine/core";
+import { Divider, Text } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
-import { Check, CircleHelp } from "lucide-react";
+import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { PanelActionsContext, PanelNoticeContext } from "../list/panelActions";
 import { PanelHeadStyle } from "../list/PanelHeadStyle";
 import { useHelpNaming } from "./useHelpNaming";
 import { CancelButton } from "./CancelButton";
+import { SaveButton } from "./SaveButton";
 import { usePendingPress } from "./usePendingPress";
 import { Tip } from "../Tip";
 import { readValue } from "./readValue";
@@ -547,7 +548,7 @@ type ButtonExtras = { "data-testid"?: string; disabled?: boolean };
  *
  * `panel`: the form is a detail panel's content, and these are the panel's actions while it is
  * open. In a panel (`SplitPane`) the same two buttons then sit in its pinned head beside the
- * name -- Save borderless and compact, Cancel the one Cancel -- in place of a row at the form's foot;
+ * name -- both without border or fill, as the head's other actions are -- in place of a row at the form's foot;
  * outside a panel a form that says `panel` keeps the row at its foot. One implementation, the
  * same test ids either way. `problem` is what the form has to say of a save that did not go
  * through: in a panel a line under its head, else a line above the row.
@@ -581,7 +582,6 @@ export function FormFooter({
   problem?: ReactNode;
   form?: string;
 }) {
-  const { t } = useTranslation();
   const { busy: pending, press: save } = usePendingPress(onSave);
   const head = useContext(PanelActionsContext);
   const notice = useContext(PanelNoticeContext);
@@ -589,9 +589,8 @@ export function FormFooter({
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
   const busy = saving || pending;
-  // In a panel's head Save takes the head's one style (PanelHeadStyle): borderless and compact.
-  // Cancel is the one Cancel (CancelButton), the same in the head, at the foot and in a dialog.
-  const inHeadLook = inHead ? ({ variant: undefined } as const) : {};
+  // Save is the one Save (SaveButton) and Cancel the one Cancel (CancelButton): the filled Save and
+  // the bordered Cancel at a foot and in a dialog; in a panel's head each takes the head's style.
   const said = problem ? (
     <div className="form-problem" role="alert" data-testid="form-problem">
       {problem}
@@ -600,28 +599,22 @@ export function FormFooter({
   const buttons = (
     <>
       {(onSave !== undefined || submit) && (
-        <Button
-          {...inHeadLook}
-          {...saveProps}
-          // In a panel's head both are borderless: the tint is what says which is the primary.
-          data-primary={inHead || undefined}
+        <SaveButton
+          onClick={save}
+          submit={submit}
           form={form}
-          type={submit ? "submit" : "button"}
-          onClick={submit ? undefined : save}
-          leftSection={busy ? <Loader size={14} color="currentColor" /> : <Check size={14} />}
-          disabled={busy || saveProps?.disabled === true}
-          data-saving={busy || undefined}
-          // REQ-2115: what Polly presses here changes something; she asks the user first.
-          data-changes="true"
-        >
-          {t("common.save")}
-        </Button>
+          busy={busy}
+          disabled={saveProps?.disabled === true}
+          head={inHead}
+          testId={saveProps?.["data-testid"]}
+        />
       )}
       {action}
       {onCancel !== undefined && (
         <CancelButton
           onClick={onCancel}
           disabled={busy || cancelProps?.disabled === true}
+          head={inHead}
           testId={cancelProps?.["data-testid"]}
         />
       )}

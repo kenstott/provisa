@@ -2303,10 +2303,12 @@ async def _register_draft_table(
     return None if result.success else _without(result.message)
 
 
-def _single(mutation: "Mutation") -> Any:  # REQ-2240
+def _single() -> Any:  # REQ-2240
     """The mutation as its resolvers are called from Python: a strawberry field's declared
-    signature hides the plain method a bulk delete calls for each row."""
-    return mutation
+    signature hides the plain method a bulk delete calls for each row. A new object, as every
+    other caller of a resolver from Python makes: strawberry runs a root resolver with no object
+    (``self`` is None there)."""
+    return Mutation()
 
 
 @strawberry.type
@@ -4690,7 +4692,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return str(table_id) if found is None else found["table_name"]
 
         return await delete_each(
-            ids, _name, lambda table_id: _single(self).delete_table(info, table_id)
+            ids, _name, lambda table_id: _single().delete_table(info, table_id)
         )
 
     @strawberry.mutation
@@ -4702,7 +4704,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         require_capability(info, "create_relationship")
         return await delete_each(
-            ids, relationship_name, lambda i: _single(self).delete_relationship(info, i)
+            ids, relationship_name, lambda i: _single().delete_relationship(info, i)
         )
 
     @strawberry.mutation
@@ -4713,7 +4715,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         require_capability(info, "table_registration")
-        return await delete_each(names, same_name, lambda n: _single(self).delete_metric(info, n))
+        return await delete_each(names, same_name, lambda n: _single().delete_metric(info, n))
 
     @strawberry.mutation
     async def delete_sources(
@@ -4723,7 +4725,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         require_capability(info, "source_registration")
-        return await delete_each(ids, same_name, lambda i: _single(self).delete_source(info, i))
+        return await delete_each(ids, same_name, lambda i: _single().delete_source(info, i))
 
     @strawberry.mutation
     async def delete_roles(
@@ -4733,7 +4735,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         require_capability(info, "user_management")
-        return await delete_each(ids, same_name, lambda i: _single(self).delete_role(info, i))
+        return await delete_each(ids, same_name, lambda i: _single().delete_role(info, i))
 
     @strawberry.mutation
     async def delete_domains(
@@ -4743,7 +4745,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         require_capability(info, "org_settings")
-        return await delete_each(ids, same_name, lambda i: _single(self).delete_domain(info, i))
+        return await delete_each(ids, same_name, lambda i: _single().delete_domain(info, i))
 
     @strawberry.mutation
     async def delete_data_products(
@@ -4753,9 +4755,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         require_capability(info, "data_product_rw")
-        return await delete_each(
-            ids, same_name, lambda i: _single(self).delete_data_product(info, i)
-        )
+        return await delete_each(ids, same_name, lambda i: _single().delete_data_product(info, i))
 
     @strawberry.mutation
     async def delete_tags(
@@ -4765,7 +4765,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
         _require_tag_editor(info)
-        return await delete_each(ids, same_name, lambda i: _single(self).delete_tag(info, i))
+        return await delete_each(ids, same_name, lambda i: _single().delete_tag(info, i))
 
     @strawberry.mutation
     async def delete_scheduled_tasks(
@@ -4778,7 +4778,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await delete_each(
             task_ids,
             scheduled_task_name,
-            lambda i: _single(self).delete_scheduled_task(info, i),
+            lambda i: _single().delete_scheduled_task(info, i),
         )
 
     @strawberry.mutation
