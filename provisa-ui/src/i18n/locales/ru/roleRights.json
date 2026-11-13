@@ -35,6 +35,7 @@
     "scope_own-domain": "собственный домен",
     "write_insert": "вставка",
     "write_update": "обновление",
-    "write_delete": "удаление"
+    "write_delete": "удаление",
+    "draft": "Черновик"
   }
 }

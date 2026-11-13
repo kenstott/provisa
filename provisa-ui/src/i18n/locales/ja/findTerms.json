@@ -67,7 +67,7 @@
     "progressMerging": "検出内容を候補用語に統合しています...",
     "progressModel": "モデル: {{model}}",
     "budgetLimited": "ロールの AI 予算により呼び出しが出力 {{tokens}} トークンに制限されたため、回答が途中で切れている可能性があります。",
-    "cancel": "スキャンをキャンセル",
+    "stopTip": "スキャンを停止",
     "failed": "スキャンが停止しました：{{error}}",
     "summary": "{{passages}} 件のパッセージを読み取り、{{mentions}} 件の言及、{{candidates}} 件の候補用語。",
     "leftOut": "除外：オントロジーの概念ではないもの {{count}} 件（特定の人物や企業など）、パッセージから引用されていないもの {{misquoted}} 件、用語に解決されなかったもの {{unresolved}} 件。",

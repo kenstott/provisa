@@ -15,6 +15,6 @@
     "cycleFeedback": "(zulässig – überschreitet eine materialisierte Grenze)",
     "cycleError": "(keine Materialisierungsgrenze – wahrscheinlich ein Entwurfsfehler)",
     "emptyTitle": "Nichts anzuzeigen",
-    "emptyBody": "Es wurde keine Herkunft gefunden. Die vollständige Herkunft umfasst Ihre registrierten Sichten – es sind noch keine definiert, daher gibt es nichts zu verfolgen. Registrieren Sie eine Sicht (Modell → Sichten) oder analysieren Sie oben eine Abfrage, um deren Herkunft direkt zu sehen."
+    "emptyBody": "Es wurde keine Herkunft gefunden. Die vollständige Herkunft umfasst Ihre registrierten Sichten, und es ist noch keine definiert. Registrieren Sie eine Sicht (Abgeleitet → Sichten) oder analysieren Sie oben eine Abfrage, um deren Herkunft zu sehen."
   }
 }
