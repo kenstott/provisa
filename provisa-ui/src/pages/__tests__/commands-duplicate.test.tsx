@@ -134,9 +134,7 @@ describe("Duplicate, in a command's panel head", () => {
   it("is beside Edit and Delete, named Duplicate", async () => {
     render(<CommandsPage />);
     await userEvent.click(await screen.findByTestId("commands-fn-row-refund_order"));
-    expect(
-      within(panel()).getByRole("button", { name: "Duplicate" }),
-    ).toBeInTheDocument();
+    expect(within(panel()).getByRole("button", { name: "Duplicate" })).toBeInTheDocument();
   });
 
   it("opens the create form filled from the command, under a new name", async () => {

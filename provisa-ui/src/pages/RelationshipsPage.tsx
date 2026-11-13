@@ -407,10 +407,11 @@ export function RelationshipsPage() {
     setRejectedCount((prev) => prev + 1);
   }, []);
 
-  const startEditing = useCallback(
-    (rel: Relationship) => {
+  // The form's values for a relationship, as its edit form holds them.
+  const formOf = useCallback(
+    (rel: Relationship): RelForm => {
       const isComputed = !!rel.targetFunctionName;
-      setEditingRel({
+      return {
         id: String(rel.id),
         originalId: String(rel.id),
         sourceDomain: rel.sourceDomainId ? domainToSqlName(rel.sourceDomainId) : "",
@@ -442,9 +443,35 @@ export function RelationshipsPage() {
         // The panel opens for a row that already declares a junction; the checkbox only has to
         // hold it open for a row that does not yet name a table.
         junctionDeclared: Boolean(rel.viaTableName),
-      });
+      };
     },
     [tableDomainById, tableRefById],
+  );
+
+  const startEditing = useCallback((rel: Relationship) => setEditingRel(formOf(rel)), [formOf]);
+
+  // The create form's values for a duplicate: the relationship's endpoints and columns under a
+  // new id. Nothing else of it is copied (not its aliases, junction or parameters). An id that
+  // exists is refused by the create on save.
+  const duplicateOf = useCallback(
+    (rel: Relationship): RelForm => {
+      const f = formOf(rel);
+      return {
+        ...EMPTY_FORM,
+        id: `${rel.id}-copy`,
+        sourceDomain: f.sourceDomain,
+        sourceTableId: f.sourceTableId,
+        sourceColumn: f.sourceColumn,
+        targetType: f.targetType,
+        targetDomain: f.targetDomain,
+        targetTableId: f.targetTableId,
+        targetColumn: f.targetColumn,
+        targetFunctionName: f.targetFunctionName,
+        functionArg: f.functionArg,
+        cardinality: f.cardinality,
+      };
+    },
+    [formOf],
   );
 
   const buildReverse = useCallback(
@@ -622,7 +649,10 @@ export function RelationshipsPage() {
         saving={saving}
         problem={saveProblem}
         onSave={() => handleAdd()}
-        onCancel={() => setShowForm(false)}
+        onCancel={() => {
+          setForm(EMPTY_FORM);
+          setShowForm(false);
+        }}
       />
     </div>
   ) : selectedRel && reverseForm ? (
@@ -656,6 +686,15 @@ export function RelationshipsPage() {
       onStartEdit={() => {
         setSaveProblem("");
         startEditing(selectedRel);
+      }}
+      onDuplicate={() => {
+        // The same as "+": the create form replaces whatever the panel held, here filled.
+        setSaveProblem("");
+        setExpanded(null);
+        setEditingRel(null);
+        setReverseForm(null);
+        setForm(duplicateOf(selectedRel));
+        setShowForm(true);
       }}
       onReverse={
         gqlConvention === null
@@ -708,6 +747,8 @@ export function RelationshipsPage() {
                 setExpanded(null);
                 setEditingRel(null);
                 setReverseForm(null);
+                // The form opens empty, and what was typed in it does not outlive it.
+                setForm(EMPTY_FORM);
                 setShowForm(!showForm);
               }}
             >

@@ -58,7 +58,11 @@ const TABLES = {
 };
 const UPSERT = { upsertRelationship: vi.fn(async () => ({ success: true, message: "" })) };
 const AUTH = { capabilities: ["create_relationship"] };
-const FILTER = { domainsEnabled: false, domains: [] as string[], checkedDomains: new Set<string>() };
+const FILTER = {
+  domainsEnabled: false,
+  domains: [] as string[],
+  checkedDomains: new Set<string>(),
+};
 
 vi.mock("../../hooks/useAdminQueries", () => ({
   useRelationships: () => RELS,

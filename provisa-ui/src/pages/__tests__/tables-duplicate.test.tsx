@@ -230,7 +230,6 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateTableLoadProtection: () => ({ updateTableLoadProtection, loading: false }),
 }));
 
-
 import { TablesPage } from "../TablesPage";
 import { expectHoldsNoneOf } from "../../test-utils/createForm";
 
