@@ -236,6 +236,17 @@ def _label_names(nm: "NodeMapping", labels: list[str]) -> bool:
     )
 
 
+#: A graph function read from the JSON of a path or relationship a list holds or a WITH carries
+#: (_element_part): its key in that JSON, and whether it is a list (JSON[]).
+_ELEMENT_PARTS: dict[str, tuple[str, bool]] = {
+    "nodes": ("$.nodes", True),
+    "relationships": ("$.edges", True),
+    "startnode": ("$.startNode", False),
+    "endnode": ("$.endNode", False),
+    "length": ("$.edges", False),
+}
+
+
 def _col(name: str, table: str) -> exp.Column:
     """A qualified column with a quoted name and an UNQUOTED table alias — matching the text path's
     ``alias."col"`` shape (the alias is a generated identifier, so quoting it only adds churn)."""
@@ -928,6 +939,8 @@ class TranslatorExprContext:
             return _anon("map_keys", args[0])
         if var is None and name in ("labels", "type") and len(args) == 1:
             return self._element_fn(name, args[0])
+        if var is None and name in _ELEMENT_PARTS and len(args) == 1:
+            return self._element_part(name, args[0])
         if var is None:
             raise NotImplementedError(f"graph function {name!r} needs a variable argument")
         if result is None:
@@ -1059,6 +1072,20 @@ class TranslatorExprContext:
             ifs=[exp.If(this=exp.Is(this=element, expression=exp.Null()), true=exp.Null())],
             default=exp.Coalesce(this=every, expressions=[one]),
         )
+
+    @staticmethod
+    def _element_part(name: str, element: exp.Expression) -> exp.Expression:
+        """nodes(), relationships(), length(), startNode() or endNode() of a path or relationship
+        a list holds or a WITH carries: its JSON object, read for that part (a path's ``nodes``
+        and ``edges``, a relationship's ``startNode`` and ``endNode``), as the assembler reads
+        it. Of null, null."""
+        if name == "length":
+            return _anon("json_array_length", element, exp.Literal.string("$.edges"))
+        key, many = _ELEMENT_PARTS[name]
+        part = _anon("JSON_EXTRACT", element, exp.Literal.string(key))
+        if not many:
+            return part
+        return exp.Cast(this=part, to=exp.DataType.build("JSON[]", dialect="postgres"))
 
     def _in_session(self, catalog: str) -> bool:
         """Whether a relation of ``catalog`` is a graph session's (REQ-2176)."""
