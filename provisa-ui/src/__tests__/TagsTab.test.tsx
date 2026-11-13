@@ -21,6 +21,8 @@ const updateSpy = vi.fn(async (..._fields: unknown[]) => ({ success: true, messa
 const deleteSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const upsertValueSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const deleteValueSpy = vi.fn(async () => ({ success: true, message: "ok" }));
+const citeSpy = vi.fn(async (..._a: unknown[]) => ({ success: true, message: "ok" }));
+const unciteSpy = vi.fn(async (..._a: unknown[]) => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
 let mockAssignments: TagAssignment[] = [];
@@ -35,6 +37,21 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useDeleteTag: () => ({ deleteTag: deleteSpy, loading: false }),
   useUpsertTagParamValue: () => ({ upsertTagParamValue: upsertValueSpy, loading: false }),
   useDeleteTagParamValue: () => ({ deleteTagParamValue: deleteValueSpy, loading: false }),
+  useTagCitations: () => ({
+    citeDefinition: citeSpy,
+    unciteDefinition: unciteSpy,
+    citeAssignment: vi.fn(),
+    unciteAssignment: vi.fn(),
+  }),
+}));
+
+vi.mock("../api/referenceLibrary", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/referenceLibrary")>()),
+  fetchLibrary: vi.fn(async () => [{ id: 3, title: "Data Policy", index_status: "ready" }]),
+  fetchLibraryDocument: vi.fn(async () => ({
+    id: 3,
+    passage_list: [{ ordinal: 0, section: "Scope", page: 1, text: "a" }],
+  })),
 }));
 
 const SYSTEM_TAG: Tag = {
@@ -46,6 +63,9 @@ const SYSTEM_TAG: Tag = {
   reasonPolicy: "optional",
   expiresPolicy: "optional",
   paramPolicy: "none",
+  requiresCitation: false,
+  citations: [],
+  needsReview: false,
   paramValues: [],
 };
 const USER_TAG: Tag = {
@@ -57,6 +77,9 @@ const USER_TAG: Tag = {
   reasonPolicy: "required",
   expiresPolicy: "hidden",
   paramPolicy: "none",
+  requiresCitation: false,
+  citations: [],
+  needsReview: false,
   paramValues: [],
 };
 // REQ-1443: computed off each table's own registration, so it carries no stored assignments.
@@ -69,6 +92,9 @@ const DERIVED_TAG: Tag = {
   reasonPolicy: "hidden",
   expiresPolicy: "hidden",
   paramPolicy: "none",
+  requiresCitation: false,
+  citations: [],
+  needsReview: false,
   paramValues: [],
 };
 // REQ-1467: a system tag whose definition is fixed but whose value list the maintainer owns.
@@ -81,6 +107,9 @@ const ENTITY_TAG: Tag = {
   reasonPolicy: "hidden",
   expiresPolicy: "hidden",
   paramPolicy: "required",
+  requiresCitation: false,
+  citations: [],
+  needsReview: false,
   paramValues: [
     { value: "customer", description: "A buying party" },
     { value: "vendor", description: "" },
@@ -95,6 +124,9 @@ const COMMAND_TAG: Tag = {
   reasonPolicy: "optional",
   expiresPolicy: "optional",
   paramPolicy: "none",
+  requiresCitation: false,
+  citations: [],
+  needsReview: false,
   paramValues: [],
 };
 
@@ -221,6 +253,7 @@ describe("TagsTab", () => {
         "optional",
         "optional",
         "none",
+        false,
       ),
     );
   });
@@ -238,6 +271,96 @@ describe("TagsTab", () => {
     expect(upsertSpy).not.toHaveBeenCalled();
   });
 
+  describe("citations", () => {
+    const cited = {
+      documentId: 3,
+      documentTitle: "Data Policy",
+      documentSource: "policy.md",
+      sectionHeading: "Scope",
+      sectionPage: null,
+      textSha256: "a",
+      citedBy: null,
+      citedAt: "2026-11-13T00:00:00",
+      state: "drifted" as const,
+      needsReview: true,
+    };
+    const edit = (id: string) =>
+      fireEvent.click(
+        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
+      );
+
+    beforeEach(() => {
+      citeSpy.mockClear();
+      unciteSpy.mockClear();
+    });
+
+    it("saves the Assignments require a citation switch", async () => {
+      render(<TagsTab />);
+      edit("finance");
+      const toggle = screen.getByTestId("tags-requires-citation") as HTMLInputElement;
+      expect(toggle.checked).toBe(false);
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByTestId("tags-save"));
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+      expect(updateSpy.mock.calls[0][6]).toBe(true);
+    });
+
+    it("shows the saved switch of a tag that requires one", () => {
+      mockTags = [{ ...USER_TAG, requiresCitation: true }];
+      render(<TagsTab />);
+      edit("finance");
+      expect((screen.getByTestId("tags-requires-citation") as HTMLInputElement).checked).toBe(true);
+    });
+
+    it("lists what defines the tag, adds one, confirms a changed one and removes it", async () => {
+      mockTags = [{ ...USER_TAG, citations: [cited], needsReview: true }];
+      render(<TagsTab />);
+      expect(screen.getByTestId("tags-needs-review-finance")).toBeInTheDocument();
+      edit("finance");
+      const list = screen.getByTestId("tags-defined-by");
+      expect(within(list).getByTestId("tags-defined-by-row-3-h:Scope")).toHaveTextContent(
+        "Data Policy · Scope",
+      );
+      fireEvent.click(within(list).getByTestId("tags-defined-by-confirm-3-h:Scope"));
+      await waitFor(() => expect(citeSpy).toHaveBeenCalledWith("finance", cited));
+      fireEvent.click(within(list).getByTestId("tags-defined-by-remove-3-h:Scope"));
+      await waitFor(() => expect(unciteSpy).toHaveBeenCalledWith("finance", cited));
+    });
+
+    it("adds a definition by picking a document and a section", async () => {
+      render(<TagsTab />);
+      edit("finance");
+      const pick = async (testId: string, label: string) => {
+        const input = screen.getByTestId(testId);
+        fireEvent.click(input);
+        await waitFor(() => {
+          if (!input.getAttribute("aria-controls")) throw new Error("dropdown not open");
+        });
+        const box = document.getElementById(input.getAttribute("aria-controls") as string);
+        fireEvent.click(
+          within(box as HTMLElement).getByRole("option", { name: label, hidden: true }),
+        );
+      };
+      await pick("tags-defined-by-picker-document", "Data Policy");
+      await pick("tags-defined-by-picker-section", "Scope");
+      fireEvent.click(screen.getByTestId("tags-defined-by-picker-add"));
+      await waitFor(() =>
+        expect(citeSpy).toHaveBeenCalledWith("finance", {
+          documentId: 3,
+          sectionHeading: "Scope",
+          sectionPage: null,
+        }),
+      );
+    });
+
+    it("offers no Defined by on a tag not yet saved", () => {
+      render(<TagsTab />);
+      fireEvent.click(screen.getByTestId("tags-create-button"));
+      expect(screen.queryByTestId("tags-defined-by")).toBeNull();
+      expect(screen.getByTestId("tags-requires-citation")).toBeInTheDocument();
+    });
+  });
+
   it("passes the selected reason and expiry policies to upsertTag", async () => {
     render(<TagsTab />);
     fireEvent.click(screen.getByTestId("tags-create-button"));
@@ -248,7 +371,15 @@ describe("TagsTab", () => {
     await pickPolicy("tags-expires-policy", t("tagsTab.policy_hidden"));
     fireEvent.click(screen.getByTestId("tags-save"));
     await waitFor(() =>
-      expect(upsertSpy).toHaveBeenCalledWith("gdpr", "", ["source"], "required", "hidden", "none"),
+      expect(upsertSpy).toHaveBeenCalledWith(
+        "gdpr",
+        "",
+        ["source"],
+        "required",
+        "hidden",
+        "none",
+        false,
+      ),
     );
   });
 
@@ -347,6 +478,7 @@ describe("TagsTab", () => {
         "optional",
         "optional",
         "required",
+        false,
       ),
     );
   });

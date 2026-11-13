@@ -83,7 +83,7 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   rights.canEdit = true;
-  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0 });
+  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0, tags: [], tag_assignments: [] });
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
@@ -172,6 +172,8 @@ describe("LibraryPage", () => {
   it("lists what cites a document and flags a drifted citation", async () => {
     api.fetchCitedBy.mockResolvedValue({
       drifted: 1,
+      tags: [],
+      tag_assignments: [],
       terms: [
         {
           term_id: 1,
@@ -201,6 +203,53 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("reflib-cite-2")).toHaveTextContent("A dormant account is closed.");
     expect(within(screen.getByTestId("reflib-cite-2")).getByTestId("reflib-drifted")).toBeTruthy();
     expect(within(screen.getByTestId("reflib-cite-1")).queryByTestId("reflib-drifted")).toBeNull();
+  });
+
+  it("lists the tags and the tag assignments that cite a document, each linked", async () => {
+    const place = { text_sha256: "x", cited_by: null, cited_at: "2026-11-13T00:00:00" };
+    api.fetchCitedBy.mockResolvedValue({
+      drifted: 0,
+      terms: [],
+      tags: [
+        {
+          tag_id: "finance",
+          section_heading: "Scope",
+          section_page: null,
+          state: "current",
+          needs_review: false,
+          ...place,
+        },
+      ],
+      tag_assignments: [
+        {
+          tag_id: "finance",
+          object_type: "table",
+          object_key: "table:7",
+          section_heading: null,
+          section_page: 4,
+          state: "drifted",
+          needs_review: true,
+          ...place,
+        },
+      ],
+    });
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(screen.getByTestId("reflib-tab-cited"));
+    const definition = await screen.findByTestId("reflib-cite-tag-finance");
+    expect(definition).toHaveTextContent("Scope");
+    expect(within(definition).getByRole("link", { name: "finance" })).toHaveAttribute(
+      "href",
+      "/admin/tags?tag=finance",
+    );
+    const onObject = screen.getByTestId("reflib-cite-assignment-finance-table:7");
+    expect(within(onObject).getByRole("link", { name: /7/ })).toHaveAttribute(
+      "href",
+      "/tables?table=7",
+    );
+    expect(onObject).toHaveTextContent("page 4");
+    expect(within(onObject).getByTestId("reflib-cite-drifted")).toBeInTheDocument();
   });
 
   it("says when nothing cites a document", async () => {
