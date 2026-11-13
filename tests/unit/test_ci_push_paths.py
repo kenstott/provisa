@@ -10,8 +10,8 @@
 
 """The integration and e2e suites run on release branches, not on main (REQ-1989).
 
-A push to main starts no run of them, whatever the push touches; every push to release/** does.
-Elsewhere they are dispatched on request, and the nightly run is the warehouse lane alone."""
+No push starts a run of them, to main or to release/**; a release is tested by a dispatch on its
+branch (a push to release/** starts only lint and the requirements check). They are dispatched on request, and the nightly run is the warehouse lane alone."""
 
 from __future__ import annotations
 
@@ -31,8 +31,10 @@ def _triggers(workflow: Path = _SUITE) -> dict:
 
 
 @pytest.mark.parametrize("workflow", _SUITES, ids=lambda path: path.stem)
-def test_a_push_to_main_starts_no_suite_and_a_push_to_a_release_branch_does(workflow: Path):
-    assert _triggers(workflow)["push"] == {"branches": ["release/**"]}
+def test_no_push_starts_a_suite_and_a_dispatch_does(workflow: Path):
+    triggers = _triggers(workflow)
+    assert "push" not in triggers
+    assert "workflow_dispatch" in triggers
 
 
 def test_the_suite_is_dispatched_on_request_and_nightly_for_the_warehouse_lane():
