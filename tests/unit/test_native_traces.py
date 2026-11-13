@@ -480,3 +480,100 @@ def test_refresh_records_are_read_once_while_their_batches_are_kept(tmp_path):
     rows = len(nt._landed(root))
     nt.compact(root, grace_s=60)
     assert len(nt._landed(root)) == rows
+
+
+def _day_parquet(root: str, day: str) -> list[str]:
+    return [n for n in os.listdir(os.path.join(root, f"_date={day}")) if n.endswith(".parquet")]
+
+
+def test_two_hours_of_batches_keep_the_days_folder_within_its_bound(tmp_path):
+    """#338: a batch lands every 10 seconds and compaction runs every minute, as on a busy native
+    instance. The day's folder never holds more files than ``day_file_bound`` -- each of which one
+    read opens at once -- and well under a soft open-file limit of 256; every row reads once."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    day = "2026-11-13"
+    clock = [0.0]
+    landed = 0
+    most = 0
+    batches_per_pass = 6
+    for minute in range(120):
+        for tick in range(batches_per_pass):
+            clock[0] = minute * 60.0 + tick * 10.0
+            _land_one(root, day, landed)
+            landed += 1
+            most = max(most, len(_day_parquet(root, day)))
+        clock[0] = minute * 60.0 + 59.0
+        nt.compact(root, clock=lambda: clock[0])
+        most = max(most, len(_day_parquet(root, day)))
+        if minute % 20 == 19:
+            got = con.execute("SELECT count(*), count(DISTINCT trace_id) FROM otel.signals.traces")
+            assert got.fetchone() == (landed, landed)
+    assert most <= nt.day_file_bound(batches_per_pass) < 256
+    assert len(_trace_ids(root)) == landed
+
+
+def test_a_compacted_row_is_rewritten_a_bounded_number_of_times(tmp_path, monkeypatch):
+    """A pass merged every small file, its own last output included, so a day's first rows were
+    rewritten once a minute all day. A rolled file is merged again only with ``MERGE_FANIN`` of its
+    level, so a row is rewritten at most once per level."""
+    root = str(tmp_path / "traces")
+    day = "2026-11-13"
+    rewrites: dict[str, int] = {}
+    merge = nt._merge_into_place
+
+    def counting(folder, small, target_bytes, level):
+        for path in small:
+            for tid in pq.ParquetFile(path).read(columns=["trace_id"]).column(0).to_pylist():
+                rewrites[tid] = rewrites.get(tid, 0) + 1
+        return merge(folder, small, target_bytes, level)
+
+    monkeypatch.setattr(nt, "_merge_into_place", counting)
+    clock = [0.0]
+    landed = 0
+    for minute in range(120):
+        for _ in range(3):
+            _land_one(root, day, landed)
+            landed += 1
+        clock[0] = minute * 60.0 + 59.0
+        nt.compact(root, clock=lambda: clock[0])
+    assert max(rewrites.values()) <= nt.day_levels(120)
+
+
+def test_a_read_in_the_middle_of_a_compaction_reads_each_row_once(tmp_path, monkeypatch):
+    """A read listing the folder after a pass has renamed its merged files into place and before
+    it has recorded its inputs as merged finds every row in both: the view reads each once."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    day = "2026-11-13"
+    for n in range(5):
+        _land_one(root, day, n)
+    seen: list[tuple] = []
+    write = nt._write_merged
+
+    def read_then_record(folder, merged):
+        names = _day_parquet(root, day)
+        assert len([n for n in names if n.startswith("rolled-")]) == 1 and len(names) == 6
+        sql = "SELECT count(*), count(DISTINCT trace_id) FROM otel.signals.traces"
+        seen.append(con.execute(sql).fetchone())
+        write(folder, merged)
+
+    monkeypatch.setattr(nt, "_write_merged", read_then_record)
+    assert nt.compact(root, clock=lambda: 0.0) == 0
+    assert seen == [(5, 5)]
+
+
+def _land_one(root: str, day: str, n: int) -> None:
+    import datetime as dt
+
+    ts = dt.datetime.fromisoformat(f"{day}T12:00:00")
+    row: dict[str, Any] = {c: None for c, _t, _k in OPS_TABLES["traces"]}
+    row.update(
+        trace_id=f"{day}-{n}",
+        span_id=f"{n:016x}",
+        span_name="work",
+        timestamp=ts,
+        span_attributes="{}",
+        _date=ts.date(),
+    )
+    nt.write_batch(root, [row])
