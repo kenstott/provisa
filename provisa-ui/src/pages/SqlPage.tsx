@@ -791,11 +791,14 @@ export function SqlPage() {
     } catch (e) {
       // The split refused: said as the run's error.
       run = { answers: [], error: e instanceof Error ? e.message : String(e) };
+    } finally {
+      // Still this run's: it is over. A stopped run's flag was cleared by Stop, and a newer run's
+      // is its own.
+      if (runRef.current === controller) setRunning(false);
     }
     // Stopped: Stop has said so, and what the aborted request answered (its abort) is not shown.
     if (runRef.current !== controller) return;
     runRef.current = null;
-    setRunning(false);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
     setQueryStats(run.provisa_stats ?? null);
