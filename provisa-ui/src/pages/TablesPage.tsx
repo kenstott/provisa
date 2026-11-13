@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { PageTitle } from "../components/PageTitle";
 import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
@@ -90,7 +91,7 @@ import { NativeParamsModal } from "../components/NativeParamsModal";
 import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
-import { draftFromRegistration, type Registration } from "./tables/draftTable";
+import { draftFromRegistration, duplicateOfTable, type Registration } from "./tables/draftTable";
 import { useCreateTable } from "./tables/useCreateTable";
 import { registeredOf, type Registered } from "./tables/useManyTables";
 import { YourDataStep } from "./tables/YourDataStep";
@@ -591,13 +592,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
   // sections as the editor's, on the table as it will be registered.
-  const startCreating = (registration: Registration) => {
+  const startCreating = (
+    registration: Registration,
+    draft = draftFromRegistration(registration),
+  ) => {
     setShowForm(false);
     setShowViewForm(false);
     setExpanded(null);
     setSection("identity");
-    startEditing(draftFromRegistration(registration));
+    startEditing(draft);
     setNewRegistration(registration);
+  };
+  // Duplicate, from a table's panel head: the same create form as a registration's, filled from
+  // the table's settings and columns under a new name.
+  const handleDuplicate = (table: RegisteredTable) => {
+    const { registration, draft } = duplicateOfTable(table);
+    setError(null);
+    startCreating(registration, draft);
   };
   // A view handed over from the SQL editor's + View is created here, with every setting.
   // REQ-2234: one table picked on a source's Register tables step is created here, with every
@@ -804,7 +815,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const profileInView = expanded === null ? undefined : tableProfiles[expanded];
   useEffect(() => {
     setPreviewTable(null);
-  }, [expanded, section, linkedColumnTab, columnParam, editingTable?.id, editingViewDef, profileInView]);
+  }, [
+    expanded,
+    section,
+    linkedColumnTab,
+    columnParam,
+    editingTable?.id,
+    editingViewDef,
+    profileInView,
+  ]);
   // Only full-page block on the INITIAL load (no cached tables yet). Background refetches
   // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
@@ -1002,6 +1021,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             deployViewToDb={deployViewToDb}
             reload={reload}
             startEditing={startEditing}
+            onDuplicate={handleDuplicate}
             handleDelete={handleDelete}
             handleProfile={handleProfile}
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
@@ -1684,16 +1704,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         ))}
         {/* The action first, at the start of the row; the way back to the form follows. */}
         <Group justify="flex-start" mt="md">
-          <Button
-            color="red"
-            data-testid="column-dependents-confirm"
+          <DestructiveConfirmButton
+            testId="column-dependents-confirm"
             onClick={() => {
               setPendingDependents(null);
               void performSaveEdit();
             }}
           >
             {translate("tablesPage.dependentsConfirm")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button
             variant="default"
             onClick={() => setPendingDependents(null)}

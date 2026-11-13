@@ -59,6 +59,7 @@ function panel(r: Relationship) {
       setEditingRel={vi.fn()}
       canManage
       onStartEdit={vi.fn()}
+      onDuplicate={vi.fn()}
       onReverse={vi.fn()}
       onDelete={vi.fn()}
       onEditSave={vi.fn()}

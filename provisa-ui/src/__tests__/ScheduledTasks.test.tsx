@@ -164,7 +164,7 @@ describe("ScheduledTasks — SQL trigger", () => {
       t("scheduledTasks.deleteTitle", { name: "Nightly Rollup" }),
     );
     expect(deleteSpy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: t("common.confirm") }));
+    fireEvent.click(screen.getByRole("button", { name: t("common.delete") }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("nightly"));
     // REQ-2198: the list is read again, and the panel closes on it.
     await waitFor(() => expect(screen.queryByTestId("scheduled-task-read")).toBeNull());
@@ -183,7 +183,7 @@ describe("ScheduledTasks — a failed action", () => {
     openRow("nightly");
     fireEvent.click(await screen.findByTestId("scheduled-task-delete"));
     await screen.findByRole("dialog");
-    fireEvent.click(screen.getByRole("button", { name: t("common.confirm") }));
+    fireEvent.click(screen.getByRole("button", { name: t("common.delete") }));
   };
 
   // REQ-2198: a failed delete is said in the panel it was pressed in, which it unlocks.

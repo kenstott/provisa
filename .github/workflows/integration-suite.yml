@@ -16,10 +16,8 @@ name: Integration suite (containers)
 #     takes a group of its own ref instead and runs beside other runs (maintainer 2026-10-23).
 
 on:
-  # Every push to a release branch runs the suite: it gates the release (REQ-1989). main never
-  # does. Elsewhere it runs on request, and the nightly below is the warehouse lane only.
-  push:
-    branches: ['release/**']
+  # Runs on dispatch for a release (gh workflow run integration-suite.yml --ref <release branch>):
+  # it gates the release (REQ-1989). No push starts it. The nightly below is the warehouse lane only.
   schedule:
     # Nightly, for the warehouse lane only (06:00 UTC). A scheduled run uses the default branch's
     # copy of this file and tests that same commit: main.
@@ -31,7 +29,7 @@ on:
         required: false
         default: ""
       lanes:
-        description: "Lanes: all, or comma-separated (core, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster, leak -- leak only when named)"
+        description: "Lanes: all, or comma-separated (core, core_long, app, hive_s3, kafka, neo4j, datastores, isolated, e2e, vector, cluster, leak -- leak only when named; core also runs core_long, the core files too long for a core shard)"
         required: false
         default: "all"
       tests:

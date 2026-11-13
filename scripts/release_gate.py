@@ -12,7 +12,7 @@
 run that is not green does to it.
 
 Run by "Release: cut" (.github/workflows/release-cut.yml). A run counts only on this commit of
-this branch: failed, cancelled, running or never run is not green.
+this branch, whatever event started it (a push or a dispatch): failed, cancelled, running or never run is not green.
 
 - A beta or production release (any version without ``-alpha.``) ships at zero bugs: one run not
   green refuses the cut, by name, exiting 2.
@@ -40,8 +40,8 @@ _CORE = (
     "docker-image.yml",
     "build-dmg.yml",
 )
-# What a release branch runs beyond the push checks. Beta and production need them green; an
-# alpha lists what is left of them.
+# What a release branch runs on dispatch (a push to it starts only lint and requirements-ci). Beta
+# and production need them green; an alpha lists what is left of them.
 _FULL_SUITES = (
     "integration-suite.yml",
     "ui-e2e-core.yml",

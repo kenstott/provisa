@@ -2159,16 +2159,21 @@ async def ensure_org_runtime(
     # REQ-1574: the org's key ring is resolved BEFORE anything reads its encrypted columns --
     # _read_org_flags decrypts the org's engine and storage DSNs, and those were written under
     # whichever key the org holds now.
-    await ensure_org_encryption(org_id)
-
-    runtime = await state.org_registry.get_or_build(
-        runtime_key(org_id, env),
-        lambda _key: build_on_its_lane(org_id, env, model_cloned=model_cloned),
-    )
-    # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
     from provisa.api.redaction_load import ensure_loaded
+    from provisa.core import step_clock
 
-    await ensure_loaded(org_id)
+    stepped = f"runtime lookup {runtime_key(org_id, env)}"
+    with step_clock.step(f"{stepped}: its encryption ring"):
+        await ensure_org_encryption(org_id)
+
+    with step_clock.step(f"{stepped}: its runtime"):
+        runtime = await state.org_registry.get_or_build(
+            runtime_key(org_id, env),
+            lambda _key: build_on_its_lane(org_id, env, model_cloned=model_cloned),
+        )
+    # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
+    with step_clock.step(f"{stepped}: its redaction rules and secrets"):
+        await ensure_loaded(org_id)
     return runtime
 
 
@@ -2561,7 +2566,11 @@ class _BuildClock:
         self._since = time.monotonic()
 
     def mark(self, step: str) -> None:
+        from provisa.core import step_clock
+
         now = time.monotonic()
+        # Every step, while an act times each of its steps (a demo sandbox's open).
+        step_clock.took(f"runtime build {self._key}: {step}", now - self._since)
         if now - self._since >= self._SLOW_S:
             logging.getLogger(__name__).warning(
                 "runtime of %s: %s took %.1fs", self._key, step, now - self._since
@@ -3075,6 +3084,7 @@ async def _build_org_runtime(
     finally:
         reset_current_env(env_token)
         reset_current_org(token)
+    clock.mark("its wiring")
     state.org_registry.end_build(build, built=True)
     return rt
 
@@ -3711,7 +3721,9 @@ async def _rebuild_schemas_impl(
         roles = flatten_role_dicts(
             _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
         )
-        expand_column_grants(tables, role_chains_by_id)
+        # REQ-1921: a draft's grants too, so a role inheriting from one granted it is named
+        # it -- to be refused as draft, or read by a role holding org_admin.
+        expand_column_grants([*tables, *draft_tables], role_chains_by_id)
         narrow_own_domain_grants([*tables, *draft_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074

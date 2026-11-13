@@ -13,7 +13,7 @@
 // refers to the role, and shows the server's message for any other refusal.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
+import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 
 const deleteRoleSpy = vi.fn();
 
@@ -74,7 +74,7 @@ async function confirmDelete() {
   const dialog = await screen.findByRole("dialog");
   expect(dialog.textContent).toContain('Delete role "seller"?');
   expect(deleteRoleSpy).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
 }
 
 describe("deleting a role on the Security page", () => {

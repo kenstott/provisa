@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "Deze worden verwijderd: {{names}}. Alles waar nog iets naar verwijst blijft behouden, met de reden.",
     "bulkRefused_one": "{{count}} is niet verwijderd:",
     "bulkRefused_other": "{{count}} zijn niet verwijderd:",
-    "dismiss": "Sluiten"
+    "dismiss": "Sluiten",
+    "duplicate": "Dupliceren",
+    "duplicateNamed": "{{name}} dupliceren"
   }
 }

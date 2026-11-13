@@ -172,3 +172,54 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     implicitDimensions: [],
   };
 }
+
+/** What a duplicate of `table` is created from: the create step's registration and the draft. */
+export interface TableDuplicate {
+  registration: Registration;
+  draft: RegisteredTable;
+}
+
+/** The name a duplicate is offered under: editable, and refused on save if it exists. A table's
+ * alias and a view's name are SQL names, which take no hyphen unquoted: `_copy`. */
+export const duplicateName = (name: string) => `${name}_copy`;
+
+/**
+ * A table's Duplicate: the create form's table, filled with the table's settings and columns.
+ * Not copied: the table's data, its relationships (they are the relationships' own), the
+ * products it is in, and who may write to it. A view is named by its own name, so a view's copy
+ * takes the new name there; a registered table is the source's table, so its copy is told
+ * apart by its SQL alias. A name that exists is refused by the create on save.
+ */
+export function duplicateOfTable(table: RegisteredTable): TableDuplicate {
+  const draft: RegisteredTable = {
+    ...(JSON.parse(JSON.stringify(table)) as RegisteredTable),
+    id: UNREGISTERED_ID,
+    productIds: [],
+    writeGrants: [],
+    draft: true,
+  };
+  if (table.viewSql != null || table.viewMetrics != null) {
+    draft.tableName = duplicateName(table.tableName);
+  } else {
+    draft.alias = duplicateName(table.alias || table.tableName);
+  }
+  const registration: Registration = {
+    input: {
+      sourceId: draft.sourceId,
+      domainId: draft.domainId,
+      schemaName: draft.schemaName,
+      tableName: draft.tableName,
+      alias: draft.alias ?? undefined,
+      description: draft.description ?? undefined,
+      viewSql: draft.viewSql ?? undefined,
+      viewMetrics: draft.viewMetrics ?? undefined,
+      ...(draft.region !== null ? { region: draft.region } : {}),
+      columns: draft.columns.map((c) => ({ name: c.columnName })),
+    },
+    pagination: draft.pagination,
+    pagingKind: draft.pagingKind,
+    pagingCeilingRows: draft.pagingCeilingRows,
+    rowRules: [],
+  };
+  return { registration, draft };
+}

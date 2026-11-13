@@ -3,6 +3,8 @@
     "loading": "Wird geladen...",
     "cancel": "Abbrechen",
     "stop": "Stoppen",
+    "stopped": "Gestoppt",
+    "stopQuery": "Abfrage stoppen",
     "save": "Speichern",
     "delete": "Löschen",
     "confirm": "Bestätigen",

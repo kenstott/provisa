@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateSchema
 
 from provisa.core.environments import org_schema
+from provisa.core.schema_create import create_schema
 from provisa.core.models import BUILT_IN_SOURCE_IDS
 
 if TYPE_CHECKING:
@@ -213,6 +214,28 @@ def _create_table_postgres(sync_conn, table) -> None:
     copy.create(sync_conn, checkfirst=True)
 
 
+def _live_columns_postgres(sync_conn, schema: str | None) -> dict[str, set[str]]:
+    """Each table's live columns in ``schema`` (the connection's current schema when None), by
+    table name: the columns the inspector reflects for it (attnum > 0, not dropped)."""
+    from sqlalchemy import text
+
+    rows = sync_conn.execute(
+        text(
+            "SELECT c.relname, a.attname FROM pg_catalog.pg_attribute a "
+            "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = COALESCE(:schema, current_schema()) "
+            "AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+            "AND a.attnum > 0 AND NOT a.attisdropped"
+        ),
+        {"schema": schema},
+    )
+    live: dict[str, set[str]] = {}
+    for table, column in rows:
+        live.setdefault(table, set()).add(column)
+    return live
+
+
 def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     """Additive schema reconciliation: CREATE any metadata table absent from the live database, and
     ADD COLUMN any metadata column absent from a live table.
@@ -258,6 +281,9 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
         sync_conn.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
     inspector = _inspect(sync_conn)
     existing_tables = set(inspector.get_table_names(schema=schema))
+    # REQ-2006: on PostgreSQL every table's live columns in one statement; reflected a table at a
+    # time they were a statement per table, and an org environment's layout reads ~150 of them.
+    held = _live_columns_postgres(sync_conn, schema) if postgres else None
     qualify = (lambda name: f'"{schema}"."{name}"') if schema else (lambda name: f'"{name}"')
     for table in tables:
         if table.name not in existing_tables:
@@ -266,7 +292,11 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
             else:
                 table.create(sync_conn, checkfirst=True)
             continue
-        live = {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
+        live = (
+            held.get(table.name, set())
+            if held is not None
+            else {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
+        )
         for column in table.columns:
             if column.name in live:
                 continue
@@ -352,11 +382,9 @@ async def init_schema(
         # the abstraction so no PG-specific lock SQL appears here.
         async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
-            await conn.execute_core(
-                CreateSchema(
-                    org_schema(org_id, env, "_mv_cache", region=region), if_not_exists=True
-                )
-            )
+            # The org's view store has creators of its own (an engine landing a view's rows, the
+            # store writer reconciling a view's table) that do not hold this org's lock.
+            await create_schema(conn, org_schema(org_id, env, "_mv_cache", region=region))
             await conn.execute(f'SET search_path TO "{schema_name}"')
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the

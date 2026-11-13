@@ -58,7 +58,7 @@ describe("RelationshipRow: deleting a relationship", () => {
     expect(within(dialog).getByText('Delete relationship "orders-to-customers"?')).toBeTruthy();
     expect(onDelete).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
   });
 

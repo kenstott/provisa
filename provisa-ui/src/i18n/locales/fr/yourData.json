@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "Appel d'outil MCP",
     "copy": "Copier : {{what}}",
-    "close": "Fermer"
+    "close": "Fermer",
+    "draft": "Brouillon",
+    "draftNote": "Cette table est un brouillon : tant qu'elle n'est pas publiée, seuls les rôles autorisés à enregistrer des tables dans son domaine y accèdent par ces moyens."
   }
 }

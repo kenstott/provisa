@@ -58,6 +58,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       setEditingRel={vi.fn()}
       canManage={false}
       onStartEdit={vi.fn()}
+      onDuplicate={vi.fn()}
       onReverse={vi.fn()}
       onDelete={vi.fn()}
       onEditSave={vi.fn()}

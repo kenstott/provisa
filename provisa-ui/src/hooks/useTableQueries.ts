@@ -152,6 +152,8 @@ export interface TableAccess {
   /** Null where the REST surface is not mounted. */
   rest: string | null;
   mcp: string;
+  /** REQ-1921: the table is a draft, reached these ways by a role holding org_admin alone. */
+  draft: boolean;
 }
 
 export function useTableAccess(tableId: number | null, role: string | null) {

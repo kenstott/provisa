@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "MCP-toolaanroep",
     "copy": "{{what}} kopiëren",
-    "close": "Sluiten"
+    "close": "Sluiten",
+    "draft": "Concept",
+    "draftNote": "Deze tabel is een concept: tot ze is vrijgegeven, bereiken alleen rollen die tabellen in haar domein mogen registreren haar op deze manieren."
   }
 }

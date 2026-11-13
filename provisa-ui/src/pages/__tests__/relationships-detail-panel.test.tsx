@@ -271,7 +271,7 @@ describe("RelationshipsPage: a delete that takes tags off columns", () => {
     render(<RelationshipsPage />);
     fireEvent.click(rowOf("orders.customer_id"));
     fireEvent.click(within(panel()).getByRole("button", { name: "Delete" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
     expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent("Loses: pii");
     fireEvent.click(screen.getByTestId("glossary-tag-loss-move"));
     await waitFor(() =>

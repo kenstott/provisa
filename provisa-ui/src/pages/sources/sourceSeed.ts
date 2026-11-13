@@ -49,6 +49,34 @@ export const EMPTY_CDC: CdcState = {
   consumerGroupId: "",
 };
 
+/** The create form's state before a type is picked: every field at its default, no source's. */
+export function emptySourceForm(): SourceFormState {
+  return {
+    id: "",
+    type: "postgresql",
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    password: "",
+    gqlNamingConvention: "",
+    cacheTtl: "",
+    cacheEnabled: true,
+    replicate: null,
+    region: null,
+    loadProtected: false,
+    offPeakWindow: "",
+    offPeakTz: "UTC",
+    changeSignal: "ttl",
+    sentinelPath: "",
+    freshnessGate: false,
+    maxLiveConcurrency: "",
+    path: "",
+    allowedDomains: "",
+    description: "",
+  };
+}
+
 export interface SharepointSeed {
   authType: string;
   certPath: string;

@@ -2025,13 +2025,15 @@ class MutationResult:  # REQ-533
 @strawberry.type
 class TableAccessType:  # REQ-2234
     """The ways to reach a registered table, each ready to copy. ``pgwire`` and ``rest`` are None
-    where that listener or surface is not serving."""
+    where that listener or surface is not serving. ``draft``: the table is a draft, reached this
+    way by a role holding org_admin alone (REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN)."""
 
     graphql: str
     sql: str
     pgwire: str | None
     rest: str | None
     mcp: str
+    draft: bool
 
 
 @strawberry.type

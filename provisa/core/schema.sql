@@ -967,6 +967,7 @@ ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_reason TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS iri TEXT;
 
 -- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a

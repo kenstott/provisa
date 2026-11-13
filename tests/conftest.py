@@ -1372,6 +1372,12 @@ async def tenant_db(_reserve_flight_port):
 
     engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=5, max_overflow=5)
     db = Database(engine, name="org", search_path=None)
+    # pgvector before any module runs schema.sql on this database, as the production path does
+    # (REQ-2185): a module that runs first in its shard otherwise fails on type public.vector.
+    from provisa.core import pgvector
+
+    async with db.acquire() as conn:
+        await pgvector.require(conn)
     yield db
     await db.close()
 

@@ -32,9 +32,8 @@ name: Conformance (pgwire)
 # password exchange.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
-  push:
-    branches: ['release/**']
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     inputs:
       ref:

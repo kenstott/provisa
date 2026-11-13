@@ -537,11 +537,11 @@ async def test_a_replica_only_draft_is_read_at_its_replica_by_this_read_alone(
     # Both stages address the statement through an engine face that reads THIS view's routes,
     # and the read's residency step is told which draft it may wait on a replica of.
     assert governed_in.federation_engine._state is governed_in
-    assert governed_in.previewed_draft_id == _REFUNDS
+    assert governed_in.previewed_draft_ids == {_REFUNDS}
     # The published routes -- every other statement's -- hold no draft, before or after.
     assert replica_only.replica_routes is published and key not in published.routes
     assert replica_only.federation_engine._state is replica_only
-    assert not hasattr(replica_only, "previewed_draft_id")
+    assert not hasattr(replica_only, "previewed_draft_ids")
 
 
 async def test_only_the_previews_view_has_a_draft_judged_for_a_replica(monkeypatch):
@@ -560,7 +560,7 @@ async def test_only_the_previews_view_has_a_draft_judged_for_a_replica(monkeypat
     monkeypatch.setattr(registry_view, "draft_tables", _drafts)
     ordinary = await registry_view.tables_a_read_judges(SimpleNamespace())
     assert [t.id for t in ordinary] == [1, 2]
-    previewing = await registry_view.tables_a_read_judges(SimpleNamespace(previewed_draft_id=9))
+    previewing = await registry_view.tables_a_read_judges(SimpleNamespace(previewed_draft_ids={9}))
     assert [t.id for t in previewing] == [1, 2, 9]  # that draft, and no other
 
 

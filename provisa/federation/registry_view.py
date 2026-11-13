@@ -202,13 +202,13 @@ async def draft_tables(state: Any) -> list[Any]:  # REQ-1921
 async def tables_a_read_judges(state: Any) -> list[Any]:
     """The tables a read through ``state`` may wait on a replica of: those in service — and,
     through the one-table view a steward's preview of a draft reads (admin/table_read.py, which
-    names it ``previewed_draft_id``), that draft (REQ-1921). No other state names one."""
+    names them ``previewed_draft_ids``), those drafts (REQ-1921). No other state names one."""
     tables = await registered_tables(state)
     # Absent on every state but the preview's view: the application state names no draft.
-    draft_id = getattr(state, "previewed_draft_id", None)
-    if draft_id is None:
+    draft_ids = getattr(state, "previewed_draft_ids", None)
+    if draft_ids is None:
         return tables
-    return [*tables, *(t for t in await draft_tables(state) if t.id == draft_id)]
+    return [*tables, *(t for t in await draft_tables(state) if t.id in draft_ids)]
 
 
 def _delta_of(raw: Any) -> Any:

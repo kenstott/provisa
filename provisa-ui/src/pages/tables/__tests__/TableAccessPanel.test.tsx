@@ -22,6 +22,7 @@ const ACCESS: TableAccess = {
   domain: "claims",
   name: "claims.claims",
   table_name: "claims",
+  draft: false,
   columns: [
     {
       name: "amount",
@@ -71,8 +72,9 @@ const ACCESS: TableAccess = {
   ],
 };
 
+// Table 2 is a draft (REQ-1921): answered to a caller holding the right its preview needs.
 vi.mock("../../../api/roleRights", () => ({
-  fetchTableAccess: (id: number) => Promise.resolve({ ...ACCESS, table_id: id }),
+  fetchTableAccess: (id: number) => Promise.resolve({ ...ACCESS, table_id: id, draft: id === 2 }),
 }));
 
 describe("who can read a table's columns (REQ-2162)", () => {
@@ -91,6 +93,15 @@ describe("who can read a table's columns (REQ-2162)", () => {
     expect(reviewer).toHaveTextContent("region = 'eu'");
     const steward = screen.getByTestId("table-access-role-data_steward");
     expect(steward).toHaveTextContent("standard role");
+  });
+
+  it("marks a draft's access as a draft's, and no other table's", async () => {
+    const { unmount } = render(<TableAccessPanel tableId={1} />);
+    await screen.findByTestId("table-access-roles");
+    expect(screen.queryByTestId("table-access-draft")).toBeNull();
+    unmount();
+    render(<TableAccessPanel tableId={2} />);
+    expect(await screen.findByTestId("table-access-draft")).toHaveTextContent("Draft");
   });
 
   it("asks nothing of a table not yet saved", () => {

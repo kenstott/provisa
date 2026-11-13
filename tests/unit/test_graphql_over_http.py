@@ -26,6 +26,7 @@ graphql-http audit's recommendations among it.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -51,7 +52,7 @@ def client(monkeypatch):
 
     state = RoleState(
         schemas={"analyst": _SCHEMA},
-        contexts={"analyst": object()},
+        contexts={"analyst": SimpleNamespace(draft_ids={})},  # a context naming no draft
         rls_contexts={"analyst": object()},
         roles={"analyst": {"id": "analyst"}},
         compiled_query_cache=None,

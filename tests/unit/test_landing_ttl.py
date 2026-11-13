@@ -257,6 +257,7 @@ def test_a_plan_with_a_scratch_table_runs_through_the_pipeline_terminal():
     from provisa.pgwire._pipeline import streams_from_terminal
 
     plan = SimpleNamespace(
+        reads_in=None,  # as _Plan: no draft read (REQ-1921)
         two_step=None,
         code_write=None,
         keyed_write=None,
@@ -283,6 +284,7 @@ async def test_the_terminal_drops_the_scratch_tables_however_the_statement_ends(
     plan = SimpleNamespace(
         scratch=(("loc", "scratch__x"),),
         embedded=None,
+        reads_in=None,  # as _Plan: no draft read (REQ-1921)
         two_step=None,
         code_write=None,
         keyed_write=None,

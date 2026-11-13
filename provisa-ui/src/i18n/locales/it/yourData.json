@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "Chiamata allo strumento MCP",
     "copy": "Copia {{what}}",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "draft": "Bozza",
+    "draftNote": "Questa tabella è una bozza: finché non viene rilasciata, solo i ruoli che possono registrare tabelle nel suo dominio la raggiungono in questi modi."
   }
 }
