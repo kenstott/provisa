@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Automatisch gevolgd via FK-constraint",
-    "fkBadge": "FK",
+    "fkBadge": "Uit FK",
+    "fkBadgeTitle": "Gemaakt op basis van een foreign key in de bron",
     "yes": "Ja",
     "no": "Nee",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Materialiseren",
     "excludeFromCypher": "Uitsluiten van Cypher",
     "sqlName": "SQL-naam",
-    "autoTracked": "Automatisch bijgehouden",
     "cardinalityWarning": "Waarschuwing: als deze join meer dan één rij per bovenliggende rij retourneert, wordt alleen de eerste waarde gebruikt.",
     "toggleDetails": "Relatiedetails in-/uitklappen",
     "junctionBadge": "eig.",

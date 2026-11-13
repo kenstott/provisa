@@ -20,6 +20,7 @@
 // In a demo sandbox the platform's regions are shown read-only, with a note that they are shown to
 // explain regions and cannot be changed there.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -454,18 +455,16 @@ function AffectedOrgs({
           {t("platformRegions.affectedOrgs", { id: region, orgs: orgs.join(", ") })}
         </Text>
         <Group gap="xs">
-          <Button
-            size="xs"
-            color="red"
+          <DestructiveConfirmButton
             loading={working}
-            data-testid="platform-region-remove-anyway"
+            testId="platform-region-remove-anyway"
             onClick={() => {
               setWorking(true);
               onConfirm().finally(() => setWorking(false));
             }}
           >
             {t("platformRegions.removeAnyway")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button size="xs" variant="default" onClick={onCancel}>
             {t("platformRegions.keep")}
           </Button>

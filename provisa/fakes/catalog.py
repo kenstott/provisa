@@ -9,7 +9,9 @@
 # permission from the copyright holder.
 
 """The kinds of fake and fake methods a column may declare, as the table editor offers them
-(REQ-1494): each by name and category, with the arguments it takes."""
+(REQ-1494): each by name and category, with the arguments it takes, the column families it can
+fill and whether it can be stable -- each answer the one the checks a save runs give, so the editor
+offers what the save accepts."""
 
 # Requirements: REQ-1494
 
@@ -19,8 +21,9 @@ import inspect
 from functools import lru_cache
 from typing import Any
 
-from provisa.fakes.kinds import RULE_ONLY
-from provisa.fakes.methods import STABLE_METHODS, UNSUPPORTED, _generator, method_names
+from provisa.fakes.checks import DeclaredColumn, check_stable, check_table
+from provisa.fakes.kinds import RULE_ONLY, FakeRefused, Method, parse
+from provisa.fakes.methods import UNSUPPORTED, _generator, check_method, method_names
 
 
 def _arg(name: str, kind: str, required: bool = True) -> dict[str, Any]:
@@ -78,6 +81,153 @@ KINDS: list[dict[str, Any]] = [
 ]  # fmt: skip
 
 
+#: A column type of each family of :func:`provisa.fakes.checks.family`: the column an entry of the
+#: catalog is checked against.
+FAMILY_TYPES: dict[str, str] = {
+    "text": "varchar",
+    "integer": "integer",
+    "numeric": "double",
+    "boolean": "boolean",
+    "date": "date",
+    "timestamp": "timestamp",
+    "other": "json",
+}
+
+#: Each kind's argument choices, as declarations: the families a kind can fill are those any of
+#: them fits, and its stability is read off the ones a stable save accepts. A relative kind names
+#: ``c_<family>``, a column of that family beside the one checked. A kind's family depends on its
+#: arguments where its values come from them: categories and sequence (the values named),
+#: the distributions (numbers or dates and times as their points).
+KIND_CHOICES: dict[str, tuple[str, ...]] = {
+    "categories": (
+        "categories()",
+        "categories((a, b))",
+        "categories((1, 2))",
+        "categories((1.5, 2.5))",
+        "categories((true, false))",
+        "categories(('2026-01-01', '2026-02-01'))",
+    ),
+    "bool": ("bool()", "bool(0.5)"),
+    "uniform": ("uniform(min=1, max=2)", "uniform(min='2026-01-01', max='2026-02-01')"),
+    "normal": ("normal(mean=1, sd=1)", "normal(mean='2026-01-01', sd=30 days)"),
+    "lognormal": (
+        "lognormal(median=10, p95=100)",
+        "lognormal(median='2026-02-01', p95='2026-06-01', min='2026-01-01')",
+    ),
+    "triangular": (
+        "triangular(min=1, mode=2, max=3)",
+        "triangular(min='2026-01-01', mode='2026-02-01', max='2026-03-01')",
+    ),
+    "percentiles": (
+        "percentiles(min=1, p50=2, max=3)",
+        "percentiles(min='2026-01-01', p50='2026-02-01', max='2026-03-01')",
+    ),
+    "poisson": ("poisson(mean=3)",),
+    "profile": ("profile()", "profile(run=1)"),
+    "pattern": ("pattern()",),
+    "bucket": ("bucket(10)",),
+    "truncate": ("truncate(month)",),
+    "prefix": ("prefix(3)",),
+    "hash": ("hash()",),
+    "encrypt": ("encrypt()",),
+    "after": ("after(c_date)", "after(c_date, 1 day)"),
+    "before": ("before(c_date)", "before(c_date, 1 day)"),
+    "greater_than": ("greater_than(c_integer)", "greater_than(c_integer, 1)"),
+    "less_than": ("less_than(c_integer)", "less_than(c_integer, 1)"),
+    "sql": ("sql(1)",),
+    "sql_group": ("sql_group(sum(self))",),
+    "sequence": (
+        "sequence((a, b), c_text, c_integer)",
+        "sequence((1, 2), c_text, c_integer)",
+        "sequence((1.5, 2.5), c_text, c_integer)",
+        "sequence((true, false), c_text, c_integer)",
+        "sequence(('2026-01-01', '2026-02-01'), c_text, c_integer)",
+    ),
+}
+
+#: The methods whose value is an argument given -- random_element returns one of its ``elements``
+#: -- and their argument choices beyond the default call, one of each family a declaration can
+#: write. Every other portable argument sets a range, format, length or count, which leaves the
+#: value's type as the default call makes it (tests/unit/test_fake_catalog_families.py).
+METHOD_CHOICES: dict[str, tuple[str, ...]] = {
+    "random_element": (
+        "random_element(elements=(a, b))",
+        "random_element(elements=(1, 2))",
+        "random_element(elements=(1.5, 2.5))",
+        "random_element(elements=(true, false))",
+    ),
+}
+
+
+def _kind_fits(declaration: str, fam: str, rule: bool) -> bool:
+    """The save's own check: a column of ``fam`` declares it, beside a column of every family."""
+    others = [DeclaredColumn(f"c_{f}", t) for f, t in FAMILY_TYPES.items()]
+    data_type = FAMILY_TYPES[fam]
+    column = (
+        DeclaredColumn("x", data_type, rule=declaration)
+        if rule
+        else DeclaredColumn("x", data_type, fake=declaration)
+    )
+    try:
+        check_table("t", [column, *others], {})
+    except FakeRefused:
+        return False
+    return True
+
+
+def _method_fits(method: Method, fam: str) -> bool:
+    try:
+        check_method(method, fam)
+    except FakeRefused:
+        return False
+    return True
+
+
+def _stable(declaration: str) -> bool:
+    """Whether a save accepts the declaration stable (provisa.fakes.checks.check_stable)."""
+    try:
+        check_stable(parse(declaration, rule=True))
+    except FakeRefused:
+        return False
+    return True
+
+
+def _given(declaration: str, args: list[dict[str, Any]]) -> set[str]:
+    kind = parse(declaration, rule=True)
+    return {a["name"] for a in args if getattr(kind, a["name"], None) is not None}
+
+
+def _kind_entry(kind: dict[str, Any]) -> dict[str, Any]:
+    name = kind["name"]
+    rule = name in RULE_ONLY
+    choices = KIND_CHOICES[name]
+    families = [f for f in FAMILY_TYPES if any(_kind_fits(d, f, rule) for d in choices)]
+    stable = [d for d in choices if _stable(d)]
+    unstable = [d for d in choices if d not in stable]
+    # The arguments every stable choice gives and some other choice lacks: those a stable fake of
+    # this kind must declare.
+    needs = (
+        set.intersection(*(_given(d, kind["args"]) for d in stable))
+        - set.intersection(*(_given(d, kind["args"]) for d in unstable))
+        if stable and unstable
+        else set()
+    )
+    return {
+        **kind,
+        "ruleOnly": rule,
+        "families": families,
+        "stable": bool(stable),
+        "stableNeeds": [a["name"] for a in kind["args"] if a["name"] in needs],
+    }
+
+
+def _method_families(name: str) -> list[str]:
+    calls = [Method(name, ())] + [parse(d) for d in METHOD_CHOICES.get(name, ())]
+    return [
+        f for f in FAMILY_TYPES if any(_method_fits(m, f) for m in calls if isinstance(m, Method))
+    ]
+
+
 def _category(name: str) -> str:
     """The provider a method belongs to, by its module: person, address, internet and so on."""
     for provider in _generator().providers:
@@ -90,7 +240,9 @@ def _category(name: str) -> str:
 
 @lru_cache(maxsize=1)
 def catalog() -> dict[str, Any]:
-    """Every kind and every declarable method, by category, with its arguments."""
+    """Every kind and every declarable method, by category, with its arguments, the families it
+    can fill, and whether it can be stable (``stableNeeds``: the arguments a stable one declares;
+    a stable method takes none)."""
     methods = []
     for name in method_names():
         if name in UNSUPPORTED:
@@ -110,10 +262,9 @@ def catalog() -> dict[str, Any]:
                 "name": name,
                 "category": _category(name),
                 "params": params,
-                "stable": name in STABLE_METHODS,
+                "families": _method_families(name),
+                "stable": _stable(f"{name}()"),
+                "stableNeeds": [],
             }
         )
-    return {
-        "kinds": [{**k, "ruleOnly": k["name"] in RULE_ONLY} for k in KINDS],
-        "methods": methods,
-    }
+    return {"kinds": [_kind_entry(k) for k in KINDS], "methods": methods}

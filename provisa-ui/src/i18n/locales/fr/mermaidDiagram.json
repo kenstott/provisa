@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "Diagramme indisponible"
+    "unavailable": "Diagramme indisponible",
+    "fitWidth": "Ajuster à la largeur",
+    "canvasLabel": "Diagramme du plan de requête"
   }
 }

@@ -2,6 +2,9 @@
   "common": {
     "loading": "Laden...",
     "cancel": "Annuleren",
+    "stop": "Stoppen",
+    "stopped": "Gestopt",
+    "stopQuery": "Query stoppen",
     "save": "Opslaan",
     "delete": "Verwijderen",
     "confirm": "Bevestigen",

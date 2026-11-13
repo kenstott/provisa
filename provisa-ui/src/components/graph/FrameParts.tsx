@@ -40,6 +40,16 @@ export function FrameRunning() {
   );
 }
 
+/** The frame's query was stopped before an answer came: nothing is shown, and it is no error. */
+export function FrameStopped() {
+  const { t } = useTranslation();
+  return (
+    <div className="gf-stopped" data-testid="graph-frame-stopped">
+      {t("common.stopped")}
+    </div>
+  );
+}
+
 export function FrameStatementTabs({
   frame,
   onStatement,

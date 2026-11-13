@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 56, of which 2 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 94, of which 25 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-6 of the grid's 31 features are native on DuckDB and left out.
+82 of the grid's 144 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -61,7 +61,9 @@ list_transform(list_sort(list_transform($a, _x -&gt; {&#x27;k&#x27;: random(), &
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; len($a) THEN error(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || len($a)) ELSE $a[1:len($a) - $n] END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-unnest(CASE WHEN $reverse THEN range(CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER), 0, -1) ELSE range(1, CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER) + 1) END)</code></pre></td><td></td><td></td><td></td></tr>
+unnest(CASE WHEN $reverse THEN range(CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER), 0, -1) ELSE range(1, CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER) + 1) END)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -69,6 +71,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NOT NULL OR $b IS NOT NULL THEN list_concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s zones each read now: abbreviation, offset and daylight flag.</code></pre></td><td></td><td></td><td></td></tr>
@@ -87,6 +110,30 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
@@ -150,4 +197,70 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_char_to_encoding</strong><br>An encoding&#x27;s number by any of PostgreSQL&#x27;s names of it; -1 for a name of none.</td><td><pre><code>pg_char_to_encoding($n)
+=&gt;
+CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN strlen($n) &gt; 63 THEN error(&#x27;postgresql-error 0A000: pg_char_to_encoding does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE CAST(CASE lower(regexp_replace($n, &#x27;[^A-Za-z0-9]&#x27;, &#x27;&#x27;, &#x27;g&#x27;)) WHEN &#x27;abc&#x27; THEN 19 WHEN &#x27;alt&#x27; THEN 20 WHEN &#x27;big5&#x27; THEN 36 WHEN &#x27;euccn&#x27; THEN 2 WHEN &#x27;eucjis2004&#x27; THEN 5 WHEN &#x27;eucjp&#x27; THEN 1 WHEN &#x27;euckr&#x27; THEN 3 WHEN &#x27;euctw&#x27; THEN 4 WHEN &#x27;gb18030&#x27; THEN 39 WHEN &#x27;gbk&#x27; THEN 37 WHEN &#x27;iso88591&#x27; THEN 8 WHEN &#x27;iso885910&#x27; THEN 13 WHEN &#x27;iso885913&#x27; THEN 14 WHEN &#x27;iso885914&#x27; THEN 15 WHEN &#x27;iso885915&#x27; THEN 16 WHEN &#x27;iso885916&#x27; THEN 17 WHEN &#x27;iso88592&#x27; THEN 9 WHEN &#x27;iso88593&#x27; THEN 10 WHEN &#x27;iso88594&#x27; THEN 11 WHEN &#x27;iso88595&#x27; THEN 25 WHEN &#x27;iso88596&#x27; THEN 26 WHEN &#x27;iso88597&#x27; THEN 27 WHEN &#x27;iso88598&#x27; THEN 28 WHEN &#x27;iso88599&#x27; THEN 12 WHEN &#x27;johab&#x27; THEN 40 WHEN &#x27;koi8&#x27; THEN 22 WHEN &#x27;koi8r&#x27; THEN 22 WHEN &#x27;koi8u&#x27; THEN 34 WHEN &#x27;latin1&#x27; THEN 8 WHEN &#x27;latin10&#x27; THEN 17 WHEN &#x27;latin2&#x27; THEN 9 WHEN &#x27;latin3&#x27; THEN 10 WHEN &#x27;latin4&#x27; THEN 11 WHEN &#x27;latin5&#x27; THEN 12 WHEN &#x27;latin6&#x27; THEN 13 WHEN &#x27;latin7&#x27; THEN 14 WHEN &#x27;latin8&#x27; THEN 15 WHEN &#x27;latin9&#x27; THEN 16 WHEN &#x27;mskanji&#x27; THEN 35 WHEN &#x27;muleinternal&#x27; THEN 7 WHEN &#x27;shiftjis&#x27; THEN 35 WHEN &#x27;shiftjis2004&#x27; THEN 41 WHEN &#x27;sjis&#x27; THEN 35 WHEN &#x27;sqlascii&#x27; THEN 0 WHEN &#x27;tcvn&#x27; THEN 19 WHEN &#x27;tcvn5712&#x27; THEN 19 WHEN &#x27;uhc&#x27; THEN 38 WHEN &#x27;unicode&#x27; THEN 6 WHEN &#x27;utf8&#x27; THEN 6 WHEN &#x27;vscii&#x27; THEN 19 WHEN &#x27;win&#x27; THEN 23 WHEN &#x27;win1250&#x27; THEN 29 WHEN &#x27;win1251&#x27; THEN 23 WHEN &#x27;win1252&#x27; THEN 24 WHEN &#x27;win1253&#x27; THEN 30 WHEN &#x27;win1254&#x27; THEN 31 WHEN &#x27;win1255&#x27; THEN 32 WHEN &#x27;win1256&#x27; THEN 18 WHEN &#x27;win1257&#x27; THEN 33 WHEN &#x27;win1258&#x27; THEN 19 WHEN &#x27;win866&#x27; THEN 20 WHEN &#x27;win874&#x27; THEN 21 WHEN &#x27;win932&#x27; THEN 35 WHEN &#x27;win936&#x27; THEN 37 WHEN &#x27;win949&#x27; THEN 38 WHEN &#x27;win950&#x27; THEN 36 WHEN &#x27;windows1250&#x27; THEN 29 WHEN &#x27;windows1251&#x27; THEN 23 WHEN &#x27;windows1252&#x27; THEN 24 WHEN &#x27;windows1253&#x27; THEN 30 WHEN &#x27;windows1254&#x27; THEN 31 WHEN &#x27;windows1255&#x27; THEN 32 WHEN &#x27;windows1256&#x27; THEN 18 WHEN &#x27;windows1257&#x27; THEN 33 WHEN &#x27;windows1258&#x27; THEN 19 WHEN &#x27;windows866&#x27; THEN 20 WHEN &#x27;windows874&#x27; THEN 21 WHEN &#x27;windows932&#x27; THEN 35 WHEN &#x27;windows936&#x27; THEN 37 WHEN &#x27;windows949&#x27; THEN 38 WHEN &#x27;windows950&#x27; THEN 36 ELSE -1 END AS INTEGER) END</code></pre></td><td><ul><li>A name of more than 63 bytes is refused by name where it runs: PostgreSQL cuts it to them as it reads it. <code>0A000</code> pg_char_to_encoding does not read this value</li></ul></td><td></td><td></td></tr>
 </tbody></table>

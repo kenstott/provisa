@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "由 FK 約束自動追蹤",
-    "fkBadge": "FK",
+    "fkBadge": "來自 FK",
+    "fkBadgeTitle": "根據來源中的外鍵建立",
     "yes": "是",
     "no": "否",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "具體化",
     "excludeFromCypher": "從 Cypher 排除",
     "sqlName": "SQL 名稱",
-    "autoTracked": "自動追蹤",
     "cardinalityWarning": "警告：如此聯結對每個父項傳回多於一列，只會使用第一個值。",
     "toggleDetails": "切換關係詳細資訊",
     "junctionBadge": "屬性",

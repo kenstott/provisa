@@ -139,7 +139,9 @@ def _flat(role_id: str = ROLE, *capabilities: str) -> dict:
         else r
         for r in [*_standard(), *OWN]
     ]
-    return {**next(r for r in flatten_role_dicts(rows) if r["id"] == role_id), "description": "d"}
+    flat = next(r for r in flatten_role_dicts(rows) if r["id"] == role_id)
+    # REQ-2188: the roles it acts as, as the build records them (app_loaders).
+    return {**flat, "description": "d", "acting_chain": role_chains(rows)[role_id]}
 
 
 def _chains() -> dict[str, list[str]]:
@@ -226,8 +228,20 @@ def _ctx() -> CompilationContext:
 
 
 def _gov(role: dict):
+    from provisa.security.rights import draft_reach
+
     ctx = _ctx()
-    return ctx, build_governance_context(role["id"], RLSContext.empty(), {}, ctx, _tables(), role)
+    # REQ-1921: the drafts it reads, asked of the roles as the build holds them.
+    roles = {r["id"]: r for r in flatten_role_dicts([*_standard(), *OWN])}
+    return ctx, build_governance_context(
+        role["id"],
+        RLSContext.empty(),
+        {},
+        ctx,
+        _tables(),
+        role,
+        draft_reach=lambda: draft_reach(role, {**roles, role["id"]: role}),
+    )
 
 
 def _violations(sql: str, role: dict) -> list:
@@ -502,7 +516,10 @@ def test_sql_governance_columns_follow_view_governance():
 def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     _, gov = _gov(_flat())
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
-    assert gov.rls_rules[CATALOG] == rule_of(f"id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})")
+    # REQ-1921: and no draft's row, read only where a role holds table registration in its domain.
+    assert gov.rls_rules[CATALOG] == rule_of(
+        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT draft)"
+    )
     # ontology: the glossary's own rule, scoped to the role's data domains.
     assert mentions(gov.rls_rules[TERMS], "pet-store") and mentions(gov.rls_rules[TERMS], "shelter")
     assert not mentions(gov.rls_rules[TERMS], "|meta|")

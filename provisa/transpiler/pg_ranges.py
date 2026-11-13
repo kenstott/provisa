@@ -37,7 +37,8 @@ import sqlglot.expressions as exp
 from provisa.core import pg_range
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Range, RangeType
-from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler.pg_literals import array_input, values_cast
+from provisa.transpiler.polyfill import ranges as range_rows
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     SubtypeOperationRefused,
@@ -872,6 +873,8 @@ class _Writer:
         )
 
     def intersect(self, a: _R, b: _R) -> _R:
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # strict: and Trino types no NULL a form concatenates
         return _R(
             a.rtype,
             _or(a.null, b.null),
@@ -883,6 +886,8 @@ class _Writer:
     def minus(self, a: _R, b: _R) -> _R:
         """range_minus_internal: b reaching a's lower bound leaves what follows b, b reaching its
         upper what precedes b, both nothing, and b inside a with a left on both sides is refused."""
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # strict: and Trino types no NULL a form concatenates
         both = _both(a, b)
         l1l2, u1u2 = _ll(a, b), _uu(a, b)
         reaches_lower = _and(both, _gte0(l1l2), _lte0(_lu(a, b)))
@@ -1559,6 +1564,8 @@ class _Rewrite:
             )
         if len(args) == 1 and _variadic_null(args[0]):
             return _M(rtype, exp.true(), _null())  # VARIADIC NULL: strict, of no array at all
+        if len(args) == 1 and self.dialect in range_rows.NO_RANGE_ARRAYS:
+            args = self._variadic_ranges(rtype, args)
         if len(args) == 1 and isinstance(_variadic_array(args[0]), exp.Array):
             args = _variadic_items(args[0])
         elif len(args) == 1 and (given := _variadic_array(args[0])) is not None:
@@ -1581,6 +1588,25 @@ class _Rewrite:
             exp.false(),
         )
         return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
+
+    def _variadic_ranges(self, rtype: RangeType, args: list[exp.Expr]) -> list[exp.Expr]:
+        """A VARIADIC array cast to an array of ranges, on a dialect with no such type, as the
+        ranges its text holds: PostgreSQL's VARIADIC array is the arguments it holds. A cast of
+        anything but the text of one dimension is refused by name, the polyfill grid's row's
+        refusal."""
+        given = _variadic_array(args[0])
+        if not isinstance(given, exp.Cast) or not given.to.is_type(_T.ARRAY):
+            return args  # an array of its elements, or one the engine holds: read as it is
+        written = array_input(given)
+        items = written.this if isinstance(written, exp.Cast) else None
+        if not isinstance(items, exp.Array) or any(
+            isinstance(item, exp.Array) for item in items.expressions
+        ):
+            from provisa.transpiler.function_macros import RowRefused
+
+            name = rtype.multirange
+            raise RowRefused(name, self.dialect, range_rows.variadic_refusal(name, self.dialect))
+        return list(items.expressions)
 
     def _of_array(self, rtype: RangeType, array: exp.Expr) -> _M:
         """A multirange of an array only the rows hold, its items each a range's text: strict, and
@@ -1962,6 +1988,10 @@ class _Rewrite:
             value = self._of_values(argument)
         if value is None:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
+        if name == "range_intersect_agg" and _is_true(value.null):
+            # Strict, of no value but NULL: an aggregate of NULL. Its fold's form of a constant
+            # NULL is more than Trino compiles.
+            return exp.Max(this=_text_cast(_null()))
         w, rtype = self.writer, value.rtype
         text = w.text(value)
         joined = w.joined(text)

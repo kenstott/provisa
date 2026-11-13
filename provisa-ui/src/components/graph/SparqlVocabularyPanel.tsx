@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
-import { labelColor } from "./graph-model";
+import { labelColor, labelTextColor } from "./graph-model";
 import type { OpenClassMenu, OpenRelMenu } from "./GraphSidebar";
 import { EDGE_DRAG, PROPERTY_DRAG } from "./sparqlDrop";
 import {
@@ -91,7 +91,7 @@ function Pill({
         <button
           type="button"
           className={badge ? "graph-rel-badge" : "graph-label-pill"}
-          style={color ? { background: color } : undefined}
+          style={color ? { background: color, color: labelTextColor(color) } : undefined}
           onClick={onClick}
           onContextMenu={onContextMenu}
           draggable={dragged !== undefined}

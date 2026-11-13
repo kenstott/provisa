@@ -28,7 +28,7 @@ import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react
 import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
-import { INJECTED_PROPS, PALETTE, labelColor, ownColumnName } from "./graph-model";
+import { INJECTED_PROPS, PALETTE, labelColor, labelTextColor, ownColumnName } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import CodeMirror from "@uiw/react-codemirror";
@@ -218,7 +218,10 @@ export function Inspector({
                   variant="filled"
                   radius="xl"
                   className={`gf-overview-chip${isLit("label", lbl) ? " gf-overview-chip--on" : ""}`}
-                  style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
+                  style={{
+                    background: colorOverrides[lbl] ?? labelColor(lbl),
+                    color: labelTextColor(colorOverrides[lbl] ?? labelColor(lbl)),
+                  }}
                   {...pill("label", lbl)}
                 >
                   {lbl} ({cnt.toLocaleString()})
@@ -348,7 +351,10 @@ export function Inspector({
               variant="filled"
               radius="xl"
               className="gf-inspector-badge"
-              style={{ background: colorOverrides[domainPrefix] ?? labelColor(domainPrefix) }}
+              style={{
+                background: colorOverrides[domainPrefix] ?? labelColor(domainPrefix),
+                color: labelTextColor(colorOverrides[domainPrefix] ?? labelColor(domainPrefix)),
+              }}
             >
               {domainPrefix}
             </Badge>

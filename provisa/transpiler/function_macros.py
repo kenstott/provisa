@@ -70,7 +70,7 @@ from provisa.transpiler import (
     pg_forms_types,
     pg_zones,
 )
-from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
+from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
 from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
@@ -1594,17 +1594,6 @@ _ROWS: tuple[Macro, ...] = (
     ),
     # A character value of a "char".
     _pg("bpchar", "value", "CAST(value AS TEXT)"),
-    # An encoding's number, its name compared as PostgreSQL's does; a name naming none -1.
-    _macro(
-        "pg_char_to_encoding",
-        "name",
-        "CASE lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) WHEN 'unicode' THEN 6 "
-        + " ".join(
-            f"WHEN '{encoding.lower().replace('_', '')}' THEN {number}"
-            for number, encoding in enumerate(ENCODINGS)
-        )
-        + " ELSE CASE WHEN name IS NOT NULL THEN -1 END END",
-    ),
     *_NUMBERS,
     *_DATES,
     *_ENUMS,
@@ -1882,7 +1871,8 @@ _MENTIONED = re.compile(
     r"\b("
     + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
     + r")\"?\s*\(|"
-    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}",
+    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}"
+    + "".join(f"|{mentioned}" for mentioned in polyfill.GRID.mentions),
     re.IGNORECASE,
 )
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.
@@ -2723,7 +2713,10 @@ def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None
     call = _call(target)
     if call is not None:
         return call
-    applied = polyfill.GRID.read(target, dialect)
+    try:
+        applied = polyfill.GRID.read(target, dialect)
+    except polyfill_notation.Refused:
+        return None  # a rewrite's refusal: _polyfilled raises it as the row's
     if applied is None or applied.rule.pattern is None:
         return None
     return applied.feature.name, [applied.bindings[p] for p in applied.rule.holes()]

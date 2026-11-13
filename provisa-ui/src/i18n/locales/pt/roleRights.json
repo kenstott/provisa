@@ -35,6 +35,7 @@
     "scope_own-domain": "domínio próprio",
     "write_insert": "inserir",
     "write_update": "atualizar",
-    "write_delete": "excluir"
+    "write_delete": "excluir",
+    "draft": "Rascunho"
   }
 }

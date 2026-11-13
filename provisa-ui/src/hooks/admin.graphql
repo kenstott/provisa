@@ -1200,6 +1200,7 @@ query TableAccess($tableId: Int!, $role: String!) {
     pgwire
     rest
     mcp
+    draft
   }
 }
 

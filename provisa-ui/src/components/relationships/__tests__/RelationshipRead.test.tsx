@@ -87,7 +87,6 @@ describe("a relationship's read view", () => {
       ["CQL Alias (UPPER_SNAKE)", "BONDED_PAIR"],
       ["GQL Alias (camelCase)", "bondedPairs"],
       ["SQL Name", "bonded_pairs"],
-      ["Auto-tracked", "No"],
     ]);
     expect(fields("relationship-read-source")).toEqual([
       ["Domain", "zoo"],

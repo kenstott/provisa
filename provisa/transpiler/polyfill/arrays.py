@@ -21,8 +21,11 @@ takes only a constant message, so there such a refusal is by name, and is a limi
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
+from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refusal
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 
 FAMILY = "arrays"
 
@@ -495,6 +498,15 @@ GENERATE_SUBSCRIPTS = Feature(
                     **_no_form_on("generate_subscripts", (*_TRINO, "clickhouse")),
                 },
             ),
+            # Of no order: Trino has no form of either (run 43307392116 sent it as written); every
+            # other dialect keeps what it had.
+            Rule(
+                "generate_subscripts($a::anyarray, $d::integer)",
+                {
+                    **dict.fromkeys(trino.OTHERS, trino.KEPT),
+                    **trino.refused_on_trino("generate_subscripts"),
+                },
+            ),
         ),
     ),
 )
@@ -519,7 +531,13 @@ ARRAY_APPEND = Feature(
     read=Side(
         rules=(
             Rule(
-                "array_append(NULL::anycompatiblearray, $v::anycompatible)", {"clickhouse": "[$v]"}
+                "array_append(NULL::anycompatiblearray, $v::anycompatible)",
+                {"clickhouse": "[$v]", **_on_trino("ARRAY[$v]")},
+            ),
+            # Trino has no array_append: its concatenation, a NULL array read as an empty one.
+            Rule(
+                "array_append($a::anycompatiblearray, $v::anycompatible)",
+                _on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END"),
             ),
         ),
         limitations={"clickhouse": (_no_array_append("array_append"),)},
@@ -533,7 +551,13 @@ ARRAY_PREPEND = Feature(
     read=Side(
         rules=(
             Rule(
-                "array_prepend($v::anycompatible, NULL::anycompatiblearray)", {"clickhouse": "[$v]"}
+                "array_prepend($v::anycompatible, NULL::anycompatiblearray)",
+                {"clickhouse": "[$v]", **_on_trino("ARRAY[$v]")},
+            ),
+            # Trino has no array_prepend: its concatenation, a NULL array read as an empty one.
+            Rule(
+                "array_prepend($v::anycompatible, $a::anycompatiblearray)",
+                _on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END"),
             ),
         ),
         limitations={"clickhouse": (_no_array_append("array_prepend"),)},
@@ -655,6 +679,120 @@ ARRAY_POSITION = Feature(
 )
 
 
+#: The element types whose order on Trino is PostgreSQL's: a number past a float's NaN, a truth
+#: value and a day. Text orders by the database's collation, where Trino orders by code points.
+_ORDERED_ELEMENTS = frozenset({"smallint[]", "integer[]", "bigint[]", "boolean[]", "date[]"})
+
+#: array_cmp (arrayfuncs.c) of two one-dimensional arrays: the first element that differs, a NULL
+#: larger than any value and equal to a NULL; past the shorter one's end, the longer is larger. A
+#: nested list (an array of more dimensions) is refused, as its order is of its flattened elements.
+_ARRAY_CMP = (
+    "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS INTEGER) "
+    "WHEN strpos(typeof($a), 'array(array(') = 1 OR strpos(typeof($b), 'array(array(') = 1 "
+    "THEN fail('postgresql-error 0A000: ' || '{name} does not read this value' "
+    "|| ' <end of postgresql-error>') "
+    "ELSE CAST(coalesce(element_at(filter(transform("
+    "sequence(1, least(cardinality($a), cardinality($b)) + 1), "
+    "_i -> CASE WHEN _i > least(cardinality($a), cardinality($b)) "
+    "THEN sign(cardinality($a) - cardinality($b)) "
+    "WHEN $a[_i] IS NULL AND $b[_i] IS NULL THEN 0 WHEN $a[_i] IS NULL THEN 1 "
+    "WHEN $b[_i] IS NULL THEN -1 WHEN $a[_i] < $b[_i] THEN -1 WHEN $a[_i] > $b[_i] THEN 1 "
+    "ELSE 0 END), _c -> _c <> 0), 1), 0) AS INTEGER) END"
+)
+
+#: Each ordering function, its pattern, and Trino's answer from the comparison ``{cmp}``.
+_ORDERINGS = {
+    "array_lt": "{cmp} < 0",
+    "array_le": "{cmp} <= 0",
+    "array_gt": "{cmp} > 0",
+    "array_ge": "{cmp} >= 0",
+    "array_larger": "CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN {cmp} > 0 THEN $a ELSE $b END",
+    "array_smaller": "CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN {cmp} < 0 THEN $a ELSE $b END",
+    "btarraycmp": "{cmp}",
+}
+
+
+def _ordering_pattern(name: str) -> str:
+    return f"{name}($a::anyarray, $b::anyarray)"
+
+
+def ordered_arrays(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """Two arrays ordered as btree's array_cmp orders them, on Trino, where both are said to hold
+    elements Trino orders as PostgreSQL does; any other is refused by name."""
+    call = trino.called(node)
+    if call is None:
+        return None
+    (name,) = call[0] & set(_ORDERINGS)
+    a, b = call[1]
+    if trino.said(a) not in _ORDERED_ELEMENTS or trino.said(b) != trino.said(a):
+        raise Refused(trino.no_form(name, dialect))
+    cmp = "(" + _ARRAY_CMP.format(name=name) + ")"
+    form = _ORDERINGS[name].format(cmp=cmp)
+    return trino.written(form, _ordering_pattern(name), {"a": a, "b": b})
+
+
+_ORDERED = Rewrite(ordered_arrays)
+_ORDER_SUMMARIES = {
+    "array_lt": ("<", "One array before another, a NULL element after any value."),
+    "array_le": ("<=", "One array before or equal to another, a NULL element after any value."),
+    "array_gt": (">", "One array after another, a NULL element after any value."),
+    "array_ge": (">=", "One array after or equal to another, a NULL element after any value."),
+}
+_ORDER_LIMITATION = Limitation(
+    "Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any "
+    "other (text, which orders by the database's collation, or a column of no said type) is "
+    "refused by name, as Trino's own comparison refuses a NULL element."
+)
+
+
+def _ordering(name: str, summary: str, others: str) -> Feature:
+    """An ordering of two arrays: Trino's from array_cmp, every other dialect the form it had."""
+    return Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(
+            rules=(
+                Rule(
+                    _ordering_pattern(name),
+                    {
+                        **{d: others for d in DIALECTS if d not in NATIVE},
+                        **trino.on_trino(_ORDERED),
+                    },
+                ),
+            ),
+            limitations=dict.fromkeys(_TRINO, (_ORDER_LIMITATION,)),
+        ),
+    )
+
+
+ARRAY_LT, ARRAY_LE, ARRAY_GT, ARRAY_GE = (
+    _ordering(name, summary, f"$a {operator} $b")
+    for name, (operator, summary) in _ORDER_SUMMARIES.items()
+)
+ARRAY_LARGER = _ordering(
+    "array_larger",
+    "The larger of two arrays, a NULL element after any value.",
+    "CASE WHEN $a > $b THEN $a WHEN $a <= $b THEN $b END",
+)
+ARRAY_SMALLER = _ordering(
+    "array_smaller",
+    "The smaller of two arrays, a NULL element after any value.",
+    "CASE WHEN $a < $b THEN $a WHEN $a >= $b THEN $b END",
+)
+#: btarraycmp: every other dialect keeps the old table's (provisa.transpiler.pg_forms_index), which
+#: reads an array's elements as written first.
+BTARRAYCMP = Feature(
+    "btarraycmp",
+    FAMILY,
+    "btree's comparison of two arrays: -1, 0 or 1, a NULL element after any value.",
+    read=Side(
+        rules=(Rule(_ordering_pattern("btarraycmp"), trino.trino_only(_ORDERED)),),
+        limitations=dict.fromkeys(_TRINO, (_ORDER_LIMITATION,)),
+    ),
+)
+
+
 FEATURES: tuple[Feature, ...] = (
     ARRAY_NDIMS,
     ARRAY_DIMS,
@@ -674,4 +812,11 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_APPEND,
     ARRAY_PREPEND,
     ARRAY_CAT,
+    ARRAY_LT,
+    ARRAY_LE,
+    ARRAY_GT,
+    ARRAY_GE,
+    ARRAY_LARGER,
+    ARRAY_SMALLER,
+    BTARRAYCMP,
 )

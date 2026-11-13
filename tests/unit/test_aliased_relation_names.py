@@ -53,7 +53,12 @@ def _governance():
             "columns": [{"column_name": "id", "data_type": "integer"}],
         }
     ]
-    role = {"id": "analyst", "capabilities": [], "domain_access": [META_DOMAIN_ID]}
+    role = {
+        "id": "analyst",
+        "capabilities": [],
+        "domain_access": [META_DOMAIN_ID],
+        "acting_chain": ["analyst"],  # REQ-2188: as the build records it
+    }
     gov = build_governance_context(
         "analyst",
         SimpleNamespace(rules={}, write_rules={}),

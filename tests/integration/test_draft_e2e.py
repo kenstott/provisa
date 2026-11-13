@@ -11,14 +11,14 @@
 """Integration: a table registered through the admin starts as draft, out of service until its
 domain's owners release it (REQ-1921), on a real pg-engine server over a real source.
 
-* Freshly registered it is refused, by name and as draft, on GraphQL and SQL alike, and no schema
-  offers it.
+* Freshly registered it is a draft: the role here is org_admin, whose schema offers it marked as
+  a draft and whose GraphQL, REST and SQL reads of it answer its rows (A DRAFT IS SERVED TO
+  ORG_ADMIN).
 * Released, it is read; replicated, its replica is built.
-* Set as draft again, it is refused again and keeps the replica it has: a draft is offered to
-  no reader, and it may hold its data.
+* Set as draft again, it is a draft again and keeps the replica it has: it may hold its data.
 * A draft the engine reaches only through a replica is landed by its steward's preview — the
-  ordinary build, asked for by that read — and the preview is answered from it, while every
-  ordinary statement is still refused. Released, it is read from the copy already landed.
+  ordinary build, asked for by that read — and the preview is answered from it. Released, it is
+  read from the copy already landed.
 """
 
 # Requirements: REQ-1921
@@ -119,18 +119,54 @@ def _read(srv) -> list[tuple]:
     return sorted((r["id"], r["amount"]) for r in response.json()["data"]["orders"])
 
 
-def _refused_as_draft(srv) -> None:
-    graphql = _graphql(srv, "{ orders { id amount } }")
-    assert graphql.status_code == 409, graphql.text
-    assert graphql.json()["code"] == "data.table_is_draft", graphql.text
-    assert graphql.json()["params"] == {"table": "orders"}, graphql.text
-    sql = _sql(srv, "SELECT id FROM orders")
-    assert sql.status_code != 200, sql.text
-    assert "'orders' is a draft" in sql.text, sql.text
-    fields = _graphql(srv, "{ __schema { queryType { fields { name } } } }")
-    assert fields.status_code == 200, fields.text
-    offered = {f["name"] for f in fields.json()["data"]["__schema"]["queryType"]["fields"]}
-    assert "orders" not in offered
+def _rest(srv) -> httpx.Response:
+    return httpx.get(
+        f"{srv.base_url}/data/rest/shop/orders",
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=srv.request_timeout + 10,
+    )
+
+
+def _a_draft_read_by_org_admin(srv) -> None:
+    """REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: the role here is org_admin, whose schema offers
+    the draft marked as one, and whose GraphQL, REST and SQL reads naming it answer its rows, read
+    as a served table is (admin/table_read)."""
+    assert _read(srv) == _ID_AMOUNT
+    rest = _rest(srv)
+    assert rest.status_code == 200, rest.text
+    assert sorted((r["id"], r["amount"]) for r in rest.json()["data"]) == _ID_AMOUNT, rest.text
+    sql = _sql(srv, "SELECT id FROM orders ORDER BY id")
+    assert sql.status_code == 200, sql.text
+    assert [r["id"] for r in sql.json()["data"]["sql"]] == [i for i, _ in _ID_AMOUNT], sql.text
+    schema = _graphql(
+        srv, "{ __schema { queryType { fields { name } } types { name description } } }"
+    )
+    assert schema.status_code == 200, schema.text
+    offered = {f["name"] for f in schema.json()["data"]["__schema"]["queryType"]["fields"]}
+    assert "orders" in offered
+    marked = [
+        t["name"]
+        for t in schema.json()["data"]["__schema"]["types"]
+        if (t["description"] or "").startswith("Draft: not released.")
+    ]
+    assert marked, schema.text
+
+
+def _ways_to_reach(srv, table_id: int) -> dict:
+    """The admin's ways to reach the table, as the Your data step reads them."""
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={
+            "query": "query($id: Int!, $role: String!) { tableAccess(tableId: $id, role: $role) "
+            "{ graphql sql draft } }",
+            "variables": {"id": table_id, "role": _ROLE},
+        },
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=60,
+    )
+    assert response.status_code == 200, response.text
+    assert "errors" not in response.json(), response.text
+    return response.json()["data"]["tableAccess"]
 
 
 def _replica_rows(pg: _SourceAndEngine) -> int | None:
@@ -165,25 +201,31 @@ def test_a_table_registered_through_the_admin_is_out_of_service_until_released(s
         '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
     )
     table_id = registered_id(registered["message"])
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
+    # Its ways to reach it, as org_admin is served it: marked as a draft's.
+    ways = _ways_to_reach(srv, table_id)
+    assert ways["draft"] is True, ways
+    assert "orders(limit: 10)" in ways["graphql"], ways
+    assert "orders" in ways["sql"], ways
 
     _mutate(srv, f"setTableDraft(tableId: {table_id}, draft: false)")
     assert _read(srv) == _ID_AMOUNT
+    assert _ways_to_reach(srv, table_id)["draft"] is False
 
     _mutate(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
     _mutate(srv, 'updateSourceReplicate(sourceId: "src", replicate: 0)')
     _wait(lambda: _replica_rows(pg) == len(_ROWS), seconds=90, what="the replica")
     assert _read(srv) == _ID_AMOUNT
 
-    # Set as draft again: refused again, and its replica stays — through the reloads in which
+    # Set as draft again: a draft again, and its replica stays — through the reloads in which
     # an undeclared replica is retired and, its wait over, dropped.
     _mutate(srv, f"setTableDraft(tableId: {table_id}, draft: true)")
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
     time.sleep(_KEPT_S)
     (build,) = _builds(srv)["builds"]
     assert build["state"] != "retired", build
     assert _replica_rows(pg) == len(_ROWS)
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
 
 
 def _preview(srv, table_id: int, body: dict) -> httpx.Response:
@@ -266,7 +308,7 @@ def test_a_draft_reached_through_a_replica_is_landed_by_its_stewards_preview(lan
         '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
     )
     table_id = registered_id(registered["message"])
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
 
     # Its steward's preview: the first page, then a filter, a sort and a second page of it --
     # each a statement the server writes, answered from the replica that read landed.
@@ -294,11 +336,11 @@ def test_a_draft_reached_through_a_replica_is_landed_by_its_stewards_preview(lan
     assert unknown.status_code == 400, unknown.text
     assert unknown.json()["code"] == "data.viewer_column_unknown", unknown.text
 
-    # Landed -- by the ordinary build, on the ordinary record -- and still offered to no reader.
+    # Landed -- by the ordinary build, on the ordinary record -- and still a draft.
     (build,) = _builds(srv)["builds"]
     assert (build["sourceId"], build["tableName"]) == ("src", "orders")
     assert build["rowsCopied"] == len(_ROWS) and build["lastError"] is None
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
 
     # Released: read by anyone the model serves it to, from the copy already landed.
     _mutate(srv, f"setTableDraft(tableId: {table_id}, draft: false)")
@@ -341,7 +383,7 @@ def test_a_views_inputs_are_in_service_for_its_readers(server):
 
     # Its input goes out of service: the view names it, and is refused naming it.
     _mutate(srv, f"setTableDraft(tableId: {table_id}, draft: true)")
-    _refused_as_draft(srv)
+    _a_draft_read_by_org_admin(srv)
     refused = through_the_view()
     assert refused.status_code != 200, refused.text
     assert "'orders' is a draft" in refused.text, refused.text
@@ -369,8 +411,16 @@ def _view_builds(srv) -> dict[str, dict]:
     return {mv["id"]: mv for mv in response.json()["data"]["mvList"]}
 
 
+def _draft_view_ids(srv) -> list[int]:
+    """The ids the draft view answers the role here (org_admin) by SQL."""
+    read = _sql(srv, "SELECT id FROM order_amounts ORDER BY id")
+    assert read.status_code == 200, read.text
+    return [r["id"] for r in read.json()["data"]["sql"]]
+
+
 def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(server):
-    """A draft view is offered to no reader and is built on no schedule. Its steward's preview
+    """A draft view is offered to no reader without table registration in its domain, and is
+    built on no schedule. Its steward's preview
     answers from the view's inputs at once and starts its build; the build lands while the view
     is still a draft, is kept, and the view is read by its readers once released."""
     srv, pg = server
@@ -399,8 +449,9 @@ def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(ser
     # Registered, a draft: its build is known and nothing has built it.
     time.sleep(_KEPT_S / 2)
     assert _view_builds(srv)["view-order_amounts"]["status"] != "fresh"
-    refused = _sql(srv, "SELECT id FROM order_amounts")
-    assert refused.status_code != 200 and "is a draft" in refused.text, refused.text
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: the role here holds table registration in the
+    # view's domain, so its statement naming the draft view reads it, from the view's inputs.
+    assert _draft_view_ids(srv) == [i for i, _ in _ID_AMOUNT]
 
     # Its steward's preview: answered from its inputs, and its build started.
     previewed = _previewed(srv, view_id, {"sorts": [{"col": "id", "dir": "asc"}]})
@@ -415,8 +466,7 @@ def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(ser
     # Still a draft, and kept through the reloads and sweeps that follow.
     time.sleep(_KEPT_S)
     assert "view-order_amounts" in _view_builds(srv)
-    refused = _sql(srv, "SELECT id FROM order_amounts")
-    assert refused.status_code != 200 and "is a draft" in refused.text, refused.text
+    assert _draft_view_ids(srv) == [i for i, _ in _ID_AMOUNT]
 
     # Released: read by its readers.
     _mutate(srv, f"setTableDraft(tableId: {view_id}, draft: false)")

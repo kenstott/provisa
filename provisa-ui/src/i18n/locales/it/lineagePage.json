@@ -15,6 +15,6 @@
     "cycleFeedback": "(valido — attraversa un confine materializzato)",
     "cycleError": "(nessun confine di materializzazione — probabilmente un errore di progettazione)",
     "emptyTitle": "Niente da mostrare",
-    "emptyBody": "Nessun lineage trovato. Il lineage completo copre le tue viste registrate — non ne è ancora definita nessuna, quindi non c'è nulla da tracciare. Registra una vista (Modello → Viste) oppure analizza una query qui sopra per vederne direttamente il lineage."
+    "emptyBody": "Nessun lineage trovato. Il lineage completo copre le tue viste registrate e non ne è ancora definita nessuna. Registra una vista (Derivati → Viste) oppure analizza una query qui sopra per vederne il lineage."
   }
 }

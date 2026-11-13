@@ -466,13 +466,15 @@ async def draft_replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]
     return _served_from_replica(engine, registry._replace(registered=drafts), frozenset())
 
 
-def routes_with_draft(state: Any, draft: dict, source: Any) -> ReplicaRoutes:
-    """The published routes of ``state`` and, where the bound engine reads ``draft`` from a
-    replica, the draft's own route (REQ-1921). For the one read its steward's preview is: the
-    published routes never hold a draft, so no other statement is addressed at its replica."""
+def routes_with_draft(
+    state: Any, draft: dict, source: Any, published: ReplicaRoutes
+) -> ReplicaRoutes:
+    """``published`` -- the routes of ``state``, and of any draft the same read already added --
+    and, where the bound engine reads ``draft`` from a replica, the draft's own route (REQ-1921).
+    For the one read a draft preview is: the published routes never hold a draft, so no other
+    statement is addressed at its replica."""
     import dataclasses
 
-    published: ReplicaRoutes = state.replica_routes
     engine = state.federation_engine.engine
     if not reads_replica(source, draft, engine, promoted=False):
         return dataclasses.replace(

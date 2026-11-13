@@ -67,7 +67,7 @@
     "progressMerging": "De vondsten worden samengevoegd tot kandidaattermen...",
     "progressModel": "Model: {{model}}",
     "budgetLimited": "Het AI-budget van de rol heeft een aanroep beperkt tot {{tokens}} uitvoertokens, dus een antwoord kan zijn afgekapt.",
-    "cancel": "Scan annuleren",
+    "stopTip": "De scan stoppen",
     "failed": "De scan is gestopt: {{error}}",
     "summary": "{{passages}} passages gelezen, {{mentions}} vermeldingen, {{candidates}} kandidaattermen.",
     "leftOut": "Weggelaten: {{count}} geen ontologieconcepten (zoals personen of bedrijven met een naam), {{misquoted}} niet uit hun passage geciteerd, {{unresolved}} niet tot een term herleid.",

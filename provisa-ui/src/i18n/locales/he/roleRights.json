@@ -35,6 +35,7 @@
     "scope_own-domain": "דומיין עצמי",
     "write_insert": "הוספה",
     "write_update": "עדכון",
-    "write_delete": "מחיקה"
+    "write_delete": "מחיקה",
+    "draft": "טיוטה"
   }
 }

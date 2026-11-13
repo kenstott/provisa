@@ -202,6 +202,20 @@ class Grid:
             for name in _called(notation.pattern(rule.pattern))
         )
 
+    @property
+    def mentions(self) -> tuple[str, ...]:
+        """What a statement a rule of no pattern may rewrite holds, where it names no function."""
+        return tuple(
+            sorted(
+                {
+                    form.mentions
+                    for _, rule in self._rewrites
+                    for form in rule.forms.values()
+                    if isinstance(form, Rewrite) and form.mentions
+                }
+            )
+        )
+
     def read(self, node: exp.Expr, dialect: str) -> Applied | None:
         """The read rule ``node`` matches, with ``dialect``'s form (None: native there, or no
         column of the grid), or None where no rule matches. Rules of one function are tried in

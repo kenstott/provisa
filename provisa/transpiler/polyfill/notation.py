@@ -61,6 +61,10 @@ class Rewrite:
     tree, answering the rewritten node, or None where the node is not its to rewrite."""
 
     function: Callable[[exp.Expr, str], exp.Expr | None]
+    #: For a rule of no pattern, which names no function: a regular expression of what a statement
+    #: it may rewrite holds (a type's name), so the translator reads a statement that calls no
+    #: function of the grid's (provisa.transpiler.function_macros reads no other).
+    mentions: str | None = None
 
     @property
     def name(self) -> str:

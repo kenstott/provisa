@@ -15,6 +15,6 @@
     "cycleFeedback": "(válido: cruza un límite materializado)",
     "cycleError": "(sin límite de materialización: probablemente un error de diseño)",
     "emptyTitle": "Nada que mostrar",
-    "emptyBody": "No se encontró linaje. El linaje completo abarca sus vistas registradas; aún no hay ninguna definida, así que no hay nada que rastrear. Registre una vista (Modelo → Vistas) o analice una consulta arriba para ver su linaje directamente."
+    "emptyBody": "No se encontró linaje. El linaje completo abarca sus vistas registradas, y aún no hay ninguna definida. Registre una vista (Derivados → Vistas) o analice una consulta arriba para ver su linaje."
   }
 }

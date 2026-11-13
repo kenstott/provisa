@@ -20,12 +20,21 @@ from __future__ import annotations
 
 from provisa.transpiler.polyfill import (
     arrays,
+    calls,
+    casts,
     collations,
+    dates,
+    json_values,
     money,
+    network,
+    numbers,
+    ranges,
     records,
     regex,
+    server,
     textsearch,
     type_io,
+    unheld,
     zones,
 )
 from provisa.transpiler.polyfill.grid import (
@@ -54,6 +63,15 @@ GRID = Grid(
     + regex.FEATURES
     + collations.FEATURES
     + textsearch.FEATURES
+    + network.FEATURES
+    + unheld.FEATURES
+    + numbers.FEATURES
+    + dates.FEATURES
+    + calls.FEATURES
+    + casts.FEATURES
+    + server.FEATURES
+    + ranges.FEATURES
+    + json_values.FEATURES
 )
 
 __all__ = [

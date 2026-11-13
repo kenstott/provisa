@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "由外键约束自动跟踪",
-    "fkBadge": "FK",
+    "fkBadge": "来自 FK",
+    "fkBadgeTitle": "根据源中的外键创建",
     "yes": "是",
     "no": "否",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "物化",
     "excludeFromCypher": "从 Cypher 中排除",
     "sqlName": "SQL 名称",
-    "autoTracked": "自动跟踪",
     "cardinalityWarning": "警告：如果此联接为每个父行返回多于一行，则只会使用第一个值。",
     "toggleDetails": "切换关系详情",
     "junctionBadge": "属性",

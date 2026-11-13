@@ -15,6 +15,6 @@
     "cycleFeedback": "(válido — atravessa um limite materializado)",
     "cycleError": "(sem limite de materialização — provavelmente um erro de projeto)",
     "emptyTitle": "Nada a mostrar",
-    "emptyBody": "Nenhuma linhagem encontrada. A linhagem completa abrange suas visões registradas — nenhuma foi definida ainda, portanto não há nada a rastrear. Registre uma visão (Modelo → Visões) ou analise uma consulta acima para ver sua linhagem diretamente."
+    "emptyBody": "Nenhuma linhagem encontrada. A linhagem completa abrange suas visões registradas, e nenhuma foi definida ainda. Registre uma visão (Derivados → Exibições) ou analise uma consulta acima para ver sua linhagem."
   }
 }

@@ -80,15 +80,23 @@ def test_the_base_exclusions_are_test_alls():
 
 def test_a_shard_runs_only_its_files():
     run_lane = _runner()
-    cmd = run_lane.command("core", "2/6", [])
-    files = run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 2, 6)
+    total = run_lane.SUITE["core"][0]
+    cmd = run_lane.command("core", f"2/{total}", [])
+    files = run_lane.pack(run_lane.lane_files("core"), run_lane.recorded_seconds("core"), total)[1]
+    assert cmd[3 : 3 + len(files)] == files
+    cmd = run_lane.command("app", "2/3", [])
+    files = run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 2, 3)
     assert cmd[3 : 3 + len(files)] == files
     assert "--durations=50" in cmd
 
 
 def test_all_is_every_suite_lane_with_its_shards():
-    include = _runner().matrix("all")["include"]
-    assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
+    run_lane = _runner()
+    include = run_lane.matrix("all")["include"]
+    core = run_lane.SUITE["core"][0]
+    assert [m["shard"] for m in include if m["lane"] == "core"] == [
+        f"{k}/{core}" for k in range(1, core + 1)
+    ]
     assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
     assert {"lane": "kafka", "shard": "", "timeout": 90} in include
     assert not [

@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Automatisch aus FK-Constraint übernommen",
-    "fkBadge": "FK",
+    "fkBadge": "Aus FK",
+    "fkBadgeTitle": "Aus einem Fremdschlüssel in der Quelle erstellt",
     "yes": "Ja",
     "no": "Nein",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Materialisieren",
     "excludeFromCypher": "Aus Cypher ausschließen",
     "sqlName": "SQL-Name",
-    "autoTracked": "Automatisch erfasst",
     "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
     "toggleDetails": "Beziehungsdetails ein-/ausblenden",
     "junctionBadge": "Eig.",

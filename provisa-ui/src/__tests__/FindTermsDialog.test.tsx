@@ -413,7 +413,7 @@ describe("FindTermsDialog", () => {
     expect(screen.queryByTestId("find-terms-progress-7")).toBeNull();
   });
 
-  it("cancels a running scan and shows that it stopped", async () => {
+  it("stops a running scan and shows that it stopped", async () => {
     api.fetchScans.mockResolvedValue([RUNNING]);
     api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
     api.cancelScan.mockResolvedValue({
@@ -421,7 +421,13 @@ describe("FindTermsDialog", () => {
     });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-open-7"));
-    fireEvent.click(await screen.findByTestId("find-terms-cancel"));
+    // The button that halts the scan says Stop; "Cancel" is for leaving a form with nothing changed.
+    const stop = await screen.findByTestId("find-terms-cancel");
+    expect(stop).toHaveTextContent("Stop");
+    expect(stop).toHaveAccessibleName("Stop");
+    fireEvent.mouseEnter(stop);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Stop the scan");
+    fireEvent.click(stop);
     await waitFor(() => expect(api.cancelScan).toHaveBeenCalledWith(7));
     expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
       "The scan stopped: cancelled by ada",

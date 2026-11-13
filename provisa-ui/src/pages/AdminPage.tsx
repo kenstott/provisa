@@ -532,6 +532,7 @@ export function AdminPage() {
                                 <ConfirmDialog
                                   title={t("adminPage.deleteDomainTitle", { id: d.id })}
                                   consequence={t("adminPage.deleteDomainConsequence")}
+                                  confirmLabel={t("common.delete")}
                                   onConfirm={() => handleDeleteDomain(d.id)}
                                 >
                                   {(open) => (
