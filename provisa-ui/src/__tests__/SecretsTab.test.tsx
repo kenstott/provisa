@@ -17,7 +17,7 @@
 // satisfies every other gate in this UI — does not open the org's list of names.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { SecretsTab, MySecretsTab, SecretsServicePanel } from "../components/admin/SecretsTab";
 
 const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
@@ -194,7 +194,7 @@ describe("SecretsTab", () => {
     await waitFor(() => expect(screen.getByTestId("secret-row-GIT_TOKEN")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("secret-delete-GIT_TOKEN"));
     expect(mockDelete).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith("acme", "org", "GIT_TOKEN"));
   });
 
@@ -230,7 +230,7 @@ describe("SecretsTab", () => {
     );
     render(<SecretsTab />);
     fireEvent.click(await screen.findByTestId("secret-delete-GIT_TOKEN"));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
 
     const listed = await screen.findByTestId("secret-references");
     expect(listed).toHaveTextContent("sources warehouse (password_ref), in environment dev");

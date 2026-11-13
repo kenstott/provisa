@@ -21,6 +21,7 @@ import type { SchemaNodeLabel } from "../graph-schema-types";
 const label = (domain: string, table: string): SchemaNodeLabel => ({
   domainLabel: domain,
   domainId: domain.toLowerCase(),
+  systemDomain: domain === "Meta",
   tableLabel: table,
   tableId: 1,
   properties: [],

@@ -308,6 +308,8 @@
         "history": "版本歷史"
       }
     },
-    "detailPanel": "數據產品詳情"
+    "detailPanel": "數據產品詳情",
+    "tagFacetLabel": "標籤",
+    "tagFacetPlaceholder": "按標籤篩選"
   }
 }

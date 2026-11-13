@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "将删除：{{names}}。仍被其他对象引用的项会保留，并说明原因。",
     "bulkRefused_one": "{{count}} 项未删除：",
     "bulkRefused_other": "{{count}} 项未删除：",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "duplicate": "复制",
+    "duplicateNamed": "复制 {{name}}"
   }
 }

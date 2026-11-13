@@ -67,8 +67,13 @@ import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
-import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
-import { useFramePaths } from "./use-frame-paths";
+import {
+  buildDropExpansion,
+  inSelectedDomains,
+  nativeFilterClauses,
+  withExpansion,
+} from "./graph-drop";
+import { useFramePaths, usePathScope } from "./use-frame-paths";
 import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
 import {
@@ -300,6 +305,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
             label: string;
             domain_label: string | null;
             domain_id: string | null;
+            system_domain: boolean;
             table_label: string;
             table_id: number;
             properties: string[];
@@ -313,6 +319,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           }) => ({
             domainLabel: n.domain_label ?? null,
             domainId: n.domain_id ?? null,
+            systemDomain: n.system_domain,
             tableLabel: n.table_label,
             tableId: n.table_id,
             properties: n.properties ?? [],
@@ -340,12 +347,14 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
               target: string;
               properties?: string[];
               join: string;
+              constant_source: boolean;
             }) => ({
               type: r.type,
               source: r.source ?? "",
               target: r.target ?? "",
               properties: r.properties ?? [],
               join: r.join,
+              constantSource: r.constant_source,
             }),
           );
         const seen = new Set<string>();
@@ -657,17 +666,20 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     [answer, asSent, graphState],
   );
 
+  const { parameterized, pathScope } = usePathScope(schemaNodeLabels, checkedDomains);
+
   const onTableDrop = useCallback(
     (frameId: string, compoundLabel: string) => {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      const parameterized = new Set(
-        schemaNodeLabels
-          .filter((n) => n.nativeFilterColumns.length > 0)
-          .map((n) => (n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel)),
+      const done = buildDropExpansion(
+        frame.query,
+        compoundLabel,
+        schemaRels,
+        parameterized,
+        pathScope,
       );
-      const done = buildDropExpansion(frame.query, compoundLabel, schemaRels, parameterized);
       if ("refused" in done) {
         const { refused } = done;
         changeFrame(frameId, () => ({ dropNotices: [refused], dropLimit: undefined }));
@@ -675,7 +687,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       }
       rerunFrame(frameId, done.query, { notices: done.notices });
     },
-    [changeFrame, rerunFrame, schemaRels, schemaNodeLabels],
+    [changeFrame, rerunFrame, schemaRels, parameterized, pathScope],
   );
 
   const { onSparqlDrop, onNodePath } = useFramePaths({
@@ -683,6 +695,9 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     vocabulary,
     prefixes,
     pkMap,
+    schemaRels,
+    parameterized,
+    pathScope,
     changeFrame,
     rerunFrame,
     runQuery,
@@ -793,10 +808,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     [adminRels, tables, upsertRelationship, refetchRelationships],
   );
 
-  const visibleNodeLabels =
-    checkedDomains.size === 0
-      ? schemaNodeLabels
-      : schemaNodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId));
+  const visibleNodeLabels = inSelectedDomains(schemaNodeLabels, checkedDomains);
 
   const visibleLabelSet = new Set(
     visibleNodeLabels.map((n) =>

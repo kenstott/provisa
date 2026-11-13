@@ -38,6 +38,9 @@
     "classTerm": "Las filas son instancias de",
     "noClassTerm": "Ningún término",
     "classTermUnreadable": "No se pudo leer su término: {{error}}",
+    "classTermNoModel": "No se pudo leer su término: sus roles no pueden leer las tablas del modelo.",
+    "classTermNoEntry": "No se pudo leer su término: sus roles no pueden leer la entrada propia de esta tabla en el modelo.",
+    "classTermNoField": "No se pudo leer su término: sus roles no pueden leer de qué término son instancias las filas de una tabla.",
     "access": "Acceso"
   }
 }

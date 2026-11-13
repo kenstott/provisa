@@ -10225,6 +10225,10 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: draft
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: gql_naming_convention
     data_type: text
     visible_to:

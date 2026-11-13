@@ -15,6 +15,6 @@
     "cycleFeedback": "(valide — traverse une limite matérialisée)",
     "cycleError": "(aucune limite de matérialisation — probablement une erreur de conception)",
     "emptyTitle": "Rien à afficher",
-    "emptyBody": "Aucun lignage trouvé. Le lignage complet couvre vos vues enregistrées — aucune n'est encore définie, il n'y a donc rien à retracer. Enregistrez une vue (Modèle → Vues) ou analysez une requête ci-dessus pour voir directement son lignage."
+    "emptyBody": "Aucun lignage trouvé. Le lignage complet couvre vos vues enregistrées, et aucune n'est encore définie. Enregistrez une vue (Dérivés → Vues) ou analysez une requête ci-dessus pour voir son lignage."
   }
 }

@@ -12,6 +12,7 @@
 // a typed email for a person not yet seen, and the grants still waiting on an email. A waiting
 // grant attaches when a sign-in token's email matches; until then it can be ended here.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Group, Stack, Table, Text, TextInput } from "@mantine/core";
@@ -159,14 +160,13 @@ export function EntitlementGrants({ roleIds }: { roleIds: string[] }) {
             onCancel={() => setEnding(null)}
             cancelProps={{ "data-testid": "entitlement-pending-end-cancel" }}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 disabled={endReason.trim() === ""}
                 onClick={() => end(ending)}
-                data-testid="entitlement-pending-end-submit"
+                testId="entitlement-pending-end-submit"
               >
                 {t("entitlements.grants.endButton")}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </FormLayout>

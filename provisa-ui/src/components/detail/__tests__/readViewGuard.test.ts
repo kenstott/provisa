@@ -52,11 +52,13 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/commands/ColumnGovernanceFields.tsx",
     ],
   },
-  // REQ-2180 OFFERS: its header and its tabs draw the read view.
+  // REQ-2180 OFFERS, THE PRODUCT PAGE IS SUMMARY ROWS: its header and its rows draw the read view;
+  // the product's tables are listed in its Access row.
   "Data Products": {
     read: [
       "pages/data-products/DataProductDetailPanel.tsx",
       "pages/data-products/ProductHeader.tsx",
+      "pages/data-products/AccessSection.tsx",
       "pages/data-products/tabs/RelatedTab.tsx",
     ],
     form: ["pages/data-products/DataProductFormCard.tsx"],

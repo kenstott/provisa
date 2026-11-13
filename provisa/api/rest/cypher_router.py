@@ -1140,6 +1140,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     from provisa.api.app import state
 
     from provisa.api.role_surface import role_surface
+    from provisa.security.rights import SYSTEM_DOMAINS
 
     role_id = _resolve_role_id(request, state)
     # One surface, taken once: its context and its root fields come from the same build.
@@ -1180,6 +1181,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "label": n.label,
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
+                    # REQ-2135: whether the label's domain is a system domain (meta, ontology,
+                    # ops: rights.SYSTEM_DOMAINS), which a drop's path never passes through
+                    # unless an end of it is of that domain.
+                    "system_domain": n.domain_id in SYSTEM_DOMAINS,
                     "table_label": n.table_label,
                     # The registered table the label reads, so a client can link a node to it.
                     "table_id": n.table_id,
@@ -1230,6 +1235,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "properties": sorted(r.properties.keys()),
                     # REQ-2135: what it joins, the same for a join declared from both ends.
                     "join": r.join,
+                    # REQ-2135: a link from a constant (HAS_TABLE: every row of a table to its one
+                    # registration) is read only as a hop of its own; a variable-length walk leaves
+                    # it out unless named, and named it does not read the constant.
+                    "constant_source": r.constant_source,
                 }
                 for r in label_map.relationships.values()
             ],

@@ -758,10 +758,21 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         table, gql_query, variables = read.table, read.gql_query, read.variables
         is_group_by, is_aggregate = read.is_group_by, read.is_aggregate
 
+        # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a read of a draft by a role it is served to
+        # is compiled, governed and run in the drafts' own view of the state (admin/table_read),
+        # as the same read sent as GraphQL is.
+        from provisa.api.admin.table_read import drafts_a_document_reads, reading_drafts
+
+        reads = state
+        _drafts = drafts_a_document_reads(state, gql_query, role_id)
+        if _drafts:
+            reads = await reading_drafts(state, role_id, _drafts)
+            ctx = reads.surfaces[role_id].context
+
         # REQ-1877: one compiled plan is kept per request shape; values are bound into it.
         try:
             compiled_queries = compile_generated_graphql(
-                state, role_id, schema, ctx, gql_query, variables.values
+                reads, role_id, schema, ctx, gql_query, variables.values
             )
         except (GraphQLValidationError, GraphQLError) as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -788,7 +799,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 compiled.sql,
                 role_id,
                 exec_params=compiled.params or None,
-                state=state,
+                state=reads,
                 deliver=delivery,
                 # REQ-1224: buffered transport (terminal auto-thresholds inline vs CTAS) only applies
                 # to raw row queries, which can be large; aggregate/group-by results are always small,
@@ -799,7 +810,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 serve_cached=True,  # REQ-1897: _execute_plan serves the pre-route HIT
                 sdl_joins=True,
             )
-            result = await _execute_plan(plan, state)
+            result = await _execute_plan(plan, reads)
 
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
