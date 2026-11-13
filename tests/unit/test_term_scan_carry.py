@@ -246,8 +246,8 @@ async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control
             ).fetchall()
             for table in env_copy._SCAN_TABLES
         }
-    # REQ-2208: the template's document carries no tags here, so none are copied
-    assert [len(held[t]) for t in env_copy._SCAN_TABLES] == [1, 1, 2, 0, 1, 2]
+    # REQ-2208: the template's document carries no tags and no citations here, so none are copied
+    assert [len(held[t]) for t in env_copy._SCAN_TABLES] == [1, 1, 2, 0, 0, 1, 2]
     async with db.acquire() as conn:
         assert await _vector_indexes(conn, "org_sandbox") == {"reference_passages_vector_2"}
     sandbox = Database(

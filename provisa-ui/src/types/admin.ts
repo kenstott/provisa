@@ -195,6 +195,26 @@ export interface Tag {
   // REQ-1467: a parameterized tag is assigned as "{id}:{value}", e.g. "entity:customer".
   paramPolicy: TagParamPolicy;
   paramValues: TagParamValue[];
+  // Each assignment of the tag must cite a library document or section (a gap when it does not).
+  requiresCitation: boolean;
+  // The library sections that define the tag, and whether one of them changed or is gone.
+  citations: LibraryCitation[];
+  needsReview: boolean;
+}
+
+/** A library document, or a section of it (by heading, or by page when it has none), cited. */
+export interface LibraryCitation {
+  documentId: number | null;
+  documentTitle: string;
+  documentSource: string;
+  sectionHeading: string | null;
+  sectionPage: number | null;
+  textSha256: string;
+  citedBy: string | null;
+  citedAt: string;
+  /** "current", "drifted" (the section's text changed) or "broken" (it or the document is gone). */
+  state: "current" | "drifted" | "broken";
+  needsReview: boolean;
 }
 
 // REQ-1467: the registry id an assigned tag id refers to. Mirrors provisa.core.models.
@@ -241,6 +261,12 @@ export interface TagAssignment {
   reason?: string | null;
   // ISO date; for 'deprecated' the planned removal date (typed for reporting).
   expiresOn?: string | null;
+  // The assignment's own citations of the library, whether one needs review, and whether it
+  // lacks the citation its tag requires. Read only: never sent with an assignment.
+  objectKey?: string | null;
+  citations?: LibraryCitation[];
+  needsReview?: boolean;
+  citationGap?: boolean;
 }
 
 export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): string {

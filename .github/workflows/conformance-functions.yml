@@ -3,8 +3,10 @@ name: Conformance (functions)
 # REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED, EXACT OR
 # EQUIVALENT, RESULTS ARE BY ENGINE): which pg_catalog functions work today, per federation engine.
 # Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
-# or differs. Nothing adds the engines up. Measurement only: it writes no function form, and nothing
-# it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads its own report.
+# or differs. Nothing adds the engines up. Measurement only: it writes no function form. Its last
+# step judges the merged result per engine against scripts/conformance/expected/functions.json
+# (scripts/conformance/baseline_gate.py): an unlisted wrong answer, passed below the committed
+# count, or engine errors or refusals above theirs fail the run. Separate from Conformance (pgwire), whose land gate reads its own report.
 # Each overload with a sample value is called once more reading it from a column of
 # conformance.function_columns, which this workflow alone seeds and registers: a pass whose column
 # call fails passes on literals only, reported beside its result and changing none.
@@ -24,9 +26,8 @@ name: Conformance (functions)
 # leg that leaves no result leaves no guaranteed list.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
-  push:
-    branches: ['release/**']
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     inputs:
       ref:
@@ -251,3 +252,11 @@ jobs:
             scripts/conformance/polyfill-check.json
             scripts/conformance/polyfill-check.md
           if-no-files-found: error
+
+      # REQ-2167: the run judged per engine against scripts/conformance/expected/functions.json:
+      # a wrong answer not listed fails, and so does a listed one now right; passed may not fall
+      # below the committed count, engine errors and refusals by name may not rise above theirs;
+      # every listed engine has a full result.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py functions scripts/conformance/function_support.json
