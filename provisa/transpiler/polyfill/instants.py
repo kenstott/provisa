@@ -516,7 +516,8 @@ _DATE_PART = re.sub(
 _OVERLAPS = re.sub(
     r"\b(s1|e1|s2|e2)\b",
     lambda m: {"s1": "$a", "e1": "$b", "s2": "$c", "e2": "$d"}[m.group(1)],
-    pg_forms.OVERLAPS,
+    # ClickHouse's BOOLEAN holds no NULL: the form's unknown answer is a Nullable(Bool).
+    pg_forms.OVERLAPS.replace("CAST(NULL AS BOOLEAN)", "CAST(NULL AS Nullable(Bool))"),
 )
 
 _PARTS_STATED = (

@@ -133,10 +133,11 @@ def test_comparisons_of_an_instant_answer_postgresql_on_clickhouse(runtime, sql,
 def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
     call = sqlglot.parse_one(sql, read="postgres").selects[0].this.expression  # past pg_catalog
-    assert len(instants.FEATURES) == 37 + 5
+    assert len(instants.FEATURES) == 37 + 10
     for feature in instants.FEATURES:
         (rule,) = feature.read.rules
-        # A row of no pattern (max, min, date: other rows read those names) writes ClickHouse only.
+        # A row of no pattern (max, min, date: other rows read those names; date_part, extract: a
+        # pattern of them is sqlglot's Extract) writes ClickHouse only.
         assert rule.forms[dialect] is trino.KEPT if rule.pattern else dialect not in rule.forms
     applied = GRID.read(call, dialect)
     assert applied is not None and applied.form is trino.KEPT
@@ -433,9 +434,11 @@ def test_timezone_of_a_column_of_values_reads_each_row(runtime):
         f"({_SAMPLES[0]}::{_TZ}), ({_SAMPLES[1]}::{_TZ}), (NULL::{_TZ})) AS t(c1)"
     )
     rows = [r[0] for r in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
-    assert [r and r.replace(tzinfo=None) for r in rows] == [
-        datetime.datetime(2024, 6, 15, 21, 30, 45),
+    walls = [r and r.replace(tzinfo=None) for r in rows]
+    # A VALUES list's rows reach ClickHouse as a UNION ALL: their order is not the statement's.
+    assert sorted(walls, key=lambda w: (w is None, w or datetime.datetime.min)) == [
         datetime.datetime(2000, 1, 1, 6, 59, 59),
+        datetime.datetime(2024, 6, 15, 21, 30, 45),
         None,
     ]
 
