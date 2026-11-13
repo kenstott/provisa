@@ -40,6 +40,8 @@ from sqlglot.dialects.spark import Spark
 from sqlglot.dialects.trino import Trino
 from sqlglot.generator import Generator
 
+from provisa.transpiler.polyfill.clickhouse import truncated
+
 Postgres.Generator.TRANSFORMS[exp.TryCast] = Generator.trycast_sql
 
 
@@ -87,11 +89,9 @@ ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
 
 
 def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
-    """A truncated timestamp, where ClickHouse's dateTrunc answers a date for a month or a year."""
-    unit = expression.text("unit").lower()
-    if not unit:  # a NULL part, which dateTrunc takes for no part at all
-        return "CAST(NULL AS Nullable(DateTime))"
-    return f"toDateTime({self.func('dateTrunc', exp.Literal.string(unit), expression.this)})"
+    """A truncated timestamp, as the polyfill grid's builder writes it (a NULL part, which
+    dateTrunc takes for no part at all, is a NULL)."""
+    return self.sql(truncated(expression.text("unit"), expression.this))
 
 
 ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated

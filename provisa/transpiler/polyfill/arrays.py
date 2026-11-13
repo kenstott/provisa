@@ -498,13 +498,15 @@ GENERATE_SUBSCRIPTS = Feature(
                     **_no_form_on("generate_subscripts", (*_TRINO, "clickhouse")),
                 },
             ),
-            # Of no order: Trino has no form of either (run 43307392116 sent it as written); every
-            # other dialect keeps what it had.
+            # Of no order: Trino has no form of either (run 43307392116 sent it as written), nor
+            # ClickHouse (run 43361055823 sent it as written); every other dialect keeps what it
+            # had.
             Rule(
                 "generate_subscripts($a::anyarray, $d::integer)",
                 {
                     **dict.fromkeys(trino.OTHERS, trino.KEPT),
                     **trino.refused_on_trino("generate_subscripts"),
+                    **_no_form_on("generate_subscripts", ("clickhouse",)),
                 },
             ),
         ),

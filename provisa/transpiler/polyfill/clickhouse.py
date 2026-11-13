@@ -15,6 +15,31 @@ array_agg: ClickHouse's groupArray skips a NULL, and answers an empty array of n
 PostgreSQL keeps each NULL and answers NULL of no rows. Its form aggregates each value in a tuple,
 which groupArray keeps whatever it holds, and answers NULL where the aggregate counted no row.
 
+A NULL array: ClickHouse has no NULL of an array (an Array is never Nullable), so a call PostgreSQL
+answers NULL for its NULL array argument is that NULL, read before any rule's pattern: a function
+STRICT at its argument count, or one that tests its array for NULL first. A set-returning function
+answers no rows of a NULL argument, not one NULL: it is left to its own row (generate_subscripts'
+refuses it on ClickHouse).
+
+date_trunc: ClickHouse's dateTrunc answers a DateTime (a Date for a month or a year), which reaches
+Arrow as its count of seconds and holds no day before 1970. Its start is a DateTime64(6) of the
+value's zone: :func:`truncated`, the one builder every writer of it calls (this row, for a
+statement's call; provisa.transpiler.semantic_dialect, for sqlglot's; zoned_instants, for an
+instant's start in the session's zone).
+
+A text cast to a date: ClickHouse reads a day its month does not have as a day of the next month
+('2024-02-30' as 2024-03-01). A text the statement writes is read here: an ISO date (YYYY-MM-DD)
+is that day, written for toDate32; a day that does not exist is PostgreSQL's error (22008), and
+NULL for a cast that answers NULL on failure (pg_input_is_valid's check, accurateCastOrNull by the
+time the grid reads it); any other text, and a year Date32 does not hold, is refused by name.
+
+lag, lead, first_value, last_value and nth_value: ClickHouse answers the type's default (0, '')
+where PostgreSQL answers NULL, past the partition or of an empty frame, and its first_value and
+last_value skip a NULL. lag and lead are lagInFrame and leadInFrame over the whole partition (as
+PostgreSQL's ignore the frame), each of the value as Nullable; first_value and last_value respect
+NULLs; nth_value reads the value as Nullable. What a rule writes is not walked again, so a value
+that holds a call is refused by name: each is a literal, a column or a cast of one.
+
 current_schemas: ClickHouse has its own currentSchemas, which answers its database's name, where
 PostgreSQL answers the search path, and NULL of a NULL. No form names PostgreSQL's search path on
 ClickHouse: refused by name there, as on Trino."""
@@ -23,12 +48,17 @@ ClickHouse: refused by name there, as on Trino."""
 
 from __future__ import annotations
 
+import calendar
+import functools
+import re
+
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
 FAMILY = "ClickHouse answers"
 
@@ -65,7 +95,314 @@ ARRAY_AGG = Feature(
     "array_agg",
     FAMILY,
     "The values of an aggregate as an array, a NULL kept; NULL of no rows.",
-    read=Side(rules=(Rule(None, {"clickhouse": Rewrite(kept_nulls, mentions=r"\barray_agg\b")}),)),
+    read=Side(rules=(Rule(_ARRAY_AGG, {"clickhouse": Rewrite(kept_nulls)}),)),
+)
+
+#: The functions not STRICT in pg_proc that answer NULL of a NULL array all the same: each tests
+#: its array argument for NULL first (PostgreSQL 17's array_userfuncs.c and arrayfuncs.c).
+_NULL_OF_A_NULL_ARRAY = frozenset(
+    {"array_position", "array_positions", "array_remove", "array_replace", "array_to_string"}
+)
+#: The functions not STRICT in pg_proc that answer NULL where every argument is a NULL array:
+#: array_cat answers the other argument where one is not (array_userfuncs.c, and its grid row).
+_NULL_OF_NULL_ARRAYS = frozenset({"array_cat"})
+
+
+@functools.cache
+def _arities() -> tuple[frozenset[tuple[str, int]], frozenset[tuple[str, int]]]:
+    """Each (name, argument count) whose every overload pg_proc lists as STRICT, and each of which
+    an overload returns a set (proretset)."""
+    from provisa.pgwire.catalog_pg17_procs import PROCS
+
+    strict: dict[tuple[str, int], bool] = {}
+    sets: set[tuple[str, int]] = set()
+    for row in PROCS:
+        key = (row[1], row[15])
+        strict[key] = strict.get(key, True) and bool(row[11])
+        if row[12]:
+            sets.add(key)
+    return frozenset(key for key, every in strict.items() if every), frozenset(sets)
+
+
+def _is_null_array(value: exp.Expr) -> bool:
+    """Whether an argument is a NULL cast to an array type."""
+    node = value.unnest()
+    return (
+        isinstance(node, exp.Cast)
+        and node.to.is_type(exp.DataType.Type.ARRAY)
+        and isinstance(node.this.unnest(), exp.Null)
+    )
+
+
+def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None:
+    """The name and arguments of ``target``, a call: as the translator's table reads it, or as
+    the grid's rule it matches binds them (array_length is sqlglot's ArraySize)."""
+    from provisa.transpiler.function_macros import call_of
+    from provisa.transpiler.polyfill import GRID
+
+    call = call_of(target)
+    if call is not None:
+        return call
+    try:
+        applied = GRID.read(target, dialect)
+    except Refused:
+        return None  # a rewrite's refusal: the translator raises it as the row's
+    if applied is None or applied.rule.pattern is None:
+        return None
+    return applied.feature.name, [applied.bindings[p] for p in applied.rule.holes()]
+
+
+def null_of_a_null_array(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A call PostgreSQL answers NULL for its NULL array argument, as that NULL, named for the
+    call; a set-returning call is left to its own row."""
+    call = _called(node, dialect)
+    if call is None:
+        return None
+    name, args = call
+    strict, sets = _arities()
+    if (name, len(args)) in sets:
+        return None
+    if name in _NULL_OF_A_NULL_ARRAY:
+        nulled = bool(args) and _is_null_array(args[0])
+    elif name in _NULL_OF_NULL_ARRAYS:
+        nulled = bool(args) and all(_is_null_array(a) for a in args)
+    else:
+        nulled = (name, len(args)) in strict and any(_is_null_array(a) for a in args)
+    return exp.alias_(exp.null(), name) if nulled else None
+
+
+NULL_ARRAY = Feature(
+    "a NULL array",
+    FAMILY,
+    "A call PostgreSQL answers NULL for its NULL array argument, as that NULL.",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(null_of_a_null_array, first=True)}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A set-returning call of a NULL array is its own row's: generate_subscripts "
+                    "and pg_options_to_table are refused by name."
+                ),
+            )
+        },
+    ),
+)
+
+#: The units shorter than a minute, by the microseconds in one: dateTrunc keeps no fraction.
+SUBMINUTE = {
+    "second": 1_000_000,
+    "millisecond": 1_000,
+    "milliseconds": 1_000,
+    "microsecond": 1,
+    "microseconds": 1,
+}
+
+
+def truncated(unit: str, value: exp.Expr, zone: str = "UTC") -> exp.Expr:
+    """The start of ``unit`` of ``value`` as DateTime64(6, ``zone``): dateTrunc's, or for a unit
+    shorter than a minute the microseconds since the epoch floored to it; a NULL of it for no unit
+    (a NULL part)."""
+    if not unit:
+        to = exp.DataType.build(f"Nullable(DateTime64(6, '{zone}'))", dialect="clickhouse")
+        return exp.Cast(this=exp.null(), to=to)
+    step = SUBMINUTE.get(unit.lower())
+    if step is not None:
+        micros = exp.Anonymous(
+            this="toUnixTimestamp64Micro",
+            expressions=[
+                exp.Anonymous(this="toDateTime64", expressions=[value, exp.Literal.number(6)])
+            ],
+        )
+        modulo = exp.Anonymous(
+            this="positiveModulo", expressions=[micros.copy(), exp.Literal.number(step)]
+        )
+        floored = exp.Sub(this=micros, expression=modulo)
+        return exp.Anonymous(
+            this="fromUnixTimestamp64Micro", expressions=[floored, exp.Literal.string(zone)]
+        )
+    start = exp.Anonymous(this="dateTrunc", expressions=[exp.Literal.string(unit.lower()), value])
+    return exp.Anonymous(
+        this="toDateTime64", expressions=[start, exp.Literal.number(6), exp.Literal.string(zone)]
+    )
+
+
+def _unit_said(unit: exp.Expr | None) -> str | None:
+    """A unit's text as the statement writes it ('' for NULL); None for one it does not write."""
+    node = unit.unnest() if unit is not None else None
+    while isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    if isinstance(node, exp.Null):
+        return ""
+    if isinstance(node, exp.Var) or (isinstance(node, exp.Literal) and node.is_string):
+        return node.name
+    return None
+
+
+def started(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """date_trunc of a timestamp: its start as DateTime64(6, 'UTC'), whatever the unit."""
+    if not isinstance(node, exp.TimestampTrunc):
+        return None
+    unit = _unit_said(node.args.get("unit"))
+    return None if unit is None else truncated(unit, node.this)
+
+
+DATE_TRUNC = Feature(
+    "date_trunc",
+    FAMILY,
+    "The start of a unit of a timestamp.",
+    read=Side(rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}),)),
+)
+
+_ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*", re.ASCII)
+#: The years ClickHouse's Date32 holds.
+_DATE32_YEARS = range(1900, 2300)
+
+
+def _text_of(value: exp.Expr) -> str | None:
+    """The text a statement writes, through casts of it to text; None for any other value."""
+    node = value.unnest()
+    while isinstance(node, exp.Cast) and node.to.is_type(*exp.DataType.TEXT_TYPES):
+        node = node.this.unnest()
+    return node.this if isinstance(node, exp.Literal) and node.is_string else None
+
+
+def _date_cast(node: exp.Expr) -> tuple[exp.Expr, bool] | None:
+    """The text a node casts to a date, and whether it answers NULL on failure; None for any other
+    node."""
+    if isinstance(node, (exp.Cast, exp.TryCast)) and node.to.is_type(exp.DataType.Type.DATE):
+        return node.this, isinstance(node, exp.TryCast)
+    if isinstance(node, exp.Anonymous) and node.name == "accurateCastOrNull":
+        value, to = (node.expressions + [None, None])[:2]
+        if isinstance(to, exp.Literal) and to.name.upper() == "DATE" and value is not None:
+            return value, True
+    return None
+
+
+def dated(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text the statement writes cast to a date: its day, PostgreSQL's error of one that does
+    not exist, or a refusal by name of a text not in ISO form."""
+    cast = _date_cast(node)
+    text = None if cast is None else _text_of(cast[0])
+    if cast is None or text is None:
+        return None
+    iso = _ISO_DATE.fullmatch(text)
+    if iso is None or int(iso[1]) not in _DATE32_YEARS:
+        raise Refused(
+            Refusal(
+                "0A000",
+                f'date_in() of "{text}" has no form on {dialect}: only an ISO date '
+                "(YYYY-MM-DD) of 1900 to 2299 is read",
+            )
+        )
+    year, month, day = (int(part) for part in iso.groups())
+    if not (1 <= month <= 12 and 1 <= day <= calendar.monthrange(year, month)[1]):
+        if cast[1]:
+            return exp.Cast(this=exp.null(), to=exp.DataType.build("DATE"))
+        raise Refused(Refusal("22008", f'date/time field value out of range: "{text}"'))
+    day_text = f"{year:04d}-{month:02d}-{day:02d}"
+    return exp.Anonymous(this="toDate32", expressions=[exp.Literal.string(day_text)])
+
+
+DATE = Feature(
+    "date",
+    FAMILY,
+    "A text cast to a date.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {"clickhouse": Rewrite(dated, mentions=r"::\s*date\b|\bas\s+date\b|\bdate\s+'")},
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A text the statement writes: an ISO date of 1900 to 2299, any other refused "
+                    "by name. A text column's cast keeps ClickHouse's own read."
+                ),
+            )
+        },
+    ),
+)
+
+_IN_FRAME = {"lag": "lagInFrame", "lead": "leadInFrame"}
+_RESPECTING = ("first_value", "last_value")
+WINDOW_VALUES = (*_IN_FRAME, *_RESPECTING, "nth_value")
+
+
+def _window_call(window: exp.Window) -> tuple[str, list[exp.Expr]] | None:
+    """The value function a window computes and its arguments; None for any other, and for one
+    that ignores NULLs."""
+    call = window.this
+    if isinstance(call, exp.RespectNulls):
+        call = call.this
+    if isinstance(call, exp.Dot):
+        call = call.expression
+    named = trino.called(call)
+    if named is None:
+        return None
+    names = named[0] & set(WINDOW_VALUES)
+    return (next(iter(names)), named[1]) if len(names) == 1 else None
+
+
+def _nullable(value: exp.Expr) -> exp.Expr:
+    return exp.Anonymous(this="toNullable", expressions=[value.copy()])
+
+
+_WHOLE_PARTITION = exp.WindowSpec(
+    kind="ROWS", start="UNBOUNDED", start_side="PRECEDING", end="UNBOUNDED", end_side="FOLLOWING"
+)
+
+
+def framed(function: str) -> Rewrite:
+    """The rewrite of ``function`` over a window, NULL where ClickHouse answers its default."""
+
+    def frame(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        if not isinstance(node, exp.Window):
+            return None
+        call = _window_call(node)
+        if call is None or call[0] != function:
+            return None
+        name, args = call
+        if not args or not all(plain(arg) for arg in args):
+            raise Refused(
+                Refusal(
+                    "0A000",
+                    f"{name}() of a value holding a call has no form on {dialect}: "
+                    "only a literal, a column or a cast of one",
+                )
+            )
+        window = node.copy()
+        value, rest = _nullable(args[0]), [arg.copy() for arg in args[1:]]
+        if name in _IN_FRAME:
+            window.set("this", exp.Anonymous(this=_IN_FRAME[name], expressions=[value, *rest]))
+            window.set("spec", _WHOLE_PARTITION.copy())
+        elif name in _RESPECTING:
+            kind = exp.FirstValue if name == "first_value" else exp.LastValue
+            window.set("this", exp.RespectNulls(this=kind(this=value)))
+        else:
+            window.set("this", exp.Anonymous(this="nth_value", expressions=[value, *rest]))
+        return window
+
+    frame.__doc__ = f"{function} over a window: NULL where ClickHouse answers its type's default."
+    frame.__qualname__ = frame.__name__ = f"framed_{function}"
+    return Rewrite(frame, mentions=rf"\b{function}\b")
+
+
+HOLDS_A_CALL = Limitation(
+    "Of a value holding a call, refused by name: what a rule writes is not walked again."
+)
+WINDOW_FEATURES = tuple(
+    Feature(
+        name,
+        FAMILY,
+        f"The value of {'a row of' if name not in _IN_FRAME else 'another row of'} a window.",
+        read=Side(
+            rules=(Rule(None, {"clickhouse": framed(name)}),),
+            limitations={"clickhouse": (HOLDS_A_CALL,)},
+        ),
+    )
+    for name in (*_RESPECTING, "nth_value")
 )
 
 _SEARCH_PATH = (
@@ -96,4 +433,11 @@ CURRENT_SCHEMAS = Feature(
     ),
 )
 
-FEATURES: tuple[Feature, ...] = (ARRAY_AGG, CURRENT_SCHEMAS)
+FEATURES: tuple[Feature, ...] = (
+    NULL_ARRAY,
+    ARRAY_AGG,
+    DATE_TRUNC,
+    DATE,
+    *WINDOW_FEATURES,
+    CURRENT_SCHEMAS,
+)

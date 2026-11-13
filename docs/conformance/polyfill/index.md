@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-145 of the grid's 145 features are native on PostgreSQL and left out.
+151 of the grid's 151 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-83 of the grid's 145 features are native on DuckDB and left out.
+89 of the grid's 151 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -270,7 +270,7 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN strlen($n) &gt; 63 THEN err
 
 ## [Trino](trino.md)
 
-2 of the grid's 145 features are native on Trino and left out.
+8 of the grid's 151 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -632,7 +632,7 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 
 ## [Presto](presto.md)
 
-2 of the grid's 145 features are native on Presto and left out.
+8 of the grid's 151 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -994,7 +994,7 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 
 ## [Athena](athena.md)
 
-2 of the grid's 145 features are native on Athena and left out.
+8 of the grid's 151 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1356,7 +1356,7 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 
 ## [ClickHouse](clickhouse.md)
 
-68 of the grid's 145 features are native on ClickHouse and left out.
+66 of the grid's 151 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1409,7 +1409,7 @@ arraySlice($a, 1 + throwIf($n IS NULL OR $n &lt; 0 OR $n &gt; length($a), &#x27;
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li><li>Refused: generate_subscripts($a::anyarray, $d::integer). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
 =&gt;
 [$v]</code></pre></td><td><ul><li>Only a NULL array is written: ClickHouse has no array_append, so a call on an array that is not NULL fails with ClickHouse&#x27;s own error.</li></ul></td><td></td><td></td></tr>
@@ -1627,6 +1627,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_lag: lag over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_lead: lead over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
@@ -1640,13 +1642,23 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>a NULL array</strong><br>A call PostgreSQL answers NULL for its NULL array argument, as that NULL.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.null_of_a_null_array: A call PostgreSQL answers NULL for its NULL array argument, as that NULL, named for the</code></pre></td><td><ul><li>A set-returning call of a NULL array is its own row&#x27;s: generate_subscripts and pg_options_to_table are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>array_agg($a)
+=&gt;
+function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t)
+=&gt;
+function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>first_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_first_value: first_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>last_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_last_value: last_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>nth_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_nth_value: nth_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: ClickHouse&#x27;s own currentSchemas answers its database, not PostgreSQL&#x27;s search path.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-82 of the grid's 145 features are native on Snowflake and left out.
+88 of the grid's 151 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1914,7 +1926,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Databricks](databricks.md)
 
-82 of the grid's 145 features are native on Databricks and left out.
+88 of the grid's 151 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2182,7 +2194,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [BigQuery](bigquery.md)
 
-82 of the grid's 145 features are native on BigQuery and left out.
+88 of the grid's 151 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2450,7 +2462,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-82 of the grid's 145 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+88 of the grid's 151 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2718,7 +2730,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Redshift](redshift.md)
 
-82 of the grid's 145 features are native on Redshift and left out.
+88 of the grid's 151 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2986,7 +2998,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [MySQL](mysql.md)
 
-82 of the grid's 145 features are native on MySQL and left out.
+88 of the grid's 151 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3254,7 +3266,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SingleStore](singlestore.md)
 
-82 of the grid's 145 features are native on SingleStore and left out.
+88 of the grid's 151 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3522,7 +3534,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [SQLite](sqlite.md)
 
-82 of the grid's 145 features are native on SQLite and left out.
+88 of the grid's 151 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3790,7 +3802,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Oracle](oracle.md)
 
-82 of the grid's 145 features are native on Oracle and left out.
+88 of the grid's 151 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4058,7 +4070,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Hive](hive.md)
 
-82 of the grid's 145 features are native on Hive and left out.
+88 of the grid's 151 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4326,7 +4338,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Exasol](exasol.md)
 
-82 of the grid's 145 features are native on Exasol and left out.
+88 of the grid's 151 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4594,7 +4606,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 
 ## [Druid](druid.md)
 
-82 of the grid's 145 features are native on Druid and left out.
+88 of the grid's 151 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

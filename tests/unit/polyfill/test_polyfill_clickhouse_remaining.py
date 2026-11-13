@@ -128,21 +128,28 @@ def test_a_text_not_in_iso_form_is_refused_by_name(text):
     assert "date" in str(refused.value)
 
 
-def test_pg_input_is_valid_of_a_day_its_month_does_not_have_is_false():
+def test_a_try_cast_of_a_day_its_month_does_not_have_is_null():
+    """pg_input_is_valid's check, a null-on-failure cast: NULL, so the check is false."""
+    written = _clickhouse("SELECT NOT TRY_CAST('2024-02-30' AS date) IS NULL AS v")
+    assert "2024-02-30" not in written
+    assert "CAST(NULL AS Nullable(DATE))" in written
+
+
+def test_a_try_cast_of_a_day_that_exists_reads_it():
+    written = _clickhouse("SELECT NOT TRY_CAST('2024-02-29' AS date) IS NULL AS v")
+    assert "toDate32('2024-02-29')" in written
+
+
+def test_pg_input_is_valid_as_pgwire_writes_it_is_no_longer_true():
+    """pgwire's check reaches the translator as a plain CAST (sqlglot 30 writes PostgreSQL's
+    TryCast as CAST): the day that does not exist is PostgreSQL's error, never ClickHouse's next
+    day, which answered true (run 43361055823)."""
     from provisa.pgwire.catalog_server_answers import input_check
 
     check = input_check(exp.Literal.string("2024-02-30"), exp.Literal.string("date"))
-    written = sqlglot.parse_one(
-        _clickhouse(f"SELECT {check.sql('postgres')} AS v"), read="clickhouse"
-    )
-    assert "2024-02-30" not in written.sql("clickhouse")  # the try-cast is its NULL
-
-
-def test_pg_input_is_valid_of_a_day_that_exists_reads_it():
-    from provisa.pgwire.catalog_server_answers import input_check
-
-    check = input_check(exp.Literal.string("2024-02-29"), exp.Literal.string("date"))
-    assert "toDate32('2024-02-29')" in _clickhouse(f"SELECT {check.sql('postgres')} AS v")
+    with pytest.raises(RowRefused) as refused:
+        _clickhouse(f"SELECT {check.sql('postgres')} AS v")
+    assert refused.value.sqlstate == "22008"
 
 
 def test_a_cast_of_a_column_to_a_date_is_unchanged():
@@ -194,9 +201,18 @@ def test_date_trunc_written_by_sqlglot_is_the_same_builders():
 
 
 def test_date_trunc_of_an_instant_is_the_same_builders():
+    """zoned_instants' start in the session's zone: the builder's form (its text read back, the
+    unit in capitals, which dateTrunc takes), of the instant held as DateTime64, not DateTime."""
     written = _clickhouse("SELECT date_trunc('year', '1960-05-05 00:00:00+00'::timestamptz) AS v")
-    assert "toDateTime64(dateTrunc('year', " in written
+    assert "todatetime64(datetrunc('year', " in written.lower()
+    assert "Nullable(DateTime)" not in written
     assert "toDateTime(" not in written
+
+
+def test_date_trunc_of_a_second_is_the_same_builders():
+    written = _clickhouse("SELECT date_trunc('second', '1960-05-05 10:00:01.5'::timestamp) AS v")
+    assert "fromUnixTimestamp64Micro(" in written and ", 'UTC')" in written
+    assert "Nullable(DateTime)" not in written
 
 
 def test_one_builder():

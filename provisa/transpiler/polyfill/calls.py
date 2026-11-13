@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature
+from provisa.transpiler.polyfill import clickhouse, trino
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 
 FAMILY = "calls of no Trino form"
 
@@ -89,13 +89,38 @@ FEATURES: tuple[Feature, ...] = (
         _in_a_select_list,
     ),
     *(
-        trino.refused_feature(
+        Feature(
             name,
             FAMILY,
             f"The value of the {'previous' if name == 'lag' else 'next'} row of a window.",
-            "Over a window of no order, refused by name: Trino requires one.",
-            f"{name} over a window of no order: refused by name, as Trino requires one.",
-            _of_no_order,
+            read=Side(
+                rules=(
+                    Rule(
+                        None,
+                        trino.on_trino(
+                            trino.refusing(
+                                name,
+                                f"{name} over a window of no order: refused by name, as Trino "
+                                "requires one.",
+                                _of_no_order,
+                            )
+                        ),
+                    ),
+                    # ClickHouse's answers its type's default past the partition (its own row).
+                    Rule(None, {"clickhouse": clickhouse.framed(name)}),
+                ),
+                limitations={
+                    **dict.fromkeys(
+                        trino.TRINO,
+                        (
+                            Limitation(
+                                "Over a window of no order, refused by name: Trino requires one."
+                            ),
+                        ),
+                    ),
+                    "clickhouse": (clickhouse.HOLDS_A_CALL,),
+                },
+            ),
         )
         for name in ("lag", "lead")
     ),
