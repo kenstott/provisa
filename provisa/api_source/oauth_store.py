@@ -150,7 +150,7 @@ class _RefreshLock:
     def close(self) -> None:
         """Release the lock and what it was held on."""
         if self._conn is not None:
-            if self._held:
+            if self._held and not self._conn.closed:  # a session that has ended holds no lock
                 # Released by name before the session ends: PostgreSQL frees a session's locks only
                 # once its backend has exited, which is after close() returns, so the next taker
                 # could be refused a lock nobody holds.
