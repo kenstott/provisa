@@ -42,6 +42,7 @@ from __future__ import annotations
 import datetime
 import enum
 import re
+import zoneinfo
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -54,6 +55,8 @@ from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
 from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler import pg_forms
+from provisa.transpiler.engine_refusals import PLAIN_PARTS
 
 FAMILY = "timestamp with time zone on ClickHouse"
 
@@ -100,7 +103,10 @@ _OF = {
     "timestamptz": _Operand(_INSTANT),
     "date": _Operand(_DAY, True),
     "timestamp": _Operand(_STAMP),
+    "part": _Operand(frozenset({"text"})),
 }
+#: A part date_part reads of an instant as it reads one of a timestamp (engine_refusals.PLAIN_PARTS).
+_PART = "part"
 
 
 class _Read(enum.Enum):
@@ -156,6 +162,16 @@ def _column(column: exp.Column, operand: _Operand) -> _Read | None:
     return next(r for r in _RANK if r in reads)
 
 
+def _part(value: exp.Expr) -> _Read | None:
+    """A part of date_part: a NULL, or a literal of one engine_refusals reads as plain."""
+    written = value.this.unnest() if isinstance(value, exp.Cast) else value
+    if isinstance(written, exp.Null):
+        return _Read.NULL
+    if isinstance(written, exp.Literal) and written.is_string:
+        return _Read.VALUE if written.this.lower() in PLAIN_PARTS else None
+    return None
+
+
 def _checked(argument: exp.Expr, operand: _Operand) -> _Read | None:
     """What the row reads of ``argument``; None where it does not read it (its type is not said,
     or its text is no ISO form)."""
@@ -164,6 +180,8 @@ def _checked(argument: exp.Expr, operand: _Operand) -> _Read | None:
         return _Read.NULL
     if isinstance(value, exp.Column):
         return _column(value, operand)
+    if operand is _OF[_PART]:
+        return _part(value)
     if not _of_its_type(trino.said(value), operand):
         return None
     if not isinstance(value, exp.Cast):
@@ -195,6 +213,14 @@ _AS_INSTANT = {
 }
 
 
+def _plain(argument: exp.Expr) -> bool:
+    """Whether ``argument`` is a column, a NULL or a cast of a literal: what a row of no pattern
+    reads, as the walk writes no argument of what such a row writes in its engine's form."""
+    value = argument.unnest()
+    written = value.this.unnest() if isinstance(value, exp.Cast) else value
+    return isinstance(written, (exp.Column, exp.Null, exp.Literal))
+
+
 def _rewrite(
     function: str,
     kinds: tuple[str, ...],
@@ -202,17 +228,24 @@ def _rewrite(
     *,
     zoned: bool,
     bounded: bool = True,
+    strict: bool = True,
+    plain: bool = False,
+    names: frozenset[str] = frozenset(),
 ) -> Callable[[exp.Expr, str], exp.Expr | None]:
-    """The rewrite of a call of ``function`` of ``kinds``, its ``form`` of $a (and $b). ``zoned``:
-    its answer reads a value in the session's zone, so it answers on UTC only. ``bounded``: its
-    answer reads the value, so a literal outside the bound raises (isfinite reads only that there
-    is one)."""
-    holes = "ab"[: len(kinds)]
+    """The rewrite of a call of ``function`` of ``kinds``, its ``form`` of $a, $b, $c, $d.
+    ``zoned``: its answer reads a value in the session's zone, so it answers on UTC only.
+    ``bounded``: its answer reads the value, so a literal outside the bound raises (isfinite reads
+    only that there is one). ``strict``: a NULL argument answers NULL, so a literal outside the
+    bound beside one is not read; otherwise any literal outside raises. ``plain``: the row names no
+    pattern, so it reads only arguments :func:`_plain` holds."""
+    holes = "abcd"[: len(kinds)]
     pattern = f"{function}({', '.join('$' + h for h in holes)})"
 
     def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
-        if call is None or function not in call[0] or len(call[1]) != len(kinds):
+        if call is None or not ({function} | names) & call[0] or len(call[1]) != len(kinds):
+            return None
+        if plain and not all(_plain(arg) for arg in call[1]):
             return None
         read = [_checked(arg, _OF[kind]) for arg, kind in zip(call[1], kinds)]
         if None in read:
@@ -220,7 +253,7 @@ def _rewrite(
         literal = _Read.LITERAL in read or _Read.OUTSIDE in read
         if current_zone.get() is not None and (zoned or literal):
             return None  # read in the session's zone: refused by name off UTC
-        if bounded and _Read.OUTSIDE in read and _Read.NULL not in read:  # STRICT: NULL of a NULL
+        if bounded and _Read.OUTSIDE in read and not (strict and _Read.NULL in read):
             return raised(function, dialect, pattern)
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
@@ -331,9 +364,16 @@ def zoned_instant(
 
 
 def _of_one(
-    name: str, function: str, form: str, purpose: str, *, zoned: bool, bounded: bool = True
+    name: str,
+    function: str,
+    form: str,
+    purpose: str,
+    *,
+    zoned: bool,
+    bounded: bool = True,
+    plain: bool = False,
 ) -> Rewrite:
-    rewrite = _rewrite(function, ("timestamptz",), form, zoned=zoned, bounded=bounded)
+    rewrite = _rewrite(function, ("timestamptz",), form, zoned=zoned, bounded=bounded, plain=plain)
     rewrite.__doc__ = purpose
     rewrite.__qualname__ = name
     rewrite.__name__ = name
@@ -370,7 +410,9 @@ def _one_feature(
     reads (max, min, date) names no pattern, so the other rows' rules are still read."""
     name = f"{function}_of_an_instant"
     purpose = f"{function} of a value held as DateTime64(6, 'UTC'), in its bound."
-    rewrite = _of_one(name, function, form, purpose, zoned=zoned, bounded=bounded)
+    rewrite = _of_one(
+        name, function, form, purpose, zoned=zoned, bounded=bounded, plain=not pattern
+    )
     stated = (_ONE_HELD.format(function) if bounded else _UNBOUNDED) + (
         _ONE_ZONED if zoned else _ONE_LITERAL
     ).format(function)
@@ -416,3 +458,295 @@ FEATURES: tuple[Feature, ...] = (
         "$a", zoned=True, pattern=True,
     ),
 )  # fmt: skip
+
+
+# --- a call of an instant and its other arguments ------------------------------------------------
+
+
+def _call_feature(
+    feature: str,
+    function: str,
+    kinds: tuple[str, ...],
+    form: str,
+    summary: str,
+    stated: str,
+    *,
+    zoned: bool,
+    strict: bool = True,
+    pattern: bool = True,
+    names: frozenset[str] = frozenset(),
+) -> Feature:
+    """A row of ``function($a, ...)`` of ``kinds``: ClickHouse's form, every other dialect keeping
+    what it had. A call that reaches the grid as no node a pattern names (date_part, quoted, is
+    sqlglot's Extract to a pattern) is a row of no pattern."""
+    rewrite = _rewrite(
+        function, kinds, form, zoned=zoned, strict=strict, plain=not pattern, names=names
+    )
+    rewrite.__doc__ = f"{function} of values held as DateTime64(6, 'UTC'), in their bound."
+    rewrite.__qualname__ = rewrite.__name__ = f"{function}_of_instants"
+    if pattern:
+        holes = ", ".join("$" + h for h in "abcd"[: len(kinds)])
+        forms = {
+            **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+            _CLICKHOUSE: Rewrite(rewrite),
+        }
+        rule = Rule(f"{function}({holes})", forms)
+    else:
+        rule = Rule(None, {_CLICKHOUSE: Rewrite(rewrite)})
+    return Feature(
+        feature,
+        FAMILY,
+        summary,
+        read=Side(rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+    )
+
+
+#: date_part of an instant: ClickHouse's form of a timestamp's (pg_forms.clickhouse_date_part),
+#: its value the instant's UTC wall time, which is the session's where this row answers.
+_DATE_PART = re.sub(
+    r"\bpart\b",
+    "$a",
+    re.sub(
+        r"\bvalue\b",
+        "$b",
+        pg_forms.clickhouse_date_part().replace("CAST(value AS TIMESTAMP)", "$b"),
+    ),
+)
+#: overlaps of two periods of instants: PostgreSQL's (pg_forms.OVERLAPS), not strict.
+_OVERLAPS = re.sub(
+    r"\b(s1|e1|s2|e2)\b",
+    lambda m: {"s1": "$a", "e1": "$b", "s2": "$c", "e2": "$d"}[m.group(1)],
+    pg_forms.OVERLAPS,
+)
+
+_PARTS_STATED = (
+    _ONE_HELD.format("{}")
+    + " Only the parts "
+    + ", ".join(sorted(PLAIN_PARTS))
+    + " are read; any other is refused by name."
+    + _ONE_ZONED
+)
+
+
+def _parts(function: str, numbered: str) -> Feature:
+    return _call_feature(
+        f"{function}(text, timestamptz)",
+        function,
+        (_PART, "timestamptz"),
+        _DATE_PART,
+        f"A part of an instant in the session's zone, as {numbered}.",
+        _PARTS_STATED.format(function, function),
+        zoned=True,
+        pattern=False,
+    )
+
+
+# --- an instant at a zone, and to a precision ----------------------------------------------------
+
+#: An instant's text, held: a literal the statement writes, or a NULL.
+_Held = datetime.datetime | None
+
+
+def _literal_instants(argument: exp.Expr) -> list[_Held] | None:
+    """Each instant ``argument`` holds, as UTC wall time, where each is a literal in ISO form or a
+    NULL (a column of a VALUES list: each row's); None where any is another value, whose result
+    this row cannot read inside the bound before ClickHouse computes it."""
+    value = argument.unnest()
+    if isinstance(value, exp.Null):
+        return [None]
+    if isinstance(value, exp.Column):
+        cast = values_cast(value)
+        if cast is None or not _of_its_type(
+            cast.to.sql(dialect="postgres").lower(), _OF["timestamptz"]
+        ):
+            return None
+        values = cast.find_ancestor(exp.Values)
+        assert values is not None  # values_cast reads the cast from a row of a VALUES list
+        index = [c.name for c in values.args["alias"].columns].index(value.name)
+        rows = [row.expressions[index].unnest() for row in values.expressions]
+    elif _of_its_type(trino.said(value), _OF["timestamptz"]):
+        rows = [value]
+    else:
+        return None
+    held: list[_Held] = []
+    for row in rows:
+        if isinstance(row, exp.Cast) and not _of_its_type(trino.said(row), _OF["timestamptz"]):
+            return None
+        written = row.this.unnest() if isinstance(row, exp.Cast) else row
+        if isinstance(written, exp.Null):
+            held.append(None)
+            continue
+        if not (isinstance(written, exp.Literal) and written.is_string):
+            return None
+        read = _read(written.this, False)
+        if read is None:
+            return None
+        held.append(read)
+    return held
+
+
+def _inside(instant: datetime.datetime) -> bool:
+    return FIRST <= instant <= LAST
+
+
+def _string_literal(argument: exp.Expr) -> str | None:
+    """The text of a string literal (cast or not); None for any other value, a NULL among them."""
+    value = argument.unnest()
+    written = value.this.unnest() if isinstance(value, exp.Cast) else value
+    if isinstance(written, exp.Literal) and written.is_string:
+        return written.this
+    return None
+
+
+_NULL_INSTANT = "CAST(NULL AS Nullable(DateTime64(6, 'UTC')))"
+
+
+def _is_null(argument: exp.Expr) -> bool:
+    value = argument.unnest()
+    return isinstance(value.this.unnest() if isinstance(value, exp.Cast) else value, exp.Null)
+
+
+#: A zone ClickHouse and PostgreSQL both read as the same IANA zone: a region's name, or UTC.
+#: An abbreviation, a POSIX offset (PostgreSQL's is west of UTC) and any other text are refused.
+_ZONES = frozenset(
+    z
+    for z in zoneinfo.available_timezones()
+    if "/" in z and not z.startswith(("Etc/", "posix/", "right/"))
+) | {"UTC"}
+
+
+def at_zone(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timezone(zone, instant): the instant's wall time at a named zone, a timestamp held as
+    DateTime64(6, 'UTC'). Each instant is a literal (or a NULL), its wall time at the zone read
+    here, so one outside the bound raises before ClickHouse would hold it at the range's end."""
+    call = trino.called(node)
+    if call is None or "timezone" not in call[0] or len(call[1]) != 2:
+        return None
+    zone, value = call[1]
+    instants = _literal_instants(value)
+    if instants is None:
+        return None
+    if current_zone.get() is not None and any(i is not None for i in instants):
+        return None  # a literal with no offset is read in the session's zone
+    pattern = "timezone($z, $a)"
+    if _is_null(zone):
+        return replacement(_NULL_INSTANT, dialect, pattern)
+    name = _string_literal(zone)
+    if name not in _ZONES:
+        return None
+    at = zoneinfo.ZoneInfo(name)
+    for instant in instants:
+        if instant is None:
+            continue
+        if not _inside(instant):
+            return raised("timezone", dialect, pattern)
+        wall = instant.replace(tzinfo=datetime.timezone.utc).astimezone(at).replace(tzinfo=None)
+        if not _inside(wall):
+            return raised("timezone", dialect, pattern)
+    form = f"toDateTime64(toString(toTimeZone($a, '{name}')), 6, 'UTC')"
+    return graft(replacement(form, dialect, pattern), {"a": value})
+
+
+#: PostgreSQL's epoch, at which a timestamp's microseconds are 0: its rounding to a precision is
+#: half away from that instant (AdjustTimestampForTypmod).
+_PG_EPOCH = datetime.datetime(2000, 1, 1)
+_PG_EPOCH_MICROS = 946684800000000
+_MICRO = datetime.timedelta(microseconds=1)
+
+
+def _rounded(instant: datetime.datetime, scale: int) -> datetime.datetime:
+    micros = (instant - _PG_EPOCH) // _MICRO
+    half = scale // 2
+    step = (micros + half) // scale * scale if micros >= 0 else -((-micros + half) // scale * scale)
+    return _PG_EPOCH + step * _MICRO
+
+
+def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away
+    from 2000-01-01 as PostgreSQL rounds. Each instant is a literal (or a NULL), rounded here
+    first, so one the rounding takes past the bound raises."""
+    call = trino.called(node)
+    if call is None or "timestamptz" not in call[0] or len(call[1]) != 2:
+        return None
+    value, digits = call[1]
+    instants = _literal_instants(value)
+    if instants is None:
+        return None
+    if current_zone.get() is not None and any(i is not None for i in instants):
+        return None  # a literal with no offset is read in the session's zone
+    pattern = "timestamptz($a, $n)"
+    if _is_null(digits):
+        return replacement(_NULL_INSTANT, dialect, pattern)
+    written = digits.unnest()
+    written = written.this.unnest() if isinstance(written, exp.Cast) else written
+    if not (isinstance(written, exp.Literal) and written.is_int and 0 <= int(written.this) <= 6):
+        return None  # a negative precision is PostgreSQL's error; past 6 its warning
+    scale = 10 ** (6 - int(written.this))
+    for instant in instants:
+        if instant is not None and not (_inside(instant) and _inside(_rounded(instant, scale))):
+            return raised("timestamptz", dialect, pattern)
+    if scale == 1:
+        return graft(replacement("$a", dialect, pattern), {"a": value})
+    micros = f"(toUnixTimestamp64Micro($a) - {_PG_EPOCH_MICROS})"
+    half = scale // 2
+    form = (
+        f"fromUnixTimestamp64Micro(if({micros} >= 0, intDiv({micros} + {half}, {scale}) * {scale}, "
+        f"-(intDiv(-{micros} + {half}, {scale}) * {scale})) + {_PG_EPOCH_MICROS}, 'UTC')"
+    )
+    return graft(replacement(form, dialect, pattern), {"a": value})
+
+
+_LITERALS_STATED = (
+    "Held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31, of an instant written as "
+    "a literal (or a VALUES list of them): its answer is read here first, and one outside "
+    f"{BOUND} raises 0A000 ({{}}() of a value outside {BOUND} has no exact form on clickhouse). "
+    "An instant ClickHouse computes, a literal not in ISO form and infinity are refused by name. "
+    "On a session off UTC a literal is refused by name: one with no offset is read in the "
+    "session's zone."
+)
+_AT_ZONE_STATED = (
+    _LITERALS_STATED.format("timezone")
+    + " The zone is a region's IANA name or UTC, as a literal; an abbreviation, a POSIX offset and "
+    "any other text are refused by name."
+)
+_PRECISION_STATED = (
+    _LITERALS_STATED.format("timestamptz")
+    + " The precision is a literal of 0 to 6; any other is refused by name."
+)
+
+
+def _literal_feature(
+    feature: str, pattern: str, rewrite: Callable[..., exp.Expr | None], summary: str, stated: str
+) -> Feature:
+    forms = {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, _CLICKHOUSE: Rewrite(rewrite)}
+    return Feature(
+        feature,
+        FAMILY,
+        summary,
+        read=Side(rules=(Rule(pattern, forms),), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+    )
+
+
+FEATURES += (
+    _parts("date_part", "a double precision"),
+    _parts("extract", "a numeric"),
+    _call_feature(
+        "overlaps(timestamptz)", "overlaps", ("timestamptz",) * 4, _OVERLAPS,
+        "Whether two periods of instants overlap.",
+        _HELD.format("overlaps") + " A NULL end of a period is read as PostgreSQL reads it; a "
+        "literal outside the bound raises beside a NULL too.",
+        zoned=False, strict=False, names=frozenset({"overlaps_timestamp"}),
+    ),
+    _one_feature(
+        "timezone(timestamptz)", "timezone", "An instant's wall time in the session's zone.",
+        "$a", zoned=True, pattern=True,
+    ),
+    _literal_feature(
+        "timestamptz(timestamptz, integer)", "timestamptz($a, $n)", to_precision,
+        "An instant rounded to a number of digits of a second.", _PRECISION_STATED,
+    ),
+)  # fmt: skip
+
+#: zones' timezone(text, value) row's ClickHouse form, and its limitation there.
+AT_ZONE = Rewrite(at_zone)
+AT_ZONE_LIMITATION = Limitation(_AT_ZONE_STATED)

@@ -359,3 +359,149 @@ def test_each_function_of_one_instant_states_its_bound():
     isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
     (stated,) = isfinite.read.limitations["clickhouse"]
     assert "{" not in stated.text and "infinity" in stated.text
+
+
+# --- date_part, extract, overlaps, timezone, timestamptz(precision) of an instant -----------------
+
+
+def _part(function: str, part: str, value: str) -> str:
+    return f'SELECT pg_catalog."{function}"({part}::text, {value}::{_TZ}) AS v'
+
+
+def _overlaps(s1: str, e1: str, s2: str, e2: str) -> str:
+    return f'SELECT pg_catalog."overlaps"({s1}::{_TZ}, {e1}::{_TZ}, {s2}::{_TZ}, {e2}::{_TZ}) AS v'
+
+
+def _at(zone: str, value: str) -> str:
+    return f'SELECT pg_catalog."timezone"({zone}::text, {value}::{_TZ}) AS v'
+
+
+def _precise(value: str, digits: str) -> str:
+    return f'SELECT pg_catalog."timestamptz"({value}::{_TZ}, {digits}) AS v'
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        (_part("date_part", "'year'", _SAMPLES[0]), 2024),
+        (_part("date_part", "'month'", _SAMPLES[1]), 12),
+        # 2000-02-29 00:00 at -05 is 05:00 of a Tuesday in UTC.
+        (_part("date_part", "'dow'", _SAMPLES[2]), 2),
+        (_part("date_part", "'hour'", _SAMPLES[1]), 21),
+        (_part("date_part", "'doy'", _SAMPLES[2]), 60),
+        (_part("extract", "'day'", _SAMPLES[1]), 31),
+        (_part("extract", "'year'", "'2299-12-31 23:59:59.999999+00'"), 2299),
+        (_part("date_part", "NULL", _SAMPLES[0]), None),
+        (_part("date_part", "'year'", "NULL"), None),
+        (_overlaps("'2000-01-01 00:00:00+00'", "'2000-01-10 00:00:00+00'",
+                   "'2000-01-05 00:00:00+00'", "'2000-01-20 00:00:00+00'"), True),
+        # A period's ends in either order; periods that only touch do not overlap.
+        (_overlaps("'2000-01-10 00:00:00+00'", "'2000-01-01 00:00:00+00'",
+                   "'2000-01-10 00:00:00+00'", "'2000-01-20 00:00:00+00'"), False),
+        (_overlaps("'2000-01-01 00:00:00+00'", "'2000-01-10 00:00:00+00'",
+                   "'2000-01-05 00:00:00+00'", "NULL"), True),
+        (_overlaps("'2000-01-01 00:00:00+00'", "NULL",
+                   "'2000-01-05 00:00:00+00'", "'2000-01-10 00:00:00+00'"), None),
+        (_at("'Asia/Tokyo'", _SAMPLES[1]), datetime.datetime(2000, 1, 1, 6, 59, 59)),
+        # June in New York: EDT, four hours west of UTC.
+        (_at("'America/New_York'", _SAMPLES[0]), datetime.datetime(2024, 6, 15, 8, 30, 45)),
+        (_at("'UTC'", _SAMPLES[2]), datetime.datetime(2000, 2, 29, 5)),
+        (_at("NULL", _SAMPLES[0]), None),
+        (_at("'Asia/Tokyo'", "NULL"), None),
+        (f'SELECT pg_catalog."timezone"({_SAMPLES[1]}::{_TZ}) AS v', datetime.datetime(1999, 12, 31, 21, 59, 59)),
+        (_precise("'2024-06-15 12:30:45.123456+00'", "2"), datetime.datetime(2024, 6, 15, 12, 30, 45, 120000)),
+        # Half away from 2000-01-01: up after it, down before it.
+        (_precise("'2024-06-15 12:30:45.125+00'", "2"), datetime.datetime(2024, 6, 15, 12, 30, 45, 130000)),
+        (_precise("'1999-12-31 23:59:59.125+00'", "2"), datetime.datetime(1999, 12, 31, 23, 59, 59, 120000)),
+        (_precise("'1999-12-31 23:59:59.5+00'", "0"), datetime.datetime(1999, 12, 31, 23, 59, 59)),
+        (_precise("'2000-01-01 00:00:00.5+00'", "0"), datetime.datetime(2000, 1, 1, 0, 0, 1)),
+        (_precise(_SAMPLES[1], "6"), datetime.datetime(1999, 12, 31, 21, 59, 59)),
+        (_precise(_SAMPLES[1], "NULL"), None),
+        (_precise("NULL", "3"), None),
+    ],
+)  # fmt: skip
+def test_a_call_of_an_instant_and_its_other_arguments_answers_postgresql(runtime, sql, answer):
+    value = _one(runtime, sql)
+    if isinstance(value, datetime.datetime):
+        value = value.replace(tzinfo=None)  # PostgreSQL's timestamp, or the UTC wall time
+    assert value == answer
+
+
+def test_timezone_of_a_column_of_values_reads_each_row(runtime):
+    sql = (
+        "SELECT pg_catalog.\"timezone\"('Asia/Tokyo'::text, c1) AS v FROM (VALUES "
+        f"({_SAMPLES[0]}::{_TZ}), ({_SAMPLES[1]}::{_TZ}), (NULL::{_TZ})) AS t(c1)"
+    )
+    rows = [r[0] for r in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
+    assert [r and r.replace(tzinfo=None) for r in rows] == [
+        datetime.datetime(2024, 6, 15, 21, 30, 45),
+        datetime.datetime(2000, 1, 1, 6, 59, 59),
+        None,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("function", "sql"),
+    [
+        ("overlaps", _overlaps("'1850-01-01 00:00:00+00'", "NULL", "'2000-01-05 00:00:00+00'", "NULL")),
+        ("date_part", _part("date_part", "'year'", "'2300-01-01 00:00:00+00'")),
+        # Inside the bound in UTC, past it at Tokyo's wall time.
+        ("timezone", _at("'Asia/Tokyo'", "'2299-12-31 20:00:00+00'")),
+        ("timezone", _at("'America/New_York'", "'1900-01-01 02:00:00+00'")),
+        # Inside the bound, rounded past it.
+        ("timestamptz", _precise("'2299-12-31 23:59:59.999999+00'", "0")),
+        ("timestamptz", _precise("'1899-12-31 23:59:59+00'", "3")),
+    ],
+)  # fmt: skip
+def test_a_call_of_an_instant_past_the_bound_raises(runtime, function, sql):
+    error = _raised(runtime, sql)
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+@pytest.mark.parametrize(
+    ("sql", "function"),
+    [
+        (_part("date_part", "'second'", _SAMPLES[0]), "date_part"),
+        (_part("extract", "'epoch'", _SAMPLES[0]), "extract"),
+        (_at("'EST'", _SAMPLES[0]), "timezone"),
+        (_at("'+05'", _SAMPLES[0]), "timezone"),
+        (_precise(_SAMPLES[0], "7"), "timestamptz"),
+        (_precise(_SAMPLES[0], "-1"), "timestamptz"),
+        # An instant ClickHouse computes: its wall time at a zone is not read here first.
+        ("SELECT pg_catalog.\"timezone\"('Asia/Tokyo'::text, pg_catalog.\"timestamptz_larger\"("
+         f"{_SAMPLES[0]}::{_TZ}, {_SAMPLES[1]}::{_TZ})) AS v", "timezone"),
+    ],
+)  # fmt: skip
+def test_a_call_of_an_instant_the_row_does_not_read_is_refused_by_name(sql, function):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert type(refused.value) is FunctionRefused
+    assert str(refused.value) == f"{function}() has no form on clickhouse"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        _part("date_part", "'year'", _SAMPLES[0]),
+        _at("'Asia/Tokyo'", _SAMPLES[0]),
+        _precise(_SAMPLES[0], "2"),
+        _overlaps(*_SAMPLES, _SAMPLES[0]),
+        f'SELECT pg_catalog."timezone"({_SAMPLES[0]}::{_TZ}) AS v',
+    ],
+)
+def test_off_utc_a_call_of_an_instant_is_refused_by_name(off_utc, sql):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.\"date_part\"('hour'::text, '1999-12-31 23:59:59'::timestamp) AS v",
+        "SELECT pg_catalog.\"overlaps\"('1999-12-31'::timestamp, '2000-01-02'::timestamp, "
+        "'2000-01-01'::timestamp, '2000-01-03'::timestamp) AS v",
+    ],
+)
+def test_a_timestamp_keeps_its_own_form(sql):
+    # The rows read an instant; a timestamp's call is the old table's still.
+    assert "DateTime64(6, 'UTC')" in transpile(sql, "clickhouse")
