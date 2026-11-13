@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-154 of the grid's 154 features are native on PostgreSQL and left out.
+181 of the grid's 181 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-89 of the grid's 154 features are native on DuckDB and left out.
+89 of the grid's 181 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -273,11 +273,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-8 of the grid's 154 features are native on Trino and left out.
+8 of the grid's 181 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -642,11 +717,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-8 of the grid's 154 features are native on Presto and left out.
+8 of the grid's 181 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1011,11 +1161,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-8 of the grid's 154 features are native on Athena and left out.
+8 of the grid's 181 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1380,11 +1605,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-37 of the grid's 154 features are native on ClickHouse and left out.
+37 of the grid's 181 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1718,11 +2018,86 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) WHEN $b =
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE arrayMap(_n -&gt; concat(&#x27;(&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMax(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))[1], &#x27;,&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMax(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))[1], &#x27;),(&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMin(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))[1], &#x27;,&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMin(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))[1], &#x27;)&#x27;, repeat(&#x27;&#x27;, throwIf(ifNull(arrayExists(_y -&gt; NOT match(_y, &#x27;^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$&#x27;), _n), 0), &#x27;postgresql-error 0A000: spg_poly_quad_compress does not read this value&lt;end of postgresql-error&gt;&#x27;))), [extractAll(toString($v), &#x27;-?[0-9.]+(?:e[-+]?[0-9]+)?&#x27;)])[1] END</code></pre></td><td><ul><li>A polygon with a number PostgreSQL writes otherwise than as it was written (an exponent, a trailing zero) is refused by name when the statement runs.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact, from the integers&#x27; sums in Int256, rounded only where PostgreSQL&#x27;s numeric_div rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (avg of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact, from the integers&#x27; sums in Int256, rounded only where PostgreSQL&#x27;s numeric_div rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (variance of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact, from the integers&#x27; sums in Int256, rounded only where PostgreSQL&#x27;s numeric_div rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (var_samp of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact, from the integers&#x27; sums in Int256, rounded only where PostgreSQL&#x27;s numeric_div rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (var_pop of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact: the integer square root of the rounded variance, in Int256, rounded only where PostgreSQL&#x27;s sqrt_var rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (stddev of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact: the integer square root of the rounded variance, in Int256, rounded only where PostgreSQL&#x27;s sqrt_var rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (stddev_samp of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact: the integer square root of the rounded variance, in Int256, rounded only where PostgreSQL&#x27;s sqrt_var rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (stddev_pop of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+CAST($a = $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+CAST($a &lt;&gt; $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+CAST($a &lt; $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+CAST($a &lt;= $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+CAST($a &gt; $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+CAST($a &gt;= $b AS Nullable(Bool))</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+CASE WHEN $v IS NULL THEN CAST(NULL AS Nullable(String)) ELSE unhex(leftPad(hex(toUInt64($v)), 16, &#x27;0&#x27;)) END</code></pre></td><td><ul><li>Exact: ClickHouse holds an xid8 as a UInt64, PostgreSQL&#x27;s own width and order.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(UInt64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1])), CAST(NULL AS Nullable(UInt64))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(UInt64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2])), CAST(NULL AS Nullable(UInt64))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+arrayJoin(CASE WHEN $s IS NULL THEN CAST([] AS Array(UInt64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))))), CAST([] AS Array(UInt64))) END)</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(String)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, unhex(concat(leftPad(hex(toUInt32(length(arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))))))), 8, &#x27;0&#x27;), leftPad(hex(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]))), 16, &#x27;0&#x27;), leftPad(hex(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]))), 16, &#x27;0&#x27;), arrayStringConcat(arrayMap(_x -&gt; leftPad(hex(_x), 16, &#x27;0&#x27;), arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))))))))), CAST(NULL AS Nullable(String))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(Int64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, reinterpretAsInt64(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]))), CAST(NULL AS Nullable(Int64))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(Int64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, reinterpretAsInt64(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]))), CAST(NULL AS Nullable(Int64))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+arrayJoin(CASE WHEN $s IS NULL THEN CAST([] AS Array(Int64)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, arrayMap(_x -&gt; reinterpretAsInt64(_x), arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))))), CAST([] AS Array(Int64))) END)</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(String)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, unhex(concat(leftPad(hex(toUInt32(length(arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))))))), 8, &#x27;0&#x27;), leftPad(hex(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]))), 16, &#x27;0&#x27;), leftPad(hex(assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]))), 16, &#x27;0&#x27;), arrayStringConcat(arrayMap(_x -&gt; leftPad(hex(_x), 16, &#x27;0&#x27;), arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))))))))), CAST(NULL AS Nullable(String))) END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Bool)) ELSE CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(Bool)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, multiIf($x &lt; assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1])), true, $x &gt;= assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2])), false, NOT has(arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))))), $x)), CAST(NULL AS Nullable(Bool))) END END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Bool)) ELSE CASE WHEN $s IS NULL THEN CAST(NULL AS Nullable(Bool)) ELSE if(throwIf(ifNull(NOT match($s, &#x27;^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$&#x27;) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) IS NULL OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) IS NULL OR arrayExists(_x -&gt; _x IS NULL, arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))) OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) = 0 OR toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2]) &lt; toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1]) OR NOT arrayAll((_a, _b) -&gt; _a &lt;= _b, arrayPopBack(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))), arrayPopFront(arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3]))))), 0), &#x27;postgresql-error 22P02: invalid input syntax for type pg_snapshot&lt;end of postgresql-error&gt;&#x27;) = 0, multiIf(toUInt64($x) &lt; assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[1])), true, toUInt64($x) &gt;= assumeNotNull(toUInt64OrNull(splitByChar(&#x27;:&#x27;, $s)[2])), false, NOT has(arrayFilter(_x -&gt; _x != 0, arrayDistinct(arrayMap(_x -&gt; assumeNotNull(_x), arrayMap(_x -&gt; toUInt64OrNull(_x), arrayFilter(_x -&gt; _x != &#x27;&#x27;, splitByChar(&#x27;,&#x27;, splitByChar(&#x27;:&#x27;, $s)[3])))))), toUInt64($x))), CAST(NULL AS Nullable(Bool))) END END</code></pre></td><td><ul><li>Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL&#x27;s input reads it (each id a 64-bit number, the in-progress ids in order, each once). Text a column holds that PostgreSQL&#x27;s input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL&#x27;s message quotes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_hex_of_an_integer: to_hex of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_oct_of_an_integer: to_oct of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_bin_of_an_integer: to_bin of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-88 of the grid's 154 features are native on Snowflake and left out.
+88 of the grid's 181 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1993,11 +2368,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-88 of the grid's 154 features are native on Databricks and left out.
+88 of the grid's 181 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2268,11 +2718,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-88 of the grid's 154 features are native on BigQuery and left out.
+88 of the grid's 181 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2543,11 +3068,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-88 of the grid's 154 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+88 of the grid's 181 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2818,11 +3418,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-88 of the grid's 154 features are native on Redshift and left out.
+88 of the grid's 181 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3093,11 +3768,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-88 of the grid's 154 features are native on MySQL and left out.
+88 of the grid's 181 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3368,11 +4118,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-88 of the grid's 154 features are native on SingleStore and left out.
+88 of the grid's 181 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3643,11 +4468,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-88 of the grid's 154 features are native on SQLite and left out.
+88 of the grid's 181 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3918,11 +4818,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-88 of the grid's 154 features are native on Oracle and left out.
+88 of the grid's 181 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4193,11 +5168,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-88 of the grid's 154 features are native on Hive and left out.
+88 of the grid's 181 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4468,11 +5518,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-88 of the grid's 154 features are native on Exasol and left out.
+88 of the grid's 181 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4743,11 +5868,86 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-88 of the grid's 154 features are native on Druid and left out.
+88 of the grid's 181 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5018,4 +6218,79 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

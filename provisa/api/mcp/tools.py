@@ -236,8 +236,22 @@ def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[
     ]
 
 
+def _role_governance(state: Any, role: str) -> Any:
+    """``role``'s governance context: the one the query pipeline checks its statements against."""
+    from provisa.api.role_surface import built_surface
+    from provisa.pgwire.governed_plan import role_governance
+
+    return role_governance(state, built_surface(state.surfaces[role]), role)
+
+
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
-    """columns (name, type, description) + foreign keys + unique constraints for one table."""
+    """columns (name, type, description, state) + foreign keys + unique constraints for one table.
+
+    A column's ``state`` is how the caller's role reads it (:mod:`provisa.api.mcp.column_state`):
+    plain, masked, faked or hidden. Only the columns the role is served are listed, so a listed
+    column is hidden only where its governance refuses it."""
+    from provisa.api.mcp.column_state import column_state
+
     require_role(role, state)
     tables = await _catalog(state, role)
     match = next(
@@ -246,12 +260,21 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     )
     if match is None:
         raise ValueError(f"Table not found: {schema}.{table}")
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        raise ValueError(f"Table not found: {schema}.{table}")
+    gov = _role_governance(state, role)
     return {
         "schema": schema,
         "table": table,
         "description": match.description,
         "columns": [
-            {"name": c.name, "type": c.data_type, "description": c.description}
+            {
+                "name": c.name,
+                "type": c.data_type,
+                "description": c.description,
+                "state": column_state(gov, meta.table_id, c.name),
+            }
             for c in match.columns
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
