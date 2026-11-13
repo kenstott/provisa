@@ -62,7 +62,7 @@ export function RelationshipRead({
     <div className="detail-groups" data-testid="relationship-read">
       {/* Not a field: the form has nothing to set it with, the server derives it from the id. */}
       {r.autoSuggested && (
-        <Group gap="xs" data-testid="relationship-read-fk">
+        <Group gap="xs" mb="xs" data-testid="relationship-read-fk">
           <FkBadge />
         </Group>
       )}
