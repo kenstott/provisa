@@ -43,7 +43,7 @@ _GONE_WITHIN_S = 8.0
 
 # transport -> (method, path, body) of a request that scans ``{table}``
 _REQUESTS: dict[str, tuple[str, str, dict | None]] = {
-    "graphql": ("POST", "/data/graphql", {"query": "{ s__{table} { id } }"}),
+    "graphql": ("POST", "/data/graphql", {"query": "{{ s__{table} {{ id }} }}"}),
     "sql_http": ("POST", "/data/sql", {"sql": "SELECT id FROM sales.{table}"}),
     "rest": ("GET", "/data/rest/sales/{table}", None),
     "jsonapi": ("GET", "/data/jsonapi/sales/{table}", None),
