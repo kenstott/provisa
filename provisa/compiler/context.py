@@ -16,6 +16,7 @@ before query compilation. Extracted from sql_gen.py; leaf module.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
@@ -638,15 +639,29 @@ def _columns_of_subtypes(
     return out
 
 
+@functools.lru_cache(maxsize=4096)
+def _is_instant_type(data_type: str) -> bool:
+    """Whether the stored column type ``data_type`` reads as a timestamptz. Kept per type string:
+    every role's context is built from the same model's types, one role after another in the
+    background after each rebuild (app_loaders.warm_role_surfaces) while requests are served, and
+    a type the model has already shown is not tokenized again (REQ-1877). A type sqlglot cannot
+    read is not an instant -- as it was before it was kept."""
+    import sqlglot.expressions as exp
+    from sqlglot.errors import SqlglotError
+
+    try:
+        kind = exp.DataType.build(data_type, dialect="postgres")
+    except (SqlglotError, ValueError):
+        return False
+    return kind.is_type(exp.DataType.Type.TIMESTAMPTZ)
+
+
 def _instant_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
     physical_map: dict[str, str],
 ) -> SubtypeColumns:
     """REQ-2171: every registered column whose type is timestamptz, keyed like
     ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
-    import sqlglot.expressions as exp
-    from sqlglot.errors import SqlglotError
-
     from provisa.compiler.json_instants import INSTANT
     from provisa.compiler.naming import apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
@@ -657,11 +672,7 @@ def _instant_columns(
         typed = {m.column_name.lower(): m.data_type for m in si.column_types.get(td["id"]) or []}
         for col in td.get("columns") or []:
             phys = col["column_name"]
-            try:
-                kind = exp.DataType.build(typed.get(phys.lower()) or "", dialect="postgres")
-            except (SqlglotError, ValueError):
-                continue
-            if not kind.is_type(exp.DataType.Type.TIMESTAMPTZ):
+            if not _is_instant_type(typed.get(phys.lower()) or ""):
                 continue
             key = (
                 td["schema_name"].lower(),
