@@ -80,6 +80,9 @@ _META: dict[str, str] = {
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
+    # REQ-2208
+    "tag_instances": "Every tag on every object, assigned, inherited from a glossary term or "
+    "derived, and every required tag an object lacks, with its citations and status",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -179,6 +182,8 @@ _OPS: dict[str, str] = {
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
     "fake covers it, and the reason when none does",
+    "tags_report": "Tags: every tag on every object and every required tag an object lacks, "
+    "with the object, the tag, how the tag got there, its citations and whether it needs attention",
     "names_report": "Names: every model object with its name on each surface and the naming "
     "problems found in it, and every name clash the last model build refused, naming both objects",
 }
@@ -193,6 +198,43 @@ _OPS_OWN = (
     ". Provisa's own record of the queries and activity run through it, not the "
     "organisation's application traffic or logs"
 )
+
+# REQ-2208 (THE TAGS REPORT): the meta table tag_instances and the report over it.
+_TAG_INSTANCE_COLUMNS: dict[str, str] = {
+    "id": "Identity of the row: how the tag got there, the tag, the object and the assignment",
+    "object_kind": "Kind of object: source, table, column, relationship, command, product, term, "
+    "rls_rule, role, metric, document or section",
+    "object_key": "The object's identity across kinds (kind:id)",
+    "object_id": "The object's identity within its kind",
+    "object_name": "How the names table of the last model build names the object; empty for a kind "
+    "it does not name",
+    "domain_id": "Domain the object is governed under",
+    "owner": "The object's owner, for a relationship or a data product",
+    "table_id": "Table the object is, or belongs to",
+    "tag_id": "Tag, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "parameter": "The assignment's parameter value, when the tag takes one",
+    "tag_description": "The tag's definition",
+    "tag_is_system": "Whether the tag is code-defined rather than the registry's",
+    "tag_required": "Whether every object of the kinds the tag applies to must carry it",
+    "tag_requires_citation": "Whether each assignment of the tag must cite a library section",
+    "definition_citations": "How many library sections the tag's definition cites",
+    "via": "assigned, inherited (from the column's glossary term), derived (from the object's "
+    "registered state) or missing (a required tag the object does not carry)",
+    "reason": "Why the tag is on the object, as recorded with the assignment",
+    "expires_on": "Date the assignment stops being intended",
+    "purpose": "What the assignment is for",
+    "review_on": "Date the assignment is to be reviewed by",
+    "evidence": "The profile evidence recorded when the assignment was decided",
+    "decided_by": "Who assigned the tag",
+    "decided_at": "When the tag was assigned",
+    "citations": "How many library sections the assignment cites",
+    "citations_broken": "Of those, how many no longer resolve: the section or document is gone",
+    "citations_drifted": "Of those, how many sections' text changed since they were cited",
+    "citation_missing": "The tag requires each assignment to cite a section, and this one cites none",
+    "status": "clean, or needs attention",
+    "status_reason": "What needs attention, each reason separated by a semicolon",
+}
 
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
@@ -521,6 +563,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
         "term_id": "Tagged glossary term, when the object is a term",  # REQ-2145
     },
+    # REQ-2208
+    "tag_instances": _TAG_INSTANCE_COLUMNS,
+    "tags_report": _TAG_INSTANCE_COLUMNS,
     # REQ-2145
     "effective_column_tags": {
         "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",

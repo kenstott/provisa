@@ -746,10 +746,14 @@ CREATE TABLE IF NOT EXISTS tags (
     sensitive      BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment of this tag must cite a library
     -- document or section (reference_citations); one that does not is a gap, never refused.
-    requires_citation BOOLEAN NOT NULL DEFAULT FALSE
+    requires_citation BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (THE TAGS REPORT): the tag is required on every object of the kinds its applies_to
+    -- lists; the tags report lists each such object that does not carry it.
+    required       BOOLEAN NOT NULL DEFAULT FALSE
 );
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-1384: a row filter on a tag refers to the tag. No ON DELETE action: a tag that carries a
 -- filter is refused deletion (repositories.integrity), never taken with its filter.

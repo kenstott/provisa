@@ -797,7 +797,12 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_keys": ("table_id", "referenced_table_id"),
     # REQ-194: a name is read where the table it names (or the table holding it) is.
     "model_names_meta": ("table_id",),
+    # REQ-2208 (THE TAGS REPORT): a tag on an object is read where the table it is, or is on, is.
+    "tag_instances": ("table_id",),
 }
+#: REQ-2208 (THE TAGS REPORT): the ops reports whose rows are about model objects, scoped as their
+#: meta table is: each maps to the columns carrying the described tables' ids.
+OPS_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {"tags_report": ("table_id",)}
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).
 META_CATALOG_ROW_SCOPES = CATALOG_ROW_SCOPES

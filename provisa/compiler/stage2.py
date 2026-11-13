@@ -334,6 +334,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
         ONTOLOGY_DOMAIN_ID,
+        OPS_DOMAIN_ID,
+        OPS_ROW_SCOPED_VIEWS,
         SYSTEM_DOMAINS,
         Capability,
         acts_in_domain,
@@ -534,10 +536,17 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         # A table is in ctx.tables under each name it has; its scope is one predicate.
         by_id = {tm.table_id: tm for tm in ctx.tables.values()}
         for tm in by_id.values():
-            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+            domain_id = getattr(tm, "domain_id", None)
+            if domain_id == META_DOMAIN_ID:
+                scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+                catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
+            elif domain_id == OPS_DOMAIN_ID:
+                # REQ-2208 (THE TAGS REPORT): an ops report about model objects is read as its
+                # meta table is.
+                scope_cols = OPS_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
+                catalog_scope = None
+            else:
                 continue
-            scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
             if scope_cols is not None:
                 terms: list[exp.Expr] = [  # pyright: ignore[reportPrivateImportUsage]
                     exp.In(this=exp.column(col), query=exp.Subquery(this=scope_ids()))
