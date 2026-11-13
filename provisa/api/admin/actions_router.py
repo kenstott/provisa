@@ -332,6 +332,37 @@ def _as_statement(body: FunctionInput) -> None:  # REQ-2001
     body.functionName = body.functionName or body.name
 
 
+def _check_native_sql(body: FunctionInput) -> None:  # REQ-1988
+    """A source_query command holding native SQL is on a relational source that runs it, and its
+    text, split in that source's dialect, names exactly its arguments. Refused naming what is
+    wrong, on create and on update alike."""
+    from provisa.api.app import state
+    from provisa.core.native_sql import BINDING_KEY, NativeSqlRefused, check_on_source
+
+    if body.implKind != "source_query" or BINDING_KEY not in body.binding:
+        return
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId)
+    if source_type is None:
+        raise ApiError(
+            422,
+            "actions.source_not_registered",
+            f"command {body.name!r}: its source {body.sourceId!r} is not registered",
+            name=body.name,
+            source_id=body.sourceId,
+        )
+    try:
+        check_on_source(
+            body.name,
+            body.sourceId,
+            source_type,
+            body.binding,
+            [a["name"] for a in body.arguments],
+        )
+    except NativeSqlRefused as exc:
+        raise ApiError(422, exc.code, str(exc), name=body.name, reason=exc.reason) from exc
+    body.functionName = body.functionName or body.name
+
+
 def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     """The command's bindings and, for a SQL expression function, its template, as they will be
     served: no binding another command or a built-in holds in its language (refused naming both),
@@ -522,6 +553,7 @@ async def create_function(
     await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_native_sql(body)  # REQ-1988
     _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
@@ -587,6 +619,7 @@ async def update_function(
     await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_native_sql(body)  # REQ-1988
     _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
