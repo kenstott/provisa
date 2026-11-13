@@ -99,6 +99,7 @@ const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/RegexMaskFields.tsx": 1, // a regex mask's common masks (masks-presets.cjs)
   "components/provisa-graph/GraphControls.tsx": 1, // every 2D graph's download (the J562 render harness)
   "components/erd/ErdLayoutMenu.tsx": 1, // the ERD's Layout menu (erd-saved-layout.test.tsx)
+  "components/MermaidDiagram.tsx": 1, // the plan diagram's download (J1260 render harness, plan.cjs)
 };
 
 describe("a hint on a menu's or popover's trigger", () => {

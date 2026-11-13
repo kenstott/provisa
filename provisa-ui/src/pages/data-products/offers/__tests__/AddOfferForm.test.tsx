@@ -56,6 +56,7 @@ const ACCESS: Record<number, TableAccess> = {
     domain: "sales",
     name: "sales.customers",
     table_name: "customers",
+    draft: false,
     columns: [
       {
         name: "id",
@@ -77,6 +78,7 @@ const ACCESS: Record<number, TableAccess> = {
     domain: "sales",
     name: "sales.orders",
     table_name: "orders",
+    draft: false,
     columns: [
       {
         name: "total",

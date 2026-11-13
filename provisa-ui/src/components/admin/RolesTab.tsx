@@ -111,6 +111,7 @@ export function RolesTab({ orgId }: RolesTabProps) {
                         <ConfirmDialog
                           title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
                           consequence={t("rolesTab.deleteRoleConsequence")}
+                          confirmLabel={t("common.delete")}
                           onConfirm={() => handleDeleteOrgRole(role.id)}
                         >
                           {(open) => (

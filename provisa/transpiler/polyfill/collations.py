@@ -22,6 +22,7 @@ with no COLLATE clause is the old table's (provisa.transpiler.pg_forms_system)."
 
 from __future__ import annotations
 
+from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal
 
@@ -85,4 +86,35 @@ PG_COLLATION_FOR = Feature(
     ),
 )
 
-FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR,)
+#: The orders of text and character by the database's collation (en_US.UTF-8, as pg_database
+#: says), each with its summary. Trino has no collation: its order of text is by code points, and
+#: it reads no COLLATE clause (run 43307392116 sent one, a syntax error there). Each is refused by
+#: name on Trino; every other dialect keeps the old table's form (provisa.transpiler
+#: .pg_forms_types). An order by bytes (text_pattern_lt and its kin) is answered there as before.
+_COLLATED_ORDERS = {
+    "text_lt": "One text before another in the database's collation.",
+    "text_le": "One text before or equal to another in the database's collation.",
+    "text_gt": "One text after another in the database's collation.",
+    "text_ge": "One text after or equal to another in the database's collation.",
+    "text_larger": "The later of two texts in the database's collation.",
+    "text_smaller": "The earlier of two texts in the database's collation.",
+    "bpcharlt": "One character string before another in the database's collation.",
+    "bpcharle": "One character string before or equal to another in the database's collation.",
+    "bpchargt": "One character string after another in the database's collation.",
+    "bpcharge": "One character string after or equal to another in the database's collation.",
+    "bpcharcmp": "btree's comparison of two character strings in the database's collation.",
+    "bpchar_larger": "The later of two character strings in the database's collation.",
+    "bpchar_smaller": "The earlier of two character strings in the database's collation.",
+}
+
+COLLATED_ORDERS: tuple[Feature, ...] = tuple(
+    trino.by_name(
+        name,
+        FAMILY,
+        summary,
+        "Refused by name: Trino has no collation, and orders text by its code points.",
+    )
+    for name, summary in _COLLATED_ORDERS.items()
+)
+
+FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR, *COLLATED_ORDERS)

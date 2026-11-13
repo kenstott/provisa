@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 65, of which 1 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 105, of which 25 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-1 of the grid's 31 features are native on ClickHouse and left out.
+69 of the grid's 144 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -61,7 +61,9 @@ arrayShuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 arraySlice($a, 1 + throwIf($n IS NULL OR $n &lt; 0 OR $n &gt; length($a), &#x27;postgresql-error 0A000: trim_array does not read this value &lt;end of postgresql-error&gt;&#x27;), length($a) - $n)</code></pre></td><td><ul><li>An out-of-range count is refused with 0A000, not PostgreSQL&#x27;s 2202E and its message. <code>0A000</code> trim_array does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
 =&gt;
 [$v]</code></pre></td><td><ul><li>Only a NULL array is written: ClickHouse has no array_append, so a call on an array that is not NULL fails with ClickHouse&#x27;s own error.</li></ul></td><td></td><td></td></tr>
@@ -75,6 +77,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -90,6 +113,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -173,4 +220,78 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE if(throwIf(coalesce(NOT match($v, &#x27;\\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\\z&#x27;), false), &#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, arrayStringConcat(arrayFilter(_t -&gt; NOT has($x, replace(replace(extract(_t, &#x27;\\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\\\&#x27;, &#x27;\\&#x27;)), extractAll(ifNull($v, &#x27;&#x27;), &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;)), &#x27; &#x27;), NULL) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>unnest</strong><br>The ranges of a multirange, or the lexemes of a tsvector, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_unnest: unnest of a tsvector: refused by name.</code></pre></td><td><ul><li>Of a tsvector: refused by name, as its rows are three columns (lexeme, positions, weights) of a text the engine holds it as. Of anything else, ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
+=&gt;
+if(throwIf(ifNull($x &lt; -2147483648 OR $x &gt; 4294967295, 0), &#x27;postgresql-error 0A000: mxid_age does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, CAST(CASE WHEN $x = 0 THEN 2147483647 WHEN 1 - if($x &lt; 0, $x + CAST(4294967296 AS Int64), $x) &lt; -2147483648 THEN 1 - if($x &lt; 0, $x + CAST(4294967296 AS Int64), $x) + 4294967296 ELSE 1 - if($x &lt; 0, $x + CAST(4294967296 AS Int64), $x) END AS Nullable(Int32)), NULL)</code></pre></td><td><ul><li>An xid past what xid&#x27;s input reads (-2^31 to 2^32 - 1) is refused by name where it runs. <code>0A000</code> mxid_age does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_char_to_encoding</strong><br>An encoding&#x27;s number by any of PostgreSQL&#x27;s names of it; -1 for a name of none.</td><td><pre><code>pg_char_to_encoding($n)
+=&gt;
+if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_to_encoding does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, CAST(CASE WHEN $n IS NULL THEN NULL ELSE CASE lower(replaceRegexpAll($n, &#x27;[^A-Za-z0-9]&#x27;, &#x27;&#x27;)) WHEN &#x27;abc&#x27; THEN 19 WHEN &#x27;alt&#x27; THEN 20 WHEN &#x27;big5&#x27; THEN 36 WHEN &#x27;euccn&#x27; THEN 2 WHEN &#x27;eucjis2004&#x27; THEN 5 WHEN &#x27;eucjp&#x27; THEN 1 WHEN &#x27;euckr&#x27; THEN 3 WHEN &#x27;euctw&#x27; THEN 4 WHEN &#x27;gb18030&#x27; THEN 39 WHEN &#x27;gbk&#x27; THEN 37 WHEN &#x27;iso88591&#x27; THEN 8 WHEN &#x27;iso885910&#x27; THEN 13 WHEN &#x27;iso885913&#x27; THEN 14 WHEN &#x27;iso885914&#x27; THEN 15 WHEN &#x27;iso885915&#x27; THEN 16 WHEN &#x27;iso885916&#x27; THEN 17 WHEN &#x27;iso88592&#x27; THEN 9 WHEN &#x27;iso88593&#x27; THEN 10 WHEN &#x27;iso88594&#x27; THEN 11 WHEN &#x27;iso88595&#x27; THEN 25 WHEN &#x27;iso88596&#x27; THEN 26 WHEN &#x27;iso88597&#x27; THEN 27 WHEN &#x27;iso88598&#x27; THEN 28 WHEN &#x27;iso88599&#x27; THEN 12 WHEN &#x27;johab&#x27; THEN 40 WHEN &#x27;koi8&#x27; THEN 22 WHEN &#x27;koi8r&#x27; THEN 22 WHEN &#x27;koi8u&#x27; THEN 34 WHEN &#x27;latin1&#x27; THEN 8 WHEN &#x27;latin10&#x27; THEN 17 WHEN &#x27;latin2&#x27; THEN 9 WHEN &#x27;latin3&#x27; THEN 10 WHEN &#x27;latin4&#x27; THEN 11 WHEN &#x27;latin5&#x27; THEN 12 WHEN &#x27;latin6&#x27; THEN 13 WHEN &#x27;latin7&#x27; THEN 14 WHEN &#x27;latin8&#x27; THEN 15 WHEN &#x27;latin9&#x27; THEN 16 WHEN &#x27;mskanji&#x27; THEN 35 WHEN &#x27;muleinternal&#x27; THEN 7 WHEN &#x27;shiftjis&#x27; THEN 35 WHEN &#x27;shiftjis2004&#x27; THEN 41 WHEN &#x27;sjis&#x27; THEN 35 WHEN &#x27;sqlascii&#x27; THEN 0 WHEN &#x27;tcvn&#x27; THEN 19 WHEN &#x27;tcvn5712&#x27; THEN 19 WHEN &#x27;uhc&#x27; THEN 38 WHEN &#x27;unicode&#x27; THEN 6 WHEN &#x27;utf8&#x27; THEN 6 WHEN &#x27;vscii&#x27; THEN 19 WHEN &#x27;win&#x27; THEN 23 WHEN &#x27;win1250&#x27; THEN 29 WHEN &#x27;win1251&#x27; THEN 23 WHEN &#x27;win1252&#x27; THEN 24 WHEN &#x27;win1253&#x27; THEN 30 WHEN &#x27;win1254&#x27; THEN 31 WHEN &#x27;win1255&#x27; THEN 32 WHEN &#x27;win1256&#x27; THEN 18 WHEN &#x27;win1257&#x27; THEN 33 WHEN &#x27;win1258&#x27; THEN 19 WHEN &#x27;win866&#x27; THEN 20 WHEN &#x27;win874&#x27; THEN 21 WHEN &#x27;win932&#x27; THEN 35 WHEN &#x27;win936&#x27; THEN 37 WHEN &#x27;win949&#x27; THEN 38 WHEN &#x27;win950&#x27; THEN 36 WHEN &#x27;windows1250&#x27; THEN 29 WHEN &#x27;windows1251&#x27; THEN 23 WHEN &#x27;windows1252&#x27; THEN 24 WHEN &#x27;windows1253&#x27; THEN 30 WHEN &#x27;windows1254&#x27; THEN 31 WHEN &#x27;windows1255&#x27; THEN 32 WHEN &#x27;windows1256&#x27; THEN 18 WHEN &#x27;windows1257&#x27; THEN 33 WHEN &#x27;windows1258&#x27; THEN 19 WHEN &#x27;windows866&#x27; THEN 20 WHEN &#x27;windows874&#x27; THEN 21 WHEN &#x27;windows932&#x27; THEN 35 WHEN &#x27;windows936&#x27; THEN 37 WHEN &#x27;windows949&#x27; THEN 38 WHEN &#x27;windows950&#x27; THEN 36 ELSE -1 END END AS Nullable(Int32)), NULL)</code></pre></td><td><ul><li>A name of more than 63 bytes is refused by name where it runs: PostgreSQL cuts it to them as it reads it. <code>0A000</code> pg_char_to_encoding does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int4multirange</strong><br>A multirange of integers, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> int4multirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int8multirange</strong><br>A multirange of bigints, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> int8multirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>nummultirange</strong><br>A multirange of numerics, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> nummultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 </tbody></table>

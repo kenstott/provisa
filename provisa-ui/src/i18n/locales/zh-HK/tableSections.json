@@ -38,6 +38,9 @@
     "classTerm": "行是以下術語的實例",
     "noClassTerm": "無術語",
     "classTermUnreadable": "無法讀取其術語：{{error}}",
+    "classTermNoModel": "無法讀取其術語：您的角色無法讀取模型的表。",
+    "classTermNoEntry": "無法讀取其術語：您的角色無法讀取此表在模型中的條目。",
+    "classTermNoField": "無法讀取其術語：您的角色無法讀取表的行是哪個術語的實例。",
     "access": "存取"
   }
 }

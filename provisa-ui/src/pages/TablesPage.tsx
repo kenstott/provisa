@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { PageTitle } from "../components/PageTitle";
 import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
@@ -1703,16 +1704,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         ))}
         {/* The action first, at the start of the row; the way back to the form follows. */}
         <Group justify="flex-start" mt="md">
-          <Button
-            color="red"
-            data-testid="column-dependents-confirm"
+          <DestructiveConfirmButton
+            testId="column-dependents-confirm"
             onClick={() => {
               setPendingDependents(null);
               void performSaveEdit();
             }}
           >
             {translate("tablesPage.dependentsConfirm")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button
             variant="default"
             onClick={() => setPendingDependents(null)}

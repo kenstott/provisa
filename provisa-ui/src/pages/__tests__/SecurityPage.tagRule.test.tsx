@@ -180,7 +180,7 @@ describe("SecurityPage — RLS rules on tags (REQ-1384)", () => {
     await userEvent.click(screen.getByTestId("rule-scope-12"));
     await userEvent.click(await screen.findByTestId("delete-rule-12"));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteRlsRuleSpy).toHaveBeenCalled());
     expect(deleteRlsRuleSpy.mock.calls[0]).toEqual(["analyst", null, null, null, "regional", 12]);
   });

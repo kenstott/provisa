@@ -160,7 +160,7 @@ export function PanelDelete({
         consequence={consequence}
         // The dialog closes at once: the delete's progress is the panel's, not the dialog's.
         onConfirm={press}
-        confirmLabel={confirmLabel}
+        confirmLabel={confirmLabel ?? t("common.delete")}
         testId={confirmTestId ?? (testId ? `${testId}-confirm-dialog` : undefined)}
       >
         {(open) => {
