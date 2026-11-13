@@ -51,6 +51,7 @@ def test_the_transports():
         "odata",  # REQ-2193
         "sql_http",
         "cypher_http",
+        "sparql_http",
         "pgwire",
         "flight",
         "bolt",
@@ -70,6 +71,7 @@ def test_a_fresh_deployment_ships_flight_at_3600_pgwire_at_300_and_the_rest_at_6
         "odata",
         "sql_http",
         "cypher_http",
+        "sparql_http",
         "bolt",
         "grpc",
         "mcp",
@@ -224,6 +226,9 @@ def test_an_http_route_is_its_own_transport_and_other_paths_have_none():
     assert http_transport_for_path("/data/jsonapi/sales/orders") == "jsonapi"
     assert http_transport_for_path("/data/odata/orders") == "odata"
     assert http_transport_for_path("/data/odata") == "odata"
+    # SPARQL over HTTP has a deadline of its own, and so a statement a disconnect can cancel.
+    assert http_transport_for_path("/data/sparql") == "sparql_http"
+    assert http_transport_for_path("/data/sparql/vocabulary") == "sparql_http"
     assert http_transport_for_path("/admin/settings") is None
     assert http_transport_for_path("/data/restricted") is None  # a prefix, not a substring
 

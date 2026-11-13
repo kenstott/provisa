@@ -157,6 +157,7 @@
       "odata": "OData",
       "sql_http": "基于 HTTP 的 SQL",
       "cypher_http": "基于 HTTP 的 Cypher",
+      "sparql_http": "基于 HTTP 的 SPARQL",
       "pgwire": "PostgreSQL wire",
       "flight": "Arrow Flight",
       "bolt": "Bolt",
