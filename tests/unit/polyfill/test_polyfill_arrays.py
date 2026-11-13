@@ -27,7 +27,7 @@ from provisa.transpiler import function_macros
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID, arrays, graft, holes
 from provisa.transpiler.polyfill.grid import DIALECTS, written_in
-from provisa.transpiler.polyfill.notation import Refusal, pattern, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, pattern, replacement
 from provisa.transpiler.transpile import transpile
 
 _DIALECTS = sorted(DIALECTS)
@@ -55,7 +55,9 @@ def _call(rule_pattern: str | None) -> str:
 def test_the_family_is_in_the_grid_and_not_in_the_old_table():
     names = {f.name for f in arrays.FEATURES}
     assert names <= {f.name for f in GRID.features}
-    assert not {name for name, _ in MACROS} & names
+    # btarraycmp's row writes Trino's form only: every other dialect keeps the old table's
+    # (provisa.transpiler.pg_forms_index), which reads an array's elements as written first.
+    assert not {name for name, _ in MACROS} & names - {"btarraycmp"}
 
 
 @pytest.mark.parametrize(("feature", "rule", "dialect"), _RULES)
@@ -71,6 +73,9 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
         assert refused.value.sqlstate == form.sqlstate
         assert isinstance(refused.value, FunctionRefused)  # the API's handler of a refusal
         return
+    if isinstance(form, Rewrite):
+        _rewritten_as_the_row_writes(form, sql, dialect)
+        return
     written = sqlglot.parse_one(transpile(sql, dialect), read=dialect).expressions[0].this
     if form is None:  # sqlglot's own writing of the call, untouched by the grid
         plain = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
@@ -84,6 +89,29 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     # A dialect that quotes every identifier (Snowflake) writes the same column quoted, and one
     # that folds an unquoted name to upper case (Exasol) writes it so.
     assert _unquoted(written, dialect).sql(dialect) == _unquoted(expected, dialect).sql(dialect)
+
+
+def _rewritten_as_the_row_writes(form: Rewrite, sql: str, dialect: str) -> None:
+    """A rewrite's refusal raised from the row; what it writes, the call's form; and where it writes
+    nothing (a dialect that keeps the old table's form), no refusal of the grid's."""
+    call = sqlglot.parse_one(sql, read="postgres").expressions[0].this
+    try:
+        rewritten = form.function(call, dialect)
+    except Refused as by_the_row:
+        with pytest.raises(RowRefused) as refused:
+            transpile(sql, dialect)
+        assert str(refused.value) == by_the_row.refusal.message
+        assert refused.value.sqlstate == by_the_row.refusal.sqlstate
+        return
+    try:
+        written = transpile(sql, dialect)
+    except RowRefused:
+        pytest.fail("a row that keeps the old table's form refused the call")
+    except FunctionRefused:
+        return  # the old table's own refusal by name
+    if rewritten is not None:
+        expected = rewritten.sql(written_in(dialect))
+        assert expected in sqlglot.parse_one(written, read=dialect).sql(written_in(dialect))
 
 
 def _unquoted(tree: exp.Expr, dialect: str) -> exp.Expr:
