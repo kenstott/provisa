@@ -33,6 +33,9 @@ export interface SchemaRel {
   properties: string[];
   /** What it joins, the same for a join declared from both ends (REQ-2135). */
   join: string;
+  /** A link from a constant (HAS_TABLE: every row to its table's registration): read only as a hop
+   * of its own, never a step of a variable-length walk (REQ-2135). */
+  constantSource: boolean;
 }
 
 export interface CypherSchema {

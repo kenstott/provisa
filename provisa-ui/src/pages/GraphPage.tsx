@@ -347,12 +347,14 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
               target: string;
               properties?: string[];
               join: string;
+              constant_source: boolean;
             }) => ({
               type: r.type,
               source: r.source ?? "",
               target: r.target ?? "",
               properties: r.properties ?? [],
               join: r.join,
+              constantSource: r.constant_source,
             }),
           );
         const seen = new Set<string>();

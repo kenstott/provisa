@@ -146,3 +146,41 @@ def test_each_label_says_whether_its_domain_is_a_system_domain(state):
     assert labels["DataProducts"]["system_domain"] is True
     assert labels["Orders"]["domain_id"] == "sales"
     assert labels["Orders"]["system_domain"] is False
+
+
+def test_each_relationship_says_whether_it_links_from_a_constant(state, monkeypatch):
+    # REQ-2135: a link from a constant (HAS_TABLE) is no step of a variable-length walk; the
+    # explorer leaves it out of the paths between two nodes, so the schema says which it is.
+    from provisa.api.rest import cypher_router
+    from provisa.gql.label_map import RelationshipMapping
+
+    built = cypher_router._build_label_map
+    labels: dict[int, str] = {}
+
+    def with_links(ctx, role_id, st):
+        label_map = built(ctx, role_id, st)
+        for key, n in label_map.nodes.items():
+            labels[n.table_id] = key
+        common = {"source_label": labels[ORDERS], "target_label": labels[PRODUCTS]}
+        label_map.relationships["HAS_TABLE"] = RelationshipMapping(
+            rel_type="HAS_TABLE",
+            join_source_column="__table_id__",
+            join_target_column="table_query_name",
+            field_name="_meta",
+            source_expr="('sales', 'orders')",
+            target_expr='({alias}."domain_id", {alias}."table_query_name")',
+            **common,
+        )
+        label_map.relationships["LISTED_IN"] = RelationshipMapping(
+            rel_type="LISTED_IN",
+            join_source_column="id",
+            join_target_column="id",
+            field_name="listed",
+            **common,
+        )
+        return label_map
+
+    monkeypatch.setattr(cypher_router, "_build_label_map", with_links)
+    types = {r["type"]: r for r in _graph_schema("r")["relationship_types"]}
+    assert types["HAS_TABLE"]["constant_source"] is True
+    assert types["LISTED_IN"]["constant_source"] is False

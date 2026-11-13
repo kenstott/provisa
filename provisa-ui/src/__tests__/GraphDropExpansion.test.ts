@@ -20,7 +20,14 @@ import type { SchemaRel } from "../components/graph/graph-schema-types";
 
 /** A relationship type as /data/graph-schema answers it for the acting role (its label map). */
 function rt(type: string, source = "GlossaryTerm", target = "GlossaryTerm"): SchemaRel {
-  return { type, source, target, properties: [], join: `${type} ${source} ${target}` };
+  return {
+    type,
+    source,
+    target,
+    properties: [],
+    join: `${type} ${source} ${target}`,
+    constantSource: false,
+  };
 }
 
 /** Every label the relationships join, each of a data domain, none selected: no way is out of scope
@@ -305,8 +312,22 @@ describe("REQ-2135 a parameterized table", () => {
 describe("REQ-2135 a join declared from both ends", () => {
   it("adds one hop, not two tied paths", () => {
     const rels: SchemaRel[] = [
-      { type: "SUBMITTED", source: "U", target: "I", properties: [], join: "one" },
-      { type: "SUBMITTED_BY", source: "I", target: "U", properties: [], join: "one" },
+      {
+        type: "SUBMITTED",
+        source: "U",
+        target: "I",
+        properties: [],
+        join: "one",
+        constantSource: false,
+      },
+      {
+        type: "SUBMITTED_BY",
+        source: "I",
+        target: "U",
+        properties: [],
+        join: "one",
+        constantSource: false,
+      },
     ];
     const out = expand("MATCH (u:U) RETURN u", "I", rels);
     expect(out.query.match(/OPTIONAL MATCH/g)).toHaveLength(1);

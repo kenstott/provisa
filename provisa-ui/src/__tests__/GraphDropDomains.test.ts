@@ -46,16 +46,20 @@ const scope = (...checked: string[]): PathScope => ({
   checkedDomains: new Set(checked),
 });
 
-const rel = (type: string, source: string, target: string): SchemaRel => ({
+const rel = (type: string, source: string, target: string, constantSource = false): SchemaRel => ({
   type,
   source,
   target,
   properties: [],
   join: `${type} ${source} ${target}`,
+  constantSource,
 });
 
-/** The model's own link of every table to its registration. */
-const HAS_TABLE = [rel("HAS_TABLE", PETS, REGISTERED), rel("HAS_TABLE", EMPLOYEES, REGISTERED)];
+/** The model's own link of every table to its registration: a link from a constant. */
+const HAS_TABLE = [
+  rel("HAS_TABLE", PETS, REGISTERED, true),
+  rel("HAS_TABLE", EMPLOYEES, REGISTERED, true),
+];
 const PETS_FRAME = "MATCH (n:PetStore:Pets) RETURN n LIMIT 25";
 
 function drop(query: string, label: string, rels: SchemaRel[], s: PathScope) {
@@ -185,6 +189,26 @@ describe("the paths between two nodes dragged together stay in the selected doma
       ),
     ).toEqual({
       refused: { key: "graphFrame.sparqlDropNoPath", values: { name: EMPLOYEES, classes: PETS } },
+    });
+  });
+
+  it("never walks a link from a constant, a meta node at one end or not", () => {
+    // A variable-length walk naming HAS_TABLE joins on no column of the table (the engine refuses
+    // it), and one not naming it leaves it out: from a registration to a pet there is no walk.
+    const meta = scope("petstore", "shelter", "meta");
+    expect(nodePathQuery(node(REGISTERED, 1), node(PETS, 2), key, rels, new Set(), meta)).toEqual({
+      refused: { key: "graphFrame.sparqlDropNoPath", values: { name: PETS, classes: REGISTERED } },
+    });
+    // A relationship of meta's own that is not from a constant is walked.
+    const described = [...rels, rel("DESCRIBES", REGISTERED, ASSIGNMENTS)];
+    const out = nodePathQuery(node(REGISTERED, 1), node(PETS, 2), key, described, new Set(), meta);
+    expect(out).toEqual({
+      query: [
+        "MATCH p = allShortestPaths((a:Meta:RegisteredTables)-[:ASSIGNED_PET|DESCRIBES|IS_EMPLOYEE*..4]-(b:PetStore:Pets))",
+        "WHERE a.id = 1 AND b.id = 2",
+        "RETURN p",
+        "LIMIT 25",
+      ].join("\n"),
     });
   });
 

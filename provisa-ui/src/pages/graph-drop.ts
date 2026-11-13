@@ -251,8 +251,9 @@ const NODE_PATH_ROWS = 25;
 /**
  * The query a node dragged onto another runs (REQ-2135): every shortest path of the data between the
  * two, within MAX_SCHEMA_HOPS. Its pattern names the relationship types it may take: each one whose
- * every relationship joins labels a path may pass through (``pathThrough``) or the two ends, so the
- * walk stays in the selected domains and out of a system domain neither node is of. Refused by name
+ * every relationship joins labels a path may pass through (``pathThrough``) or the two ends, and
+ * none from a constant, so the walk stays in the selected domains and out of a system domain
+ * neither node is of. Refused by name
  * where a node's key is not known (``key`` is a label's key column), and where no such path joins
  * the two labels.
  */
@@ -284,9 +285,13 @@ export function nodePathQuery(
   const through = pathThrough(scope, ends);
   const joins = (label: string) => through.has(label) || ends.includes(label);
   // A type is taken whole or not at all: a variable-length pattern names types, not the labels
-  // between, so a type with one relationship outside the scope (HAS_TABLE, every table's) is left out.
+  // between, so a type with one relationship outside the scope is left out. So is a link from a
+  // constant (HAS_TABLE): the server leaves it out of a walk that does not name it, and a walk that
+  // names it joins on no column of the table, which the engine refuses.
   const outside = new Set(
-    schemaRels.filter((r) => !joins(r.source) || !joins(r.target)).map((r) => r.type),
+    schemaRels
+      .filter((r) => r.constantSource || !joins(r.source) || !joins(r.target))
+      .map((r) => r.type),
   );
   const taken = schemaRels.filter((r) => !outside.has(r.type));
   const { paths, hops } = shortestSchemaPaths(

@@ -1235,6 +1235,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "properties": sorted(r.properties.keys()),
                     # REQ-2135: what it joins, the same for a join declared from both ends.
                     "join": r.join,
+                    # REQ-2135: a link from a constant (HAS_TABLE: every row of a table to its one
+                    # registration) is read only as a hop of its own; a variable-length walk leaves
+                    # it out unless named, and named it does not read the constant.
+                    "constant_source": r.constant_source,
                 }
                 for r in label_map.relationships.values()
             ],
