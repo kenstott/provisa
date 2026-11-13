@@ -329,7 +329,7 @@ export function MetricsPage() {
   // existing name is refused by the create on save.
   const openDuplicate = (m: Metric) => {
     openCreate();
-    setForm({ ...formOf(m), name: `${m.name}-copy` });
+    setForm({ ...formOf(m), name: `${m.name}_copy` });
     setBuilder(builderOf(m));
   };
 
