@@ -1884,8 +1884,9 @@ async def govern_statement(
     from provisa.compiler import temp_tables
 
     # REQ-615: a statement governed in a session that holds temporary tables is kept for that
-    # session alone, as its tables stand: the same words name another session's table, at
-    # another address, or the same session's after it dropped and created one of that name.
+    # session alone, as its tables are shaped (temp_tables.plan_key): the same words name another
+    # session's table, at another address, or the same session's after it made one of that name
+    # with other columns. A write that leaves the tables' columns as they were keeps the plan.
     _slot = PlanSlot(
         state,
         "sql",
@@ -1893,7 +1894,7 @@ async def govern_statement(
         sql,
         [
             *sorted(_session_vars.items()),
-            *temp_tables.slot_key(),
+            *temp_tables.plan_key(),
             # A statement governed as the product's is never the one kept for a role's same words.
             *([("provisa.product_statement", "1")] if product_statement else []),
             # Nor is a catalog statement, whose guard is its own (REQ-2190).
@@ -5319,8 +5320,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # The validation a plan was kept with depends on whether its joins were the SDL's.
     # A request-level as-of decides which bitemporal views keep their reference.
     # REQ-615, REQ-2176: as on the raw-SQL stage, a statement compiled in a session holding
-    # temporary tables (a Bolt connection's ephemeral graph) is kept for that session alone, as
-    # its tables stand: its kept engine form names the session's store schema, gone with it.
+    # temporary tables (a principal's graph session) is kept for that session alone, as its
+    # tables are shaped (temp_tables.plan_key): its kept engine form names the session's store
+    # schema and reads its tables' columns, never their rows, so a write that leaves the columns
+    # as they were (the graph session's generation advanced) is served the same plan.
     _slot = PlanSlot(
         state,
         "compiled",
@@ -5329,7 +5332,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         sorted(_session_vars.items()),
         sdl_joins,
         as_of or "",
-        temp_tables.slot_key(),
+        temp_tables.plan_key(),
     )
     # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
     # statement as written: a kept plan outlives the window, and governance expands the view.
