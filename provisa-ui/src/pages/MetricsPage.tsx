@@ -301,25 +301,36 @@ export function MetricsPage() {
     setCreating(true);
   };
 
+  const formOf = (m: Metric): MetricForm => ({
+    name: m.name,
+    expression: m.expression,
+    datatype: m.datatype ?? "",
+    description: m.description ?? "",
+    aiContext: m.aiContext ?? "",
+    term: m.term,
+  });
+  const builderOf = (m: Metric): BuilderState => {
+    const match = BUILDER_EXPR_RE.exec(m.expression);
+    return match
+      ? { agg: match[1].toUpperCase(), fact: match[2], column: match[3] }
+      : { ...EMPTY_BUILDER };
+  };
+
   const openEdit = (m: Metric) => {
     setCreating(false);
     setEditingName(m.name);
     setExpanded(m.name);
-    setForm({
-      name: m.name,
-      expression: m.expression,
-      datatype: m.datatype ?? "",
-      description: m.description ?? "",
-      aiContext: m.aiContext ?? "",
-      term: m.term,
-    });
-    const match = BUILDER_EXPR_RE.exec(m.expression);
-    setBuilder(
-      match
-        ? { agg: match[1].toUpperCase(), fact: match[2], column: match[3] }
-        : { ...EMPTY_BUILDER },
-    );
+    setForm(formOf(m));
+    setBuilder(builderOf(m));
     setMsg("");
+  };
+
+  // Duplicate: the create form, filled with the metric's definition under a new name. An
+  // existing name is refused by the create on save.
+  const openDuplicate = (m: Metric) => {
+    openCreate();
+    setForm({ ...formOf(m), name: `${m.name}-copy` });
+    setBuilder(builderOf(m));
   };
 
   const closeForm = () => {
@@ -449,6 +460,7 @@ export function MetricsPage() {
         m={selectedMetric}
         dependentViews={dependentViews(selectedMetric.name)}
         onEdit={() => openEdit(selectedMetric)}
+        onDuplicate={() => openDuplicate(selectedMetric)}
         onDelete={() => handleDelete(selectedMetric.name)}
       />
     )

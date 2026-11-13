@@ -34,7 +34,13 @@ function fields(name: string): [string, string][] {
 
 const show = (m: Metric, dependentViews: string[] = []) =>
   render(
-    <MetricDetailPanel m={m} dependentViews={dependentViews} onEdit={vi.fn()} onDelete={vi.fn()} />,
+    <MetricDetailPanel
+      m={m}
+      dependentViews={dependentViews}
+      onEdit={vi.fn()}
+      onDuplicate={vi.fn()}
+      onDelete={vi.fn()}
+    />,
   );
 
 describe("a metric's read view", () => {
