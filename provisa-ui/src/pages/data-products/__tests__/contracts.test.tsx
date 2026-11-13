@@ -78,8 +78,12 @@ const OFFER = {
     },
   ],
 } as Offer;
+// Every section is mounted (Lineage and Related only once expanded): the reads the others make
+// answer nothing here.
 vi.mock("../../../api/dataProductOffers", () => ({
   fetchOffers: () => Promise.resolve([OFFER]),
+  fetchBids: () => Promise.resolve([]),
+  fetchProductProfiles: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {

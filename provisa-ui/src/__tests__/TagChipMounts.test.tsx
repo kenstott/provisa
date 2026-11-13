@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1634, REQ-2160, REQ-2145, REQ-2208: where the tag chip sits. A data product's panel shows its
-// tags and, to its editor, the chip; a glossary term's page has the chip; a library document has
-// one, and so does each of its sections, at the first of the section's passages.
+// REQ-1634, REQ-2160, REQ-2145, REQ-2208: where the tag chip sits. A data product's page header
+// shows its tags with the chip, read-only to a reader who may not edit it; a glossary term's page
+// has the chip; a library document has one, and so does each of its sections, at the first of the
+// section's passages.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../test-utils/render";
@@ -106,26 +107,25 @@ describe("a data product's tags", () => {
         onTagsChanged={onTagsChanged}
       />,
     );
-    // A product's tags are among what it is related to: its Related tab.
-    fireEvent.click(screen.getByTestId("data-product-tab-related-sales_kpis"));
-    return screen.getByTestId("data-product-card-tags-sales_kpis");
+    // REQ-2180 (THE PRODUCT PAGE IS SUMMARY ROWS): a product's tags are in its page's header.
+    return screen.getByTestId("data-product-header-tags-sales_kpis");
   }
 
   it("is the chip, naming the product, for its editor, and its change reads the product again", async () => {
     const onTagsChanged = vi.fn();
-    const card = await panel(true, ["certified"], onTagsChanged);
-    const chip = within(card).getByTestId("chip-product");
+    const header = await panel(true, ["certified"], onTagsChanged);
+    const chip = within(header).getByTestId("chip-product");
     expect(target(chip)).toMatchObject({ objectType: "product", productId: "sales_kpis" });
+    expect(chip.dataset.readonly).toBe("false");
     fireEvent.click(chip);
     expect(onTagsChanged).toHaveBeenCalledTimes(1);
   });
 
-  it("is the list it reads, for any other reader", async () => {
-    const card = await panel(false, ["certified", "gold"]);
-    expect(within(card).queryByTestId("chip-product")).toBeNull();
-    expect(within(card).getByTestId("data-product-detail-tags-sales_kpis")).toHaveTextContent(
-      "certifiedgold",
-    );
+  it("is the same chip, read-only, for any other reader", async () => {
+    const header = await panel(false, ["certified", "residency:eu"]);
+    const chip = within(header).getByTestId("chip-product");
+    expect(target(chip)).toMatchObject({ objectType: "product", productId: "sales_kpis" });
+    expect(chip.dataset.readonly).toBe("true");
   });
 });
 

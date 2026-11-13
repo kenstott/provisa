@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// THE Save: one button, one look, wherever a form's foot, a panel's head or a dialog offers to
-// keep what was entered. Filled primary (Mantine's `filled` variant), the check, the shared word,
-// Mantine's standard size -- the same size as the Cancel beside it (CancelButton). A busy Save
-// shows a spinner in place of its check. It takes nothing that changes its look.
+// THE Save: one button. At a form's foot and in a dialog it is filled primary (Mantine's `filled`
+// variant), the check, the shared word, Mantine's standard size -- the same size as the Cancel
+// beside it (CancelButton). In a detail panel's head (`head`) it has no border and no fill, as the
+// head's other actions are (REQ-1968): it takes the head's one style (PanelHeadStyle). A busy Save
+// shows a spinner in place of its check. It takes nothing else that changes its look.
 
 import type { MouseEventHandler } from "react";
 import { Button, Loader } from "@mantine/core";
@@ -24,6 +25,7 @@ export function SaveButton({
   form,
   busy = false,
   disabled = false,
+  head = false,
   testId,
 }: {
   onClick?: MouseEventHandler<HTMLButtonElement>;
@@ -32,15 +34,16 @@ export function SaveButton({
   form?: string;
   busy?: boolean;
   disabled?: boolean;
+  /** Drawn in a detail panel's head: the head's style, not the foot's. */
+  head?: boolean;
   testId?: string;
 }) {
   const { t } = useTranslation();
   return (
     <Button
-      // Set here, not left to a theme: a panel's head makes its actions borderless and compact
-      // by default (PanelHeadStyle), and Save is the same there as anywhere.
-      variant="filled"
-      size="sm"
+      // Set here, not left to a theme, for the foot and a dialog. In a head nothing is set: the
+      // head's theme (PanelHeadStyle) gives the one head style.
+      {...(head ? {} : { variant: "filled", size: "sm" } as const)}
       form={form}
       type={submit ? "submit" : "button"}
       onClick={submit ? undefined : onClick}

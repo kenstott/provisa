@@ -308,6 +308,8 @@
         "history": "संस्करण इतिहास"
       }
     },
-    "detailPanel": "डेटा प्रोडक्ट का विवरण"
+    "detailPanel": "डेटा प्रोडक्ट का विवरण",
+    "tagFacetLabel": "टैग",
+    "tagFacetPlaceholder": "टैग से फ़िल्टर करें"
   }
 }
