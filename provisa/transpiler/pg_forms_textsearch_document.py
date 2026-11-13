@@ -294,7 +294,9 @@ def lexemes_of(e: Engine, parts: str, english: bool) -> str:
             f"{e.digits.format(_after(e, '_y[1]', _r1(e, '_y[1]')))}, _y[4]"
         ),
     )
-    words = _stage(e, regions, lambda w, r1, r2: _step_1a(e, f"({_step_0(e, w)})"))
+    # step 0 a stage of its own: step 1a names its word a score of times, and each would write it
+    words = _stage(e, regions, lambda w, r1, r2: _step_0(e, w))
+    words = _stage(e, words, lambda w, r1, r2: _step_1a(e, w))
     words = _stage(e, words, lambda w, r1, r2: w, _in(e, "_y[1]", _AFTER_STEP_1A))
     words = _stage(e, words, lambda w, r1, r2: _step_1b(e, w, r1))
     words = _stage(e, words, lambda w, r1, r2: _step_1c(e, w))
