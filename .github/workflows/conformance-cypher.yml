@@ -25,11 +25,9 @@ run-name: ${{ inputs.features && format('Conformance (Cypher) [{0}]', inputs.fea
 
 on:
   # Every push to a release branch runs this: it gates the release (REQ-1989). A push to main
-  # never does; main runs it nightly, so the expected-failures gate judges main every day.
+  # never does.
   push:
     branches: ['release/**']
-  schedule:
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       ref:

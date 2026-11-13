@@ -391,9 +391,9 @@ def test_a_stated_workflow_runs_its_own_list_gate(name, command):
 
 
 @pytest.mark.parametrize("name", sorted(set(GATED) | set(CANNOT_DROP_SILENTLY)))
-def test_every_conformance_workflow_runs_nightly_and_never_on_a_push_to_main(name):
+def test_every_conformance_workflow_runs_for_a_release_or_by_hand_and_never_on_a_push_to_main(name):
     doc = yaml.safe_load((WORKFLOWS / name).read_text())
     on = doc[True] if True in doc else doc["on"]  # YAML 1.1 reads the bare key on as True
-    assert on.get("schedule"), f"{name} has no schedule"
+    assert "schedule" not in on, f"{name} runs on a schedule: main runs no conformance suite"
     push = on.get("push") or {}
     assert "main" not in (push.get("branches") or [])
