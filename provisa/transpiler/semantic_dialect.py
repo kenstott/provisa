@@ -429,13 +429,28 @@ def _clickhouse_case(self: Generator, expression: exp.Case) -> str:
         if decided is None:
             if at == 0:
                 return self.case_sql(expression)
+            if _drops_an_aggregate(expression, ifs[at:]):
+                return self.case_sql(expression)
             rest = expression.copy()
             rest.set("ifs", [b.copy() for b in ifs[at:]])
             return self.case_sql(rest)
         if decided:
+            if _drops_an_aggregate(expression, [branch.args["true"]]):
+                return self.case_sql(expression)
             return self.sql(branch.args["true"])
     default = expression.args.get("default")
+    if _drops_an_aggregate(expression, [default] if default is not None else []):
+        return self.case_sql(expression)
     return self.sql(default) if default is not None else "NULL"
+
+
+def _drops_an_aggregate(case: exp.Case, kept: list[exp.Expr]) -> bool:
+    """Whether folding ``case`` to ``kept`` leaves out an aggregate it holds: the statement would
+    then be no aggregate, a row for each row where PostgreSQL answers one for the group
+    (percentile_cont of a NULL fraction is CASE WHEN FALSE THEN its aggregate END)."""
+    held = {id(n) for n in case.find_all(exp.AggFunc)}
+    left = {id(n) for part in kept for n in part.find_all(exp.AggFunc)}
+    return bool(held - left)
 
 
 ClickHouse.Generator.TRANSFORMS[exp.Case] = _clickhouse_case

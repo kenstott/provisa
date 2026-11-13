@@ -403,13 +403,31 @@ def _operand_type(operand: Any) -> CastType | None:
     return None
 
 
+def _null_alone(cast: Any) -> bool:
+    """Whether ``cast`` is of a NULL, through parentheses."""
+    import sqlglot.expressions as exp
+
+    value = cast.this
+    while isinstance(value, exp.Paren):
+        value = value.this
+    return isinstance(value, exp.Null)
+
+
+#: The array types a NULL cast describes, by PostgreSQL's name: those a call returns, and
+#: cstring[] (_cstring), which no call here returns.
+_NULL_ARRAYS: dict[str, CastType] = {
+    **{name: cast for name, cast in _RETURNED.items() if name.endswith("[]")},
+    "cstring[]": CastType(1263, -1, BVType.STRINGARRAY, frozenset({BVType.STRINGARRAY})),
+}
+
+
 def _result_type(expression: Any, columns: Any) -> CastType | None:
     """How a result column is described by its root: a money expression as PostgreSQL's operators
     type it, a cast by the cast's type, a call of a pg_catalog function by the type that function
     returns; None for any other column."""
     import sqlglot.expressions as exp
 
-    from provisa.pgwire.function_types import call_result_type, json_operator_type
+    from provisa.pgwire.function_types import argument_type, call_result_type, json_operator_type
     from provisa.transpiler.pg_money import money_type
 
     # A column of a table only the plan's shape types: a part of the expression is not known here.
@@ -419,6 +437,12 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     if typed is not None:
         return _RETURNED[typed]
     if isinstance(expression, exp.Cast):
+        if _null_alone(expression):
+            # ClickHouse holds no NULL of an array (an Array is never Nullable): it is sent a bare
+            # NULL (semantic_dialect), which the cast's array type describes.
+            null_array = _NULL_ARRAYS.get(argument_type(expression) or "")
+            if null_array is not None:
+                return null_array
         return _cast_type(expression.to)
     if isinstance(expression, XmlSerialize):
         return _cast_type(expression.args["to"])

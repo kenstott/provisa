@@ -62,11 +62,31 @@ def test_bit_varying_cast_reads_with_and_without_a_length() -> None:
         ("postgres", "SELECT CAST(NULL AS _cstring) FROM t"),
         ("duckdb", "SELECT CAST(NULL AS TEXT[]) FROM t"),
         ("trino", "SELECT CAST(NULL AS ARRAY(VARCHAR)) FROM t"),
-        ("clickhouse", "SELECT CAST(NULL AS Array(Nullable(String))) FROM t"),
+        # ClickHouse holds no NULL of an array (an Array is never Nullable; CAST(NULL AS
+        # Array(...)) is its error): a bare NULL, which pgwire describes as the cast's type.
+        ("clickhouse", "SELECT NULL FROM t"),
     ],
 )
 def test_cstring_array_is_its_array_type_not_a_subscript(dialect: str, written: str) -> None:
     assert transpile("SELECT NULL::cstring[] FROM t", dialect) == written
+
+
+@pytest.mark.parametrize(
+    ("sql", "oid"),
+    [
+        ("SELECT NULL::cstring[] FROM t", 1263),
+        ("SELECT NULL::text[] AS v", 1009),
+        ("SELECT NULL::integer[] AS v", 1007),
+    ],
+)
+def test_a_null_array_clickhouse_serves_untyped_is_described_as_its_cast(sql: str, oid: int):
+    """ClickHouse serves the bare NULL with no type (BLOB): the cast's array type describes it."""
+    from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype, _type_oid
+
+    types = [_sql_type_to_bvtype("BLOB")]
+    oids: list[int | None] = [_type_oid("BLOB")]
+    _describe_casts(sql, types, oids, [-1], [], ["BLOB"])
+    assert oids == [oid]
 
 
 def test_object_identifier_arrays_are_named_as_postgresql_names_them() -> None:
