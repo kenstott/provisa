@@ -20,7 +20,12 @@ A macaddr's bits are its twelve hex digits read as a number: the old table write
 Trino's to_hex, which reads bytes, not a number (a FUNCTION_NOT_FOUND there). Trino's form reads
 the digits with from_base and writes them with to_base, both of a bigint, which holds a macaddr's
 48 bits. A macaddr8's 64 bits are past a bigint's sign: its bit operations are refused by name.
-trunc of either keeps the first three bytes, which a macaddr8 read from six bytes shares."""
+trunc of either keeps the first three bytes, which a macaddr8 read from six bytes shares.
+
+ClickHouse has no inet type either (a cast to one is held as its text there, as a cidr's is):
+broadcast, family, host and network of an inet or a cidr are refused by name on it, as on Trino. Its
+trunc of a MAC address is ClickHouse's form of the same bytes: ClickHouse sent its own trunc, of a
+number, a String (run 43410717058)."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -30,7 +35,8 @@ import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Rewrite
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Rewrite, replacement
 
 FAMILY = "network addresses"
 
@@ -70,16 +76,33 @@ _OF_AN_ADDRESS = {
 }
 _ADDRESSES = ("inet", "cidr")
 
-OF_AN_ADDRESS: tuple[Feature, ...] = tuple(
-    trino.refused_feature(
+#: The dialects with no inet type and no form of a function of one.
+_NO_INET = (*trino.TRINO, "clickhouse")
+
+
+def _of_an_address(name: str, summary: str) -> Feature:
+    """``name`` of an inet or cidr refused by name where the dialect has no inet type."""
+    refused = trino.refusing(
+        name,
+        f"{name} of an inet or cidr: refused by name, as the dialect has no such type.",
+        trino.of_said(_ADDRESSES),
+    )
+    return Feature(
         name,
         FAMILY,
         summary,
-        "Refused by name: Trino has no inet type, and no form of the call.",
-        f"{name} of an inet or cidr: refused by name, as Trino has no such type.",
-        trino.of_said(_ADDRESSES),
+        read=Side(
+            rules=(Rule(None, dict.fromkeys(_NO_INET, refused)),),
+            limitations=dict.fromkeys(
+                _NO_INET,
+                (Limitation("Refused by name: the dialect has no inet type, and no form of it."),),
+            ),
+        ),
     )
-    for name, summary in _OF_AN_ADDRESS.items()
+
+
+OF_AN_ADDRESS: tuple[Feature, ...] = tuple(
+    _of_an_address(name, summary) for name, summary in _OF_AN_ADDRESS.items()
 )
 
 # --- macaddr ---------------------------------------------------------------------------------------
@@ -148,6 +171,15 @@ _TRUNCATED = {
     "'(..)(..)(..)(..)(..)(..)(..)(..)', '$1:$2:$3:$4:$5:$6:$7:$8')",
 }
 _TRUNC = "trunc($m)"
+#: ClickHouse's form of the same bytes: its replaceRegexpOne writes a group as \\N.
+_CH_KEPT_BYTES = "substring(lower(replaceRegexpAll(toString($m), '[^0-9A-Fa-f]', '')), 1, 6)"
+_CH_TRUNCATED = {
+    "macaddr": f"replaceRegexpOne(concat({_CH_KEPT_BYTES}, '000000'), "
+    "'(..)(..)(..)(..)(..)(..)', '\\\\1:\\\\2:\\\\3:\\\\4:\\\\5:\\\\6')",
+    "macaddr8": f"replaceRegexpOne(concat({_CH_KEPT_BYTES}, '0000000000'), "
+    "'(..)(..)(..)(..)(..)(..)(..)(..)', "
+    "'\\\\1:\\\\2:\\\\3:\\\\4:\\\\5:\\\\6:\\\\7:\\\\8')",
+}
 
 
 def truncated_address(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -155,7 +187,13 @@ def truncated_address(node: exp.Expr, dialect: str) -> exp.Expr | None:
     call = trino.called(node)
     if call is None or len(call[1]) != 1:
         return None
-    form = _TRUNCATED.get(trino.said(call[1][0]) or "")
+    said = trino.said(call[1][0]) or ""
+    if dialect == "clickhouse":
+        form = _CH_TRUNCATED.get(said)
+        if form is None:
+            return None
+        return graft(replacement(form, "clickhouse", _TRUNC), {"m": call[1][0]})
+    form = _TRUNCATED.get(said)
     return None if form is None else trino.written(form, _TRUNC, {"m": call[1][0]})
 
 
@@ -164,7 +202,15 @@ TRUNC = Feature(
     FAMILY,
     "A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.",
     read=Side(
-        rules=(Rule(_TRUNC, trino.trino_only(Rewrite(truncated_address))),),
+        rules=(
+            Rule(
+                _TRUNC,
+                {
+                    **trino.trino_only(Rewrite(truncated_address)),
+                    "clickhouse": Rewrite(truncated_address),
+                },
+            ),
+        ),
         limitations=dict.fromkeys(
             trino.TRINO,
             (

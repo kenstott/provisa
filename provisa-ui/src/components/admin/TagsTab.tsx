@@ -18,7 +18,6 @@ import {
   Button,
   Checkbox,
   Group,
-  Input,
   Pagination,
   SegmentedControl,
   Select,
@@ -39,8 +38,18 @@ import {
   useUpsertTagParamValue,
   useDeleteTagParamValue,
   useTagCitations,
+  citationKey,
+  pickedCitation,
+  type CitationPlace,
 } from "../../hooks/useTagQueries";
-import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../types/admin";
+import type {
+  LibraryCitation,
+  MutationResult,
+  Tag,
+  TagFieldPolicy,
+  TagObjectType,
+  TagParamPolicy,
+} from "../../types/admin";
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
@@ -73,6 +82,8 @@ const SCOPES: TagObjectType[] = [
   "section",
 ];
 
+const done: MutationResult = { success: true, message: "" };
+
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
 
 // REQ-1467: a tag either takes no parameter or demands one. There is no "optional" — a bare
@@ -92,7 +103,7 @@ export function TagsTab() {
   const refusal = useDependentsDialog();
   const { upsertTagParamValue } = useUpsertTagParamValue();
   const { deleteTagParamValue } = useDeleteTagParamValue();
-  const { citeDefinition, unciteDefinition } = useTagCitations();
+  const { citeDefinition } = useTagCitations();
 
   const [rememberedScope, setRememberedScope] = useRememberedChoice<TagObjectType>(
     "filter.tags.scope",
@@ -123,6 +134,8 @@ export function TagsTab() {
   const [formExpiresPolicy, setFormExpiresPolicy] = useState<TagFieldPolicy>("optional");
   const [formParamPolicy, setFormParamPolicy] = useState<TagParamPolicy>("none");
   const [formRequiresCitation, setFormRequiresCitation] = useState(false);
+  // The sections that say why the tag exists, edited here and saved with the tag.
+  const [formCited, setFormCited] = useState<LibraryCitation[]>([]);
   // REQ-1467: which tag's value list is open, and the draft new value/description beneath it.
   const [valuesTagId, setValuesTagId] = useState<string | null>(null);
   const [newValue, setNewValue] = useState("");
@@ -158,8 +171,6 @@ export function TagsTab() {
   const selection = useListSelection(filtered.map((tag) => tag.id));
   const deleteTags = useDeleteTags();
 
-  const editingTag = tags.find((g) => g.id === editingId) ?? null;
-
   const resetForm = () => {
     setEditingId(null);
     setFormId("");
@@ -169,6 +180,7 @@ export function TagsTab() {
     setFormExpiresPolicy("optional");
     setFormParamPolicy("none");
     setFormRequiresCitation(false);
+    setFormCited([]);
   };
 
   const closeForm = () => {
@@ -191,7 +203,36 @@ export function TagsTab() {
     setFormExpiresPolicy(tag.expiresPolicy);
     setFormParamPolicy(tag.paramPolicy);
     setFormRequiresCitation(tag.requiresCitation);
+    setFormCited(tag.citations);
     setShowForm(true);
+  };
+
+  const citeInForm = async (place: CitationPlace, documentTitle: string) => {
+    const key = citationKey(place);
+    setFormCited((held) =>
+      held.some((c) => citationKey(c) === key)
+        ? held
+        : [...held, pickedCitation(place, documentTitle)],
+    );
+    return done;
+  };
+  const uncite = async (c: LibraryCitation) => {
+    setFormCited((held) => held.filter((h) => citationKey(h) !== citationKey(c)));
+    return done;
+  };
+  // Confirm is the one act that records a citation's text anew: the saved tag cites it again at
+  // once, and the form shows it current, as the next read will.
+  const confirmInForm = async (c: LibraryCitation) => {
+    if (editingId === null) return done;
+    const result = await citeDefinition(editingId, c);
+    if (result.success) {
+      setFormCited((held) =>
+        held.map((h) =>
+          citationKey(h) === citationKey(c) ? { ...h, state: "current", needsReview: false } : h,
+        ),
+      );
+    }
+    return result;
   };
 
   const handleSubmit = async () => {
@@ -206,6 +247,11 @@ export function TagsTab() {
       formExpiresPolicy,
       formParamPolicy,
       formRequiresCitation,
+      formCited.map(({ documentId, sectionHeading, sectionPage }) => ({
+        documentId,
+        sectionHeading,
+        sectionPage,
+      })),
     );
     if (result.success) {
       notifications.show({ color: "green", message: t("tagsTab.saved", { id: formId.trim() }) });
@@ -376,21 +422,17 @@ export function TagsTab() {
               />
             </FormField>
           </FormChecks>
-          {/* A tag's definition cites the library sections that define it: put on a saved tag. */}
-          {editingTag && (
-            <FormField hint={t("tagCitations.definedByDesc")} size="long">
-              <Stack gap="0.25rem">
-                <Input.Label>{t("tagCitations.definedByLabel")}</Input.Label>
-                <TagCitations
-                  testId="tags-defined-by"
-                  citations={editingTag.citations}
-                  onAdd={(place) => citeDefinition(editingTag.id, place)}
-                  onRemove={(c) => unciteDefinition(editingTag.id, c)}
-                  onConfirm={(c) => citeDefinition(editingTag.id, c)}
-                />
-              </Stack>
-            </FormField>
-          )}
+          <FormField size="full">
+            <TagCitations
+              testId="tags-defined-by"
+              label={t("tagCitations.definitionLabel")}
+              description={t("tagCitations.definitionDesc")}
+              citations={formCited}
+              onAdd={citeInForm}
+              onRemove={uncite}
+              onConfirm={confirmInForm}
+            />
+          </FormField>
           <FormFooter
             onSave={handleSubmit}
             onCancel={closeForm}

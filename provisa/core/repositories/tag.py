@@ -67,6 +67,7 @@ def _code_tag_row(tag: Tag) -> dict:
         "param_policy": tag.param_policy,
         "sensitive": tag.sensitive,
         "requires_citation": tag.requires_citation,
+        "required": tag.required,
     }
 
 
@@ -91,6 +92,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "param_policy": tag.param_policy,
             "sensitive": tag.sensitive,
             "requires_citation": tag.requires_citation,  # REQ-2208
+            "required": tag.required,  # REQ-2208 (THE TAGS REPORT)
         },
         index_elements=["id"],
         update_columns=[
@@ -101,6 +103,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "param_policy",
             "sensitive",
             "requires_citation",
+            "required",
         ],
     )
 
@@ -393,30 +396,53 @@ async def uncite_assignment(  # REQ-2208
     return await citations.uncite(conn, citations.TAG_ASSIGNMENT, base, key, place)
 
 
+async def _replace_citations(
+    conn: "Connection",
+    citer: str,
+    base: str,
+    key: str,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """``citer``'s citations are exactly ``places``: a place not cited yet is cited, one cited that
+    ``places`` leaves out is uncited, and one already cited is left as it is, with the text hash
+    and state it was recorded with (only citing it again, a confirmation, records it anew)."""
+    held = {
+        citations.citation_key(c)
+        for c in (await citations.of_citers(conn, citer, [base])).get((base, key), [])
+    }
+    wanted = {p.key(): p for p in places}
+    for cite_key, place in wanted.items():
+        if cite_key not in held:
+            await citations.cite(conn, citer, base, key, place, cited_by)
+    for cite_key in held - wanted.keys():
+        await citations.uncite_key(conn, citer, base, key, cite_key)
+
+
 async def replace_assignment_citations(  # REQ-2208
     conn: "Connection",
     assignment: TagAssignment,
     places: "Sequence[citations.Place]",
     cited_by: str | None,
 ) -> None:
-    """The assignment cites exactly ``places``: a place it does not cite yet is cited, one it cites
-    and ``places`` leaves out is uncited, and one it already cites is left as it is, with the text
-    hash and state it was recorded with (only citing it again, a confirmation, records it anew).
-    The caller holds the transaction that writes the assignment with them."""
+    """The assignment cites exactly ``places`` (:func:`_replace_citations`). The caller holds the
+    transaction that writes the assignment with them."""
     model_change.name("cite", "tag", assignment.tag_id)  # REQ-1524
     base, key = await _require_assignment(conn, assignment)
-    held = {
-        citations.citation_key(c)
-        for c in (await citations.of_citers(conn, citations.TAG_ASSIGNMENT, [base])).get(
-            (base, key), []
-        )
-    }
-    wanted = {p.key(): p for p in places}
-    for cite_key, place in wanted.items():
-        if cite_key not in held:
-            await citations.cite(conn, citations.TAG_ASSIGNMENT, base, key, place, cited_by)
-    for cite_key in held - wanted.keys():
-        await citations.uncite_key(conn, citations.TAG_ASSIGNMENT, base, key, cite_key)
+    await _replace_citations(conn, citations.TAG_ASSIGNMENT, base, key, places, cited_by)
+
+
+async def replace_definition_citations(  # REQ-2208
+    conn: "Connection",
+    tag_id: str,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """The tag's definition cites exactly ``places`` (:func:`_replace_citations`). The caller holds
+    the transaction that writes the tag with them."""
+    model_change.name("cite", "tag", tag_id)  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    await _replace_citations(conn, citations.TAG, base, "", places, cited_by)
 
 
 async def definition_citations(  # REQ-2208

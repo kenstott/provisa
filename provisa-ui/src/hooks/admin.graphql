@@ -1166,14 +1166,14 @@ query DataProductFindingsQuery {
   }
 }
 
-mutation CreateTag($input: TagInput!) {
-  createTag(input: $input) {
+mutation CreateTag($input: TagInput!, $citations: [LibraryCitationInput!]) {
+  createTag(input: $input, citations: $citations) {
     ...MutationResult
   }
 }
 
-mutation UpdateTag($input: TagInput!) {
-  updateTag(input: $input) {
+mutation UpdateTag($input: TagInput!, $citations: [LibraryCitationInput!]) {
+  updateTag(input: $input, citations: $citations) {
     ...MutationResult
   }
 }

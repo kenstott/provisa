@@ -26,6 +26,7 @@ from collections.abc import Callable, Iterable
 import sqlglot.expressions as exp
 
 from provisa.pgwire import function_types
+from provisa.transpiler import pg_forms_json
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Form, Refusal, Refused, Rewrite, replacement
@@ -67,9 +68,13 @@ def trino_only(trino: Form) -> dict[str, Form]:
 
 def said(node: exp.Expr) -> str | None:
     """PostgreSQL's name of the type a statement says of ``node``, or None. A jsonb literal reaches
-    the grid as JSON_PARSE of its text (transpile.postgres_json_of_text): still a jsonb value."""
+    the grid as JSON_PARSE of its text (transpile.postgres_json_of_text): still a jsonb value; on
+    ClickHouse, as its text, marked with the json type said of it (pg_forms_json.SAID)."""
     if isinstance(node, exp.ParseJSON):
         return "jsonb"
+    held_as_text = node.meta.get(pg_forms_json.SAID)  # ClickHouse holds a json value as its text
+    if held_as_text is not None:
+        return held_as_text
     return function_types.argument_type(node)
 
 
@@ -122,35 +127,40 @@ def of_said(types: Iterable[str]) -> Callable[[exp.Expr, list[exp.Expr]], bool]:
 
 
 def refused_feature(
-    function: str, family: str, summary: str, limitation: str, purpose: str, applies
+    function: str,
+    family: str,
+    summary: str,
+    limitation: str,
+    purpose: str,
+    applies,
+    dialects: tuple[str, ...] = TRINO,
 ) -> Feature:
-    """A row that refuses ``function`` on Trino where ``applies`` holds, every other call kept."""
+    """A row that refuses ``function`` on ``dialects`` (Trino's) where ``applies`` holds, every
+    other call kept."""
     return Feature(
         function,
         family,
         summary,
         read=Side(
-            rules=(Rule(None, on_trino(refusing(function, purpose, applies))),),
-            limitations=dict.fromkeys(TRINO, (Limitation(limitation),)),
+            rules=(Rule(None, dict.fromkeys(dialects, refusing(function, purpose, applies))),),
+            limitations=dict.fromkeys(dialects, (Limitation(limitation),)),
         ),
     )
 
 
-def by_name(function: str, family: str, summary: str, limitation: str) -> Feature:
-    """A row that refuses every call of ``function`` on Trino, by its name, whatever its
-    arguments, every other dialect keeping what it had."""
+def by_name(
+    function: str, family: str, summary: str, limitation: str, dialects: tuple[str, ...] = TRINO
+) -> Feature:
+    """A row that refuses every call of ``function`` on ``dialects`` (Trino's), by its name,
+    whatever its arguments, every other dialect keeping what it had."""
+    refused = refusing(function, f"{function}: {limitation}", lambda *_: True)
     return Feature(
         function,
         family,
         summary,
         read=Side(
-            rules=(
-                Rule(
-                    None,
-                    on_trino(refusing(function, f"{function}: {limitation}", lambda *_: True)),
-                ),
-            ),
-            limitations=dict.fromkeys(TRINO, (Limitation(limitation),)),
+            rules=(Rule(None, dict.fromkeys(dialects, refused)),),
+            limitations=dict.fromkeys(dialects, (Limitation(limitation),)),
         ),
     )
 

@@ -65,6 +65,9 @@ class Rewrite:
     #: it may rewrite holds (a type's name), so the translator reads a statement that calls no
     #: function of the grid's (provisa.transpiler.function_macros reads no other).
     mentions: str | None = None
+    #: For a rule of no pattern: read before any rule's pattern, as a rule over every call, which
+    #: holds whatever row a call's own name has (Grid.read_first).
+    first: bool = False
 
     @property
     def name(self) -> str:

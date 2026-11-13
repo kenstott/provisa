@@ -442,13 +442,16 @@ def test_on_postgresql_every_lock_holds_a_session_of_its_own(monkeypatch):
     class Conn:
         def __init__(self) -> None:
             self.closed = False
+            self.said: list[str] = []
 
         def execution_options(self, **options):
             assert options == {"isolation_level": "AUTOCOMMIT"}
             return self
 
         def execute(self, statement, params):
-            assert "pg_try_advisory_lock" in str(statement)
+            assert not self.closed
+            self.said.append("unlock" if "pg_advisory_unlock" in str(statement) else "try")
+            assert "pg_try_advisory_lock" in str(statement) or self.said[-1] == "unlock"
             assert params == {"cls": oauth_store._REFRESH_LOCK_CLASS, "name": "acme|m365"}
 
             class Answer:
@@ -484,6 +487,9 @@ def test_on_postgresql_every_lock_holds_a_session_of_its_own(monkeypatch):
     assert len(opened) == 2 and opened[0].conn is not opened[1].conn
     first.close()
     assert opened[0].conn.closed and opened[0].disposed
+    # The lock is given back by name before its session ends: PostgreSQL frees a closed session's
+    # locks only when its backend has exited, after close() returns.
+    assert opened[0].conn.said == ["try", "unlock"]
     assert not opened[1].conn.closed
     second.close()
 

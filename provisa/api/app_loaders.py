@@ -2395,6 +2395,13 @@ _META_TABLES = [
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
     "model_names",  # REQ-194: the names table of the last model version built
+    "tag_instances",  # REQ-2208: one row per tag on an object, and per required tag missing; view
+    # REQ-2208 (decision 2026-11-13): each citation of the library, each tag on a document or
+    # section, each path from a section to an object; views
+    "library_documents",
+    "tag_citations",
+    "section_tags",
+    "policy_coverage",
     # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
     *NEUTRAL_VIEW_NAMES,
     *CATALOG_VIEW_NAMES,

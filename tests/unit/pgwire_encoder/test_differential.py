@@ -1564,6 +1564,8 @@ COERCER_POOL = (
     MATRIX
     + [(f"coerced_text_{k}", pa.array([t])) for k, t in enumerate(COERCED_TEXTS)]
     + [
+        ("clock_texts", pa.array(["01:02:03", "23:59:59.999999", "24:00:00", "1:2:3", "", None])),
+        ("byte_texts", pa.array(["\x00\x01", "abc", "é", "", None])),
         (
             "clock_bytes",
             pa.array(
@@ -1609,6 +1611,8 @@ COERCIONS: list[tuple[Any, list[Any]]] = [
     (cast_types._of_no_zone, [T.TIMESTAMP]),
     (cast_types._padded(5), [T.TEXT]),
     (cast_types.interval_of_text, [T.INTERVAL]),
+    (cast_types.bytes_of_text, [T.BYTES]),
+    (cast_types.clock_of_text, [T.TIME]),
 ]
 COERCER_CASES = [(c, t) for c, types in COERCIONS for t in types]
 

@@ -20,7 +20,6 @@
     "gapHelp": "Questo tag richiede una citazione e questa assegnazione non ne ha.",
     "definedBy": "Definito da {{title}}",
     "definedByLabel": "Definito da",
-    "definedByDesc": "Le sezioni della libreria che definiscono questo tag.",
     "requiresCitationLabel": "Le assegnazioni richiedono una citazione",
     "requiresCitationDesc": "Un’assegnazione di questo tag senza una sezione della libreria citata è segnalata come lacuna.",
     "requiresCitationBadge": "Citazione richiesta",
@@ -29,7 +28,9 @@
     "citedByDefinition": "La sua definizione",
     "citedByGone": "Scomparsa",
     "citedByWholeDocument": "Intero documento",
-    "citationsLabel": "Citazioni",
-    "neededForCoverage": "Necessaria per la copertura"
+    "citationsLabel": "Perché è su questo oggetto",
+    "neededForCoverage": "Necessaria per la copertura",
+    "definitionLabel": "Perché questo tag esiste",
+    "definitionDesc": "Il documento e la sezione che dicono perché questo tag esiste. Perché è su un oggetto va nelle citazioni di quell'oggetto."
   }
 }
