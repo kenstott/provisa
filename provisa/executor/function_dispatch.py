@@ -450,8 +450,15 @@ async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session
 
 
 async def _exec_source_query(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1988: a query command that runs its source's native query (a MongoDB pipeline) with
-    the call's arguments, each converted to its type and bound as a value."""
+    """REQ-1988: a command that runs its source's native query -- a MongoDB pipeline, or native
+    SQL on a relational source (binding {"sql"}) -- with the call's arguments, each converted to
+    its type and bound as a value."""
+    from provisa.core.native_sql import BINDING_KEY
+
+    if BINDING_KEY in (fn.get("binding") or {}):
+        from provisa.executor import native_sql_command
+
+        return await native_sql_command.run(state, fn, _bind_arg_names(fn, args))
     from provisa.mongodb.pipeline_command import run_command
 
     return await run_command(state, fn, _bind_arg_names(fn, args))

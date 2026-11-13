@@ -10459,5 +10459,9 @@
   "tagCitations.json::tagCitations.citationsLabel": "Why it is on this object",
   "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage",
   "tagCitations.json::tagCitations.definitionLabel": "Why this tag exists",
-  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations."
+  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations.",
+  "it/maintenanceTab.json::maintenanceTab.stopConfirm": "Kill the backend and UI dev server on this machine? This ends your session immediately.",
+  "it/commandFormFields.json::commandFormFields.nativeSql": "Native SQL",
+  "it/commandFormFields.json::commandFormFields.nativeSqlHint": "SQL in the source's own dialect, one statement or several, run on the source in one transaction: all of them commit or none does. Write an argument as {{placeholder}}; each is bound as a value. The last statement's rows are the answer.",
+  "it/tagCitations.json::tagCitations.definedByDesc": "The library sections that define this tag."
 }
