@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "圖表無法使用"
+    "unavailable": "圖表無法使用",
+    "fitWidth": "符合闊度",
+    "canvasLabel": "查詢計劃圖"
   }
 }

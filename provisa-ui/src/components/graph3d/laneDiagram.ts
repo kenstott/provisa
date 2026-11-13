@@ -219,9 +219,15 @@ export interface Connected {
 }
 
 /** Everything connected to ``id`` along the lanes: its own path out in each direction, never
- * doubling back, so a table reached from a term does not bring that table's other columns. A term
- * brings its broader and narrower terms, and each of those the columns, tables and products it
- * reaches; a term link that is not a rank edge, its other end alone. */
+ * doubling back, so a table reached from a term does not bring that table's other columns.
+ * REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): a term brings every term it reaches
+ * by the term links drawn (the drawn graph already holds only what the hops shown reach) -- up its
+ * broader terms, down its narrower ones (never a broader term's other narrower terms), and across
+ * every other link (an association) either way, the term so reached bringing its own broader and
+ * narrower terms in turn -- and each term reached its columns, their tables and the products
+ * holding them, as the 3D view lights every edge of the picked node whatever its type. A column,
+ * table or product brings its own path to the left, the terms it reaches to the right, and their
+ * broader and narrower terms. */
 export function connectedTo(d: LaneDiagram, id: string): Connected {
   const moreIds = new Set(d.more.map((m) => m.id));
   const at = (x: string) => LANES.indexOf(moreIds.has(x) ? "column" : (d.lane.get(x) as Lane));
@@ -248,21 +254,46 @@ export function connectedTo(d: LaneDiagram, id: string): Connected {
     ...walk(from, (x, k) => (inLane(x, k) && k.to === x ? k.from : null)),
     ...walk(from, (x, k) => (inLane(x, k) && k.from === x ? k.to : null)),
   ];
+  /** Every term a term reaches along the term lane: a rank line up or down, never turning back
+   * (so no sibling), and an arc either way, its far term starting afresh. */
+  const terms = (start: string) => {
+    type Way = "up" | "down" | "any";
+    const reached = new Map<string, Set<Way>>([[start, new Set<Way>(["any"])]]);
+    const queue: [string, Way][] = [[start, "any"]];
+    const step = (to: string, way: Way, k: LaneLink) => {
+      links.add(k.id);
+      nodes.add(to);
+      const ways = reached.get(to) ?? new Set<Way>();
+      if (ways.has(way)) return;
+      ways.add(way);
+      reached.set(to, ways);
+      queue.push([to, way]);
+    };
+    while (queue.length > 0) {
+      const [x, way] = queue.shift() as [string, Way];
+      for (const k of d.links) {
+        if (!inLane(x, k)) continue;
+        // A rank line runs from the broader term to the narrower one.
+        if (k.to === x && way !== "down") step(k.from, "up", k);
+        if (k.from === x && way !== "up") step(k.to, "down", k);
+      }
+      for (const k of d.arcs) {
+        const to = other(x, k);
+        if (to !== null) step(to, "any", k);
+      }
+    }
+    return [...reached.keys()];
+  };
   const across = (from: string[], dir: 1 | -1) =>
     walk(from, (x, k) => {
       const to = other(x, k);
       return to !== null && Math.sign(at(to) - at(x)) === dir ? to : null;
     });
-  if (at(id) === term) across(chain([id]), -1);
+  if (at(id) === term) across(terms(id), -1);
   else {
     across([id], -1);
     chain(across([id], 1).filter((x) => at(x) === term));
   }
-  for (const k of d.arcs)
-    if (k.from === id || k.to === id) {
-      links.add(k.id);
-      nodes.add(k.from).add(k.to);
-    }
   return { nodes, links };
 }
 
