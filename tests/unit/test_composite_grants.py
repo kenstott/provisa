@@ -71,6 +71,7 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_derived_roles(monkeypat
         role_build_inputs={
             "role_chains": {"analyst": ["analyst", "developer"]},
             "tables": [{"id": 1, "source_id": "pg", "columns": [col]}],
+            "draft_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

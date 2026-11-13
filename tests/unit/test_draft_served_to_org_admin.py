@@ -118,7 +118,7 @@ def _governed(role_id: str, chain: list[str]):
     # As the build holds it: with the roles it acts as (REQ-2188); a meta role reaches the union.
     role, roles = _built(role_id, chain)
     return build_governance_context(
-        role_id, rls, {}, ctx, served, role, draft_reach=draft_reach(role, roles)
+        role_id, rls, {}, ctx, served, role, draft_reach=lambda: draft_reach(role, roles)
     )
 
 

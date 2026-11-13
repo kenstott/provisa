@@ -244,8 +244,9 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                     source_types=source_types,
                     engine=engine,
                     source_hints=source_hints,
-                    # REQ-1921: the drafts' rows of the model table it reads.
-                    draft_reach=draft_reach(role, state.roles),
+                    # REQ-1921: the drafts' rows of the model table it reads, asked only of a
+                    # statement reading that table.
+                    draft_reach=lambda: draft_reach(role, state.roles),
                 )
             )
             slot.keep(governance)

@@ -13,7 +13,7 @@ using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 from __future__ import annotations
 
 import secrets
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -255,12 +255,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     source_types: dict[str, str] | None = None,
     engine=None,
     source_hints: dict[str, dict[str, str]] | None = None,
-    draft_reach: frozenset[str] | None = frozenset(),
+    draft_reach: Callable[[], frozenset[str] | None] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
-    ``draft_reach``: the domains whose drafts' rows of the model table the role reads
-    (security.rights.draft_reach): None for every domain, empty -- the default -- for none.
+    ``draft_reach``: asked only where the model table is in this compilation, the domains whose
+    drafts' rows of it the role reads (security.rights.draft_reach): None for every domain, empty
+    for none. Not given: none.
 
     Args:
         role_id: The requesting role.
@@ -511,16 +512,21 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         if getattr(tm, "domain_id", None) == META_DOMAIN_ID
         and getattr(tm, "table_name", "") == DRAFT_ROWS_VIEW
     ]
-    if draft_reach is None:
-        drafts_read: exp.Expr = exp.column("draft")  # pyright: ignore[reportPrivateImportUsage]
-    elif draft_reach:
-        drafts_read = exp.and_(
+    reach: frozenset[str] | None = (
+        draft_reach() if _draft_rows and draft_reach is not None else frozenset()
+    )
+    # The drafts' rows it reads, beside the rows of its scope: every one, or those of its domains.
+    drafts_read: exp.Expr | None = (  # pyright: ignore[reportPrivateImportUsage]
+        exp.column("draft")
+        if reach is None
+        else exp.and_(
             exp.column("draft"),
-            _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(draft_reach)]),
+            _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(reach)]),
             copy=False,
         )
-    else:
-        drafts_read = exp.false()
+        if reach
+        else None
+    )
     if meta_scope is not None:
         ids = sorted(meta_scope) or [-1]  # empty → matches no row
         # A setting's value, told to the statement's catalog views: an array, not SQL.
@@ -554,15 +560,17 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             else:
                 continue
             scoped = exp.and_(*terms, copy=False)
-            if tm.table_name == DRAFT_ROWS_VIEW and draft_reach != frozenset():
+            if tm.table_name == DRAFT_ROWS_VIEW and drafts_read is not None:
                 # A draft's row is in no role's reach (it is in no role's tables): the drafts
                 # the role is served are read beside the rows of its scope.
                 scoped = exp.or_(scoped, drafts_read.copy(), copy=False)
             _and_rule(gov, tm.table_id, scoped)
     # REQ-1921: of the model table's draft rows, only those the role is served, whatever its
     # scope (the whole catalog's included).
-    if draft_reach is not None:
-        for tm in _draft_rows:
+    for tm in _draft_rows if reach is not None else ():
+        if drafts_read is None:
+            _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
+        elif meta_scope is None:
             _and_rule(gov, tm.table_id, exp.or_(exp.not_(exp.column("draft")), drafts_read.copy()))
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's

@@ -310,17 +310,10 @@ def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
     text = sql.lower()
     if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
         return []
-    import sqlglot
-    import sqlglot.expressions as exp
-    from sqlglot.errors import ParseError
+    from provisa.compiler.names_read import sql_relations
 
-    try:
-        tree = sqlglot.parse_one(sql, read="postgres")
-    except ParseError as exc:
-        raise ValueError(f"SQL parse error: {exc}") from exc
     ids: list[int] = []
-    for table in tree.find_all(exp.Table):
-        said = f"{table.db}.{table.name}" if table.db else table.name
+    for said in sql_relations(sql):
         table_id = named.get(said)
         if table_id is not None and table_id not in ids:
             ids.append(table_id)
@@ -334,8 +327,7 @@ def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
     document goes on to be refused naming a draft as before (a mutation or subscription of a
     draft is refused, for a role it is served to too). A document that does not parse names none: its parse refuses it
     where every document is parsed."""
-    from graphql import GraphQLSyntaxError, OperationDefinitionNode, OperationType, parse
-
+    from provisa.compiler.names_read import query_root_fields
     from provisa.compiler.parser import table_field_candidates
 
     named = _served_draft_names(state, role_id)
@@ -345,23 +337,12 @@ def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
     text = query.lower()
     if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
         return []
-    try:
-        document = parse(query)
-    except GraphQLSyntaxError:
-        return []
-    operations = [d for d in document.definitions if isinstance(d, OperationDefinitionNode)]
-    if any(op.operation != OperationType.QUERY for op in operations):
-        return []
     ids: list[int] = []
-    for op in operations:
-        for selection in op.selection_set.selections:
-            name = getattr(getattr(selection, "name", None), "value", None)
-            if name is None:
-                continue
-            for candidate in table_field_candidates(name):
-                table_id = named.get(candidate)
-                if table_id is not None and table_id not in ids:
-                    ids.append(table_id)
+    for name in query_root_fields(query):
+        for candidate in table_field_candidates(name):
+            table_id = named.get(candidate)
+            if table_id is not None and table_id not in ids:
+                ids.append(table_id)
     by_id = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
     return [by_id[i] for i in ids]
 
