@@ -68,6 +68,8 @@
     "bindingTemplate": "ביטוי SQL",
     "bindingTemplateHint": "ביטוי SQL אחד. כתבו כל ארגומנט כ-{{placeholder}}; הוא רץ בתוך השאילתה הקוראת.",
     "argDefault": "ערך ברירת המחדל של הארגומנט {{name}}",
-    "argDefaultPlaceholder": "ברירת מחדל (השאירו ריק אם נדרש)"
+    "argDefaultPlaceholder": "ברירת מחדל (השאירו ריק אם נדרש)",
+    "nativeSql": "SQL מקורי",
+    "nativeSqlHint": "SQL בניב של המקור עצמו, משפט אחד או כמה, שרצים על המקור בטרנזקציה אחת: כולם נשמרים או אף אחד. כתבו ארגומנט כ-{{placeholder}}; כל אחד נקשר כערך. התשובה היא השורות של המשפט האחרון."
   }
 }

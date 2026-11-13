@@ -10418,5 +10418,7 @@
   "ja/list.json::list.duplicateNamed": "Duplicate {{name}}",
   "ja/sourcesPage.json::sourcesPage.duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret.",
   "ja/mermaidDiagram.json::mermaidDiagram.fitWidth": "Fit width",
-  "ja/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram"
+  "ja/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram",
+  "ja/commandFormFields.json::commandFormFields.nativeSql": "Native SQL",
+  "ja/commandFormFields.json::commandFormFields.nativeSqlHint": "SQL in the source's own dialect, one statement or several, run on the source in one transaction: all of them commit or none does. Write an argument as {{placeholder}}; each is bound as a value. The last statement's rows are the answer."
 }

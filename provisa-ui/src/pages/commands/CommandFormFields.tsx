@@ -38,6 +38,8 @@ import {
   EMPTY_DATASET_COLUMN,
   OPERATION_SCHEMA,
   CODE_SCHEMA,
+  NATIVE_SQL_SOURCE_TYPES,
+  isNativeSql,
   isSnowflakeOperation,
 } from "./types";
 import type { FormState } from "./types";
@@ -180,6 +182,9 @@ export function CommandFormFields({
   // definition, so the form asks for its arguments and its template alone.
   const isTemplate = form.implKind === "sql_expression";
   const declaresItsShape = isStatement || isTemplate;
+  // REQ-1988: native SQL run on a relational source; it declares its kind, written table and
+  // output as any command does.
+  const nativeSql = isNativeSql(form.implKind, form.binding);
 
   return (
     <>
@@ -192,7 +197,12 @@ export function CommandFormFields({
                   label={t("commandFormFields.implementation")}
                   data={IMPL_KINDS}
                   value={form.implKind}
-                  onChange={(val) => setForm({ ...form, implKind: val ?? "source_procedure" })}
+                  onChange={(val) => {
+                    const implKind = val ?? "source_procedure";
+                    // A binding belongs to its implementation: another one starts empty.
+                    const binding = implKind === form.implKind ? form.binding : {};
+                    setForm({ ...form, implKind, binding });
+                  }}
                   allowDeselect={false}
                   data-testid="command-impl-kind-select"
                 />
@@ -377,6 +387,40 @@ export function CommandFormFields({
                   />
                 </FormField>
               )}
+              {nativeSql && (
+                <>
+                  <FormField size="medium">
+                    <Select
+                      label={t("commandFormFields.source")}
+                      placeholder={t("commandFormFields.selectSource")}
+                      required
+                      data={sources
+                        .filter((s) => NATIVE_SQL_SOURCE_TYPES.includes(s.type))
+                        .map((s) => ({ value: s.id, label: `${s.id} (${s.type})` }))}
+                      value={form.sourceId || null}
+                      onChange={(val) => setForm({ ...form, sourceId: val ?? "" })}
+                      data-testid="command-native-sql-source-select"
+                    />
+                  </FormField>
+                  <FormField
+                    help={t("commandFormFields.nativeSqlHint", { placeholder: "{{name}}" })}
+                    size="long"
+                  >
+                    <Textarea
+                      label={t("commandFormFields.nativeSql")}
+                      required
+                      autosize
+                      minRows={4}
+                      value={bindingStr("sql")}
+                      onChange={(e) => setBinding("sql", e.currentTarget.value)}
+                      placeholder={
+                        "INSERT INTO app.notes (id, body) VALUES ({{id}}, {{body}});\nSELECT id, body FROM app.notes WHERE id = {{id}}"
+                      }
+                      data-testid="command-binding-native-sql"
+                    />
+                  </FormField>
+                </>
+              )}
               {isTemplate && (
                 <FormField
                   help={t("commandFormFields.bindingTemplateHint", { placeholder: "{name}" })}
@@ -411,7 +455,8 @@ export function CommandFormFields({
                   <FormChecks>
                     {form.implKind !== "source_procedure" &&
                       !isSourceOperation &&
-                      !declaresItsShape && (
+                      !declaresItsShape &&
+                      !nativeSql && (
                         <FormField help={t("commandFormFields.materializeHint")} size="long">
                           <Switch
                             label={t("commandFormFields.materialize")}
