@@ -50,7 +50,7 @@ from sqlalchemy import delete, func, insert, select, update
 from provisa.api.demo_templates import PublishedDemo, follow_latest, published_demo
 from provisa.api.errors import ApiError
 from provisa.api.sandbox_tier import new_sandbox_org_id
-from provisa.core import model_change, settings_registry
+from provisa.core import model_change, settings_registry, step_clock
 from provisa.core.schema_admin import demo_sandboxes, orgs, user_profiles
 
 log = logging.getLogger(__name__)
@@ -402,7 +402,10 @@ async def _open(name: str, *, kind: str, user_id: str | None) -> OpenedSandbox:
                 )
             )
     try:
-        token = await _build(demo, org_id, person, kind)
+        # Each step inside a stage (an environment's creation, a model's history, a runtime's
+        # lookup) on the stages' own line, so a slow open names what inside a stage was slow.
+        with step_clock.every_step_of(f"demo sandbox {org_id} of {demo.name}"):
+            token = await _build(demo, org_id, person, kind)
     except BaseException:
         log.exception("demo sandbox %s of %s could not be opened; removing it", org_id, demo.name)
         await reap(org_id)
