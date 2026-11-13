@@ -21,7 +21,6 @@
     "definedBy": "Definida por {{title}}",
     "definedByLabel": "Definida por",
     "definedByDesc": "As seções da biblioteca que definem esta tag.",
-    "citedHere": "Citado para este objeto",
     "requiresCitationLabel": "As atribuições exigem uma citação",
     "requiresCitationDesc": "Uma atribuição desta tag sem seção da biblioteca citada é marcada como lacuna.",
     "requiresCitationBadge": "Citação obrigatória",
@@ -29,6 +28,8 @@
     "citedByOn": "Em",
     "citedByDefinition": "Sua definição",
     "citedByGone": "Removida",
-    "citedByWholeDocument": "Documento inteiro"
+    "citedByWholeDocument": "Documento inteiro",
+    "citationsLabel": "Citações",
+    "neededForCoverage": "Necessária para a cobertura"
   }
 }

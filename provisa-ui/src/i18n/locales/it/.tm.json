@@ -10459,5 +10459,7 @@
   "it/registerManyTables.json::registerManyTables.needsCacheTtl": "Needs input: its source needs a Cache TTL for each table. Register it on its own.",
   "it/registerManyTables.json::registerManyTables.registerOne": "Register",
   "it/registerManyTables.json::registerManyTables.registerOneLabel": "Register {{table}} on its own",
-  "it/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted."
+  "it/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted.",
+  "tagCitations.json::tagCitations.citationsLabel": "Citations",
+  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage"
 }

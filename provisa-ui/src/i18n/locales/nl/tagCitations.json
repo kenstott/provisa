@@ -21,7 +21,6 @@
     "definedBy": "Gedefinieerd door {{title}}",
     "definedByLabel": "Gedefinieerd door",
     "definedByDesc": "De bibliotheeksecties die deze tag definiëren.",
-    "citedHere": "Geciteerd voor dit object",
     "requiresCitationLabel": "Toewijzingen vereisen een citaat",
     "requiresCitationDesc": "Een toewijzing van deze tag zonder geciteerde bibliotheeksectie wordt als lacune gemarkeerd.",
     "requiresCitationBadge": "Citaat vereist",
@@ -29,6 +28,8 @@
     "citedByOn": "Op",
     "citedByDefinition": "De definitie ervan",
     "citedByGone": "Verdwenen",
-    "citedByWholeDocument": "Heel document"
+    "citedByWholeDocument": "Heel document",
+    "citationsLabel": "Citaten",
+    "neededForCoverage": "Nodig voor dekking"
   }
 }

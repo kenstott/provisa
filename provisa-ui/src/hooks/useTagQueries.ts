@@ -153,8 +153,15 @@ export function useAssignTag() {
     refetchQueries: [{ query: TAG_ASSIGNMENTS_QUERY }],
   });
   return {
-    assignTag: async (input: TagAssignment) => {
-      const result = await assignTag({ variables: { input: toAssignmentInput(input) } });
+    /** ``citations``, when given, is the whole set the assignment cites, saved with it in the
+     *  same call (REQ-2208); left out, the assignment's citations stay as they are. */
+    assignTag: async (input: TagAssignment, citations?: CitationPlace[]) => {
+      const result = await assignTag({
+        variables: {
+          input: toAssignmentInput(input),
+          citations: citations === undefined ? null : citations.map(citationInput),
+        },
+      });
       return (result.data?.assignTag ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
@@ -201,6 +208,16 @@ function toAssignmentInput(input: TagAssignment) {
 
 /** The place a citation names: a document, or a section of it by heading, or by page without one. */
 export type CitationPlace = Pick<LibraryCitation, "documentId" | "sectionHeading" | "sectionPage">;
+
+/** One name for the place a citation points to: its document, and its heading, page or whole. */
+export const citationKey = (c: CitationPlace) =>
+  `${c.documentId}-${
+    c.sectionHeading !== null
+      ? `h:${c.sectionHeading}`
+      : c.sectionPage !== null
+        ? `p:${c.sectionPage}`
+        : ""
+  }`;
 
 function citationInput(place: CitationPlace) {
   return {
