@@ -31,6 +31,8 @@ import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
+import { MultiSelect } from "../components/MultiSelect";
+import { useTagAssignments } from "../hooks/useTagQueries";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { isProductOwner } from "./data-products/productOwner";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
@@ -140,6 +142,26 @@ export function DataProductsPage() {
       // localStorage unavailable (private mode, quota) — the filter just won't persist
     }
   };
+  // REQ-2180: the list faceted by the products' tags, parameterized ones included (residency:eu).
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const { tagAssignments } = useTagAssignments();
+  const productTags = useMemo(() => {
+    const byProduct = new Map<string, Set<string>>();
+    for (const a of tagAssignments) {
+      if (a.objectType !== "product" || !a.productId) continue;
+      const tags = byProduct.get(a.productId) ?? new Set<string>();
+      tags.add(a.tagId);
+      byProduct.set(a.productId, tags);
+    }
+    return byProduct;
+  }, [tagAssignments]);
+  const tagOptions = useMemo(
+    () =>
+      [...new Set([...productTags.values()].flatMap((tags) => [...tags]))]
+        .sort()
+        .map((tag) => ({ id: tag, label: tag })),
+    [productTags],
+  );
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -169,6 +191,7 @@ export function DataProductsPage() {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
     search,
     toReviewOnly,
+    tags: tagFilter,
     creating,
     editing: editingId,
   });
@@ -394,9 +417,10 @@ export function DataProductsPage() {
       dataProducts.filter(
         (p) =>
           matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
-          (!toReviewOnly || productFindings.findings.has(p.id)),
+          (!toReviewOnly || productFindings.findings.has(p.id)) &&
+          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
       ),
-    [dataProducts, search, toReviewOnly, productFindings.findings],
+    [dataProducts, search, toReviewOnly, productFindings.findings, tagFilter, productTags],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -518,6 +542,15 @@ export function DataProductsPage() {
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
+        <div data-testid="data-products-tag-facet" style={{ minWidth: 180, maxWidth: 360 }}>
+          <MultiSelect
+            options={tagOptions}
+            value={tagFilter}
+            onChange={setTagFilter}
+            ariaLabel={t("dataProductsTab.tagFacetLabel")}
+            placeholder={t("dataProductsTab.tagFacetPlaceholder")}
+          />
+        </div>
         <Checkbox
           size="xs"
           label={t("dataProductsTab.toReview")}

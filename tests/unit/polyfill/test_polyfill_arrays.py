@@ -21,6 +21,7 @@ import duckdb
 import pytest
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
 
 from provisa.transpiler import function_macros
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, RowRefused
@@ -80,14 +81,17 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
     expected = graft(replacement(form, written_in(dialect), rule.pattern), bindings)
     if dialect == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
-    # A dialect that quotes every identifier (Snowflake) writes the same column quoted.
-    assert _unquoted(written).sql(dialect) == _unquoted(expected).sql(dialect)
+    # A dialect that quotes every identifier (Snowflake) writes the same column quoted, and one
+    # that folds an unquoted name to upper case (Exasol) writes it so.
+    assert _unquoted(written, dialect).sql(dialect) == _unquoted(expected, dialect).sql(dialect)
 
 
-def _unquoted(tree: exp.Expr) -> exp.Expr:
+def _unquoted(tree: exp.Expr, dialect: str) -> exp.Expr:
+    upper = Dialect.get_or_raise(dialect).normalization_strategy is NormalizationStrategy.UPPERCASE
+
     def plain(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Identifier) and node.quoted:
-            return exp.to_identifier(node.name)
+            return exp.to_identifier(node.name.lower() if upper else node.name)
         return node
 
     return tree.copy().transform(plain)

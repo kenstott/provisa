@@ -28,6 +28,7 @@ from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
+from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.everyday_function_statements import STATEMENTS
 from tests.unit.pgwire.pg17_everyday_function_answers import RECORDED
 
@@ -105,8 +106,9 @@ def test_everyday_functions_on_trino(trino_conn, family):
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("family", STATEMENTS)
-def test_everyday_functions_on_clickhouse(family):
+def test_everyday_functions_on_clickhouse():
+    """One test over every family: requires_clickhouse boots the engine for each test
+    (tests/integration/every_case.py)."""
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -115,4 +117,10 @@ def test_everyday_functions_on_clickhouse(family):
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(lambda sql: list(client.query(sql).result_rows), "clickhouse", family)
+
+    def run(sql: str) -> list[Any]:
+        return list(client.query(sql).result_rows)
+
+    assert (
+        failures_of_every_case(STATEMENTS, lambda family: _check(run, "clickhouse", family)) == {}
+    )

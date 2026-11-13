@@ -308,6 +308,8 @@
         "history": "Versiegeschiedenis"
       }
     },
-    "detailPanel": "Detail van het dataproduct"
+    "detailPanel": "Detail van het dataproduct",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filteren op tag"
   }
 }

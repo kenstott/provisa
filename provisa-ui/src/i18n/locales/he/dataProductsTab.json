@@ -308,6 +308,8 @@
         "history": "היסטוריית גרסאות"
       }
     },
-    "detailPanel": "פרטי מוצר הנתונים"
+    "detailPanel": "פרטי מוצר הנתונים",
+    "tagFacetLabel": "תגיות",
+    "tagFacetPlaceholder": "סינון לפי תגית"
   }
 }

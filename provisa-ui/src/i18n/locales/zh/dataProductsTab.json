@@ -308,6 +308,8 @@
         "history": "版本历史"
       }
     },
-    "detailPanel": "数据产品详情"
+    "detailPanel": "数据产品详情",
+    "tagFacetLabel": "标签",
+    "tagFacetPlaceholder": "按标签筛选"
   }
 }

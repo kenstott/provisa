@@ -14,7 +14,7 @@
 // is asked. REQ-2239: it is the panel's Lineage tab, drawn by the one graph component.
 
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import type {
   LineageNode,
   ProductInput,
@@ -23,7 +23,7 @@ import type {
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
-import { openTab } from "../data-products/__tests__/panelTabs";
+import { openSection } from "../data-products/__tests__/panelSections";
 import type { GraphSpec } from "../../components/provisa-graph/model";
 import type { LanesOptions } from "../../components/provisa-graph/lanes";
 
@@ -180,8 +180,9 @@ import { upstreamLineage } from "../data-products/upstreamLineage";
 
 async function opened() {
   render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
-  // Lineage is a tab of its own: drawn when it is opened.
-  fireEvent.click(await screen.findByTestId("data-product-tab-lineage-pet_health"));
+  // Lineage is a row of its own: drawn when it is expanded.
+  await screen.findByTestId("data-product-row-lineage-pet_health-toggle");
+  openSection("lineage", "pet_health");
   await waitFor(() => expect(drawn.length).toBeGreaterThan(0));
   return drawn[drawn.length - 1];
 }
@@ -258,24 +259,27 @@ const panel = (
       {...lifecycleProps()}
     />,
   );
-  openTab(tab, "pet_health");
+  openSection(tab, "pet_health");
 };
 
 describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", () => {
-  const listed = (inputs: ProductInput[]) => {
+  // An expanded row's content is shown on the next frame: its list items are waited for.
+  const listed = async (inputs: ProductInput[]) => {
     panel({ ...LINEAGE, inputs });
-    return within(screen.getByTestId("data-product-detail-inputs-pet_health"))
-      .getAllByRole("listitem")
-      .map((li) => li.textContent);
+    return (
+      await within(screen.getByTestId("data-product-detail-inputs-pet_health")).findAllByRole(
+        "listitem",
+      )
+    ).map((li) => li.textContent);
   };
 
-  it("lists the inputs the endpoint found, a registered one by its model name", () => {
+  it("lists the inputs the endpoint found, a registered one by its model name", async () => {
     expect(
-      listed([input("pet_store.breeds"), input("pet_store.dim_pet", { alias: "pets_dimension" })]),
+      await listed([input("pet_store.breeds"), input("pet_store.dim_pet", { alias: "pets_dimension" })]),
     ).toEqual(["pet-store.breeds", "pet-store.pets_dimension"]);
   });
 
-  it("names a member read straight from a source by that source, each row its own", () => {
+  it("names a member read straight from a source by that source, each row its own", async () => {
     const source = (table: number, name: string) =>
       input(`native:pet_store.${name}`, {
         kind: "source",
@@ -286,7 +290,7 @@ describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", ()
         source_table: name,
       });
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(listed([source(1, "orders"), source(2, "customers")])).toEqual([
+    expect(await listed([source(1, "orders"), source(2, "customers")])).toEqual([
       "pg/sales/orders (sqlite)",
       "pg/sales/customers (sqlite)",
     ]);
@@ -310,10 +314,19 @@ describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", ()
 });
 
 describe("the product detail's lineage (REQ-1640)", () => {
-  it("is a tab of its own, not one of the other sections", async () => {
+  it("is a row of its own, not one of the other sections", async () => {
     panel(LINEAGE, true, "lineage");
-    expect(await screen.findByTestId("data-product-detail-lineage-pet_health")).toBeInTheDocument();
+    const row = screen.getByTestId("data-product-row-lineage-pet_health");
+    expect(
+      await within(row).findByTestId("data-product-detail-lineage-pet_health"),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("data-product-card-lineage-pet_health")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-inputPorts-pet_health")).toBeNull();
+    // The inputs are Quality's, with the product's expectations of them.
+    expect(within(row).queryByTestId("data-product-card-inputPorts-pet_health")).toBeNull();
+    expect(
+      within(screen.getByTestId("data-product-row-quality-pet_health")).getByTestId(
+        "data-product-card-inputPorts-pet_health",
+      ),
+    ).toBeInTheDocument();
   });
 });
