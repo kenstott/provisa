@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Every 3D network graph's canvas controls have one Grid toggle (REQ-2239), pressed at first.
-// Releasing it tells the scene to leave the floor grid out, and the choice is kept across reloads,
-// per graph.
+// Every 3D network graph's canvas controls have one Grid toggle (REQ-2239, amended 2026-11-13), released at first: no floor grid is drawn until the
+// reader turns Grid on. Pressing it tells the scene to draw the floor grid, and the choice, on or off,
+// is kept across reloads, per graph.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
@@ -58,43 +58,43 @@ describe("a 3D network graph's Grid toggle", () => {
     made.scenes.length = 0;
   });
 
-  it("is pressed at first, turns the scene's grid off, and keeps that across reloads", async () => {
-    const view = render(
-      <GraphExplorer
-        data={g}
-        scope={ONTOLOGY_SCOPE}
-        preset="ontology"
-        depth={2}
-        settingsKey={{ kind: "test", subject: null }}
-        exportName="test"
-        testId="x"
-      />,
-    );
+  const open = (subject: string | null = null, testId = "x") => (
+    <GraphExplorer
+      data={g}
+      scope={ONTOLOGY_SCOPE}
+      preset="ontology"
+      depth={2}
+      settingsKey={{ kind: "test", subject }}
+      exportName="test"
+      testId={testId}
+    />
+  );
+  const grid = () => screen.getByRole("button", { name: "Grid", hidden: true });
+
+  it("is released at first and draws no grid", async () => {
+    render(open());
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const scene = made.scenes[0];
-    await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(true));
-    const box = screen.getByRole("button", { name: "Grid", hidden: true });
-    expect(box).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(box);
-    await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(false));
-    view.unmount();
-    render(
-      <GraphExplorer
-        data={g}
-        scope={ONTOLOGY_SCOPE}
-        preset="ontology"
-        depth={2}
-        settingsKey={{ kind: "test", subject: null }}
-        exportName="test"
-        testId="x"
-      />,
-    );
-    expect(screen.getByRole("button", { name: "Grid", hidden: true })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    await waitFor(() => expect(made.scenes[0].setGrid).toHaveBeenLastCalledWith(false));
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("is on after a remount once turned on, and off after a remount once turned off again", async () => {
+    const first = render(open());
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(grid());
+    await waitFor(() => expect(made.scenes[0].setGrid).toHaveBeenLastCalledWith(true));
+    first.unmount();
+    const second = render(open());
+    expect(grid()).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(made.scenes).toHaveLength(2));
+    await waitFor(() => expect(made.scenes[1].setGrid).toHaveBeenLastCalledWith(true));
+    fireEvent.click(grid());
     await waitFor(() => expect(made.scenes[1].setGrid).toHaveBeenLastCalledWith(false));
+    second.unmount();
+    render(open());
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => expect(made.scenes).toHaveLength(3));
+    await waitFor(() => expect(made.scenes[2].setGrid).toHaveBeenLastCalledWith(false));
   });
 
   it("is its own per graph", () => {
@@ -123,7 +123,7 @@ describe("a 3D network graph's Grid toggle", () => {
     );
     expect(screen.getAllByRole("button", { name: "Grid", hidden: true })[1]).toHaveAttribute(
       "aria-pressed",
-      "true",
+      "false",
     );
   });
 });

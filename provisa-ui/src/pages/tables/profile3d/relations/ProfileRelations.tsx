@@ -382,7 +382,8 @@ export function ProfileRelations({
       min: "0.3",
       kinds: [...KINDS] as string[],
       rotate: true as boolean,
-      grid: true as boolean,
+      // The floor grid is not drawn until the reader turns Grid on (REQ-2239, amended 2026-11-13).
+      grid: false as boolean,
     },
   );
   const attraction = Math.min(ATTRACTION_MAX, Math.max(ATTRACTION_MIN, saved.attraction as number));
