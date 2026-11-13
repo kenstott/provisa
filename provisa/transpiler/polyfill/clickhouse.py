@@ -62,6 +62,7 @@ from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitati
 from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
+from provisa.transpiler.polyfill.numbers import ch_fail
 
 FAMILY = "ClickHouse answers"
 
@@ -643,6 +644,62 @@ CURRENT_SCHEMAS = Feature(
     ),
 )
 
+#: A number as float8out writes it, the only text the bounding box hands back as it read it.
+_SHOWN_AS_POSTGRESQL_DOES = "^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$"
+_POINT_NUMBER = "-?[0-9.]+(?:e[-+]?[0-9]+)?"
+_SPG_POLY = "spg_poly_quad_compress($v)"
+
+
+def _polygon_extreme(axis: int, chosen: str) -> str:
+    """The text of a polygon's highest or lowest x (axis 1) or y (axis 2) of its numbers ``_n``."""
+    side = f"arrayFilter((_t, _i) -> _i % 2 = {axis % 2}, _n, arrayEnumerate(_n))"
+    extreme = f"{chosen}(arrayMap(_z -> toFloat64(_z), {side}))"
+    return f"arrayFilter(_y -> toFloat64(_y) = {extreme}, {side})[1]"
+
+
+def _polygon_box() -> str:
+    """spg_poly_quad_compress on ClickHouse: the bounding box, (high x, high y),(low x, low y),
+    of the polygon's numbers bound to ``_n``. ClickHouse evaluates every branch of a CASE in a
+    lambda, so the refusal of a number PostgreSQL would write otherwise is a throwIf beside the
+    answer, an empty text where it does not raise."""
+    other = f"arrayExists(_y -> NOT match(_y, '{_SHOWN_AS_POSTGRESQL_DOES}'), _n)"
+    refusal = ch_fail("0A000", "spg_poly_quad_compress does not read this value")
+    box = (
+        f"concat('(', {_polygon_extreme(1, 'arrayMax')}, ',', {_polygon_extreme(2, 'arrayMax')}, "
+        f"'),(', {_polygon_extreme(1, 'arrayMin')}, ',', {_polygon_extreme(2, 'arrayMin')}, ')', "
+        f"repeat('', {refusal.format(condition=other)}))"
+    )
+    return (
+        "CASE WHEN $v IS NULL THEN NULL ELSE "
+        f"arrayMap(_n -> {box}, [extractAll(toString($v), '{_POINT_NUMBER}')])[1] END"
+    )
+
+
+SPG_POLY_QUAD_COMPRESS = Feature(
+    "spg_poly_quad_compress",
+    FAMILY,
+    "A polygon's bounding box, as the SP-GiST quad tree's compress function answers it.",
+    read=Side(
+        rules=(
+            Rule(
+                _SPG_POLY,
+                {
+                    **dict.fromkeys((*trino.OTHERS, *trino.TRINO), trino.KEPT),
+                    "clickhouse": _polygon_box(),
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A polygon with a number PostgreSQL writes otherwise than as it was written "
+                    "(an exponent, a trailing zero) is refused by name when the statement runs."
+                ),
+            )
+        },
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     NULL_ARRAY,
     ARRAY_AGG,
@@ -652,4 +709,5 @@ FEATURES: tuple[Feature, ...] = (
     NTILE,
     NUMERIC_MOD,
     CURRENT_SCHEMAS,
+    SPG_POLY_QUAD_COMPRESS,
 )

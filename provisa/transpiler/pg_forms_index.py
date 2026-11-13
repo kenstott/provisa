@@ -232,14 +232,6 @@ _LISTS = {
         "filter({0}, {1} -> {2})",
         "regexp_like({}, {})",
     ),
-    "clickhouse": _Lists(
-        "extractAll({}, {})",
-        "toFloat64({})",
-        "arrayMax",
-        "arrayMin",
-        "arrayFilter({1} -> {2}, {0})",
-        "match({}, {})",
-    ),
 }
 
 
@@ -283,7 +275,8 @@ def per_engine() -> dict[tuple[str, str], dict[str, str]]:
         ("btoidvectorcmp", "a, b"): {name: _oidvector_cmp(e) for name, e in ENGINES},
         ("bttidcmp", "a, b"): {name: _tid_cmp(e) for name, e in ENGINES},
         ("btcharcmp", "a, b"): {name: _char_cmp(e) for name, e in ENGINES},
+        # ClickHouse's is the polyfill grid's row (provisa.transpiler.polyfill.clickhouse).
         ("spg_poly_quad_compress", "value"): {
-            name: _polygon_box(e, _LISTS[name]) for name, e in ENGINES
+            name: _polygon_box(e, _LISTS[name]) for name, e in ENGINES if name in _LISTS
         },
     }
