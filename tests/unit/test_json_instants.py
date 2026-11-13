@@ -53,13 +53,11 @@ def test_saying_it_twice_is_saying_it_once():
     assert state_json_instants(once, _INSTANTS) == once
 
 
-def test_the_physical_rewrite_says_a_registered_timestamptz_column_is_one():
-    from provisa.compiler.context import build_context
+def _events_input(role_id: str = "admin"):
     from provisa.compiler.introspect import ColumnMetadata
     from provisa.compiler.schema_gen import SchemaInput
-    from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
 
-    si = SchemaInput(
+    return SchemaInput(
         tables=[
             {
                 "id": 1,
@@ -68,9 +66,10 @@ def test_the_physical_rewrite_says_a_registered_timestamptz_column_is_one():
                 "schema_name": "public",
                 "table_name": "events",
                 "columns": [
-                    {"column_name": "id", "visible_to": ["admin"]},
-                    {"column_name": "at", "visible_to": ["admin"]},
-                    {"column_name": "day", "visible_to": ["admin"]},
+                    {"column_name": "id", "visible_to": [role_id]},
+                    {"column_name": "at", "visible_to": [role_id]},
+                    {"column_name": "day", "visible_to": [role_id]},
+                    {"column_name": "odd", "visible_to": [role_id]},
                 ],
                 "write_ops": [],
                 "write_returns_rows": False,
@@ -83,15 +82,47 @@ def test_the_physical_rewrite_says_a_registered_timestamptz_column_is_one():
                 ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
                 ColumnMetadata("at", "timestamp with time zone", True),
                 ColumnMetadata("day", "timestamp", True),
+                ColumnMetadata("odd", "not a ( type", True),  # a type sqlglot cannot read
             ]
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={"id": role_id, "capabilities": ["query_development"], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
     )
-    ctx = build_context(si)
+
+
+def test_the_physical_rewrite_says_a_registered_timestamptz_column_is_one():
+    from provisa.compiler.context import build_context
+    from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
+
+    ctx = build_context(_events_input())
     assert ctx.instant_columns == {("public", "events"): {"at": "timestamptz"}}
     physical = rewrite_semantic_to_catalog_physical(
         'SELECT to_json("e"."at"), to_json("e"."day") FROM "public"."events" AS "e"', ctx
     )
     assert physical.count("AS TIMESTAMPTZ)") == 1
+
+
+def test_a_role_built_over_types_already_read_tokenizes_no_sql(monkeypatch):
+    """A role's context is built in the background after every rebuild, one role after another
+    (app_loaders.warm_role_surfaces), while requests are served: telling its timestamptz columns
+    apart reads each column's type, and a type string read once is not tokenized again -- a
+    rebuild's contexts derive no SQL for types the model has already shown, and a request served
+    meanwhile is not charged with thousands of tokenizations (REQ-1877, REQ-1897)."""
+    from sqlglot.tokens import Tokenizer
+
+    from provisa.compiler.context import build_context
+
+    build_context(_events_input("admin"))  # the model's types, read once
+    real = Tokenizer.tokenize
+    calls: list[str] = []
+
+    def counted(self, sql):  # type: ignore[no-untyped-def]
+        calls.append(sql)
+        return real(self, sql)
+
+    monkeypatch.setattr(Tokenizer, "tokenize", counted)
+    for role_id in ("admin", "analyst"):
+        ctx = build_context(_events_input(role_id))
+        assert ctx.instant_columns == {("public", "events"): {"at": "timestamptz"}}, role_id
+    assert calls == []
