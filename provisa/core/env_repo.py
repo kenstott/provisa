@@ -66,6 +66,7 @@ from dulwich.repo import Repo
 from provisa.core import step_clock
 from provisa.core.env_files import Rendered, dump_reusing
 from provisa.core.env_project import project
+from provisa.core.environments import org_schema
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -400,10 +401,13 @@ async def write_through(
             before = await model_stamp(conn, schema)
             tree = await project(conn, schema)
         last = _rendered.get((org_id, env))
+        rebased: tuple[str, str] | None = None
         if last is None and like is not None:
+            # The copy rebased what named its source's schema onto this one's (env_copy._rebase).
             last = _rendered.get(like)
+            rebased = (org_schema(*like), schema)
         with step_clock.step(f"{stepped}: its files rendered"):
-            files, _rendered[(org_id, env)] = dump_reusing(tree, last or {})
+            files, _rendered[(org_id, env)] = dump_reusing(tree, last or {}, rebased)
         exact_stamp = before if await model_stamp(conn, schema) == before else None
         with step_clock.step(f"{stepped}: its commit"):
             repo = ensure_repo(org_id)

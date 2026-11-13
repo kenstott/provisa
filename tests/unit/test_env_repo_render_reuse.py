@@ -161,3 +161,84 @@ async def test_a_sandboxs_record_renders_from_its_templates_prod(monkeypatch):
     await demo_sandbox._record(_Db(), demo, "sbx", "visitor")
 
     assert calls == [("sbx", "prod", (demo.template_org, "prod"))]
+
+
+#: A built-in table names the schema it lives in, which a copy rebases onto its own (env_copy).
+_IN_SCHEMA = {
+    f"meta/tables/m{n}.yaml": {"table_name": f"m{n}", "columns": [{"name": "id"}]} for n in range(4)
+}
+
+
+def _in(schema: str) -> dict[str, dict]:
+    return {path: {**entity, "schema_name": schema} for path, entity in _IN_SCHEMA.items()}
+
+
+def test_an_entity_rebased_onto_the_copys_schema_reuses_its_sources_text(emitted):
+    _, held = env_files.dump_reusing(_in("org_sbx"), {})
+    emitted.clear()
+
+    files, _ = env_files.dump_reusing(
+        _in("org_sbx_env_dev"), held, rebased=("org_sbx", "org_sbx_env_dev")
+    )
+
+    assert emitted == []
+    assert files == env_files.dump(_in("org_sbx_env_dev"))
+
+
+def test_an_entity_that_differs_beyond_its_schema_is_rendered_again(emitted):
+    _, held = env_files.dump_reusing(_in("org_sbx"), {})
+    emitted.clear()
+    changed = _in("org_sbx_env_dev")
+    changed["meta/tables/m0.yaml"] = {**changed["meta/tables/m0.yaml"], "columns": []}
+
+    files, _ = env_files.dump_reusing(changed, held, rebased=("org_sbx", "org_sbx_env_dev"))
+
+    assert emitted == [changed["meta/tables/m0.yaml"]]
+    assert files == env_files.dump(changed)
+
+
+def test_a_schema_name_not_rebased_is_rendered_again(emitted):
+    """An entity naming another schema than the copy's own was not rebased by the copy."""
+    _, held = env_files.dump_reusing(_in("org_sbx"), {})
+    emitted.clear()
+
+    files, _ = env_files.dump_reusing(
+        _in("org_elsewhere"), held, rebased=("org_sbx", "org_sbx_env_dev")
+    )
+
+    assert len(emitted) == len(_IN_SCHEMA)
+    assert files == env_files.dump(_in("org_elsewhere"))
+
+
+async def test_an_environment_holding_built_in_tables_renders_none_of_them(emitted, monkeypatch):
+    """The sandbox's environments as they are: their built-in tables name their own schema."""
+
+    async def _project(conn, schema):
+        return _in(schema)
+
+    monkeypatch.setattr(env_repo, "project", _project)
+    await env_repo.write_through("conn", "admin", "sbx", "prod", "org_sbx", "note", None)
+    emitted.clear()
+
+    sha = await env_repo.write_through(
+        "conn", "admin", "sbx", "dev", "org_sbx_env_dev", "note", None, like=("sbx", "prod")
+    )
+
+    assert emitted == []
+    assert sha is not None
+    assert env_repo.files_at("sbx", sha) == env_files.dump(_in("org_sbx_env_dev"))
+
+
+async def test_a_sandbox_renders_none_of_its_templates_built_in_tables(emitted, monkeypatch):
+    async def _project(conn, schema):
+        return _in(schema)
+
+    monkeypatch.setattr(env_repo, "project", _project)
+    await env_repo.write_through("conn", "admin", "tpl", "prod", "org_tpl", "note", None)
+    emitted.clear()
+
+    await env_repo.write_through(
+        "conn", "admin", "sbx", "prod", "org_sbx", "note", None, like=("tpl", "prod")
+    )
+
+    assert emitted == []
