@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from provisa.api.mcp import table_edit
+from provisa.api.mcp import table_edit, tag_edit
 from provisa.api.mcp.tools import require_role
 
 # The kinds of a profile run get_table_profile returns when the caller names none: the run, each
@@ -670,3 +670,106 @@ async def export_model_config(state: Any, role: str, request: Any) -> dict:
     org_id = require_active_org_id(request)
     response = await export_org_config(org_id, request)
     return {"filename": f"{org_id}-config.yaml", "yaml": bytes(response.body).decode("utf-8")}
+
+
+# -- tags: the edits of the tag assignment form and the tag editor, as the caller ----------------
+# Each runs the admin mutation the form sends, with the caller's request, and returns its result
+# unchanged (tag_edit.run), as set_table_profiler saves through updateTable. In Polly's chat these
+# are never called: the chat hands the browser the same mutation for the person to confirm.
+
+
+async def assign_tag(
+    state: Any,
+    role: str,
+    request: Any,
+    object_kind: str,
+    object_key: str,
+    tag_id: str,
+    reason: str | None = None,
+    expires_on: str | None = None,
+    citations: list[dict] | None = None,
+) -> dict:
+    require_role(role, state)
+    args: dict[str, Any] = {
+        "object_kind": object_kind,
+        "object_key": object_key,
+        "tag_id": tag_id,
+        "reason": reason,
+        "expires_on": expires_on,
+        "citations": citations,
+    }
+    return await tag_edit.run(request, "assign_tag", args)
+
+
+async def unassign_tag(
+    state: Any, role: str, request: Any, object_kind: str, object_key: str, tag_id: str
+) -> dict:
+    require_role(role, state)
+    args = {"object_kind": object_kind, "object_key": object_key, "tag_id": tag_id}
+    return await tag_edit.run(request, "unassign_tag", args)
+
+
+async def _cite_assignment(
+    name: str,
+    state: Any,
+    role: str,
+    request: Any,
+    object_kind: str,
+    object_key: str,
+    tag_id: str,
+    citation: dict,
+) -> dict:
+    require_role(role, state)
+    args = {
+        "object_kind": object_kind,
+        "object_key": object_key,
+        "tag_id": tag_id,
+        "citation": citation,
+    }
+    return await tag_edit.run(request, name, args)
+
+
+async def cite_tag_assignment(
+    state: Any,
+    role: str,
+    request: Any,
+    object_kind: str,
+    object_key: str,
+    tag_id: str,
+    citation: dict,
+) -> dict:
+    return await _cite_assignment(
+        "cite_tag_assignment", state, role, request, object_kind, object_key, tag_id, citation
+    )
+
+
+async def uncite_tag_assignment(
+    state: Any,
+    role: str,
+    request: Any,
+    object_kind: str,
+    object_key: str,
+    tag_id: str,
+    citation: dict,
+) -> dict:
+    return await _cite_assignment(
+        "uncite_tag_assignment", state, role, request, object_kind, object_key, tag_id, citation
+    )
+
+
+async def cite_tag_definition(
+    state: Any, role: str, request: Any, tag_id: str, citation: dict
+) -> dict:
+    require_role(role, state)
+    return await tag_edit.run(
+        request, "cite_tag_definition", {"tag_id": tag_id, "citation": citation}
+    )
+
+
+async def uncite_tag_definition(
+    state: Any, role: str, request: Any, tag_id: str, citation: dict
+) -> dict:
+    require_role(role, state)
+    return await tag_edit.run(
+        request, "uncite_tag_definition", {"tag_id": tag_id, "citation": citation}
+    )

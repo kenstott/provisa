@@ -27,6 +27,9 @@ class PollyPage(NamedTuple):
     what: str
     sets: str = "nothing beyond opening it"
     reads: str = FIELDS
+    # The page shows objects' tag chips (it mounts the tag control): read_screen reports each
+    # object's tags, and the chips and the picker are the controls TAG_CONTROLS names.
+    tags: bool = False
 
 
 PAGES: dict[str, PollyPage] = {
@@ -43,6 +46,7 @@ PAGES: dict[str, PollyPage] = {
         "(jdbc-source-detect) ticks the capabilities the source passes. A driver jar is a file on "
         "the user's machine: they choose it themselves",
         "?source= etc. as its links do",
+        tags=True,
     ),
     "/tables": PollyPage(
         "the registered tables, as a list or the ERD",
@@ -54,17 +58,19 @@ PAGES: dict[str, PollyPage] = {
         "and wizard-back and ended with wizard-create",
         "inputs: view, table, domains, objects, modeling (entityFact, star, vault or null), "
         "wizardStep (number, count, title), collapsed, layout, layoutUnsaved",
+        tags=True,
     ),
     "/relationships": PollyPage(
         "relationships, as a list or the same ERD",
         "query parameters: view=erd, relationship=<id>, domains, objects, collapsed, layout, "
         "as /tables",
         "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved",
+        tags=True,
     ),
     "/team": PollyPage("the org's members"),
     "/security": PollyPage("redirects to /security/roles"),
-    "/security/roles": PollyPage("roles"),
-    "/security/rls": PollyPage("row-level security rules"),
+    "/security/roles": PollyPage("roles", tags=True),
+    "/security/rls": PollyPage("row-level security rules", tags=True),
     "/query": PollyPage("GraphQL explorer", "state.query", "editor"),
     "/schema": PollyPage("the schema explorer"),
     "/graph": PollyPage("Cypher graph", "state.query, state.view", "editor"),
@@ -100,13 +106,14 @@ PAGES: dict[str, PollyPage] = {
     "/science": PollyPage("redirects to /python"),
     "/explore": PollyPage("this same chat, full page"),
     "/views": PollyPage("views"),
-    "/metrics": PollyPage("governed metrics"),
+    "/metrics": PollyPage("governed metrics", tags=True),
     "/data-products": PollyPage(
         "data products",
         "query parameters: product=<id>, contract=<id>, search=<text>",
         "inputs: product, contract, search, toReviewOnly, creating, editing",
+        tags=True,
     ),
-    "/commands": PollyPage("commands"),
+    "/commands": PollyPage("commands", tags=True),
     "/actions": PollyPage("redirects to /commands"),
     "/lineage": PollyPage("lineage"),
     "/admin": PollyPage("redirects to the first admin page the role may open"),
@@ -120,6 +127,7 @@ PAGES: dict[str, PollyPage] = {
         "reads a document by URL or file, or a registered table; find-terms-start starts the "
         "scan. A term's delete is glossary-delete-btn, then glossary-delete-confirm-confirm",
         "inputs: panel, term, termName, editing, graph, findTerms (the dialog is open)",
+        tags=True,
     ),
     "/admin/overview": PollyPage("the admin dashboard"),
     "/admin/domains": PollyPage("domains"),
@@ -141,10 +149,19 @@ PAGES: dict[str, PollyPage] = {
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
     "/admin/catalogs": PollyPage("catalogs"),
-    "/library": PollyPage("the reference library"),
+    "/library": PollyPage("the reference library", tags=True),
     "/admin/metadata-export": PollyPage("metadata export"),
     "/admin/import": PollyPage("import"),
-    "/admin/tags": PollyPage("tags"),
+    "/admin/tags": PollyPage(
+        "the tag editor: + Tag (tags-create-button) opens the form; the scope tabs "
+        "(tags-scope-bar), one per kind of object, choose the kind whose tags are listed; a "
+        'row\'s edit button, named "Edit tag <tag id>", opens its form, and tags-delete-<tag id> '
+        "deletes it. The form's reason, expiry and parameter policies are tags-reason-policy, "
+        'tags-expires-policy and tags-param-policy; "Assignments require a citation" is '
+        'tags-requires-citation; "Why this tag exists" is the citation list tags-defined-by, '
+        "added to with tags-defined-by-picker-document, tags-defined-by-picker-section and "
+        "tags-defined-by-picker-add; tags-save saves the form"
+    ),
     "/admin/classification-kinds": PollyPage("classification kinds"),
     "/admin/reports": PollyPage("reports"),
     "/admin/security": PollyPage("security settings"),
@@ -165,7 +182,34 @@ PAGES: dict[str, PollyPage] = {
 
 
 def _row(route: str, page: PollyPage) -> str:
-    return f"{route}: {page.what}. Set: {page.sets}. read_screen: {page.reads}."
+    tags = "; and read_screen's tags (TAGS ON SCREEN)" if page.tags else ""
+    return f"{route}: {page.what}. Set: {page.sets}. read_screen: {page.reads}{tags}."
+
+
+# The pages that show tag chips, in the table's order.
+TAG_ROUTES: tuple[str, ...] = tuple(route for route, page in PAGES.items() if page.tags)
+
+TAG_CONTROLS = (
+    "TAGS ON SCREEN: on a page that shows tag chips, read_screen's tags lists each object on "
+    "screen with its kind and key (as meta.tag_instances keys it), control (the test id of its "
+    "tag control, tag-control-<kind>-<id>), readOnly, and each tag's id with via (assigned, "
+    "inherited from the glossary term a column means, or derived from the object's own "
+    "registration), citationGap (the tag requires a citation and the assignment cites "
+    "nothing), needsReview (a place it cites changed) and expired. Weigh these to evaluate the "
+    'tags. The controls, each named with "within": <control> since every object has its own: '
+    "the chip tag-pill-<tag id> opens the assignment form, filled; tag-picker-toggle opens the "
+    "picker, where tag-option-<tag id> checks or clears a tag and tag-edit-<tag id> opens an "
+    "assigned one's form. The form: tag-param-<tag id>, tag-reason-<tag id>, "
+    "tag-expires-<tag id>, its citations tag-citations-<tag id> (added to with "
+    "tag-citations-<tag id>-picker-document, tag-citations-<tag id>-picker-section and "
+    "tag-citations-<tag id>-picker-add), then Save tag-apply-<tag id> or Cancel "
+    "tag-cancel-<tag id>. To learn more about a tag, what cites it, or which objects a document "
+    "covers, query the meta views (SQL, GraphQL or Cypher, as the user): meta.tag_instances, "
+    "meta.tag_citations, meta.section_tags, meta.policy_coverage and meta.library_documents. An "
+    "edit is a proposal the user confirms before it is written: through the form (its Save waits "
+    "for their yes) or with assign_tag, unassign_tag, cite_tag_assignment, "
+    "uncite_tag_assignment, cite_tag_definition or uncite_tag_definition."
+)
 
 
 SYSTEM_SECTION = (

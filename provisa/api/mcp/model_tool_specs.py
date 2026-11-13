@@ -565,3 +565,136 @@ SYSTEM_SECTION = (
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
     "change, and to /admin/environments before a synthetic dataset change."
 )
+
+
+# -- tags: the tag assignment form's and the tag editor's edits ----------------------------------
+
+_OBJECT = {
+    "object_kind": {
+        "type": "string",
+        "enum": [
+            "source",
+            "table",
+            "column",
+            "relationship",
+            "command",
+            "product",
+            "term",
+            "rls_rule",
+            "role",
+            "metric",
+            "document",
+            "section",
+        ],
+    },
+    "object_key": {
+        "type": "string",
+        "description": (
+            "The object as read_screen's tags and meta.tag_instances name it: <kind>:<id>, "
+            "column:<table id>:<column>, section:<document id>:heading:<heading> or "
+            "section:<document id>:page:<page>."
+        ),
+    },
+    "tag_id": {
+        "type": "string",
+        "description": "The tag's id, with its parameter where it takes one (entity:customer).",
+    },
+}
+_CITATION = {
+    "type": "object",
+    "description": (
+        "A library document, or a section of it by its heading, or by its page when it has none."
+    ),
+    "properties": {
+        "document_id": {"type": "integer"},
+        "section_heading": {"type": "string"},
+        "section_page": {"type": "integer"},
+    },
+    "required": ["document_id"],
+}
+_CONFIRMED = (
+    " In the chat the change is shown to the user, who confirms it before it is written; over "
+    "MCP it is written at once, as the caller. Returns the mutation's own success, message, code "
+    "and params; a caller without the right gets its refusal."
+)
+
+TAG_SPECS: list[dict] = [
+    {
+        "name": "assign_tag",
+        "description": (
+            "Put a tag on an object, or change that assignment, as the tag assignment form does "
+            "(assignTag): with a reason and an expiry (ISO date) where the tag asks for them, and "
+            "citations, the whole set the assignment cites." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {
+                **_OBJECT,
+                "reason": {"type": "string"},
+                "expires_on": {"type": "string"},
+                "citations": {"type": "array", "items": _CITATION},
+            },
+            ["object_kind", "object_key", "tag_id"],
+        ),
+    },
+    {
+        "name": "unassign_tag",
+        "description": (
+            "Take a tag off an object (unassignTag). A tag the object inherits or derives is no "
+            "assignment of its own and is refused." + _CONFIRMED
+        ),
+        "input_schema": _obj(_OBJECT, ["object_kind", "object_key", "tag_id"]),
+    },
+    {
+        "name": "cite_tag_assignment",
+        "description": (
+            "One assignment of a tag cites a library document or section (citeTagAssignment); "
+            "citing it again records the section as it is now, confirming one that needs review."
+            + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "uncite_tag_assignment",
+        "description": (
+            "Take a citation off one assignment of a tag (unciteTagAssignment)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "cite_tag_definition",
+        "description": (
+            "A tag's definition cites the library document or section that says why the tag "
+            "exists (citeTagDefinition); citing it again records the section as it is now."
+            + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+    {
+        "name": "uncite_tag_definition",
+        "description": (
+            "Take a citation off a tag's definition (unciteTagDefinition)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+]
+
+TAG_NAMES: frozenset[str] = frozenset(s["name"] for s in TAG_SPECS)
+
+TAG_SYSTEM_SECTION = (
+    "Tag edits: assign_tag, unassign_tag, cite_tag_assignment, uncite_tag_assignment, "
+    "cite_tag_definition, uncite_tag_definition are the tag assignment form's and the tag "
+    "editor's own changes. Name the object by object_kind and object_key exactly as read_screen's "
+    "tags report it. Each is a proposal: the user sees the change and confirms it before it is "
+    "written, so never ask a separate yes/no first; a refusal is the form's own message, report "
+    "it as it is."
+)
