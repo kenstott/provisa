@@ -2687,7 +2687,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # source_operation (REQ-1924): a write operation of a remote source (OpenAPI, GraphQL, gRPC),
     # named by source_id and function_name and passed through as is.
     # source_query (REQ-1988): a query command running its source's native query -- a MongoDB
-    # pipeline, its binding {"inputCollection", "pipeline"} -- with the call's typed arguments.
+    # pipeline, its binding {"inputCollection", "pipeline"} -- with the call's typed arguments;
+    # on a relational source, native SQL in the source's dialect, its binding {"sql"}, one
+    # statement or several run in one transaction (executor/native_sql_command).
     # statement (REQ-2001): a Provisa SQL statement, its binding {"sql"}, an argument written
     # {{name}}; run through the one pipeline as the caller's role (executor/statement_command).
     impl_kind: str = "source_procedure"
@@ -2759,8 +2761,16 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     @model_validator(mode="after")
     def _source_query_is_a_reading_native_query(self) -> "Function":  # REQ-1988
         """A source_query command is a query, and its binding is a native query that names only
-        its arguments, uses each, and only reads."""
+        its arguments, uses each, and only reads. One whose binding holds native SQL for a
+        relational source (amended 2026-11-13) reads or writes, as it declares; its text is
+        checked against its source's dialect where the source is known (ProvisaConfig, the admin
+        API)."""
         if self.impl_kind != "source_query":
+            return self
+        from provisa.core.native_sql import BINDING_KEY, native_sql_text
+
+        if BINDING_KEY in self.binding:
+            native_sql_text(self.name, self.binding)
             return self
         if self.kind != "query":
             raise ValueError(f"command {self.name!r}: a source_query command is a query")
@@ -4136,6 +4146,27 @@ class ProvisaConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_regions(self) -> "ProvisaConfig":
         validate_regions(self)  # REQ-1922
+        return self
+
+    @model_validator(mode="after")
+    def _native_sql_commands_run_on_their_source(self) -> "ProvisaConfig":  # REQ-1988
+        """A source_query command holding native SQL is on a relational source that runs it, and
+        its text, split in that source's dialect, names exactly its arguments."""
+        from provisa.core.native_sql import BINDING_KEY, check_on_source
+
+        types = {s.id: s.type.value for s in self.sources}
+        for f in self.functions:
+            if f.impl_kind != "source_query" or BINDING_KEY not in f.binding:
+                continue
+            if f.source_id not in types:
+                raise ValueError(f"command {f.name!r}: its source {f.source_id!r} is not declared")
+            check_on_source(
+                f.name,
+                f.source_id,
+                types[f.source_id],
+                f.binding,
+                [a.name for a in f.arguments],
+            )
         return self
 
     @model_validator(mode="after")

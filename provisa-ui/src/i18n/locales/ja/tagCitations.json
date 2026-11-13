@@ -21,7 +21,6 @@
     "definedBy": "定義元: {{title}}",
     "definedByLabel": "定義元",
     "definedByDesc": "このタグを定義するライブラリのセクション。",
-    "citedHere": "このオブジェクトの引用",
     "requiresCitationLabel": "割り当てに引用を必須にする",
     "requiresCitationDesc": "ライブラリのセクションを引用していないこのタグの割り当ては、不足として表示されます。",
     "requiresCitationBadge": "引用必須",
@@ -29,6 +28,8 @@
     "citedByOn": "対象",
     "citedByDefinition": "その定義",
     "citedByGone": "なし",
-    "citedByWholeDocument": "文書全体"
+    "citedByWholeDocument": "文書全体",
+    "citationsLabel": "引用",
+    "neededForCoverage": "カバレッジに必要"
   }
 }

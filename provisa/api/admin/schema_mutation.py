@@ -1945,6 +1945,49 @@ async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
     return None
 
 
+class _AssignRefused(Exception):
+    """Carries a refusal out of the assignment's transaction, rolling it back."""
+
+    def __init__(self, result: MutationResult) -> None:
+        super().__init__(result.message)
+        self.result = result
+
+
+async def _store_with_citations(  # REQ-2208
+    info: StrawberryInfo,
+    conn: "Connection",
+    model: Any,
+    tag_row: dict,
+    cited: "list[LibraryCitationInput] | None",
+) -> "MutationResult | None":
+    """The assignment and, when ``cited`` is given, the whole set of its citations, in one
+    transaction: a citation the library refuses (no such document, no such section) leaves
+    neither the assignment nor any citation written."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    try:
+        async with conn.transaction():
+            refused = await store_tag_assignment(conn, model, tag_row)
+            if refused is not None:
+                raise _AssignRefused(refused)
+            if cited is not None:
+                places = [
+                    citations.Place(c.document_id, c.section_heading, c.section_page) for c in cited
+                ]
+                await tag_repo.replace_assignment_citations(conn, model, places, _caller_id(info))
+    except _AssignRefused as stopped:
+        return stopped.result
+    except library.LibraryRefused as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code=exc.code,
+            params={"tag": model.tag_id, "objectKey": model.object_key()},
+        )
+    return None
+
+
 async def _refresh_config_tags() -> None:  # REQ-1373/1377
     """The DB is the source of truth for tags; mirror it into state.config for consumers
     (metadata export builder) that read the in-memory config."""
@@ -3813,8 +3856,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def assign_tag(
-        self, info: StrawberryInfo, input: TagAssignmentInput
-    ) -> MutationResult:  # REQ-1376/1377, REQ-1944
+        self,
+        info: StrawberryInfo,
+        input: TagAssignmentInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1376/1377, REQ-1944, REQ-2208
+        """Put the tag on the object, or change that assignment. ``citations``, when given, is the
+        whole set the assignment cites, written with it in one transaction: all of it or none."""
         _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
@@ -3905,7 +3953,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
             )
-            refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
+            for citation in citations or []:  # REQ-2208: a document the caller reads
+                refused = await _unread_document(
+                    info, cast("Connection", conn), citation.document_id
+                )
+                if refused is not None:
+                    return refused
+            refused = await _store_with_citations(
+                info, cast("Connection", conn), model, tag_row, citations
+            )
             if refused is not None:
                 return refused
             covers = await _covers(cast("Connection", conn), model)  # REQ-2145

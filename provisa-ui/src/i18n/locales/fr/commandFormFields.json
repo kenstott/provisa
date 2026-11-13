@@ -68,6 +68,8 @@
     "bindingTemplate": "Expression SQL",
     "bindingTemplateHint": "Une expression SQL. Écrivez chaque argument sous la forme {{placeholder}} ; elle s'exécute dans la requête qui l'appelle.",
     "argDefault": "Valeur par défaut de l'argument {{name}}",
-    "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)"
+    "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)",
+    "nativeSql": "SQL natif",
+    "nativeSqlHint": "Du SQL dans le dialecte propre de la source, une instruction ou plusieurs, exécutées sur la source dans une seule transaction : toutes sont validées ou aucune. Écrivez un argument sous la forme {{placeholder}} ; chacun est lié comme une valeur. La réponse est faite des lignes de la dernière instruction."
   }
 }

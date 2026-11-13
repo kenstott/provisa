@@ -21,7 +21,6 @@
     "definedBy": "{{title}} द्वारा परिभाषित",
     "definedByLabel": "द्वारा परिभाषित",
     "definedByDesc": "वे लाइब्रेरी अनुभाग जो इस टैग को परिभाषित करते हैं।",
-    "citedHere": "इस ऑब्जेक्ट के लिए उद्धृत",
     "requiresCitationLabel": "असाइनमेंट के लिए उद्धरण ज़रूरी है",
     "requiresCitationDesc": "इस टैग का वह असाइनमेंट जिसमें लाइब्रेरी का कोई अनुभाग उद्धृत नहीं है, अंतर के रूप में चिह्नित होता है।",
     "requiresCitationBadge": "उद्धरण ज़रूरी",
@@ -29,6 +28,8 @@
     "citedByOn": "पर",
     "citedByDefinition": "इसकी परिभाषा",
     "citedByGone": "हट गया",
-    "citedByWholeDocument": "पूरा दस्तावेज़"
+    "citedByWholeDocument": "पूरा दस्तावेज़",
+    "citationsLabel": "उद्धरण",
+    "neededForCoverage": "कवरेज के लिए ज़रूरी"
   }
 }

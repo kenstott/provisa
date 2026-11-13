@@ -8,12 +8,13 @@ A command is a **governed RPC**. Its inputs and outputs are declared, typed, val
 
 ## Implementation kinds
 
-Six `impl_kind` values are supported:
+These are the `impl_kind` values you register most often:
 
 | `impl_kind` | Transport |
 | --- | --- |
 | `source_procedure` | Native stored procedure on a registered source |
 | `source_operation` | A write operation of an OpenAPI, remote GraphQL or gRPC source, passed through as is (see [A remote source's write operation](#a-remote-sources-write-operation)) |
+| `source_query` | The source's own query language: a MongoDB aggregation pipeline, or native SQL on a relational source (see [Native SQL on a relational source](#native-sql-on-a-relational-source)) |
 | `script` | Local subprocess fed JSON on stdin, reads JSON from stdout |
 | `http` | HTTP/S endpoint; JSON request body, JSON response |
 | `grpc` | gRPC unary; proto-less JSON bridge |
@@ -291,6 +292,82 @@ command 'create_issue' writes to its source and is called on its own: it cannot 
 ```
 
 A source operation isn't a lineage node either. Lineage is read from the SQL of views and queries, where a command appears as a node, and no saved definition can call a source operation.
+
+## Native SQL on a relational source
+
+A `source_query` command on a relational source holds SQL written in that source's own dialect. It runs directly on the source, over the connection Provisa already holds for it. The federation engine never sees the text, and neither does the semantic layer. Use it when the work belongs in the source's own SQL, such as a multi-step write or a vendor extension.
+
+The binding holds the text as `sql`. It can be one statement or several, separated by semicolons:
+
+```yaml
+functions:
+  - name: add_pair
+    source_id: sales-pg
+    function_name: add_pair
+    returns: ""
+    kind: mutation
+    impl_kind: source_query
+    domain_id: sales
+    visible_to: [writer]
+    writes_table: public.orders
+    arguments:
+      - {name: a, type: integer}
+      - {name: b, type: integer}
+      - {name: r, type: text}
+    output_columns:
+      - {name: id, type: integer}
+      - {name: region, type: text}
+    binding:
+      sql: |
+        INSERT INTO public.orders (id, region) VALUES ({{a}}, {{r}});
+        INSERT INTO public.orders (id, region) VALUES ({{b}}, {{r}});
+        SELECT id, region FROM public.orders WHERE id IN ({{a}}, {{b}}) ORDER BY id
+```
+
+In the admin UI, pick **Native SQL (relational source)** as the implementation, then the source and the SQL.
+
+### Arguments
+
+Write an argument as `{{name}}`, as a pipeline command and a statement command do. Each call converts the value to the argument's declared type and sends it to the database as a bound parameter. A value is never written into the SQL text, so `it's; DROP TABLE public.orders; --` is stored as that string. You can use an argument as often as you like; every occurrence binds the same value.
+
+### One transaction
+
+The statements run in order, in one transaction on the source. If any statement fails, none of them commit. When they all succeed, they all commit. The call answers the rows of the last statement, checked against the command's declared output columns like any command's. A command that declares no output columns (`output_columns: []`) answers nothing.
+
+The command opens and commits its own transaction. A `BEGIN` or `COMMIT` a client sends around the call does nothing, as it does for every command. One call reaches one source.
+
+### Kind and written table
+
+Provisa does not parse native SQL to decide what it does. The command is a query or a mutation because you declare it so, and the table it writes is the one you name in `writes_table`. After a call to a command that names one, Provisa treats the call as a write to that table, as it does for a [remote source's write operation](#writes-table). The table's cached responses are dropped and the materialized views over it are marked stale.
+
+### A query reads and a mutation writes
+
+A command declared as a query runs in a read-only transaction, so the database itself stops it from writing. If its text holds an `INSERT`, `UPDATE`, `DELETE` or any other write, PostgreSQL refuses it with `read_only_sql_transaction` (SQLSTATE 25006). The call fails with that error and nothing is committed. The read-only setting ends with the transaction, so the next call on the same connection starts read-write. A command declared as a mutation runs read-write.
+
+### A writing command is called on its own
+
+A native SQL command declared as a mutation cannot be composed in a larger SQL statement, such as a join or a subquery, or in the definition of a view or a materialized view. It would write each time the statement is read or the view is refreshed, so Provisa refuses the statement or the definition and names the command. Call it by itself, as in `SELECT * FROM add_pair(10, 11, 'north')`. A native SQL command declared as a query can still be composed.
+
+### Governance
+
+The call is governed as a stored procedure call is. The role must hold `command_execution`, be assigned the command and reach its domain. With **Requires approval** on, the deployment's approval hook decides each call. Provisa does not check the statements one by one.
+
+### What is refused when you save it
+
+The text is split into statements by the source dialect's own tokenizer. A semicolon inside a quoted string, a dollar-quoted body or a comment does not end a statement. A command is refused with 422, `actions.native_sql_invalid`, when:
+
+| The text | Why |
+| --- | --- |
+| Names `{{x}}` and the command declares no argument `x` | Every name must be an argument |
+| Never names a declared argument | Every argument must be used |
+| Holds `{{x}}` inside a quoted string | It could only be filled by writing the value into the text |
+| Holds a driver parameter such as `$1` | Write the argument as `{{name}}` |
+| Has a statement beginning with `BEGIN`, `START`, `COMMIT`, `ROLLBACK`, `END` or `ABORT` | The command runs its own transaction |
+| Cannot be read by the tokenizer, such as an unterminated string | It cannot be split into statements |
+| Is on a source that is not relational | Native SQL runs on a relational source |
+| Is on a relational source type native SQL commands do not run on yet | The message names the type |
+
+Native SQL commands run on PostgreSQL sources.
 
 ## Commands and lineage
 
