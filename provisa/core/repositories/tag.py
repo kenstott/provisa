@@ -39,6 +39,7 @@ from provisa.core.models import (
     base_tag_id,
 )
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.reference_library import citations
 from provisa.core.schema_org import (
     glossary_terms,
     reference_document_tags,
@@ -64,6 +65,7 @@ def _code_tag_row(tag: Tag) -> dict:
         "expires_policy": tag.expires_policy,
         "param_policy": tag.param_policy,
         "sensitive": tag.sensitive,
+        "requires_citation": tag.requires_citation,
     }
 
 
@@ -87,6 +89,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "expires_policy": tag.expires_policy,
             "param_policy": tag.param_policy,
             "sensitive": tag.sensitive,
+            "requires_citation": tag.requires_citation,  # REQ-2208
         },
         index_elements=["id"],
         update_columns=[
@@ -96,6 +99,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "expires_policy",
             "param_policy",
             "sensitive",
+            "requires_citation",
         ],
     )
 
@@ -320,7 +324,94 @@ async def unassign(
             (held_in.c.base_tag_id == base_tag_id(tag_id)) & (held_in.c.object_key == object_key)
         )
     )
-    return (result.rowcount or 0) > 0
+    removed = (result.rowcount or 0) > 0
+    if removed:  # REQ-2208: its citations go with the assignment
+        await citations.uncite_all(conn, citations.TAG_ASSIGNMENT, base_tag_id(tag_id), object_key)
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# Citations of the reference library (REQ-2208)
+# ---------------------------------------------------------------------------
+
+
+class CitationTargetNotFound(LookupError):  # REQ-2208
+    """The tag, or the assignment, a citation is to be made on or taken off is not there."""
+
+
+async def _require_tag(conn: "Connection", tag_id: str) -> str:
+    if await get(conn, tag_id) is None:
+        raise CitationTargetNotFound(f"Tag {tag_id!r} not found")
+    return base_tag_id(tag_id)
+
+
+async def _require_assignment(conn: "Connection", assignment: TagAssignment) -> tuple[str, str]:
+    held_in = _held_in(assignment.object_type)
+    key = (assignment.base_tag_id(), assignment.object_key())
+    found = await conn.execute_core(
+        select(held_in.c.id).where(
+            (held_in.c.base_tag_id == key[0]) & (held_in.c.object_key == key[1])
+        )
+    )
+    if found.fetchone() is None:
+        raise CitationTargetNotFound(f"Tag {assignment.tag_id!r} is not assigned to {key[1]}")
+    return key
+
+
+async def cite_definition(  # REQ-2208
+    conn: "Connection", tag_id: str, place: "citations.Place", cited_by: str | None
+) -> "citations.Citation":
+    """The tag's definition cites ``place`` (the section that defines it); a system tag's too."""
+    model_change.name("cite", "tag", tag_id)  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    return await citations.cite(conn, citations.TAG, base, "", place, cited_by)
+
+
+async def uncite_definition(  # REQ-2208
+    conn: "Connection", tag_id: str, place: "citations.Place"
+) -> bool:
+    model_change.name("uncite", "tag", tag_id)  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    return await citations.uncite(conn, citations.TAG, base, "", place)
+
+
+async def cite_assignment(  # REQ-2208
+    conn: "Connection", assignment: TagAssignment, place: "citations.Place", cited_by: str | None
+) -> "citations.Citation":
+    """The assignment cites ``place``: what traces or confirms the tag on that object."""
+    model_change.name("cite", "tag", assignment.tag_id)  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    return await citations.cite(conn, citations.TAG_ASSIGNMENT, base, key, place, cited_by)
+
+
+async def uncite_assignment(  # REQ-2208
+    conn: "Connection", assignment: TagAssignment, place: "citations.Place"
+) -> bool:
+    model_change.name("uncite", "tag", assignment.tag_id)  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    return await citations.uncite(conn, citations.TAG_ASSIGNMENT, base, key, place)
+
+
+async def definition_citations(  # REQ-2208
+    conn: "Connection",
+) -> "dict[str, list[citations.Citation]]":
+    """Each tag's definition citations, by base tag id, each with its state."""
+    found = await citations.of_citers(conn, citations.TAG)
+    return {tag: cited for (tag, _key), cited in found.items() if tag is not None}
+
+
+async def assignment_citations(  # REQ-2208
+    conn: "Connection",
+) -> "dict[tuple[str, str], list[citations.Citation]]":
+    """Each assignment's citations, by (base tag id, object key), each with its state."""
+    found = await citations.of_citers(conn, citations.TAG_ASSIGNMENT)
+    return {(tag, key): cited for (tag, key), cited in found.items() if tag is not None}
+
+
+def citation_gap(tag_row: dict | None, cited: "list[citations.Citation]") -> bool:  # REQ-2208
+    """Whether an assignment of the tag lacks the citation its tag requires: a gap, reported
+    and never refused."""
+    return bool(tag_row and tag_row.get("requires_citation")) and not cited
 
 
 # ---------------------------------------------------------------------------

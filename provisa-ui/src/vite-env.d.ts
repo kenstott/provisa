@@ -31,6 +31,10 @@ declare module "*.graphql" {
   export const UnassignTag: DocumentNode;
   export const UpsertTagParamValue: DocumentNode;
   export const DeleteTagParamValue: DocumentNode;
+  export const CiteTagDefinition: DocumentNode;
+  export const UnciteTagDefinition: DocumentNode;
+  export const CiteTagAssignment: DocumentNode;
+  export const UnciteTagAssignment: DocumentNode;
   export const RefreshPolicyPreview: DocumentNode;
   export const MetricsQuery: DocumentNode;
   export const CreateMetric: DocumentNode;

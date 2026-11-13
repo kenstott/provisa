@@ -57,6 +57,9 @@ describe("TagControl", () => {
         reasonPolicy: "required",
         expiresPolicy: "optional",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -68,6 +71,9 @@ describe("TagControl", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -79,6 +85,9 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "required",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -90,6 +99,9 @@ describe("TagControl", () => {
         reasonPolicy: "optional",
         expiresPolicy: "optional",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -101,6 +113,9 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -112,6 +127,9 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "required",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [
           { value: "customer", description: "A buying party" },
           { value: "vendor", description: "" },
@@ -529,6 +547,9 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -540,6 +561,9 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -551,6 +575,9 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
     ];
