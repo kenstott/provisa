@@ -24,9 +24,9 @@ interface EndingCore {
 
 /** What of a cytoscape layout running it needs. */
 export interface RunningLayout {
-  one(event: "layoutstop", fn: () => void): unknown;
-  /** ``layoutfail`` (elkLayout's ``LAYOUT_FAIL``): a layout that failed after it started. */
-  one(event: "layoutfail", fn: (evt: unknown, error: Error) => void): unknown;
+  /** ``layoutstop``, or ``layoutfail`` (elkLayout's ``LAYOUT_FAIL``, with its error): a layout
+   * that failed after it started. */
+  one(event: "layoutstop" | "layoutfail", fn: (evt: unknown, error?: unknown) => void): unknown;
   run(): unknown;
 }
 
@@ -57,8 +57,12 @@ export function cyCanvas(host: HTMLElement): CyCanvas {
         if (ended === null) answer?.();
         else if (pending === 0) ended.destroy();
       };
+      // The failure's listener first, the end's last: a stand-in layout that keeps one listener
+      // (the views' tests) keeps the end's.
+      layout.one("layoutfail", (_evt, error) =>
+        done(failed && (() => failed(error instanceof Error ? error : new Error(String(error))))),
+      );
       layout.one("layoutstop", () => done(then));
-      layout.one("layoutfail", (_evt, error) => done(failed && (() => failed(error))));
       layout.run();
     },
     end(cy) {
