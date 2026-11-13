@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: bcc69730-880a-4091-93b9-aa1ea2459546
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -134,7 +135,7 @@ describe("+ Source opens the create form empty", () => {
       expect(field(/^Database/)).toHaveValue("");
       expect(field(/^Username/)).toHaveValue("");
       expect(field(/^Password/)).toHaveValue("");
-      expect(field(/^Port/)).toHaveValue(type === "mysql" ? 3306 : 5432);
+      expect(field(/^Port/)).toHaveValue(type === "mysql" ? "3306" : "5432");
       expectHoldsNoneOf(panel(), SALES);
     });
   }
@@ -179,7 +180,7 @@ describe("Duplicate, in a source's panel head", () => {
     expect(screen.getByTestId("sources-id-input")).toHaveValue("sales-pg-copy");
     expect(screen.getByTestId("sources-type-select")).toHaveValue("postgresql");
     expect(field(/^Host/)).toHaveValue("sales-db.internal");
-    expect(field(/^Port/)).toHaveValue(6543);
+    expect(field(/^Port/)).toHaveValue("6543");
     expect(field(/^Database/)).toHaveValue("sales");
     expect(field(/^Username/)).toHaveValue("svc_sales");
     // The same reference the source uses: what it names is resolved when the source is used.
@@ -194,9 +195,7 @@ describe("Duplicate, in a source's panel head", () => {
     await userEvent.click(await screen.findByTestId("source-detail-duplicate"));
     await screen.findByTestId("sources-submit");
     expect(field(/^Password/)).toHaveValue("");
-    expect(within(panel()).getByTestId("sources-duplicate-note")).toHaveTextContent(
-      /not copied/i,
-    );
+    expect(within(panel()).getByTestId("sources-duplicate-note")).toHaveTextContent(/not copied/i);
     expectHoldsNoneOf(panel(), ["hunter2"]);
   });
 

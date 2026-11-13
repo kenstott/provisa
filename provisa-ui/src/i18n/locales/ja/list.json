@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "削除対象: {{names}}。まだ他から参照されているものは残し、理由を示します。",
     "bulkRefused_one": "{{count}} 件は削除されませんでした:",
     "bulkRefused_other": "{{count}} 件は削除されませんでした:",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "duplicate": "複製",
+    "duplicateNamed": "{{name}} を複製"
   }
 }

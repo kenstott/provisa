@@ -10,6 +10,7 @@
 
 import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
@@ -25,6 +26,8 @@ interface SourceDetailPanelProps {
   /** The source's settings read: its edit form drawn read-only; null until they are read. */
   fields: ReactNode;
   onEdit: () => void;
+  /** Opens the create form prefilled from the source, under a new id. */
+  onDuplicate: () => void;
   onNavigate: () => void;
   /** REQ-2198: resolves once the source is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
@@ -34,6 +37,7 @@ export function SourceDetailPanel({
   s,
   fields,
   onEdit,
+  onDuplicate,
   onNavigate,
   onDelete,
 }: SourceDetailPanelProps) {
@@ -102,6 +106,7 @@ export function SourceDetailPanel({
               <Pencil size={14} />
             </ActionIcon>
           </Tip>
+          <PanelDuplicate name={s.id} onDuplicate={onDuplicate} testId="source-detail-duplicate" />
           {s.id !== "provisa-otel" && (
             <Tip text={t("sourceDetailPanel.navigateTitle")} named>
               <ActionIcon

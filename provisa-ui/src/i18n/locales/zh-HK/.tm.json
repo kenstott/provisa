@@ -10385,5 +10385,8 @@
   "zh-HK/dataProductOffers.json::dataProductOffers.worst_notRun": "Not yet run",
   "zh-HK/dataProductOffers.json::dataProductOffers.worst_pass": "Passing",
   "zh-HK/dataProductsTab.json::dataProductsTab.tagFacetLabel": "Tags",
-  "zh-HK/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag"
+  "zh-HK/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag",
+  "zh-HK/list.json::list.duplicate": "Duplicate",
+  "zh-HK/list.json::list.duplicateNamed": "Duplicate {{name}}",
+  "zh-HK/sourcesPage.json::sourcesPage.duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret."
 }

@@ -10388,5 +10388,8 @@
   "de/dataProductOffers.json::dataProductOffers.worst_notRun": "Not yet run",
   "de/dataProductOffers.json::dataProductOffers.worst_pass": "Passing",
   "de/dataProductsTab.json::dataProductsTab.tagFacetLabel": "Tags",
-  "de/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag"
+  "de/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag",
+  "de/list.json::list.duplicate": "Duplicate",
+  "de/list.json::list.duplicateNamed": "Duplicate {{name}}",
+  "de/sourcesPage.json::sourcesPage.duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret."
 }

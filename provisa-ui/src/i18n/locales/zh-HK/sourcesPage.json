@@ -44,6 +44,7 @@
     "purposeBody": "來源是指向持有資料的系統（資料庫、倉儲、檔案儲存、API）的一條已註冊連線。註冊後，Provisa 便可讀取其結構描述，並以與其他所有來源相同的語言查詢它，毋須把資料複製到任何地方。",
     "purposeAdd": "只加入來源並不會註冊任何資料表。請在該列使用 Discover 瀏覽其結構描述，並註冊你想納入治理的資料表。",
     "purposeAria": "關於資料來源",
-    "registrationMissing": "{{list}} 中沒有資料來源 {{source}} 的註冊。"
+    "registrationMissing": "{{list}} 中沒有資料來源 {{source}} 的註冊。",
+    "duplicateCredentialsNote": "{{source}} 的憑證不會被複製：請在此輸入，或輸入對密鑰的引用。"
   }
 }

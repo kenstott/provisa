@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: a1d71855-83a1-4dc1-8519-379c83796ffd
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -85,12 +86,16 @@ describe("the rule itself", () => {
       <PanelDelete itemKey={x} /></PanelActions>`;
     expect(offersEdit(head)).toBe(true);
     expect(offersDuplicate(head)).toBe(false);
-    expect(offersDuplicate(head.replace("<PanelDelete", "<PanelDuplicate name={x} />\n<PanelDelete"))).toBe(true);
+    expect(
+      offersDuplicate(head.replace("<PanelDelete", "<PanelDuplicate name={x} />\n<PanelDelete")),
+    ).toBe(true);
   });
 
   it("finds Edit beside a detail's Delete that is not in a head", () => {
     expect(
-      offersEdit(`<Button leftSection={<Pencil size={14} />}>Edit</Button><PanelDelete itemKey={x} />`),
+      offersEdit(
+        `<Button leftSection={<Pencil size={14} />}>Edit</Button><PanelDelete itemKey={x} />`,
+      ),
     ).toBe(true);
   });
 

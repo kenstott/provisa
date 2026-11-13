@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "Se eliminarán: {{names}}. Las que todavía tengan referencias se conservan y se indica el motivo.",
     "bulkRefused_one": "{{count}} no se eliminó:",
     "bulkRefused_other": "{{count}} no se eliminaron:",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "duplicate": "Duplicar",
+    "duplicateNamed": "Duplicar {{name}}"
   }
 }
