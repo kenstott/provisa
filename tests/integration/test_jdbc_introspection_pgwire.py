@@ -31,7 +31,6 @@ the test skips if it cannot be provisioned or the JVM cannot start.
 from __future__ import annotations
 
 import asyncio
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -60,10 +59,7 @@ def _ensure_pgjdbc_jar() -> str:
     if _JAR_PATH.exists():
         return str(_JAR_PATH)
     _JAR_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        urllib.request.urlretrieve(_PGJDBC_URL, _JAR_PATH)  # noqa: S310  # fixed Maven Central URL
-    except (urllib.error.URLError, OSError) as exc:
-        pytest.skip(f"pgjdbc jar unavailable (offline?): {exc}")
+    urllib.request.urlretrieve(_PGJDBC_URL, _JAR_PATH)  # noqa: S310  # fixed Maven Central URL
     return str(_JAR_PATH)
 
 
