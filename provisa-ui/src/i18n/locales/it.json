@@ -2,6 +2,7 @@
   "common": {
     "loading": "Caricamento...",
     "cancel": "Annulla",
+    "stop": "Interrompi",
     "save": "Salva",
     "delete": "Elimina",
     "confirm": "Conferma",

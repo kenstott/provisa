@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "Chamada de ferramenta MCP",
     "copy": "Copiar {{what}}",
-    "close": "Fechar"
+    "close": "Fechar",
+    "draft": "Rascunho",
+    "draftNote": "Esta tabela é um rascunho: até ser liberada, apenas as funções que podem registrar tabelas no seu domínio a alcançam por estes meios."
   }
 }

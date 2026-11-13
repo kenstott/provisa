@@ -1873,6 +1873,52 @@ def schema_input_for(
     )
 
 
+#: REQ-1921: how a draft is marked where a role it is served to is offered it (its type's
+#: description in the schema and the paths built from it).
+DRAFT_MARK = "Draft: not released."
+
+
+def schema_input_with_drafts(
+    state: Any, role: dict, drafts: list[dict], *, marked: bool
+) -> SchemaInput:
+    """``role``'s schema input with ``drafts`` among its tables, as the role build builds it from
+    this generation's inputs, the tables moved from the drafts to the tables and their columns'
+    types the registered ones (REQ-1921). ``marked``: the drafts as a schema offers them, on a
+    copy: each one's description says it is a draft (:data:`DRAFT_MARK`), and it takes no write
+    (a draft is served to be read; a mutation naming one is refused naming it as a draft)."""
+    from dataclasses import replace
+
+    inputs = state.role_build_inputs
+    added = {d["id"] for d in drafts}
+    tables = [
+        {
+            **d,
+            "description": f"{DRAFT_MARK} {d.get('description') or ''}".strip(),
+            "write_ops": [],
+        }
+        if marked
+        else d
+        for d in drafts
+    ]
+    si = schema_input_for(state, role, [*inputs["tables"], *tables], inputs["metrics"])
+    return replace(
+        si,
+        draft_tables=[t for t in inputs["draft_tables"] if t["id"] not in added],
+        column_types={
+            **inputs["column_types"],
+            **{
+                draft["id"]: [
+                    ColumnMetadata(
+                        column_name=c["column_name"], data_type=c["data_type"], is_nullable=True
+                    )
+                    for c in draft["columns"]
+                ]
+                for draft in drafts
+            },
+        },
+    )
+
+
 def register_role_surface(state: Any, role: dict, rls: Any) -> None:
     """Register one role's data surface -- its GraphQL schema, REST path map, compiled context,
     RLS context and proto -- from this generation's build inputs, built LAZILY: the role is known
@@ -1936,18 +1982,39 @@ class _RoleParts:
         from provisa.compiler.schema_gen import build_table_path_map
         from provisa.grpc.proto_gen import generate_proto
 
+        from provisa.security.rights import registers_tables_in
+
         si, ctx = self._schema_input_and_context()
         with serving(self._runtime):
+            # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a role is offered, in its GraphQL schema
+            # and REST paths and marked as a draft, every draft of a domain it holds table
+            # registration in. Its context keeps them as drafts: a request naming one is read
+            # through the drafts' own view (admin/table_read.reading_drafts), as a statement
+            # naming one is.
+            served = (
+                [
+                    d
+                    for d in self._inputs["draft_tables"]
+                    if registers_tables_in(self._role, self._state.roles, d["domain_id"])
+                ]
+                if reads_data(self._role.get("capabilities"))
+                else []
+            )
+            offered = (
+                schema_input_with_drafts(self._state, self._role, served, marked=True)
+                if served
+                else si
+            )
             # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
             # surface holds that failure -- logged as an ERROR naming the role, and raised to
             # every read of it -- rather than serving a permanently cached "no schema available".
             # An unmapped column type is a real gap in the proto type map, not a reason to
             # silently disable gRPC for the role.
             return RoleSurface(
-                schema=generate_schema(si),
+                schema=generate_schema(offered),
                 context=ctx,
                 rls=self._rls,
-                table_path_map=build_table_path_map(si),
+                table_path_map=build_table_path_map(offered),
                 proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
             )
 

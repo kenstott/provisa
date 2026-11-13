@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "MCP-Tool-Aufruf",
     "copy": "{{what}} kopieren",
-    "close": "Schließen"
+    "close": "Schließen",
+    "draft": "Entwurf",
+    "draftNote": "Diese Tabelle ist ein Entwurf: Bis zu ihrer Freigabe erreichen sie auf diesen Wegen nur Rollen, die in ihrer Domäne Tabellen registrieren dürfen."
   }
 }

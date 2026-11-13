@@ -826,9 +826,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
                (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
-                   AS latest_run_at
+                   AS latest_run_at,
+               -- A draft's row is here; who reads it is the statement's governance
+               -- (compiler/stage2: a role holding table registration in its domain, and no
+               -- other). Last, so an existing view is replaced in place.
+               rt.draft
         FROM registered_tables rt
-        WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
     # version built -- one row per model object and surface, the name it has there and the

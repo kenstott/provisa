@@ -10402,5 +10402,14 @@
   "pt/dataProductOffers.json::dataProductOffers.worst_notRun": "Not yet run",
   "pt/dataProductOffers.json::dataProductOffers.worst_pass": "Passing",
   "pt/dataProductsTab.json::dataProductsTab.tagFacetLabel": "Tags",
-  "pt/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag"
+  "pt/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag",
+  "pt/tableSections.json::tableSections.classTermNoModel": "Its term could not be read: your roles cannot read the model's tables.",
+  "pt/tableSections.json::tableSections.classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
+  "pt/tableSections.json::tableSections.classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of.",
+  "pt/yourData.json::yourData.draft": "Draft",
+  "pt/yourData.json::yourData.draftNote": "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways.",
+  "pt/roleRights.json::roleRights.draft": "Draft",
+  "pt.json::common.stop": "Stop",
+  "pt/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
+  "pt/findTerms.json::findTerms.stopTip": "Stop the scan"
 }

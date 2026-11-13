@@ -81,6 +81,7 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
         "description": "Test role.",
         "capabilities": list(capabilities),
         "domain_access": domain_access,
+        "acting_chain": ["r"],  # REQ-2188: as the build records it
     }
 
 
@@ -264,7 +265,8 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    assert gov.rls_rules[100] == rule_of("id IN (-1)")
+    # REQ-1921: nor a draft's row, which only a role holding org_admin reads.
+    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT draft)")
 
 
 def test_single_domain_mode_sees_every_data_table(single_domain):

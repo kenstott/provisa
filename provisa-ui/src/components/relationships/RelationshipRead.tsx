@@ -9,10 +9,11 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Text } from "@mantine/core";
+import { Group, Text } from "@mantine/core";
 import type { Relationship } from "../../types/admin";
 import { domainToSqlName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
+import { FkBadge } from "./FkBadge";
 
 /** A heading over a group of the read view's fields, as the form heads its own. */
 function ReadHeading({ children }: { children: string }) {
@@ -59,6 +60,12 @@ export function RelationshipRead({
   const domain = (id: string | null | undefined) => or(id ? domainToSqlName(id) : null);
   return (
     <div className="detail-groups" data-testid="relationship-read">
+      {/* Not a field: the form has nothing to set it with, the server derives it from the id. */}
+      {r.autoSuggested && (
+        <Group gap="xs" mb="xs" data-testid="relationship-read-fk">
+          <FkBadge />
+        </Group>
+      )}
       <DetailFields
         testId="relationship-read-names"
         fields={[
@@ -68,7 +75,6 @@ export function RelationshipRead({
             value: <code>{or(r.graphqlAlias)}</code>,
           },
           { label: t("relationshipRow.sqlName"), value: <code>{or(r.physicalName)}</code> },
-          { label: t("relationshipRow.autoTracked"), value: yesNo(r.autoSuggested) },
         ]}
       />
       <ReadHeading>{t("relationshipRow.source")}</ReadHeading>

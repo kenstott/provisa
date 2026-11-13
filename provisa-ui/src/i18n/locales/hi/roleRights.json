@@ -35,6 +35,7 @@
     "scope_own-domain": "स्वयं का डोमेन",
     "write_insert": "जोड़ना",
     "write_update": "अपडेट",
-    "write_delete": "हटाना"
+    "write_delete": "हटाना",
+    "draft": "मसौदा"
   }
 }

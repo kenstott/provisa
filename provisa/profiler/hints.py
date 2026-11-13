@@ -147,14 +147,14 @@ async def _store(conn: Any, table_id: int, scan_id: str, rows: list[dict], read:
 
 async def run(state: Any, table_id: int, scan_id: str) -> None:
     """Scan ``table_id`` and record what was found. Always ends: succeeded, or failed with why."""
-    from provisa.api.admin.table_read import _draft, _in_service, read_as_caller
+    from provisa.api.admin.table_read import _in_service, draft_table, read_as_caller
     from provisa.profiler.classifications import enabled_kinds
     from provisa.profiler.run import PROFILE_ROLE
 
     pool = state.model_db
     try:
         async with asyncio.timeout(SCAN_TIMEOUT.total_seconds()):
-            table = _in_service(state, table_id) or _draft(state, table_id)
+            table = _in_service(state, table_id) or draft_table(state, table_id)
             if table is None:
                 raise ValueError(f"table {table_id} is no longer registered")
             columns = text_columns(table)
