@@ -209,7 +209,11 @@ describe("Polly's steps on the screen", () => {
       { do: "press", target: { testId: "tag-pill-pii", within: "tag-control-table-2" } },
     ]);
     expect(parsed).toEqual([
-      { do: "press", target: { testId: "tag-pill-pii", within: "tag-control-table-2" }, changes: false },
+      {
+        do: "press",
+        target: { testId: "tag-pill-pii", within: "tag-control-table-2" },
+        changes: false,
+      },
     ] satisfies UiAction[]);
     const one = await runUiActions(parsed as UiAction[], pace());
     expect(one.success).toBe(true);

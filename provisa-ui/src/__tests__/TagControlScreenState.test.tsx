@@ -148,9 +148,7 @@ describe("TagControl on read_screen", () => {
         </div>
       </>,
     );
-    const offscreen = document.querySelector<HTMLElement>(
-      "[data-testid='tag-control-table-13']",
-    );
+    const offscreen = document.querySelector<HTMLElement>("[data-testid='tag-control-table-13']");
     offscreen!.dataset.offscreen = "true";
     expect((await screenTags()).map((o) => o.key)).toEqual(["table:12"]);
   });

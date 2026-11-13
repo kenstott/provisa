@@ -16,6 +16,7 @@ checked on a column of the sales table, and a role reading the sales domain alon
 is up, a privacy policy read in both domains is added to its library: its Personal data section
 carries the tag personal, and the checked assignment cites the section. The administrator reads
 the three columns relevant to the policy; the sales role reads the two in sales.
+The same walk from the document to its columns is read over GraphQL and Cypher too.
 """
 
 # Requirements: REQ-2208
@@ -220,3 +221,51 @@ async def test_a_document_reaches_its_relevant_columns_over_the_relationships(
     srv, policy, columns = server
     rows = await _rows(srv, _walk(policy), role)
     assert sorted(r["column_key"] for r in rows) == sorted(columns[c] for c in reached), rows
+
+
+_WALKERS = [
+    ("org_admin", ["orders.id", "orders.email", "staff.name"]),
+    ("sales_reader", ["orders.id", "orders.email"]),
+]
+
+
+async def _post(srv, path: str, body: dict, role: str) -> dict:
+    async with httpx.AsyncClient(base_url=srv.base_url, timeout=120.0) as client:
+        resp = await client.post(path, json=body, headers={"X-Provisa-Role": role})
+    assert resp.status_code == 200, f"{resp.text}\n{srv.dump_stderr_debug()[-6000:]}"
+    return resp.json()
+
+
+@pytest.mark.parametrize(("role", "reached"), _WALKERS)
+async def test_a_document_reaches_its_relevant_columns_over_graphql(server, role, reached):
+    """The same walk through the relationships GraphQL publishes on the meta views: a document's
+    policyCoverage, each coverage row's column."""
+    srv, policy, columns = server
+    query = (
+        f"{{ m__libraryDocuments(where: {{id: {{eq: {policy}}}}}) "
+        "{ id policyCoverage { objectKind column { columnKey } } } }"
+    )
+    body = await _post(srv, "/data/graphql", {"query": query}, role)
+    assert not body.get("errors"), body
+    [document] = body["data"]["m__libraryDocuments"]
+    keys = {
+        row["column"]["columnKey"]
+        for row in document["policyCoverage"]
+        if row["objectKind"] == "column"
+    }
+    assert sorted(keys) == sorted(columns[c] for c in reached), document
+
+
+@pytest.mark.parametrize(("role", "reached"), _WALKERS)
+async def test_a_document_reaches_its_relevant_columns_over_cypher(server, role, reached):
+    """The same walk as a Cypher path: the document COVERS a coverage row, whose COLUMN is the
+    column."""
+    srv, policy, columns = server
+    query = (
+        "MATCH (d:Meta:LibraryDocuments)-[:COVERS]->(:Meta:PolicyCoverage)"
+        "-[:COLUMN]->(c:Meta:TableColumns) WHERE d.id = $policy "
+        "RETURN DISTINCT c.columnKey AS column_key"
+    )
+    body = await _post(srv, "/data/cypher", {"query": query, "params": {"policy": policy}}, role)
+    keys = [row["column_key"] for row in body["rows"]]
+    assert sorted(keys) == sorted(columns[c] for c in reached), body
