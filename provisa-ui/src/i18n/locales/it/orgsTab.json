@@ -19,7 +19,7 @@
     "colActions": "Azioni",
     "empty": "Nessuna organizzazione",
     "membersButton": "Membri",
-    "hideButton": "Nascondi",
+    "hideButton": "Comprimi",
     "expandOrg": "Mostra/nascondi membri di {{name}}",
     "deleteOrg": "Elimina {{name}}",
     "membersHeading": "Membri",

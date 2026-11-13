@@ -30,11 +30,11 @@ describe("a clamped detail", () => {
     const toggle = screen.getByTestId("related-1");
     expect(toggle.tagName).toBe("BUTTON");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(toggle).toHaveAccessibleName("Show the whole entry");
+    expect(toggle).toHaveAccessibleName("Expand the whole entry");
     expect(screen.getByTestId("related-1-text")).toHaveStyle({ overflow: "hidden" });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle).toHaveAccessibleName("Show less");
+    expect(toggle).toHaveAccessibleName("Collapse the entry");
     expect(screen.getByTestId("related-1-text")).not.toHaveStyle({ overflow: "hidden" });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");

@@ -47,7 +47,7 @@
     "yes": "はい",
     "no": "いいえ",
     "none": "—",
-    "expandUser": "{{username}} の割り当てを表示",
+    "expandUser": "{{username}} の割り当てを展開",
     "deleteUser": "{{username}} のアカウントを削除",
     "assignmentsHeading": "ロール:ドメイン割り当て",
     "noAssignments": "割り当てがありません",
