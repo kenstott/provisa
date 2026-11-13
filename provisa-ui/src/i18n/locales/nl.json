@@ -47,7 +47,7 @@
     "yes": "Ja",
     "no": "Nee",
     "none": "—",
-    "expandUser": "Toewijzingen voor {{username}} tonen",
+    "expandUser": "Toewijzingen voor {{username}} uitklappen",
     "deleteUser": "Account van {{username}} verwijderen",
     "assignmentsHeading": "Rol:domein-toewijzingen",
     "noAssignments": "Geen toewijzingen",
