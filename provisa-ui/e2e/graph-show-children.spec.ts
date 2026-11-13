@@ -76,15 +76,33 @@ test("show children for two nodes keeps both visible", async ({ page }) => {
   expect(canvasBox).not.toBeNull();
 
   async function openContextMenuForNode(nodeId: string) {
-    const pos = await page.evaluate((id) => {
-      const cy = (window as unknown as Record<string, unknown>).__cy as CyInstance;
-      const node = cy.$id(id);
-      return node.length > 0 ? node.renderedPosition() : null;
-    }, nodeId);
-
-    expect(pos, `Node ${nodeId} not found in cytoscape`).not.toBeNull();
-    const x = canvasBox!.x + pos!.x;
-    const y = canvasBox!.y + pos!.y;
+    // Nodes added to the graph start an animated layout (use-graph-layout.ts: 600 ms, 2 s when
+    // aggressive), so a position read while it runs is not where the node ends up, and a click
+    // there lands on another node. The node is clicked once it has stopped moving.
+    const seen: { pos: { x: number; y: number } | null } = { pos: null };
+    await expect
+      .poll(
+        async () => {
+          const now = await page.evaluate((id) => {
+            const cy = (window as unknown as Record<string, unknown>).__cy as CyInstance;
+            const node = cy.$id(id);
+            return node.length > 0 ? node.renderedPosition() : null;
+          }, nodeId);
+          const last = seen.pos;
+          seen.pos = now;
+          return (
+            now !== null &&
+            last !== null &&
+            Math.abs(now.x - last.x) < 0.5 &&
+            Math.abs(now.y - last.y) < 0.5
+          );
+        },
+        { message: `node ${nodeId} in cytoscape, at rest`, timeout: 15000, intervals: [400] },
+      )
+      .toBe(true);
+    const pos = seen.pos!;
+    const x = canvasBox!.x + pos.x;
+    const y = canvasBox!.y + pos.y;
     await page.mouse.click(x, y, { button: "right" });
     await page.waitForSelector(".gf-node-ctx-menu", { state: "visible", timeout: 5000 });
   }
