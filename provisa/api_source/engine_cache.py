@@ -248,10 +248,10 @@ def _create_schema_directly_against_store(loc: CacheLocation) -> None:
             "directly to a materialize store that does not own it"
         )
     from sqlalchemy import make_url
-    from sqlalchemy.schema import CreateSchema
 
     from provisa.api.app import state
     from provisa.core.database import sync_engine_from_url
+    from provisa.core.schema_create import create_schema_sync
 
     dsn = state.federation_engine.engine.materialize_store()
     backend = make_url(dsn).get_backend_name()
@@ -265,7 +265,7 @@ def _create_schema_directly_against_store(loc: CacheLocation) -> None:
     engine = sync_engine_from_url(dsn)
     try:
         with engine.begin() as sa_conn:
-            sa_conn.execute(CreateSchema(loc.schema, if_not_exists=True))
+            create_schema_sync(sa_conn, loc.schema)
     except Exception as direct_exc:
         raise RuntimeError(
             f"ensure_cache_schema: connector for {loc.catalog!r} cannot create schemas, and "
