@@ -74,7 +74,7 @@ async function confirmDelete() {
   const dialog = await screen.findByRole("dialog");
   expect(dialog.textContent).toContain('Delete role "seller"?');
   expect(deleteRoleSpy).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 }
 
 describe("deleting a role on the Security page", () => {
