@@ -19,7 +19,7 @@ import type { CoreTable } from "../productCore";
 import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
 import { lifecycleProps } from "./lifecycleProps";
-import { openTab } from "./panelTabs";
+import { openSection } from "./panelSections";
 
 // The panel parses nothing: a checker table's rules come with it, as meta's dqRules rows.
 const parseContract = vi.fn();
@@ -91,6 +91,7 @@ const VETS_PROMISE: ProductDqEntry = {
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: "pass",
   latest_run_at: "2026-10-20T10:00:00Z",
+  failing_checks: [],
 };
 const NO_DQ: ProductDq = { expectations: [], promises: [], related: [], unattached: [] };
 
@@ -130,7 +131,7 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
 /** The panel, on its Quality tab. */
 function renderQuality(tables: CoreTable[], dq?: ProductDq) {
   renderPanel(tables, dq);
-  openTab("quality", "pet_health");
+  openSection("quality", "pet_health");
 }
 
 describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", () => {
@@ -152,7 +153,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     expect(within(patterns).getByText("pet-store.vets")).toBeTruthy();
     expect(within(patterns).queryByText("pet-store.vets_scan")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-sql-query-2")).toBeNull();
-    openTab("quality", "pet_health");
+    openSection("quality", "pet_health");
 
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     expect(within(dq).getByTestId("data-product-detail-dq-sql-query-2")).toBeTruthy();

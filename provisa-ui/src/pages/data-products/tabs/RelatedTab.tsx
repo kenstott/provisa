@@ -8,16 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2126, REQ-2174: a data product's Related tab -- the products sharing its datasets, the tables
-// directly related to its own, the relationships among its tables, the ontology terms it reaches
-// (in the ontology graph, focused on it), its tags, its commands and, for its owner, who reads it.
+// REQ-2126, REQ-2174: a data product's Related section -- the products sharing its datasets, the
+// tables directly related to its own, the relationships among its tables, the ontology terms it
+// reaches (in the ontology graph, focused on it), its commands and, for its owner, who reads it.
+// Its tags are in the page's header (REQ-2180, THE PRODUCT PAGE IS SUMMARY ROWS).
 // Each dataset's associations are the tables page's (REQ-2239).
 
 import { useTranslation } from "react-i18next";
-import { Anchor, Group, List, Stack, Text } from "@mantine/core";
+import { Anchor, List, Stack, Text } from "@mantine/core";
 import type { ProductLineage } from "../../../api/lineage";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
-import { TagControl } from "../../../components/TagControl";
 import { OntologySnippet } from "../../../components/graph3d/OntologyGraph";
 import { productPreset } from "../../../components/graph3d/ontologyPresets";
 import type { Relationship } from "../../../types/admin";
@@ -62,26 +62,22 @@ function relatedLabel(e: CoreEdge): string {
 export function RelatedTab({
   productId,
   core,
-  canEdit,
   seesConsumers,
   lineageGraph,
   lineageLoading,
   lineageError,
   sharing,
   relationships,
-  onTagsChanged,
   openProduct,
 }: {
   productId: string;
   core: ProductCore;
-  canEdit: boolean;
   seesConsumers: boolean;
   lineageGraph: ProductLineage | null;
   lineageLoading: boolean;
   lineageError: string;
   sharing: SharingProduct[];
   relationships: Relationship[];
-  onTagsChanged: () => void;
   openProduct: (id: string) => void;
 }) {
   const { t } = useTranslation();
@@ -209,26 +205,6 @@ export function RelatedTab({
           testId="graph-panel"
         />
       </Section>
-      {core.tags !== undefined && (
-        <Section testId={`data-product-card-tags-${productId}`} label={t("dataProductCore.tags")}>
-          {canEdit ? (
-            <Group gap="xs" wrap="wrap">
-              {core.tags.length === 0 && <Empty text={t("dataProductCore.tagsEmpty")} />}
-              <TagControl objectType="product" productId={productId} onChanged={onTagsChanged} />
-            </Group>
-          ) : core.tags.length === 0 ? (
-            <Empty text={t("dataProductCore.tagsEmpty")} />
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-tags-${productId}`}>
-              {core.tags.map((tag) => (
-                <List.Item key={tag} ff="monospace">
-                  {tag}
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </Section>
-      )}
       {core.commands !== undefined && (
         <Section
           testId={`data-product-card-commands-${productId}`}

@@ -48,6 +48,7 @@ def _checker(cid: int, checked: int, owner: str | None, columns: tuple[str, ...]
         ],
         "latest_outcome": "pass",
         "latest_run_at": None,
+        "failing_checks": [],
     }
 
 
@@ -95,6 +96,7 @@ def test_an_entry_names_its_checker_owner_and_latest_run() -> None:
         ],
         "latest_outcome": "pass",
         "latest_run_at": None,
+        "failing_checks": [],
     }
 
 
@@ -141,3 +143,11 @@ def test_a_checker_table_the_reader_cannot_read_is_in_no_list() -> None:
     served = {k: v for k, v in ALL.items() if k != 10}
     out = product_dq("p1", CHECKERS, members={MEMBER}, inputs={INPUT}, served=served)
     assert all(10 not in ids for ids in _ids(out).values())
+
+
+def test_an_entry_names_the_checks_its_latest_run_failed() -> None:
+    """REQ-2180 (QUALITY IS STATUS AND COUNTS): a promise carries the checks that did not pass."""
+    failing = [{"name": "unique", "column": "id", "outcome": "fail"}]
+    checker = {**_checker(10, MEMBER, "p1"), "latest_outcome": "fail", "failing_checks": failing}
+    (promise,) = product_dq("p1", [checker], members={MEMBER}, inputs=set(), served=ALL)["promises"]
+    assert promise["failing_checks"] == failing

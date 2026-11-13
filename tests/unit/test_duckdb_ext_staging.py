@@ -373,6 +373,7 @@ def server_tier(monkeypatch):
     ran: list[str] = []
     monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
     monkeypatch.setattr(duckdb_extensions, "_installed_at_start", None)
+    monkeypatch.setattr(duckdb_extensions, "_tried", frozenset())
     monkeypatch.setattr(
         duckdb_extensions, "connect", lambda: _InstallingConnection(frozenset({"gsheets"}), ran)
     )
@@ -407,6 +408,60 @@ def test_the_server_tier_gates_attach_on_what_installed(server_tier):
     # ... a replica, landed through the Sheets API (REQ-1998)
     assert engine.unreachable_reason("google_sheets") is None
     assert not engine.complete_reach().connectors["google_sheets"].reads_in_place
+
+
+def _declare(monkeypatch, tmp_path, source_type: str, extension: str) -> None:
+    """config/custom_connectors.yaml declares a duckdb_attach connector (REQ-1177)."""
+    cfg = tmp_path / "custom_connectors.yaml"
+    cfg.write_text(
+        "connectors:\n"
+        "  - engine: duckdb\n"
+        f"    source_type: {source_type}\n"
+        "    kind: duckdb_attach\n"
+        f"    extension: {extension}\n"
+        "    install_from_community: false\n"
+        f"    probe_symbol: {extension}_snapshots\n"
+        '    attach_template: "ATTACH \'{path}\' AS \\"{alias}\\""\n'
+    )
+    monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
+
+
+def test_a_connector_declared_after_server_start_has_its_extension_installed_once(
+    server_tier, monkeypatch, tmp_path
+):
+    from provisa.federation.duckdb_extensions import install_extension_set
+    from provisa.federation.engine import build_duckdb_engine
+
+    monkeypatch.delenv("PROVISA_CUSTOM_CONNECTORS", raising=False)
+    install_extension_set()
+    assert "INSTALL ducklake" not in server_tier
+    _declare(monkeypatch, tmp_path, "ducklake", "ducklake")
+    engine = build_duckdb_engine()
+    assert "ducklake" in engine.connectors
+    assert engine.unreachable_reason("ducklake") is None
+    build_duckdb_engine()
+    assert server_tier.count("INSTALL ducklake") == 1
+
+
+def test_a_declared_extension_that_does_not_install_is_named_and_not_retried(
+    server_tier, monkeypatch, tmp_path
+):
+    from provisa.federation import duckdb_extensions
+    from provisa.federation.engine import build_duckdb_engine
+
+    monkeypatch.delenv("PROVISA_CUSTOM_CONNECTORS", raising=False)
+    duckdb_extensions.install_extension_set()
+    monkeypatch.setattr(
+        duckdb_extensions,
+        "connect",
+        lambda: _InstallingConnection(frozenset({"gsheets", "nolake"}), server_tier),
+    )
+    _declare(monkeypatch, tmp_path, "nolake", "nolake")
+    engine = build_duckdb_engine()
+    assert "nolake" not in engine.connectors
+    assert "nolake extension is not available" in (engine.unreachable_reason("nolake") or "")
+    build_duckdb_engine()
+    assert server_tier.count("INSTALL nolake") == 1
 
 
 def test_a_staged_directory_installs_nothing_at_server_start(server_tier, monkeypatch, tmp_path):

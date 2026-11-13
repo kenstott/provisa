@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.text_search_replay import BY_FUNCTION, problems
 
 pytestmark = [pytest.mark.integration]
@@ -44,8 +45,9 @@ def test_text_search_on_trino(trino_conn, function: str):
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_text_search_on_clickhouse(function: str):
+def test_text_search_on_clickhouse():
+    """One test over every function: requires_clickhouse boots the engine for each test, and one
+    test to a function booted it 48 times (tests/integration/every_case.py)."""
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -54,4 +56,8 @@ def test_text_search_on_clickhouse(function: str):
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(function, "clickhouse", lambda sql: list(client.query(sql).result_rows))
+
+    def run(sql: str) -> list[Any]:
+        return list(client.query(sql).result_rows)
+
+    assert failures_of_every_case(sorted(BY_FUNCTION), lambda f: _check(f, "clickhouse", run)) == {}
