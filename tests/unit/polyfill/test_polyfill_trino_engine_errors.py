@@ -579,7 +579,7 @@ def test_a_server_forms_array_is_its_text_as_array_out_writes_it_on_trino(functi
         and c.this.to.is_type(exp.DataType.Type.ARRAY)
     ]
     assert unread == []
-    assert "array_join" in _calls(tree)
+    assert "array_to_string" in _calls(tree)  # sqlglot's name of Trino's array_join
 
 
 def test_an_array_of_text_is_quoted_as_array_out_quotes_it_on_trino():

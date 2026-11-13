@@ -66,7 +66,10 @@ def trino_only(trino: Form) -> dict[str, Form]:
 
 
 def said(node: exp.Expr) -> str | None:
-    """PostgreSQL's name of the type a statement says of ``node``, or None."""
+    """PostgreSQL's name of the type a statement says of ``node``, or None. A jsonb literal reaches
+    the grid as JSON_PARSE of its text (transpile.postgres_json_of_text): still a jsonb value."""
+    if isinstance(node, exp.ParseJSON):
+        return "jsonb"
     return function_types.argument_type(node)
 
 

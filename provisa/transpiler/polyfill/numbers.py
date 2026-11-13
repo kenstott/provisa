@@ -11,9 +11,10 @@
 """Integers and numbers on Trino (REQ-2236; the function support measure, run 43307392116,
 REQ-2171).
 
-int2_sum and int4_sum add in a bigint that wraps past its range, and int8shl shifts one: the old
-table (provisa.transpiler.pg_forms_types) writes the wrap with the numbers 2^63 and 2^64, which
-Trino reads as no literal. Trino's forms write them as decimals of their text. A right shift is
+int2_sum and int4_sum add in a bigint that wraps past its range: the old table
+(provisa.transpiler.pg_forms_types) writes the wrap with the numbers 2^63 and 2^64, which Trino
+reads as no literal. Trino's forms write them as decimals of their text. int8shl is Trino's own
+shift of a bigint, which wraps as C's does. A right shift is
 arithmetic in C, its count taken modulo the promoted width: Trino's is
 bitwise_right_shift_arithmetic, of an integer count (the old form's count was a bigint, which Trino
 takes for no shift). factorial, numeric and bool of an integer, oid of a bigint and random between
@@ -79,6 +80,9 @@ def _sum(name: str) -> Feature:
     )
 
 
+#: int8shl: C's int64 << of the count modulo 64 wraps in two's complement, as Java's << of a
+#: bigint does: Trino's bitwise_left_shift, of an integer count. A power of two read as a double
+#: (the old form's) loses digits past 2^53.
 INT8SHL = Feature(
     "int8shl",
     FAMILY,
@@ -88,10 +92,7 @@ INT8SHL = Feature(
             Rule(
                 "int8shl($a, $b)",
                 trino.trino_only(
-                    _wrapped(
-                        "CAST($a AS DECIMAL(38, 0)) * "
-                        "CAST(power(2, bitwise_and($b, 63)) AS DECIMAL(38, 0))"
-                    )
+                    "bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))"
                 ),
             ),
         )

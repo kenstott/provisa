@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Athena. A f
 
 When Athena is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 168, of which 76 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 170, of which 78 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-1 of the grid's 130 features are native on Athena and left out.
+1 of the grid's 132 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -275,6 +275,7 @@ regexp_replace(lpad(to_base(bitwise_and(bitwise_not(from_base(lower(regexp_repla
 <tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
 =&gt;
 function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8</strong><br>A value of type xid8.</td><td><pre><code>function provisa.transpiler.polyfill.unheld.xid8_value: A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid</strong><br>The 32-bit transaction ID of an xid8.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid: xid: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8cmp</strong><br>btree&#x27;s comparison of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8cmp: xid8cmp: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8_larger</strong><br>The larger of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_larger: xid8_larger: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
@@ -298,7 +299,7 @@ CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIG
 CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
 =&gt;
-CAST((((CAST($a AS DECIMAL(38, 0)) * CAST(power(2, bitwise_and($b, 63)) AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT)</code></pre></td><td></td><td></td><td></td></tr>
+bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
 =&gt;
 CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS SMALLINT)</code></pre></td><td></td><td></td><td></td></tr>
@@ -350,4 +351,5 @@ current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 </tbody></table>

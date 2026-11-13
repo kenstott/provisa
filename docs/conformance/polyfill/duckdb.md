@@ -10,7 +10,7 @@ When DuckDB is a serving engine reading a source it attaches directly, it may pu
 
 Rules on this page: 92, of which 24 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-70 of the grid's 130 features are native on DuckDB and left out.
+72 of the grid's 132 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

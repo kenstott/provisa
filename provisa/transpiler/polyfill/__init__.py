@@ -21,6 +21,7 @@ from __future__ import annotations
 from provisa.transpiler.polyfill import (
     arrays,
     calls,
+    casts,
     collations,
     dates,
     money,
@@ -64,6 +65,7 @@ GRID = Grid(
     + numbers.FEATURES
     + dates.FEATURES
     + calls.FEATURES
+    + casts.FEATURES
 )
 
 __all__ = [

@@ -22,8 +22,11 @@ of an xid8, are refused likewise; every other max and min is Trino's own."""
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.notation import Refused, Rewrite
 
 FAMILY = "types Trino holds none of"
 
@@ -64,7 +67,27 @@ _AGGREGATES = {
 }
 _UNORDERED = ("inet", "cidr", "xid8")
 
+
+def xid8_value(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes
+    UBIGINT, which does not parse there). A server function's form reads its xid8 argument so."""
+    if isinstance(node, exp.Cast) and trino.said(node) == "xid8":
+        raise Refused(trino.no_form("xid8in", dialect))
+    return None
+
+
+XID8 = Feature(
+    "xid8",
+    FAMILY,
+    "A value of type xid8.",
+    read=Side(
+        rules=(Rule(None, trino.on_trino(Rewrite(xid8_value, mentions=r"\bxid8\b"))),),
+        limitations=dict.fromkeys(trino.TRINO, (Limitation(_XID8),)),
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
+    XID8,
     *(trino.by_name(name, FAMILY, summary, _XID8) for name, summary in _XID8_CALLS.items()),
     *(trino.by_name(name, FAMILY, summary, _LSN) for name, summary in _LSN_CALLS.items()),
     *(
