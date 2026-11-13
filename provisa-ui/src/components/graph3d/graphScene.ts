@@ -43,6 +43,12 @@ interface EdgeMesh {
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** Whether a pick of ``focus`` lights ``edge`` in 3D: every edge of the picked node, whatever its
+ * type (rank, association, binding); the rest are faded. */
+export function pickLights(edge: GraphEdge, focus: string): boolean {
+  return edge.a === focus || edge.b === focus;
+}
+
 /** The materials edges are drawn with, each with a faded copy for the edges away from a pick. */
 const EDGE_MATERIALS = [
   "structure",
@@ -710,9 +716,7 @@ export class GraphScene extends BaseScene<GraphHover> {
     const edgeFocus = this.hover?.kind === "edge" ? this.hover.id : null;
     for (const em of this.edgeMeshes) {
       const touches =
-        edgeFocus != null
-          ? em.edge.id === edgeFocus
-          : focus == null || em.edge.a === focus || em.edge.b === focus;
+        edgeFocus != null ? em.edge.id === edgeFocus : focus == null || pickLights(em.edge, focus);
       // One hue whether picked or not: the picked node's edges thicker and full bright, the rest
       // thinner and dimmer but plainly there; with nothing picked, every edge as drawn.
       const picked = edgeFocus != null || focus != null;

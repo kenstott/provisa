@@ -10407,5 +10407,12 @@
   "es/dataProductsTab.json::dataProductsTab.tagFacetPlaceholder": "Filter by tag",
   "es.json::common.stop": "Stop",
   "es/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
-  "es/findTerms.json::findTerms.stopTip": "Stop the scan"
+  "es/findTerms.json::findTerms.stopTip": "Stop the scan",
+  "es/testData.json::testData.stableNoFake": "Choose a fake first: only a fake can be stable",
+  "es/testData.json::testData.stableNever": "{{name}}() cannot be stable: it is not computed the same way on every engine",
+  "es/testData.json::testData.stableNoArguments": "A stable {{name}}() takes no arguments: clear them to make it stable",
+  "es/testData.json::testData.stableNeeds": "A stable {{name}}() declares its {{args}}, so it is the same everywhere",
+  "es/testData.json::testData.savedAs": "Saved as",
+  "es/testData.json::testData.savedAsHint": "Written from your choice above; edit it to set arguments by hand",
+  "es/testData.json::testData.editAsText": "Edit as text"
 }

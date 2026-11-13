@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
@@ -1044,14 +1045,13 @@ export function EnvironmentsTab() {
           <FormFooter
             onCancel={() => setDeleteTarget(null)}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 onClick={runDelete}
                 loading={busy === deleteTarget?.name}
-                data-testid="env-delete-run"
+                testId="env-delete-run"
               >
                 {t("environmentsTab.deleteConfirm")}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </FormLayout>

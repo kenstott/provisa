@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -489,18 +490,17 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
             onCancel={() => setRemoving(null)}
             cancelProps={{ disabled: removeBusy }}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 onClick={handleDeleteUser}
                 loading={removeBusy}
-                data-testid="remove-user-confirm"
+                testId="remove-user-confirm"
               >
                 {t(
                   deletesAccount
                     ? "localUsers.confirmDeleteButton"
                     : "localUsers.confirmRemoveButton",
                 )}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </Stack>
