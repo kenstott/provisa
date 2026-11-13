@@ -119,6 +119,19 @@ def _tag_definitions_sql() -> str:
     return "\n            UNION ALL\n            ".join(rows)
 
 
+def _term_domains_sql() -> str:
+    """REQ-1591: each term's domains by the one rule, as the ontology schema's _domains view
+    states it, read here as its query: the meta views are made before the ontology's."""
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
+
+    head, _, body = ONTOLOGY_TABLE_VIEWS["_domains"].partition(
+        "CREATE OR REPLACE VIEW _domains_ontology AS"
+    )
+    if head.strip() or not body:
+        raise ValueError("the ontology's _domains view is no longer one CREATE VIEW statement")
+    return body
+
+
 def _domains_of(rows: str) -> str:
     """``rows`` (object_key, domain) as one |a|b| string per object, its empty domains left out
     (an object with no domain is not restricted by one)."""
@@ -192,6 +205,8 @@ def _tag_instances_sql() -> str:
         cited AS ({_citation_states_sql()}),
         all_domains AS ({all_domains}
         ),
+        term_domains AS ({_term_domains_sql()}
+        ),
         document_domains AS (
             SELECT document_id,
                    '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
@@ -234,7 +249,7 @@ def _tag_instances_sql() -> str:
             UNION ALL
             SELECT 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
                    CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|',
-                   (SELECT MAX(x.term_domains) FROM _domains_ontology x WHERE x.term_id = gt.id),
+                   (SELECT MAX(x.term_domains) FROM term_domains x WHERE x.term_id = gt.id),
                    CAST(NULL AS TEXT)
             FROM glossary_terms gt
             UNION ALL

@@ -26,7 +26,6 @@ import pytest
 from sqlalchemy import insert, text
 
 from provisa.api._meta_views import _META_TABLE_VIEWS, _OPS_REPORT_VIEWS
-from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.app_loaders import _META_TABLES
 from provisa.compiler.names_table import NameRow, build_names_table
 from provisa.compiler.sql_types import CompilationContext, TableMeta
@@ -212,7 +211,6 @@ async def report(control_plane):
     handbook's and the policy's object keys."""
     db = control_plane.org()
     async with db.acquire() as conn:
-        await conn.execute_core(text(ONTOLOGY_TABLE_VIEWS["_domains"]))
         for name in ("derived_tags", "effective_column_tags", "tag_instances"):
             await conn.execute_core(text(_META_TABLE_VIEWS[name]))
         await conn.execute_core(text(_OPS_REPORT_VIEWS["tags_report"]))
