@@ -130,9 +130,13 @@ def planes(monkeypatch):
         "org_admin": {"id": "org_admin", "capabilities": ["user_management", "usage"]},
     }
     root_roles = {"org_admin": {"id": "org_admin", "capabilities": ["platform_settings"]}}
+    # A served process boots its deployment id and the middleware's default org from the one
+    # control-plane config: the platform roles are read from the runtime under the first, and the
+    # sign-in's writes land in the runtime of the second. Other tests in the process rebind
+    # app_state.org_id, so it is pinned here (before the registry swap, so undo runs in reverse).
+    monkeypatch.setattr(app_state, "org_id", _DEPLOYMENT_ORG, raising=False)
     registry = OrgRegistry()
-    # The deployment's own runtime, under the id the middleware serves as its default org -- as a
-    # served process boots both from the one control-plane config.
+    # The deployment's own runtime.
     registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, roles=root_roles))
     registry.set(
         _ORG,
