@@ -143,6 +143,20 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
           },
         ]
       : []),
+    // REQ-1954: where a ServiceNow table's inserts go: its import set, else the table itself.
+    ...(source && source.type.toLowerCase() === "servicenow" && table.viewSql == null
+      ? [
+          {
+            label: t("registerTableForm.importSetLabel"),
+            value: table.importSet ? (
+              <code>{table.importSet}</code>
+            ) : (
+              unset(t("registerTableForm.importSetNone"))
+            ),
+            testId: "table-identity-import-set",
+          },
+        ]
+      : []),
   ];
   return <DetailFields fields={fields} testId="table-identity" />;
 }

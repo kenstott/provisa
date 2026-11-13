@@ -13,21 +13,23 @@
 // needs input from the person: one that does is listed, unticked, saying why, and is registered
 // on its own. A table registered already is listed, and cannot be picked again.
 
-import { Checkbox, SegmentedControl, Text } from "@mantine/core";
+import { Button, Checkbox, SegmentedControl, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { TableMetadata } from "../../api/admin";
 import { FormField } from "../../components/form/FormLayout";
-import type { Reading } from "./useManyTables";
+import { blockedBy, type Reading } from "./useManyTables";
 
-function whyNot(t: TFunction, reading: Reading | undefined): string | null {
+function whyNot(t: TFunction, reading: Reading | undefined, needsCacheTtl: boolean): string | null {
   if (!reading || reading.state === "reading") return t("registerManyTables.reading");
   if (reading.state === "failed")
     return t("registerManyTables.readFailed", { error: reading.error });
-  if (reading.needs === null) return null;
-  if (reading.needs.kind === "declared") return t("registerManyTables.needsDeclared");
-  if (reading.needs.kind === "noColumns") return t("registerManyTables.needsNoColumns");
-  return t("registerManyTables.needsUntyped", { columns: reading.needs.columns.join(", ") });
+  const needs = blockedBy(reading, needsCacheTtl);
+  if (needs === null) return null;
+  if (needs.kind === "declared") return t("registerManyTables.needsDeclared");
+  if (needs.kind === "noColumns") return t("registerManyTables.needsNoColumns");
+  if (needs.kind === "cacheTtl") return t("registerManyTables.needsCacheTtl");
+  return t("registerManyTables.needsUntyped", { columns: needs.columns.join(", ") });
 }
 
 /** The schema's tables, each with a tick, or why it cannot be ticked. */
@@ -38,6 +40,9 @@ export function ManyTablesList({
   ticked,
   setTicked,
   loading,
+  needsCacheTtl = false,
+  onRegisterOne,
+  opening = null,
 }: {
   offered: TableMetadata[];
   isRegistered: (table: { name: string }) => boolean;
@@ -45,6 +50,12 @@ export function ManyTablesList({
   ticked: string[];
   setTicked: (names: string[]) => void;
   loading: boolean;
+  /** Each table of the source needs a Cache TTL of its own: none is ticked with the others. */
+  needsCacheTtl?: boolean;
+  /** Registers on its own a table that needs input, opening it in edit (registerAsDraft). */
+  onRegisterOne?: (tableName: string) => void;
+  /** The table being opened to be registered on its own. */
+  opening?: string | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -68,8 +79,13 @@ export function ManyTablesList({
           const registered = isRegistered(tbl);
           const why = registered
             ? t("registerManyTables.registered")
-            : whyNot(t, readings[tbl.name]);
-          return (
+            : whyNot(t, readings[tbl.name], needsCacheTtl);
+          // A table read whole that needs input is registered on its own, from its own row.
+          const onItsOwn =
+            !registered &&
+            onRegisterOne !== undefined &&
+            blockedBy(readings[tbl.name], needsCacheTtl) !== null;
+          const tick = (
             <Checkbox
               key={tbl.name}
               value={tbl.name}
@@ -93,6 +109,28 @@ export function ManyTablesList({
               }
               data-testid={`register-many-table-${tbl.name}`}
             />
+          );
+          return onItsOwn ? (
+            // The action under the row's reason, where its label's text starts (the tick's width,
+            // Mantine's xl), so every row's action is in one column.
+            <div key={tbl.name}>
+              {tick}
+              <Button
+                variant="light"
+                size="compact-xs"
+                mt={4}
+                ms="xl"
+                loading={opening === tbl.name}
+                disabled={opening !== null && opening !== tbl.name}
+                onClick={() => onRegisterOne(tbl.name)}
+                aria-label={t("registerManyTables.registerOneLabel", { table: tbl.name })}
+                data-testid={`register-many-table-register-${tbl.name}`}
+              >
+                {t("registerManyTables.registerOne")}
+              </Button>
+            </div>
+          ) : (
+            tick
           );
         })}
       </Checkbox.Group>

@@ -74,7 +74,9 @@ export function defaultWatermark(columns: ColumnForm[], sourceType: string): str
 export type InputNeeded =
   | { kind: "declared" }
   | { kind: "noColumns" }
-  | { kind: "untyped"; columns: string[] };
+  | { kind: "untyped"; columns: string[] }
+  // REQ-1907: not of the table but of its source: each table needs a Cache TTL of its own.
+  | { kind: "cacheTtl" };
 
 export function inputNeeded(
   offered: Pick<TableMetadata, "columnsDeclared">,

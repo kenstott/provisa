@@ -44,6 +44,24 @@ export function isFilesSourceType(sourceType: string): boolean {
   return ["files", "csv", "parquet"].includes(sourceType);
 }
 
+/** The source types whose table is a query's projection, not a relation of the source. */
+const QUERY_API_TYPES = ["neo4j", "sparql"];
+
+/**
+ * Whether a table's columns can be read from its live source (REQ-252): not a view's (its SQL
+ * gives them), a data-quality checker's (its contract does), a Data Profiler result's (its scan
+ * does), nor a table a query produces (a Cypher or SPARQL projection, a native pipeline or search):
+ * the same tables Register Table offers it for.
+ */
+export function discoversColumns(
+  sourceType: string,
+  table: Pick<RegisteredTable, "viewSql" | "viewMetrics" | "queryTemplate">,
+): boolean {
+  if (table.viewSql != null || table.viewMetrics != null || table.queryTemplate) return false;
+  if ((DQ_CHECKERS as readonly string[]).includes(sourceType)) return false;
+  return sourceType !== "data_profiler" && !QUERY_API_TYPES.includes(sourceType);
+}
+
 /** A value that is not set, said in the dimmed text of a default. */
 export function unset(text: string) {
   return (

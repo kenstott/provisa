@@ -137,6 +137,7 @@
   "tests/integration/test_deploy_view_to_db_e2e.py": 0.0,
   "tests/integration/test_direct_exec.py": 0.1,
   "tests/integration/test_direct_stream_bounded_memory.py": 100.7,
+  "tests/integration/test_disconnect_cancels_statement.py": 270.0,
   "tests/integration/test_domain_delete_guarded.py": 69.6,
   "tests/integration/test_domain_policy_integration.py": 2.5,
   "tests/integration/test_domain_policy_switch_refused_pg.py": 3.9,

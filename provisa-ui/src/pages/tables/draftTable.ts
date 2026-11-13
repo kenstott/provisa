@@ -139,6 +139,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     queryTemplate: str(i.queryTemplate),
     fileGlob: str(i.fileGlob),
     sourceFileColumn: str(i.sourceFileColumn),
+    importSet: str(i.importSet),
+    discover: i.discover === true,
     materialize: i.materialize === true,
     mvRefreshInterval: 300,
     mvDebounceQuiet: 0,

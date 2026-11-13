@@ -442,9 +442,7 @@ function stoppable<T>(
   };
 }
 
-function createProvisaFetch(
-  settingsRef: React.RefObject<RedirectSettings>,
-): (
+function createProvisaFetch(settingsRef: React.RefObject<RedirectSettings>): (
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   // Aborts the request: at the timeout, or when the viewer stops it.
@@ -565,7 +563,8 @@ function PublishToScreen() {
 }
 
 /** While a query runs, Stop, where GraphiQL's run button is (hidden meanwhile, QueryPage.css): it
- *  aborts the request, and the response says the query was stopped. */
+ *  aborts the request, and the response says the query was stopped. Icon-only: GraphiQL's toolbar
+ *  is one icon wide, and a labelled Stop reached over the editor's corner. */
 function StopQuery() {
   const { t } = useTranslation();
   const running = useGraphiQL((s) => s.isFetching || Boolean(s.subscription));
@@ -583,6 +582,7 @@ function StopQuery() {
         }}
         tip={t("common.stopQuery")}
         testId="graphql-stop"
+        iconOnly
       />
     </div>
   );
