@@ -775,16 +775,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # REQ-751: a session walk's relationships, in the order it took them.
             return exp.alias_(trail[1].copy(), alias or expr_text)
         if path_step_info is not None:
-            _, step_edges = path_step_info
-            edges_array = exp.Anonymous(
-                this="JSON_ARRAY",
-                expressions=[
-                    self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
-                    for rt, sa, snm, ta, tnm, rev, via in step_edges
-                ],
-            )
-            return exp.alias_(edges_array, alias or expr_text)
+            return exp.alias_(self._step_edges_json(path_step_info[1]), alias or expr_text)
         return exp.alias_(exp.Null(), alias or expr_text)
+
+    def _step_edges_json(self, step_edges: list) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The relationships of a path's fixed steps, as a JSON array of edge objects."""
+        return exp.Anonymous(this="JSON_ARRAY", expressions=self._step_edge_objects(step_edges))
+
+    def _step_edge_objects(self, step_edges: list) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Each relationship of a path's fixed steps, as its edge object."""
+        return [
+            self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
+            for rt, sa, snm, ta, tnm, rev, via in step_edges
+        ]
 
     def _element_list_kind(self, expr: CypherExpr) -> str | None:
         raise NotImplementedError(expr)

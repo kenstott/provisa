@@ -263,6 +263,14 @@ class TranslatorExprContext:
         # REQ-751: a session walk's relationship variable is the list of relationships it took.
         if name in self._t._varlen_rel_vars and name in self._t._walk_trails:
             return self._t._walk_trails[name][1].copy()
+        # A variable-length relationship variable over a path the schema resolves to fixed
+        # hops: the list of its steps' relationships, as a session walk's is (JSON[]).
+        steps = self._t._path_steps.get(self._t._varlen_rel_vars.get(name, ""))
+        if steps is not None:
+            return exp.Cast(
+                this=exp.Array(expressions=self._t._step_edge_objects(steps[1])),
+                to=exp.DataType.build("JSON[]", dialect="postgres"),
+            )
         # A CALL-subquery return var is qualified with its CROSS JOIN LATERAL alias; otherwise a bare
         # variable denotes its query-scope alias (CTE-sourced vars keep their mapped alias).
         lateral = self._t._call_var_to_lateral.get(name)
