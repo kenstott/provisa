@@ -103,6 +103,7 @@ import type {
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { PanelDelete, PanelDeleteLock } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { PanelNoticeContext, usePanelDeleting } from "../list/panelActions";
 import {
   readStoredBool,
@@ -366,6 +367,25 @@ export function GlossaryTab() {
     }
   };
 
+  // "+ New term" opens the form empty, whatever term is open or was duplicated and cancelled.
+  const openNewTerm = () => {
+    setAddName("");
+    setAddDefinition("");
+    setAddDomainsRaw([]);
+    setAddError("");
+    setAddOpen(true);
+  };
+  // Duplicate, from a term's panel: the same form filled with the term's definition and domains
+  // under "<name>-copy" (editable; a name that exists is refused on save by the create). Not
+  // copied: its links (columns, tables, relationships) and its reviews.
+  const openDuplicateTerm = (term: GlossaryTermDetail) => {
+    setAddName(`${term.name}-copy`);
+    setAddDefinition(term.definition ?? "");
+    setAddDomainsRaw([...term.domains]);
+    setAddError("");
+    setAddOpen(true);
+  };
+
   const handleCreate = async () => {
     if (!addName.trim()) return;
     setAddSaving(true);
@@ -517,7 +537,7 @@ export function GlossaryTab() {
           {canEdit && (
             <Button
               leftSection={<Plus size={14} />}
-              onClick={() => setAddOpen(true)}
+              onClick={openNewTerm}
               data-testid="glossary-new-btn"
             >
               {t("glossaryTab.newTerm")}
@@ -747,6 +767,11 @@ export function GlossaryTab() {
                       >
                         {t("glossaryTab.edit")}
                       </Button>
+                      <PanelDuplicate
+                        name={detail.name}
+                        onDuplicate={() => openDuplicateTerm(detail)}
+                        testId="glossary-duplicate-btn"
+                      />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a
                         reason; any term in service retired; a deprecation or a retirement undone. */}

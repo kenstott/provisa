@@ -44,6 +44,7 @@ const NOT_DATA = [
   "viewer",
   "onEdit",
   "onDelete",
+  "onDuplicate", // the page opens its create form prefilled from this product; no data
   "onStatusChanged",
   "onStatusFailed",
   "openProduct",

@@ -49,6 +49,8 @@ import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/Form
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
+import { isReference } from "../../pages/sources/sourceDuplicate";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { Tip } from "../Tip";
 import { PurposeBadges, PurposesLegend } from "./RegionPurposes";
@@ -59,7 +61,14 @@ interface Picked {
   kind: Kind;
   id: string | null;
   editing: boolean;
+  /** With id null: the id of the item the new form was opened from by Duplicate. */
+  seed?: string;
 }
+
+/** A store URL that holds a secret of its own: a password in its user info or its query. A
+ * reference (`${provider:name}`) held whole is not one. */
+const URL_SECRET = /\/\/[^/@\s]*:[^/@\s]*@|[?&;](password|passwd|pwd|secret|token|api_?key)=/i;
+const urlHoldsSecret = (url: string) => !isReference(url) && URL_SECRET.test(url);
 
 const itemKey = (kind: Kind, id: string) => `${kind}:${id}`;
 
@@ -172,8 +181,9 @@ export function GrantEditor({ data: given, onSave, storageKey }: GrantEditorProp
         : t("orgRegions.editRegion", { id: picked.id });
     panel = (
       <RegionForm
-        key={picked.id ?? "new"}
+        key={picked.id ?? `new:${picked.seed ?? ""}`}
         region={region ?? null}
+        seed={picked.id === null ? regions.find((r) => r.id === picked.seed) : undefined}
         free={data.platform_regions
           .map((p) => p.id)
           .filter((id) => id === picked.id || !regions.some((r) => r.id === id))}
@@ -187,8 +197,9 @@ export function GrantEditor({ data: given, onSave, storageKey }: GrantEditorProp
       picked.id === null ? t("orgRegions.addStore") : t("orgRegions.editStore", { id: picked.id });
     panel = (
       <StoreForm
-        key={picked.id ?? "new"}
+        key={picked.id ?? `new:${picked.seed ?? ""}`}
         store={store ?? null}
+        seed={picked.id === null ? stores.find((x) => x.id === picked.seed) : undefined}
         taken={stores.map((s) => s.id).filter((id) => id !== picked.id)}
         kinds={data.engine_kinds}
         onSave={(s) => saveStore(s, picked.id)}
@@ -204,6 +215,9 @@ export function GrantEditor({ data: given, onSave, storageKey }: GrantEditorProp
         id={region.id}
         readOnly={readOnly}
         onEdit={() => setPicked({ kind: "region", id: region.id, editing: true })}
+        onDuplicate={() => setPicked({ kind: "region", id: null, editing: true, seed: region.id })}
+        // A grant holds each platform region once: with none left, there is nothing to copy to.
+        canDuplicate={data.platform_regions.some((p) => !regions.some((r) => r.id === p.id))}
         onDelete={() => removeRegion(region.id)}
         fields={[
           { label: t("orgRegions.colRegion"), value: region.id },
@@ -233,6 +247,8 @@ export function GrantEditor({ data: given, onSave, storageKey }: GrantEditorProp
         id={store.id}
         readOnly={readOnly}
         onEdit={() => setPicked({ kind: "store", id: store.id, editing: true })}
+        onDuplicate={() => setPicked({ kind: "store", id: null, editing: true, seed: store.id })}
+        canDuplicate
         onDelete={() => removeStore(store.id)}
         fields={[
           { label: t("orgRegions.colStore"), value: store.id },
@@ -414,6 +430,8 @@ function ItemRead({
   fields,
   readOnly,
   onEdit,
+  onDuplicate,
+  canDuplicate,
   onDelete,
 }: {
   kind: Kind;
@@ -421,6 +439,9 @@ function ItemRead({
   fields: { label: string; value: ReactNode; testId?: string }[];
   readOnly: boolean;
   onEdit: () => void;
+  /** Opens the new-item form filled from this one. */
+  onDuplicate: () => void;
+  canDuplicate: boolean;
   onDelete: () => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -439,6 +460,12 @@ function ItemRead({
                   <Pencil size={14} />
                 </ActionIcon>
               </Tip>
+              <PanelDuplicate
+                name={id}
+                onDuplicate={onDuplicate}
+                disabled={!canDuplicate}
+                testId={`org-${kind}-duplicate`}
+              />
               <PanelDelete
                 itemKey={itemKey(kind, id)}
                 title={t(`orgRegions.delete.${kind}Title`, { id })}
@@ -469,12 +496,15 @@ const fieldOf = (
 
 function RegionForm({
   region,
+  seed,
   free,
   stores,
   onSave,
   onCancel,
 }: {
   region: OrgRegion | null;
+  /** A duplicate's starting stores: the region it is made from; its own region is picked. */
+  seed?: OrgRegion;
   /** The platform regions this one may be. */
   free: string[];
   stores: string[];
@@ -483,7 +513,10 @@ function RegionForm({
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<OrgRegion>(
-    region ?? { id: "", engine: "", replicas: "", views: "", cache: "", state: "", record: "" },
+    region ??
+      (seed
+        ? { ...seed, id: "" }
+        : { id: "", engine: "", replicas: "", views: "", cache: "", state: "", record: "" }),
   );
   const [problem, setProblem] = useState<Problem | null>(null);
   const [saving, setSaving] = useState(false);
@@ -546,19 +579,29 @@ function RegionForm({
 
 function StoreForm({
   store,
+  seed,
   taken,
   kinds,
   onSave,
   onCancel,
 }: {
   store: Store | null;
+  /** A duplicate's starting store: its kind and URL (unless the URL holds a secret), a new id. */
+  seed?: Store;
   taken: string[];
   kinds: string[];
   onSave: (store: Store) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState<Store>(store ?? { id: "", url: "", kind: null });
+  // A URL that holds a password or a token of its own is not copied: it is entered again.
+  const urlLeft = seed !== undefined && urlHoldsSecret(seed.url);
+  const [draft, setDraft] = useState<Store>(
+    store ??
+      (seed
+        ? { id: `${seed.id}-copy`, url: urlLeft ? "" : seed.url, kind: seed.kind }
+        : { id: "", url: "", kind: null }),
+  );
   const [problem, setProblem] = useState<Problem | null>(null);
   const [saving, setSaving] = useState(false);
   const marked = fieldOf(problem, "stores", draft.id);
@@ -607,6 +650,19 @@ function StoreForm({
           data-testid="org-store-url"
         />
       </FormField>
+      {urlLeft && (
+        <FormField size="full">
+          <Alert
+            color="yellow"
+            variant="light"
+            py={4}
+            px="sm"
+            data-testid="org-store-duplicate-note"
+          >
+            {t("sourcesPage.duplicateCredentialsNote", { source: seed.id })}
+          </Alert>
+        </FormField>
+      )}
       <FormField size="medium" help={t("orgRegions.kindHelp")}>
         <Select
           label={t("orgRegions.colKind")}
