@@ -63,8 +63,10 @@ from dulwich.objects import Blob, Commit, ObjectID, ShaFile, Tree
 from dulwich.refs import Ref
 from dulwich.repo import Repo
 
+from provisa.core import step_clock
 from provisa.core.env_files import Rendered, dump_reusing
 from provisa.core.env_project import project
+from provisa.core.environments import org_schema
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -362,11 +364,18 @@ async def write_through(
     actor: str | None,
     onto: str | None = None,
     merged_from: str | None = None,
+    like: tuple[str, str] | None = None,
 ) -> str | None:
     """Project ``schema`` into ``env``'s branch and commit it. Never raises.
 
     ``onto``: the fetched commit the model was just made from; ``merged_from``: the commit of the
     line a whole merge just carried (see :func:`commit_files`).
+
+    ``like``: the ``(org, environment)`` this one's model was copied from a moment ago -- an
+    environment created from another, a demo sandbox cloned from its template (REQ-2006). Until
+    this environment has a rendering of its own, it starts from that one's: only an entity that
+    differs from what was rendered there is rendered again, so the files are the very text a full
+    rendering gives.
 
     THE RETURN IS THE SHA, and ``None`` means either nothing changed or the projection did not land
     -- the caller cannot act differently on those two anyway, because neither is a reason to undo the
@@ -383,17 +392,26 @@ async def write_through(
 
     from provisa.core.env_project import model_stamp
 
+    stepped = f"history of {env}"
     try:
         # The stamp is read before and after the tree: equal, nothing changed the model while it
         # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
         # recorded without a stamp and no statement's audit row will name it.
-        before = await model_stamp(conn, schema)
-        files, _rendered[(org_id, env)] = dump_reusing(
-            await project(conn, schema), _rendered.get((org_id, env), {})
-        )
+        with step_clock.step(f"{stepped}: its model read"):
+            before = await model_stamp(conn, schema)
+            tree = await project(conn, schema)
+        last = _rendered.get((org_id, env))
+        rebased: tuple[str, str] | None = None
+        if last is None and like is not None:
+            # The copy rebased what named its source's schema onto this one's (env_copy._rebase).
+            last = _rendered.get(like)
+            rebased = (org_schema(*like), schema)
+        with step_clock.step(f"{stepped}: its files rendered"):
+            files, _rendered[(org_id, env)] = dump_reusing(tree, last or {}, rebased)
         exact_stamp = before if await model_stamp(conn, schema) == before else None
-        repo = ensure_repo(org_id)
-        sha = commit_files(repo, env, files, message, actor, onto, merged_from)
+        with step_clock.step(f"{stepped}: its commit"):
+            repo = ensure_repo(org_id)
+            sha = commit_files(repo, env, files, message, actor, onto, merged_from)
     except Exception:  # noqa: BLE001 — REQ-1524: the projection never fails the change it observes
         import logging
 
@@ -403,6 +421,7 @@ async def write_through(
         await set_drifted(admin_db, org_id, env, True)
         await announce(admin_db, org_id, env, None, True)
         return None
+    recording = time.monotonic()
     await set_drifted(admin_db, org_id, env, False)
     if sha is not None:
         # REQ-1543: the model now equals THIS commit, so this is where an undo starts from. The
@@ -424,6 +443,7 @@ async def write_through(
         tip = repo.refs[_branch_ref(env)].decode() if has_branch(repo, env) else None
         if row is not None and tip is not None and row["deployed_sha"] == tip:
             await set_deployed_stamp(admin_db, org_id, env, exact_stamp)
+    step_clock.took(f"{stepped}: its position recorded", time.monotonic() - recording)
     return sha
 
 
