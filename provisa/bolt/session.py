@@ -65,11 +65,6 @@ _ARGUMENT_ERROR = "Neo.ClientError.Statement.ArgumentError"
 # that carries nothing of the server's internals -- those are in the server log.
 _INTERNAL_ERROR = "Neo.DatabaseError.General.UnknownError"
 _INTERNAL_ERROR_MESSAGE = "An internal error occurred; see the server log."
-# An HTTP status from the shared command executor, as the Neo4j error a Bolt client reads.
-_BOLT_CODE_FOR_STATUS = {
-    403: "Neo.ClientError.Security.Forbidden",
-    404: "Neo.ClientError.Procedure.ProcedureNotFound",
-}
 
 
 def _scheme_of(meta: dict) -> str:
@@ -959,39 +954,14 @@ class BoltSession:
                 # REQ-1905: whatever the RUN failed with, its deadline has passed.
                 self._fail_timed_out(deadline)
                 return
-            if isinstance(exc, PermissionError):
-                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
-                return
-            from starlette.exceptions import HTTPException as _HTTPException
+            from provisa.bolt.run_failure import client_failure
 
-            from provisa.cypher.command_call import CommandCallRefused
-
-            if isinstance(exc, _HTTPException):
-                # The shared executor's answer (a command call): said in Neo4j's terms.
-                self.send_failure(
-                    _BOLT_CODE_FOR_STATUS.get(exc.status_code, _ARGUMENT_ERROR), exc.detail
-                )
-                return
-            if isinstance(exc, CommandCallRefused):
-                self.send_failure(_ARGUMENT_ERROR, str(exc))
-                return
-            if isinstance(exc, databases.DatabaseCommandError):
-                self.send_failure(exc.code, str(exc))
-                return
-            from provisa.core.read_refusal import ReadRefused
-            from provisa.federation.replica_state import ReplicaBuilding
-
-            if isinstance(exc, (ValueError, ReadRefused, ReplicaBuilding)):
-                # A statement refused on purpose, in its own words: a parse, translate or
-                # parameter refusal (raised as ValueError above), a refusal by name, a replica
-                # still being built. The client's to read and fix.
-                import logging as _logging
-                import traceback as _tb
-
-                _logging.getLogger("uvicorn.error").warning(
-                    "[BOLT] RUN failed: %s\n%s", exc, _tb.format_exc()
-                )
-                self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
+            refused = client_failure(exc, _app_state.federation_engine)
+            if refused is not None:
+                # A statement refused on purpose, in its own words, as Cypher over HTTP answers
+                # it (provisa.bolt.run_failure): the client's to read and fix.
+                log.warning("[BOLT] RUN refused: %s", exc)
+                self.send_failure(*refused)
                 return
             # Anything else is a fault in Provisa, never the client's mistake: said as one, with
             # no internals, and logged here once with its traceback.
