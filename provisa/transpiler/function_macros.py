@@ -2157,6 +2157,8 @@ def _polyfilled_by_rule(
     called = target.name.lower() if isinstance(target, exp.Anonymous) else applied.feature.name
     form = applied.form
     if polyfill.column_of(dialect) is None:
+        if applied.rule.unlisted_keep:
+            return None  # the row polyfills its columns only: this dialect keeps what it had
         raise FunctionRefused(called, dialect)
     if form is None:
         return node  # the engine's own, as the statement writes it (by pg_catalog on DuckDB)

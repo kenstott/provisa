@@ -99,6 +99,11 @@ class Rule:
 
     pattern: str | None
     forms: Mapping[str, Form]
+    #: Whether a dialect that is no column of the grid keeps what it had (the engine's own, or the
+    #: old table's form) where the pattern matches: a row that polyfills a function only where an
+    #: engine differs (array_agg on ClickHouse) refuses no call elsewhere. False: such a dialect
+    #: has no form of the call, and it is refused by name.
+    unlisted_keep: bool = False
 
     def matched(self, node: exp.Expr) -> Bindings | None:
         """What ``node`` binds to the pattern's holes; None where it does not match."""

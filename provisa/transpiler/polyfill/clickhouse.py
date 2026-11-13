@@ -105,7 +105,7 @@ ARRAY_AGG = Feature(
     "array_agg",
     FAMILY,
     "The values of an aggregate as an array, a NULL kept; NULL of no rows.",
-    read=Side(rules=(Rule(_ARRAY_AGG, {"clickhouse": Rewrite(kept_nulls)}),)),
+    read=Side(rules=(Rule(_ARRAY_AGG, {"clickhouse": Rewrite(kept_nulls)}, unlisted_keep=True),)),
 )
 
 #: The functions not STRICT in pg_proc that answer NULL of a NULL array all the same: each tests
@@ -280,7 +280,9 @@ DATE_TRUNC = Feature(
     "date_trunc",
     FAMILY,
     "The start of a unit of a timestamp.",
-    read=Side(rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}),)),
+    read=Side(
+        rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),)
+    ),
 )
 
 _ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*", re.ASCII)
@@ -599,6 +601,7 @@ NUMERIC_MOD = Feature(
                 # Every other dialect keeps the old table's form: a rule of no form there would
                 # leave the call to the engine, which has no numeric_mod (run 43424649612).
                 {**trino.trino_only(trino.KEPT), "clickhouse": _NUMERIC_MOD},
+                unlisted_keep=True,
             ),
         ),
         limitations={

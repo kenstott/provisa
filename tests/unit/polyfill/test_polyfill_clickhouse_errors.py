@@ -649,3 +649,22 @@ def test_numeric_mod_keeps_the_old_tables_form_elsewhere(dialect):
         'SELECT pg_catalog."numeric_mod"(NULL::numeric, NULL::numeric) AS v', dialect
     )
     assert "numeric_mod" not in written.lower()
+
+
+@pytest.mark.parametrize(
+    ("sql", "kept"),
+    [
+        ("SELECT array_agg(x) AS v FROM t", "COLLECT_LIST(x)"),
+        ("SELECT int4multirange(VARIADIC array_agg(a.v)) FROM s.t AS a", "COLLECT_LIST(a.v)"),
+        ("SELECT date_trunc('day', ts) AS v FROM t", "DATE_TRUNC("),
+    ],
+)
+def test_a_row_of_clickhouse_alone_refuses_nothing_on_a_dialect_with_no_column(sql, kept):
+    """A dialect Provisa sends SQL to that is no column of the grid (spark) keeps its own call
+    where a row polyfills ClickHouse only (unlisted_keep), as before the row."""
+    assert kept in transpile(sql, "spark")
+
+
+def test_a_row_of_every_column_still_refuses_a_dialect_with_no_column():
+    with pytest.raises(FunctionRefused, match="array_ndims\\(\\) has no form on spark"):
+        transpile("SELECT array_ndims(a) AS v FROM t", "spark")
