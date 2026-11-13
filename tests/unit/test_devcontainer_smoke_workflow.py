@@ -52,7 +52,7 @@ def _smoke_step() -> dict:
 def test_it_runs_on_every_change_to_the_container_the_script_or_what_it_starts():
     triggers = _workflow()[True]  # PyYAML reads the key `on` as True
     assert triggers["pull_request"]["paths"] == PATHS
-    assert triggers["push"] == {"branches": ["main", "release/**", "ci/**"], "paths": PATHS}
+    assert triggers["push"] == {"branches": ["main", "ci/**"], "paths": PATHS}
     assert "workflow_dispatch" in triggers
     for pattern in PATHS:
         assert list(REPO.glob(pattern)), f"{pattern} names nothing in the repository"

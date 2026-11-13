@@ -19,7 +19,7 @@ from provisa.compiler.sql_literals import sql_literal
 import json
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
@@ -154,6 +154,10 @@ class JunctionMapping:  # REQ-1586
     #: A single-hop type alternation over this junction (``[r:A|B]``): the discriminator values
     #: its rows may hold, one per type. Empty for a relationship's own mapping (``type_value``).
     type_values: tuple[str, ...] = ()
+    #: A walk's hop over this junction, filtered by the walk's inline property map
+    #: (``-[:T* {k: v}]->``, RelPattern.every_hop): each (junction column, SQL value) a row it
+    #: takes holds. Empty for a relationship's own mapping (REQ-348).
+    hop_conditions: tuple[tuple[str, Any], ...] = ()
 
 
 @dataclass

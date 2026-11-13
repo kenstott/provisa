@@ -39,9 +39,14 @@ from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.integration.signin_tables import SIGN_IN_TABLES
 
+# The deployment org: the one the middleware serves as its default org, and so the one whose runtime
+# the platform rights are read from. Keyed by this id, never by whatever ``app_state.org_id`` an
+# earlier test in the process left behind.
+_DEPLOYMENT_ORG = "root"
+
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
-pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
+pytestmark = [pytest.mark.integration, pytest.mark.deployment_org(_DEPLOYMENT_ORG)]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = os.environ.get("PG_PORT", "5432")
@@ -78,10 +83,7 @@ def _prepare_sync(*, org_rows: list[dict]):
 
 
 def _planes(monkeypatch, *org_rows: dict):
-    try:
-        sync_engine = _prepare_sync(org_rows=list(org_rows))
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync(org_rows=list(org_rows))
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(
@@ -113,9 +115,13 @@ def _planes(monkeypatch, *org_rows: dict):
     # every seeded org's runtime (a fresh registry, put back by monkeypatch).
     from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 
+    # A served process boots its deployment id and the middleware's default org from one config.
+    monkeypatch.setattr(app_state, "org_id", _DEPLOYMENT_ORG, raising=False)
     registry = OrgRegistry()
-    # The deployment org's runtime stays: the platform rights are read from it (REQ-1327).
-    registry.set(app_state.org_id, app_state.org_registry.get(app_state.org_id))
+    # The deployment's own runtime, built here: the platform rights are read from it (REQ-1327),
+    # and a request that acts in no org reads its roles from its model store (platform_model_db),
+    # here the one schema holding both stores. No earlier test is relied on to have registered it.
+    registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, model_db=tenant_db, roles={}))
     for row in org_rows:
         registry.set(
             row["id"],
@@ -190,7 +196,7 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
         assignments_source="provisa",
         default_assignments=[],
         multitenancy=True,
-        default_org_id="root",
+        default_org_id=_DEPLOYMENT_ORG,
     )
     app.include_router(auth_router)
 
