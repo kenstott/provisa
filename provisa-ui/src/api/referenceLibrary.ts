@@ -123,9 +123,31 @@ export interface LibraryCitation {
   state: "current" | "drifted";
 }
 
+/** A tag's definition, or a tag on an object, citing the document or one of its sections. */
+export interface LibraryTagCitation {
+  section_heading: string | null;
+  section_page: number | null;
+  text_sha256: string;
+  cited_by: string | null;
+  cited_at: string;
+  state: "current" | "drifted" | "broken";
+  needs_review: boolean;
+}
+
+export interface LibraryTagCitedBy extends LibraryTagCitation {
+  tag_id: string;
+}
+
+export interface LibraryAssignmentCitedBy extends LibraryTagCitedBy {
+  object_type: string;
+  object_key: string;
+}
+
 export interface LibraryCitedBy {
   terms: LibraryCitation[];
   drifted: number;
+  tags: LibraryTagCitedBy[];
+  tag_assignments: LibraryAssignmentCitedBy[];
 }
 
 export async function fetchCitedBy(id: number): Promise<LibraryCitedBy> {

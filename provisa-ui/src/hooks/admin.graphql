@@ -232,6 +232,20 @@ query TagsQuery {
       value
       description
     }
+    requiresCitation
+    needsReview
+    citations {
+      documentId
+      documentTitle
+      documentSource
+      sectionHeading
+      sectionPage
+      textSha256
+      citedBy
+      citedAt
+      state
+      needsReview
+    }
   }
 }
 
@@ -255,6 +269,21 @@ query TagAssignmentsQuery {
     tableRef
     reason
     expiresOn
+    objectKey
+    needsReview
+    citationGap
+    citations {
+      documentId
+      documentTitle
+      documentSource
+      sectionHeading
+      sectionPage
+      textSha256
+      citedBy
+      citedAt
+      state
+      needsReview
+    }
   }
 }
 
@@ -1145,6 +1174,30 @@ mutation CreateTag($input: TagInput!) {
 
 mutation UpdateTag($input: TagInput!) {
   updateTag(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation CiteTagDefinition($tagId: String!, $citation: LibraryCitationInput!) {
+  citeTagDefinition(tagId: $tagId, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation UnciteTagDefinition($tagId: String!, $citation: LibraryCitationInput!) {
+  unciteTagDefinition(tagId: $tagId, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation CiteTagAssignment($assignment: TagAssignmentInput!, $citation: LibraryCitationInput!) {
+  citeTagAssignment(assignment: $assignment, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation UnciteTagAssignment($assignment: TagAssignmentInput!, $citation: LibraryCitationInput!) {
+  unciteTagAssignment(assignment: $assignment, citation: $citation) {
     ...MutationResult
   }
 }
