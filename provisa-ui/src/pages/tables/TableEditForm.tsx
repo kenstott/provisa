@@ -259,7 +259,7 @@ export function TableEditForm({
           discover={
             !hidingOnly &&
             discoversColumns((editSource?.type ?? "").toLowerCase(), editingTable) && (
-              <FormLayout data-testid="table-edit-discover">
+              <FormLayout data-testid="table-edit-discover" style={{ marginBottom: "0.75rem" }}>
                 <FormChecks>
                   <DiscoverColumnsField
                     checked={editingTable.discover === true}

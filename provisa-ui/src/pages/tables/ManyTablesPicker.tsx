@@ -13,7 +13,7 @@
 // needs input from the person: one that does is listed, unticked, saying why, and is registered
 // on its own. A table registered already is listed, and cannot be picked again.
 
-import { Button, Checkbox, Group, SegmentedControl, Text } from "@mantine/core";
+import { Button, Checkbox, SegmentedControl, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { TableMetadata } from "../../api/admin";
@@ -111,12 +111,15 @@ export function ManyTablesList({
             />
           );
           return onItsOwn ? (
-            <Group key={tbl.name} gap="sm" align="flex-start" wrap="nowrap">
+            // The action under the row's reason, where its label's text starts (the tick's width,
+            // Mantine's xl), so every row's action is in one column.
+            <div key={tbl.name}>
               {tick}
               <Button
                 variant="light"
                 size="compact-xs"
-                mt={6}
+                mt={4}
+                ms="xl"
                 loading={opening === tbl.name}
                 disabled={opening !== null && opening !== tbl.name}
                 onClick={() => onRegisterOne(tbl.name)}
@@ -125,7 +128,7 @@ export function ManyTablesList({
               >
                 {t("registerManyTables.registerOne")}
               </Button>
-            </Group>
+            </div>
           ) : (
             tick
           );

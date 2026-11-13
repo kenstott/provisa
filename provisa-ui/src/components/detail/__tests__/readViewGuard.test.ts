@@ -173,6 +173,9 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "pages/tables/ViewDefinitionForm.tsx",
       "pages/tables/RegisterTableForm.tsx",
       "pages/tables/FilesGlobFieldset.tsx",
+      // REQ-2234: Register Table's fields its detail panel edits too.
+      "pages/tables/ImportSetField.tsx",
+      "pages/tables/DiscoverColumnsField.tsx",
       "pages/tables/ModelingForm.tsx",
       "pages/tables/ProfilerPanel.tsx",
       "pages/tables/DataQualityPanel.tsx",
@@ -213,7 +216,7 @@ const PANELS: Readonly<Record<string, Panel>> = {
         "registration's cache TTL: shown in Load and timeliness as Cache TTL",
       "registerTableForm.neo4jTableNameLabel": "a neo4j table's name: shown in Identity as Table",
       "registerTableForm.discoverLabel":
-        "a registration act that reads the source's columns, not a value",
+        "an act that reads the source's columns at registration or at the editor's save, not a value",
       "modelingForm.attributesLabel":
         "a create step: the model is lowered to a view, read as that view",
       "modelingForm.domainLabel":
