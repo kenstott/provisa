@@ -10947,6 +10947,151 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: tag_instances
+  columns:
+  - name: base_tag_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: citation_missing
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: citations
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: citations_broken
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: citations_drifted
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: decided_at
+    data_type: timestamp
+    visible_to:
+    - viewer
+  - name: decided_by
+    data_type: text
+    visible_to:
+    - viewer
+  - name: definition_citations
+    data_type: bigint
+    visible_to:
+    - viewer
+  - name: domain_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: evidence
+    data_type: text
+    visible_to:
+    - viewer
+  - name: expired
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: expires_on
+    data_type: text
+    visible_to:
+    - viewer
+  - name: id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_key
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_kind
+    data_type: text
+    visible_to:
+    - viewer
+  - name: object_name
+    data_type: text
+    visible_to:
+    - viewer
+  - name: owner
+    data_type: text
+    visible_to:
+    - viewer
+  - name: parameter
+    data_type: text
+    visible_to:
+    - viewer
+  - name: purpose
+    data_type: text
+    visible_to:
+    - viewer
+  - name: read_all_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: read_any_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: read_roles
+    data_type: text
+    visible_to:
+    - viewer
+  - name: read_term_domains
+    data_type: text
+    visible_to:
+    - viewer
+  - name: reason
+    data_type: text
+    visible_to:
+    - viewer
+  - name: review_on
+    data_type: text
+    visible_to:
+    - viewer
+  - name: status
+    data_type: text
+    visible_to:
+    - viewer
+  - name: status_reason
+    data_type: text
+    visible_to:
+    - viewer
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+  - name: tag_description
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tag_id
+    data_type: text
+    visible_to:
+    - viewer
+  - name: tag_is_system
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: tag_required
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: tag_requires_citation
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: via
+    data_type: text
+    visible_to:
+    - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: tag_param_values
   columns:
   - name: description
