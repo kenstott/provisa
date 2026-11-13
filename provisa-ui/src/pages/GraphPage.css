@@ -505,6 +505,14 @@
   background: var(--primary-hover);
 }
 
+/* Where Run stands, Stop stands while a frame's query runs. */
+.graph-stop-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-inline: 4px;
+}
+
 /* ── Frame stream ─────────────────────────────────────────────────────────────── */
 .graph-stream {
   flex: 1;
@@ -734,6 +742,19 @@
 .gf-header-meta {
   font-size: 0.72rem;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* A frame whose query was stopped: said where its answer would be, muted, as no error is. */
+.gf-stopped {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .gf-meta-text {
