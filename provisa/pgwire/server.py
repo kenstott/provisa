@@ -1262,6 +1262,8 @@ def _coercer_names_by_function() -> dict[Any, str]:
         cast_types._clock_of: "clock",
         cast_types._of_no_zone: "no_zone",
         cast_types.interval_of_text: "interval_text",
+        cast_types.bytes_of_text: "text_bytes",
+        cast_types.clock_of_text: "clock_text",
         enum_array_text: "enum_array",
     }
 

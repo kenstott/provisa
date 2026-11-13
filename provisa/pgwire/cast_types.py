@@ -179,6 +179,28 @@ def _clock_of(value: Any) -> Any:
     return (datetime.datetime.min + datetime.timedelta(microseconds=count)).time()
 
 
+def bytes_of_text(value: Any) -> Any:
+    """A call's bytea an engine holds as a string of its bytes (ClickHouse's String, which Arrow
+    reads as text): the bytes the string is."""
+    return value.encode("utf-8") if isinstance(value, str) else value
+
+
+#: time_out's text: hours, minutes, seconds and up to six digits of a fraction.
+_CLOCK_TEXT = re.compile(r"(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?", re.ASCII)
+
+
+def clock_of_text(value: Any) -> Any:
+    """A call's time an engine holds as time_out's text (ClickHouse's time is its text) as the time
+    it is. 24:00:00, which PostgreSQL's time holds, is no time of day here, and is refused."""
+    if not isinstance(value, str):
+        return value
+    clock = _CLOCK_TEXT.fullmatch(value)
+    if clock is None or int(clock[1]) > 23 or int(clock[2]) > 59 or int(clock[3]) > 59:
+        raise ValueError(f'invalid input syntax for type time: "{value}"')
+    micros = int((clock[4] or "").ljust(6, "0"))
+    return datetime.time(int(clock[1]), int(clock[2]), int(clock[3]), micros)
+
+
 #: interval_out's text (IntervalStyle postgres): an amount and its unit, or the clock.
 _INTERVAL_AMOUNT = re.compile(r"[+-]?\d+", re.ASCII)
 _INTERVAL_UNITS = {"year": (12, 0), "years": (12, 0), "mon": (1, 0), "mons": (1, 0)} | {
@@ -286,10 +308,22 @@ _RETURNED: dict[str, CastType] = {
     "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
     "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
-    "bytea": CastType(17, -1, BVType.BYTES, frozenset({BVType.BYTES})),
+    # ClickHouse holds bytes as a String, which Arrow reads as its text.
+    "bytea": CastType(
+        17, -1, BVType.BYTES, frozenset({BVType.BYTES, BVType.TEXT}), of_text=bytes_of_text
+    ),
     "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, frozenset({BVType.INTEGERARRAY})),
+    "bigint[]": CastType(1016, -1, BVType.BIGINTARRAY, frozenset({BVType.BIGINTARRAY})),
+    "double precision[]": CastType(1022, -1, BVType.FLOATARRAY, frozenset({BVType.FLOATARRAY})),
+    "text[]": CastType(1009, -1, BVType.STRINGARRAY, frozenset({BVType.STRINGARRAY})),
+    # ClickHouse's time is its Time64, or the text a form writes of it (pg_forms_type_io).
     "time without time zone": CastType(
-        1083, -1, BVType.TIME, frozenset({BVType.TIME, BVType.BYTES}), _clock_of
+        1083,
+        -1,
+        BVType.TIME,
+        frozenset({BVType.TIME, BVType.BYTES, BVType.TEXT}),
+        _clock_of,
+        of_text=clock_of_text,
     ),
     "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
     "timestamp without time zone": CastType(
