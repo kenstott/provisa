@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ActionIcon, Badge, Button, Group, Select, Stack, Text } from "@mantine/core";
+import { ActionIcon, Anchor, Badge, Button, Group, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, X } from "lucide-react";
 import { fetchLibrary, fetchLibraryDocument, type LibraryDocument } from "../api/referenceLibrary";
@@ -47,9 +47,14 @@ export function CitationLink({ c, testId }: { c: LibraryCitation; testId?: strin
       {label}
     </Text>
   ) : (
-    <Text size="xs" component={Link} to={detailHref("library", c.documentId)} data-testid={testId}>
+    <Anchor
+      size="xs"
+      component={Link}
+      to={detailHref("library", c.documentId)}
+      data-testid={testId}
+    >
       {label}
-    </Text>
+    </Anchor>
   );
 }
 

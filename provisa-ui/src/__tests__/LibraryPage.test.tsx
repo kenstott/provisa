@@ -248,7 +248,7 @@ describe("LibraryPage", () => {
       "href",
       "/tables?table=7",
     );
-    expect(onObject).toHaveTextContent("page 4");
+    expect(onObject).toHaveTextContent("Page 4");
     expect(within(onObject).getByTestId("reflib-cite-drifted")).toBeInTheDocument();
   });
 

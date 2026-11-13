@@ -321,7 +321,7 @@ export function TagControl({
                 </TipSurface>
               </Popover.Target>
               <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
-                <Stack gap="0.35rem" data-testid={`tag-detail-${tag.id}`}>
+                <Stack gap="xs" data-testid={`tag-detail-${tag.id}`}>
                   <Text size="xs" fw={600}>
                     {t("tagCitations.definedByLabel")}
                   </Text>

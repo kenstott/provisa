@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   FileButton,
   Group,
@@ -139,7 +140,7 @@ function CitedByTab({ cited }: { cited: LibraryCitedBy | null }) {
   const where = (c: { section_heading: string | null; section_page: number | null }) =>
     c.section_heading ??
     (c.section_page !== null
-      ? t("referenceLibrary.page", { page: c.section_page })
+      ? t("tagCitations.page", { page: c.section_page })
       : t("tagCitations.citedByWholeDocument"));
   const mark = (c: { state: string; needs_review: boolean }) =>
     c.needs_review && (
@@ -223,9 +224,9 @@ function CitedByTab({ cited }: { cited: LibraryCitedBy | null }) {
               >
                 <Table.Td>
                   <Group gap={4} wrap="wrap">
-                    <Text size="sm" component={Link} to={detailHref("tags", c.tag_id)}>
+                    <Anchor size="sm" component={Link} to={detailHref("tags", c.tag_id)}>
                       {c.tag_id}
-                    </Text>
+                    </Anchor>
                     {mark(c)}
                   </Group>
                 </Table.Td>
@@ -246,20 +247,20 @@ function CitedByTab({ cited }: { cited: LibraryCitedBy | null }) {
               >
                 <Table.Td>
                   <Group gap={4} wrap="wrap">
-                    <Text
+                    <Anchor
                       size="sm"
                       component={Link}
                       to={detailHref("tags", c.tag_id.split(":")[0])}
                     >
                       {c.tag_id}
-                    </Text>
+                    </Anchor>
                     {mark(c)}
                   </Group>
                 </Table.Td>
                 <Table.Td>
-                  <Text size="xs" component={Link} to={objectHref(c.object_type, c.object_key)}>
+                  <Anchor size="xs" component={Link} to={objectHref(c.object_type, c.object_key)}>
                     {t(`tagsTab.scope_${c.object_type}`)} · {objectName(c.object_key)}
-                  </Text>
+                  </Anchor>
                 </Table.Td>
                 <Table.Td>
                   <Text size="xs">{where(c)}</Text>
