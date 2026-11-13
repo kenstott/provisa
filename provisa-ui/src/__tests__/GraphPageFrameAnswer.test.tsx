@@ -98,9 +98,7 @@ describe("a frame's running state", () => {
   it("shows 'No rows' without 'Running' after an empty answer", async () => {
     serve(async () =>
       json({
-        results: [
-          { statement: QUERY, status: 200, body: { rows: [], columns: ["n.name"] } },
-        ],
+        results: [{ statement: QUERY, status: 200, body: { rows: [], columns: ["n.name"] } }],
       }),
     );
     runQuery();
@@ -110,10 +108,7 @@ describe("a frame's running state", () => {
 
   it("shows the error, without 'Running', after a failed answer", async () => {
     serve(async () =>
-      json(
-        { detail: "cypher_http request timed out after 30s", code: "data.query_timeout" },
-        504,
-      ),
+      json({ detail: "cypher_http request timed out after 30s", code: "data.query_timeout" }, 504),
     );
     runQuery();
     expect(await screen.findByTestId("graph-frame-error")).toBeInTheDocument();

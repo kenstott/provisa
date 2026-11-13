@@ -191,7 +191,14 @@ describe("the paths between two nodes dragged together stay in the selected doma
   it("says a node with no key needs one, as before", () => {
     const keyless: GNode = { id: 3, label: PETS, tableLabel: "Pets", properties: {} };
     expect(
-      nodePathQuery(keyless, node(EMPLOYEES, 2), key, rels, new Set(), scope("petstore", "shelter")),
+      nodePathQuery(
+        keyless,
+        node(EMPLOYEES, 2),
+        key,
+        rels,
+        new Set(),
+        scope("petstore", "shelter"),
+      ),
     ).toEqual({
       refused: { key: "graphFrame.cypherPathNoKey", values: { from: PETS, to: EMPLOYEES } },
     });

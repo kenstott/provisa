@@ -25,8 +25,7 @@ export function usePathScope(
   checkedDomains: ReadonlySet<string>,
 ): { parameterized: ReadonlySet<string>; pathScope: PathScope } {
   const parameterized = useMemo(
-    () =>
-      new Set(nodeLabels.filter((n) => n.nativeFilterColumns.length > 0).map(compoundLabelOf)),
+    () => new Set(nodeLabels.filter((n) => n.nativeFilterColumns.length > 0).map(compoundLabelOf)),
     [nodeLabels],
   );
   const pathScope = useMemo(() => ({ nodeLabels, checkedDomains }), [nodeLabels, checkedDomains]);
