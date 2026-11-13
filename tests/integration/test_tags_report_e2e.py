@@ -76,7 +76,7 @@ async def server():
 
 async def _rows(server, sql: str, role: str) -> list[dict]:
     async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
-        resp = await client.post("/data/sql", json={"sql": sql, "role": role})
+        resp = await client.post("/data/sql", json={"sql": sql}, headers={"X-Provisa-Role": role})
     assert resp.status_code == 200, f"{resp.text}\n{server.dump_stderr_debug()[-6000:]}"
     body = resp.json()
     rows = body.get("data") or body.get("rows") or []
