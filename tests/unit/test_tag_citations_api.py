@@ -22,7 +22,7 @@ The library: a sales policy and an hr policy, each with a section "Scope". The m
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 
 import provisa.api.app as appmod
 from provisa.api.admin import reference_library_router as router
@@ -32,7 +32,7 @@ from provisa.api.admin.schema_query import Query
 from provisa.api.admin.types import LibraryCitationInput, TagAssignmentInput, TagInput
 from provisa.core.models import Tag, TagAssignment
 from provisa.core.repositories import tag as tag_repo
-from provisa.core.schema_org import domains, sources
+from provisa.core.schema_org import domains, reference_citations, sources
 from provisa.reference_library import citations, store
 from tests.unit.gate_identity import grant
 
@@ -233,3 +233,118 @@ async def test_a_document_lists_what_cites_it_among_what_its_reader_reads(librar
     assert [a["object_key"] for a in cited["tag_assignments"]] == ["source:pg"]
     # No section of that name is cited.
     assert (await router.cited_by(sales, seller, section_heading="Other"))["tags"] == []
+
+
+# One assignment form: the assignment and its citations saved by one assignTag call (REQ-2208).
+
+
+def _whole(document: int) -> LibraryCitationInput:
+    return LibraryCitationInput(document_id=document)
+
+
+async def _held(db) -> list:
+    async with db.acquire() as conn:
+        return await tag_repo.list_assignments(conn)
+
+
+async def _cited_on_source(db) -> list[citations.Citation]:
+    async with db.acquire() as conn:
+        found = await tag_repo.assignment_citations(conn)
+    return found.get(("approved", "source:pg"), [])
+
+
+async def test_an_assignment_saved_with_two_citations_stores_both(library, monkeypatch):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    done = await Mutation().assign_tag(
+        editor, SOURCE, citations=[_cite(ids["sales"]), _whole(ids["hr"])]
+    )
+    assert done.success, done.message
+    [assignment] = await Query().tag_assignments(editor)
+    assert sorted((c.document_title, c.section_heading) for c in assignment.citations) == [
+        ("hr policy", None),
+        ("sales policy", SCOPE),
+    ]
+    assert {c.state for c in assignment.citations} == {"current"}
+    assert assignment.citation_gap is False
+
+
+async def test_a_citation_the_library_refuses_stores_nothing_not_even_the_assignment(
+    library, monkeypatch
+):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    no_section = LibraryCitationInput(document_id=ids["sales"], section_heading="Nowhere")
+    refused = await Mutation().assign_tag(editor, SOURCE, citations=[_cite(ids["hr"]), no_section])
+    assert (refused.success, refused.code) == (False, "reference_library.citation_invalid")
+    assert await _held(db) == [] and await _cited_on_source(db) == []
+    no_document = await Mutation().assign_tag(
+        editor, SOURCE, citations=[_cite(ids["hr"]), _whole(987654)]
+    )
+    assert (no_document.success, no_document.code) == (False, "reference_library.not_found")
+    assert await _held(db) == [] and await _cited_on_source(db) == []
+
+
+async def test_an_edit_replaces_the_set_and_keeps_an_unchanged_citations_record(
+    library, monkeypatch
+):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    first = await Mutation().assign_tag(
+        editor, SOURCE, citations=[_cite(ids["sales"]), _cite(ids["hr"])]
+    )
+    assert first.success, first.message
+    # The sales section's text changed since it was cited: its record is the old text's hash.
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            update(reference_citations)
+            .where(reference_citations.c.document_id == ids["sales"])
+            .values(text_sha256="0" * 64)
+        )
+    edited = await Mutation().assign_tag(
+        editor,
+        TagAssignmentInput(
+            tag_id="approved", object_type="source", source_id="pg", reason="Reviewed"
+        ),
+        citations=[_cite(ids["sales"]), _whole(ids["hr"])],
+    )
+    assert edited.success, edited.message
+    by_place = {(c.document_title, c.section_heading): c for c in await _cited_on_source(db)}
+    assert set(by_place) == {("sales policy", SCOPE), ("hr policy", None)}
+    kept = by_place[("sales policy", SCOPE)]
+    assert (kept.text_sha256, kept.state) == ("0" * 64, "drifted")
+    [assignment] = await _held(db)
+    assert assignment["reason"] == "Reviewed"
+    # Leaving the list out leaves the citations as they are; an empty list takes them all off.
+    untouched = await Mutation().assign_tag(editor, SOURCE)
+    assert untouched.success, untouched.message
+    assert len(await _cited_on_source(db)) == 2
+    cleared = await Mutation().assign_tag(editor, SOURCE, citations=[])
+    assert cleared.success, cleared.message
+    assert await _cited_on_source(db) == []
+
+
+async def test_saving_citations_with_an_assignment_asks_only_the_assignments_rights(
+    library, monkeypatch
+):
+    db, ids = library
+    reader, _ = _scoped(monkeypatch, ["*"], "glossary_read")
+    with pytest.raises(PermissionError):
+        await Mutation().assign_tag(reader, SOURCE, citations=[_cite(ids["sales"])])
+    assert await _held(db) == []
+    # A document the caller does not read is one the library does not hold, for this caller: a
+    # sales curator tags the sales policy's section, citing the hr policy too.
+    on_sales = _on_section(ids["sales"])
+    curator, _ = _scoped(monkeypatch, ["sales"], "glossary_rw", "glossary_read")
+    refused = await Mutation().assign_tag(
+        curator, on_sales, citations=[_cite(ids["sales"]), _cite(ids["hr"])]
+    )
+    assert (refused.success, refused.code) == (False, "reference_library.not_found")
+    assert await _held(db) == []
+    curator, _ = _scoped(monkeypatch, ["sales"], "glossary_rw", "glossary_read")
+    done = await Mutation().assign_tag(curator, on_sales, citations=[_cite(ids["sales"])])
+    assert done.success, done.message
+    async with db.acquire() as conn:
+        found = await tag_repo.assignment_citations(conn)
+    key = ("approved", f"section:{ids['sales']}:heading:{SCOPE}")
+    assert [c.document_title for c in found[key]] == ["sales policy"]
