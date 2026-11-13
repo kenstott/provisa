@@ -221,7 +221,15 @@ def test_duckdb_detach_stops_the_re_pointing(stub_resolver):
 # --- per-query re-pointing and #244: pg runtime ----------------------------------------------
 
 
+class _AutocommitConnection:
+    """What a store cursor's ``connection`` says: schema creation asks it for autocommit."""
+
+    autocommit = True
+
+
 class _PgCursor:
+    connection = _AutocommitConnection()
+
     def __init__(self, log: list) -> None:
         self.log = log
         self._last = ""
