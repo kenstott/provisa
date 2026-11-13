@@ -400,7 +400,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         pf: PathFunction = clause.pattern  # type: ignore[assignment]
         src_node, tgt_node, rel = _extract_path_nodes(pf, CypherTranslateError)
         held = set(self._var_table) if joined is None else joined
-        if not src_node.labels or not tgt_node.labels:
+        carried = self._walks_carried_list(rel)  # type: ignore[attr-defined]
+        if not src_node.labels or not tgt_node.labels or carried:
             walk = self._lm.session_walk
             # REQ-347, REQ-348: a variable an earlier clause bound to a table keeps that table's
             # label, written bare or not.
@@ -410,6 +411,14 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 # A graph session walks its one relationships relation from any end (path_walk).
                 return self._translate_session_walk(  # type: ignore[attr-defined]
                     clause, pf, src_node, tgt_node, rel, walk, held, CypherTranslateError
+                )
+            if carried:
+                # REQ-348: a carried list of relationships is followed by the relationships' own
+                # ids, which a graph session's walk takes; a model walk's hop has none.
+                raise CypherTranslateError(
+                    "A variable-length relationship bound to a list of relationships is walked "
+                    "over a graph session's relationships; on the model graph, match the "
+                    "relationships' ends instead"
                 )
             # A walk from an end the model places takes the model's relationships (REQ-348).
             src_node, tgt_node = src_bound, tgt_bound

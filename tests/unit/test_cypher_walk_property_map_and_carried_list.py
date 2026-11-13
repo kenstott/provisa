@@ -114,3 +114,27 @@ def test_a_carried_list_walked_the_wrong_way_matches_nothing(monkeypatch):
         "MATCH (first)-[rs*]->(second) RETURN first, second"
     )
     assert rows == [], s.judged
+
+
+def test_a_carried_list_between_labelled_ends(monkeypatch):
+    """Labelled ends take the same walk: the list's relationships, in order."""
+    s = GovernedSession(monkeypatch)
+    s.run(_CHAIN)
+    rows = s.answer(
+        "MATCH (:A)-[r1]->(:B)-[r2]->(:C) WITH [r1, r2] AS rs "
+        "MATCH (first:A)-[rs*]->(second:C) RETURN first, second, rs"
+    )
+    assert len(rows) == 1, s.judged
+    assert (_labels(rows[0]["first"]), _labels(rows[0]["second"])) == ({"A"}, {"C"})
+    assert [rel["type"] for rel in rows[0]["rs"]] == ["Y", "Y"]
+
+
+def test_a_carried_list_out_of_order_matches_nothing(monkeypatch):
+    """The list [r2, r1] is no walk: r1 does not start at C, where r2 ends."""
+    s = GovernedSession(monkeypatch)
+    s.run(_CHAIN)
+    rows = s.run(
+        "MATCH ()-[r1]->()-[r2]->() WITH [r2, r1] AS rs MATCH (first)-[rs*]->(second) "
+        "RETURN first, second"
+    )
+    assert rows == [], s.judged

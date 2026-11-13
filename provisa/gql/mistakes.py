@@ -490,7 +490,7 @@ def aggregate_misuse(ast: CypherAST) -> CypherMistake | None:
 
 
 def _kind_conflict(variable: str, kinds: tuple[str, str]) -> CypherMistake:
-    if "value" in kinds:
+    if "value" in kinds or "list" in kinds:
         return CypherMistake(
             "cypher.value_as_node",
             f"MATCH reads {variable} as a node or relationship, and the statement binds it to a "
@@ -540,8 +540,10 @@ def variable_misuse(ast: CypherAST) -> CypherMistake | None:
                 return found
             # A variable bound to null is no value a pattern refuses: an OPTIONAL MATCH from it
             # matches nothing (REQ-778, amended 2026-10-27; translator._null_bound_matches).
+            # A list a WITH binds is no node or relationship, and is the relationships a
+            # variable-length relationship takes (MATCH (a)-[rs*]->(b), REQ-348).
             kinds = {
-                item.alias: "value"
+                item.alias: "list" if isinstance(item.expression, ListLiteral) else "value"
                 for item in step.items
                 if item.alias
                 and isinstance(item.expression, (Literal, ListLiteral, MapLiteral))
@@ -557,7 +559,11 @@ def variable_misuse(ast: CypherAST) -> CypherMistake | None:
             if not isinstance(pattern, PathPattern):
                 continue
             named = [(n.variable, "node") for n in pattern.nodes]
-            named += [(r.variable, "relationship") for r in pattern.rels]
+            named += [
+                (r.variable, "relationship")
+                for r in pattern.rels
+                if not (r.variable_length and kinds.get(r.variable or "") == "list")
+            ]
             if clause.variable is not None:
                 named.append((clause.variable, "path"))
             for variable, kind in named:

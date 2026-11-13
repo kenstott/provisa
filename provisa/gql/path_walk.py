@@ -872,6 +872,31 @@ class SessionWalkMixin:  # REQ-348
             )
         return from_expr
 
+    def _walks_carried_list(self, rel: RelPattern | None) -> bool:
+        """Whether ``rel`` is a variable-length relationship whose variable an earlier WITH bound
+        to a list of relationships (``WITH [r1, r2] AS rs MATCH (a)-[rs*]->(b)``, REQ-348): the
+        walk is that list, in order."""
+        sources = getattr(self, "_cte_sources", set())
+        return (
+            rel is not None
+            and rel.variable_length
+            and rel.variable is not None
+            and rel.variable in sources
+        )
+
+    def _carried_trail(self, variable: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The trail (``|id|id|``) of the carried list of relationships ``variable``: the walk
+        that takes exactly those relationships, in that order, has it."""
+        each = exp.Anonymous(
+            this="JSON_EXTRACT_SCALAR",
+            expressions=[exp.column("_rel"), exp.Literal.string("$.id")],
+        )
+        ids = exp.Transform(
+            this=self._lower_expr(Variable(name=variable)),  # type: ignore[attr-defined]
+            expression=exp.Lambda(this=each, expressions=[exp.to_identifier("_rel")]),
+        )
+        return _bar(exp.ArrayToString(this=ids, expression=exp.Literal.string("|")))
+
     def _session_hop(self, rel: RelPattern) -> bool:
         """Whether ``rel``, one hop of a pattern, is read from a graph session's relationships
         (_build_session_hop): in a session, where no relationship of the model could take it."""
@@ -1057,6 +1082,18 @@ class SessionWalkMixin:  # REQ-348
             on = exp.and_(
                 on, exp.GTE(this=_col("hops", alias), expression=exp.Literal.number(min_hops))
             )
+        carried = self._walks_carried_list(rel)
+        if carried:
+            assert rel is not None and rel.variable is not None
+            # The walk that takes the carried relationships, in their order (REQ-348): read
+            # beside the rows that carry them, so held where they are.
+            same_trail = exp.EQ(
+                this=_col("trail", alias), expression=self._carried_trail(rel.variable)
+            )
+            if clause.optional:
+                on = exp.and_(on, same_trail)
+            else:
+                self._held_end_conditions.append(same_trail)  # type: ignore[attr-defined]
         join_type = "LEFT" if clause.optional else "INNER"
         joins: list[dict[str, Any]] = [
             {"table": exp.alias_(walked, alias), "on": on, "join_type": join_type}
@@ -1071,7 +1108,7 @@ class SessionWalkMixin:  # REQ-348
             )
 
         trail_cols = (_col("nodes", alias), _col("rels", alias))
-        if rel is not None and rel.variable:
+        if rel is not None and rel.variable and not carried:
             # The walk's relationships, in the order it took them (REQ-751).
             self._varlen_rel_vars.setdefault(rel.variable, clause.variable or "")
             if nodes is not None:
