@@ -242,12 +242,12 @@ async def test_a_document_reaches_its_relevant_columns_over_graphql(server, role
     policyCoverage, each coverage row's column."""
     srv, policy, columns = server
     query = (
-        f"{{ m__libraryDocuments(where: {{id: {{eq: {policy}}}}}) "
+        f"{{ libraryDocuments(where: {{id: {{eq: {policy}}}}}) "
         "{ id policyCoverage { objectKind column { columnKey } } } }"
     )
     body = await _post(srv, "/data/graphql", {"query": query}, role)
     assert not body.get("errors"), body
-    [document] = body["data"]["m__libraryDocuments"]
+    [document] = body["data"]["libraryDocuments"]
     keys = {
         row["column"]["columnKey"]
         for row in document["policyCoverage"]
