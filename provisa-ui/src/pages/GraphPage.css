@@ -510,6 +510,7 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  padding-inline: 4px;
 }
 
 /* ── Frame stream ─────────────────────────────────────────────────────────────── */
