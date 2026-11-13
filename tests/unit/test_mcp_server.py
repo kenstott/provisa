@@ -29,6 +29,7 @@ from provisa.compiler.sql_types import JoinMeta, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
 from tests.role_state import RoleState
+from tests.unit.mcp_described import serve_whole
 from tests.unit.mcp_local_principal import act_for
 
 pytestmark = pytest.mark.asyncio
@@ -130,14 +131,7 @@ def _patch_catalog(monkeypatch):
 def _no_masks(monkeypatch):
     """The fake state's role is served every column of each table its context holds, and holds
     no mask: its governance context (what describe_table reads each column's state from)."""
-    from provisa.compiler.stage2 import GovernanceContext
-
-    def _governance(state, role):
-        gov = GovernanceContext()
-        gov.visible_columns = {m.table_id: None for m in state.contexts[role].tables.values()}
-        return gov
-
-    monkeypatch.setattr(tools, "_role_governance", _governance)
+    serve_whole(monkeypatch)
 
 
 # --- drill-down -------------------------------------------------------------
