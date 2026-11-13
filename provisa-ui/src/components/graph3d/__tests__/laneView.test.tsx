@@ -18,6 +18,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import { nodeHref } from "../nodeHref";
 import { DATA, FACTS } from "./fixture";
+import { ASSOCIATION_CHAIN, KIN, TEST2, TEST3 } from "./associationChain";
+import { reach } from "../graphModel";
+import { NEIGHBOURHOOD } from "../neighbourhood";
 
 type Handler = { event: string; selector: string; fn: (evt: unknown) => void };
 type Element = { group: string; data: Record<string, unknown> };
@@ -511,6 +514,40 @@ describe("a term's graph in 2D, its hops raised", () => {
       );
       await waitFor(() => expect(ids("node")).toEqual(["term:1", "term:2", "term:3"]));
       expect(laneOf("term:3")).toBe("term");
+    } finally {
+      LANES_DATA.data = DATA_READ;
+    }
+  });
+});
+
+describe("a term's graph in 2D, its focus selected (associations lit)", () => {
+  // J1230: test3's graph lit only its ranking path; a term reached by RELATED_TO, and that term's
+  // column, table and product, were drawn faded.
+  const readTo = (s: { depth: number }) => {
+    const byId = new Map(ASSOCIATION_CHAIN.nodes.map((n) => [n.id, n]));
+    const keep = reach([TEST3], ASSOCIATION_CHAIN.edges, byId, { ...NEIGHBOURHOOD, depth: s.depth });
+    return {
+      nodes: ASSOCIATION_CHAIN.nodes.filter((n) => keep.has(n.id)),
+      edges: ASSOCIATION_CHAIN.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
+    };
+  };
+  const faded = (id: string) => last().classes.get(id)?.has("faded") ?? false;
+
+  it("lights the associated term, its column, table and product when the focus is picked", async () => {
+    LANES_DATA.data = readTo;
+    try {
+      render(<OntologySnippet preset={termPreset(11)} name="test3" testId="term-graph" />);
+      act(() => observed.fire.forEach((f) => f()));
+      await screen.findByTestId("term-graph-lanes");
+      await waitFor(() => expect(ids("node")).toContain(KIN));
+      tap(TEST3);
+      await waitFor(() => expect(faded(TEST3)).toBe(false));
+      // Something is faded once the pick is painted: the lines not followed.
+      await waitFor(() =>
+        expect([...last().classes].some(([, c]) => c.has("faded") || c.has("lit"))).toBe(true),
+      );
+      for (const id of [KIN, "c:203:kin", "t:203", "p:kin", TEST2])
+        expect(faded(id), `${id} faded`).toBe(false);
     } finally {
       LANES_DATA.data = DATA_READ;
     }
