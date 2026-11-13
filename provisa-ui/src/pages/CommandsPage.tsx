@@ -51,6 +51,7 @@ import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
+import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { commandId, readCommandId, useDetailParam } from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
@@ -162,20 +163,19 @@ export function CommandsPage() {
       .finally(() => setLoadingFunctions(false));
   }, [form.sourceId, form.schemaName, sources, getAvailableFunctions]);
 
-  // `held`: the lists as just read, where the page's own have not caught up yet (a command
-  // opened in edit straight after it was created).
-  const handleEdit = (
+  // The form's values for a command, as its edit form holds them.
+  const formFor = (
     actionType: ActionType,
     name: string,
-    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] } = { functions, webhooks },
-  ) => {
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] },
+  ): FormState | null => {
     if (actionType === "function") {
       const fn = held.functions.find((f) => f.name === name);
-      if (!fn) return;
+      if (!fn) return null;
       // REQ-1159: output is a dataset. A registered table → "table" mode; anything else is an
       // IR-typed column list. Legacy commands carry only return_schema → reverse-project it.
       const outputColumns = fn.outputColumns ?? columnsFromReturnSchema(fn.returnSchema);
-      setForm({
+      return {
         actionType: "function",
         name: fn.name,
         sourceId: fn.sourceId,
@@ -199,40 +199,68 @@ export function CommandsPage() {
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
-      });
-      openCommand("function", name);
-    } else {
-      const wh = held.webhooks.find((w) => w.name === name);
-      if (!wh) return;
-      setForm({
-        actionType: "webhook",
-        name: wh.name,
-        sourceId: "",
-        schemaName: "public",
-        functionName: "",
-        returns: wh.returns ?? "",
-        visibleTo: wh.visibleTo.join(", "),
-        domainId: wh.domainId,
-        description: wh.description ?? "",
-        arguments: wh.arguments.length > 0 ? wh.arguments : [],
-        url: wh.url,
-        method: wh.method,
-        timeoutMs: wh.timeoutMs,
-        inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
-        kind: wh.kind ?? "mutation",
-        returnSchemaMode: "table",
-        implKind: "source_procedure",
-        binding: {},
-        materialize: false,
-        requiresApproval: wh.requiresApproval, // REQ-209
-        writesTable: "",
-        outputColumns: [],
-        languageBindings: {},
-      });
-      openCommand("webhook", name);
+      };
     }
+    const wh = held.webhooks.find((w) => w.name === name);
+    if (!wh) return null;
+    return {
+      actionType: "webhook",
+      name: wh.name,
+      sourceId: "",
+      schemaName: "public",
+      functionName: "",
+      returns: wh.returns ?? "",
+      visibleTo: wh.visibleTo.join(", "),
+      domainId: wh.domainId,
+      description: wh.description ?? "",
+      arguments: wh.arguments.length > 0 ? wh.arguments : [],
+      url: wh.url,
+      method: wh.method,
+      timeoutMs: wh.timeoutMs,
+      inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
+      kind: wh.kind ?? "mutation",
+      returnSchemaMode: "table",
+      implKind: "source_procedure",
+      binding: {},
+      materialize: false,
+      requiresApproval: wh.requiresApproval, // REQ-209
+      writesTable: "",
+      outputColumns: [],
+      languageBindings: {},
+    };
+  };
+
+  // `held`: the lists as just read, where the page's own have not caught up yet (a command
+  // opened in edit straight after it was created).
+  const handleEdit = (
+    actionType: ActionType,
+    name: string,
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] } = { functions, webhooks },
+  ) => {
+    const values = formFor(actionType, name, held);
+    if (!values) return;
+    setForm(values);
+    openCommand(actionType, name);
     setEditingName(name);
     setShowForm(false);
+  };
+
+  // "+ Command": the create form, empty whatever command was open or edited before it.
+  const openCreate = () => {
+    setForm({ ...EMPTY_FORM });
+    setEditingName(null);
+    setShowForm(true);
+  };
+
+  // Duplicate: the same create form, filled with the command's definition and language bindings
+  // under a new name. Its grants (who may see it) are not copied. A name that exists is refused
+  // by the create on save.
+  const handleDuplicate = (actionType: ActionType, name: string) => {
+    const values = formFor(actionType, name, { functions, webhooks });
+    if (!values) return;
+    setForm({ ...values, name: `${name}_copy`, visibleTo: "" });
+    setEditingName(null);
+    setShowForm(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -582,6 +610,11 @@ export function CommandsPage() {
                 >
                   <Pencil size={14} />
                 </ActionIcon>
+                <PanelDuplicate
+                  name={fn.name}
+                  onDuplicate={() => handleDuplicate("function", fn.name)}
+                  testId="command-duplicate-fn"
+                />
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -640,6 +673,11 @@ export function CommandsPage() {
                 >
                   <Pencil size={14} />
                 </ActionIcon>
+                <PanelDuplicate
+                  name={wh.name}
+                  onDuplicate={() => handleDuplicate("webhook", wh.name)}
+                  testId="command-duplicate-wh"
+                />
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -703,7 +741,7 @@ export function CommandsPage() {
             <Button
               leftSection={<Plus size={14} />}
               data-testid="commands-toggle-form"
-              onClick={() => setShowForm(true)}
+              onClick={openCreate}
             >
               {t("commandsPage.addCommand")}
             </Button>

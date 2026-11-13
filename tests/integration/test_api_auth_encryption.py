@@ -55,13 +55,9 @@ _AUTH = {"type": "bearer", "token": "super-secret-token-abc123"}
 async def db():
     engine = create_engine_from_url(_PG_URL)
     database = Database(engine, name="req686", search_path=_SCHEMA)
-    try:
-        async with database.acquire() as conn:
-            await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
-            await conn.execute(_DDL)
-    except Exception as exc:  # noqa: BLE001 — skip cleanly if the live store is absent
-        engine.dispose()
-        pytest.skip(f"live Postgres not reachable at {_PG_URL}: {exc}")
+    async with database.acquire() as conn:
+        await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA}")
+        await conn.execute(_DDL)
     yield database
     async with database.acquire() as conn:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

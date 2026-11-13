@@ -181,6 +181,9 @@ class CompilationContext:
     # REQ-1921: every name a statement could give a draft table this role would see (field name,
     # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
     draft_names: dict[str, str] = field(default_factory=dict)
+    # REQ-1921: each of those names to the draft's registered table id, for the role that reads
+    # a draft (A DRAFT IS SERVED TO ORG_ADMIN: admin/table_read.drafts_a_statement_names).
+    draft_ids: dict[str, int] = field(default_factory=dict)
     # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
     missing_capability: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a table the role can only list -> the table.

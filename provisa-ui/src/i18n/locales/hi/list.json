@@ -17,6 +17,8 @@
     "bulkDeleteConsequence": "ये हटाई जाएँगी: {{names}}। जिनका अब भी कहीं संदर्भ है, वे रखी जाएँगी और कारण बताया जाएगा।",
     "bulkRefused_one": "{{count}} नहीं हटाई गई:",
     "bulkRefused_other": "{{count}} नहीं हटाई गईं:",
-    "dismiss": "बंद करें"
+    "dismiss": "बंद करें",
+    "duplicate": "डुप्लिकेट करें",
+    "duplicateNamed": "{{name}} डुप्लिकेट करें"
   }
 }

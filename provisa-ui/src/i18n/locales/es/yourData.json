@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "Llamada a herramienta MCP",
     "copy": "Copiar {{what}}",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "draft": "Borrador",
+    "draftNote": "Esta tabla es un borrador: hasta que se publique, solo los roles que pueden registrar tablas en su dominio la alcanzan por estas vías."
   }
 }

@@ -28,6 +28,7 @@ function panel(type: string) {
       s={s}
       fields={null}
       onEdit={vi.fn()}
+      onDuplicate={vi.fn()}
       onNavigate={vi.fn()}
       onDelete={vi.fn()}
     />,

@@ -15,6 +15,7 @@
 // role grants offered are the roles the person holds, each with where it came from, and any role
 // Provisa still holds lists for that the person no longer holds, so those lists can be ended.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -327,14 +328,13 @@ export function PersonEntitlements({
             onCancel={() => setMode(null)}
             cancelProps={{ "data-testid": "person-entitlements-end-cancel" }}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 disabled={endReason.trim() === ""}
                 onClick={() => end(mode.kind)}
-                data-testid="person-entitlements-end-submit"
+                testId="person-entitlements-end-submit"
               >
                 {t("entitlements.person.endButton")}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </FormLayout>

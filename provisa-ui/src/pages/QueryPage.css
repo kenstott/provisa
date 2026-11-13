@@ -914,3 +914,21 @@ section.graphiql-editor-tool:has(.provisa-headers-bar) {
 .graphiql-explorer-domain[open] > summary .graphiql-explorer-domain-arrow {
   transform: rotate(90deg);
 }
+
+/* While a query runs, Stop stands where GraphiQL's run button is, which is hidden meanwhile. The
+ * toolbar is one icon wide; Stop, wider, reaches left over the editor's top corner. */
+.graphiql-toolbar:has(.graphiql-stop-slot) .graphiql-execute-button {
+  display: none;
+}
+.graphiql-stop-slot {
+  position: relative;
+  order: -1;
+  height: var(--toolbar-width);
+  flex-shrink: 0;
+}
+.graphiql-stop-slot > * {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 0;
+  z-index: 1;
+}

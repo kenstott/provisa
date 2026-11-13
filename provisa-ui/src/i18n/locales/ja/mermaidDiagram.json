@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "図を表示できません"
+    "unavailable": "図を表示できません",
+    "fitWidth": "幅に合わせる",
+    "canvasLabel": "クエリプランの図"
   }
 }

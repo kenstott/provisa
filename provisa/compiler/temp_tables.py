@@ -26,6 +26,8 @@ is then done with them. :mod:`provisa.pgwire.temp_exec` does it.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
@@ -101,6 +103,23 @@ def slot_key() -> list[tuple[str, str]]:
     if session is None or not session.tables:
         return []
     return [("provisa.temp_session", f"{session.id}:{session.generation}")]
+
+
+def plan_key() -> list[tuple[str, str]]:
+    """What sets a statement's governed plan in the current session apart from the same words
+    governed anywhere else: nothing while the session holds no temporary table, else the session
+    (its store schema, the address its tables are read at) and each table's name and columns.
+
+    A plan reads the tables by address and shape, never their rows, so -- unlike a cached answer,
+    keyed by :func:`slot_key` -- it is not keyed by the generation: a principal's graph session
+    advances that on every write and begins at a new one after each clear (REQ-2176), and keyed
+    by it every read after a write was governed again though its tables were shaped as before."""
+    session = _SESSION.get()
+    if session is None or not session.tables:
+        return []
+    shapes = sorted((t.name, [list(c) for c in t.columns]) for t in session.tables.values())
+    digest = hashlib.sha256(json.dumps(shapes).encode()).hexdigest()[:32]
+    return [("provisa.temp_session", f"{session.id}:{digest}")]
 
 
 def reads(tree: Any) -> bool:

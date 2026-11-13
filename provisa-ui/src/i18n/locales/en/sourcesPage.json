@@ -44,6 +44,7 @@
     "purposeBody": "A source is one registered connection to a system that holds data, such as a database, a warehouse, a file store or an API. Provisa can then read that system's schemas and query it in the same language as every other source, with no copy of the data.",
     "purposeAdd": "Adding a source registers no tables on its own. Use Discover on the row to browse its schemas and register the tables you want governed.",
     "purposeAria": "About data sources",
-    "registrationMissing": "{{list}} holds no registration for source {{source}}."
+    "registrationMissing": "{{list}} holds no registration for source {{source}}.",
+    "duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret."
   }
 }

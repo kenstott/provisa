@@ -211,6 +211,10 @@ class _Plan:
     # stream's thread (the ``run`` it gave the source stream itself) -- what the check at the
     # end of that stream is run with. None for a plan not streamed from a source.
     loop_run: Callable[[Coroutine[Any, Any, Any]], Any] | None = field(default=None, repr=False)
+    # REQ-1921: the view of the state a statement reading drafts was governed in, and so the one
+    # it runs in (admin/table_read.plan_reading_drafts): the drafts' routes and engine face are
+    # this view's alone. None for every other plan.
+    reads_in: Any = field(default=None, repr=False)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -1579,6 +1583,26 @@ async def _govern_and_route_planned(
     from provisa.mv.time_travel import bind_travel_params
 
     sql, params = bind_travel_params(sql, params)
+    from provisa.api.app import state
+    from provisa.api.admin.table_read import drafts_a_statement_names, plan_reading_drafts
+
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a statement naming drafts served to its role
+    # (table registration in their domains) reads them as served tables, through the one path a draft is read by.
+    drafts = drafts_a_statement_names(state, sql, role_id)
+    if drafts:
+        plan, seen = await plan_reading_drafts(
+            state,
+            sql,
+            role_id,
+            drafts,
+            exec_params=params,
+            deliver=deliver,
+            buffered=buffered,
+            explain=explain,
+            as_of=as_of,
+        )
+        plan.reads_in = seen
+        return plan
     # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
     with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
         governed = await govern_statement(
@@ -1860,8 +1884,9 @@ async def govern_statement(
     from provisa.compiler import temp_tables
 
     # REQ-615: a statement governed in a session that holds temporary tables is kept for that
-    # session alone, as its tables stand: the same words name another session's table, at
-    # another address, or the same session's after it dropped and created one of that name.
+    # session alone, as its tables are shaped (temp_tables.plan_key): the same words name another
+    # session's table, at another address, or the same session's after it made one of that name
+    # with other columns. A write that leaves the tables' columns as they were keeps the plan.
     _slot = PlanSlot(
         state,
         "sql",
@@ -1869,7 +1894,7 @@ async def govern_statement(
         sql,
         [
             *sorted(_session_vars.items()),
-            *temp_tables.slot_key(),
+            *temp_tables.plan_key(),
             # A statement governed as the product's is never the one kept for a role's same words.
             *([("provisa.product_statement", "1")] if product_statement else []),
             # Nor is a catalog statement, whose guard is its own (REQ-2190).
@@ -3809,7 +3834,9 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     surface passes through, so no transport has to establish it for itself.
     """
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
-    if state is None:
+    if plan.reads_in is not None:
+        state = plan.reads_in  # REQ-1921: a read of drafts runs in the view it was governed in
+    elif state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     if plan.cache_hit is not None:
         # REQ-1897: answered before routing — nothing to wake, land or execute.
@@ -3981,6 +4008,8 @@ def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool
     are applied as its rows stream where the terminal serves them through
     :func:`serve_stream_through_cache` (``applies_columns``); anywhere else, by the pipeline
     terminal."""
+    if plan.reads_in is not None:
+        return False  # REQ-1921: a read of drafts runs in its own view, by the pipeline terminal
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
@@ -5291,8 +5320,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # The validation a plan was kept with depends on whether its joins were the SDL's.
     # A request-level as-of decides which bitemporal views keep their reference.
     # REQ-615, REQ-2176: as on the raw-SQL stage, a statement compiled in a session holding
-    # temporary tables (a Bolt connection's ephemeral graph) is kept for that session alone, as
-    # its tables stand: its kept engine form names the session's store schema, gone with it.
+    # temporary tables (a principal's graph session) is kept for that session alone, as its
+    # tables are shaped (temp_tables.plan_key): its kept engine form names the session's store
+    # schema and reads its tables' columns, never their rows, so a write that leaves the columns
+    # as they were (the graph session's generation advanced) is served the same plan.
     _slot = PlanSlot(
         state,
         "compiled",
@@ -5301,7 +5332,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         sorted(_session_vars.items()),
         sdl_joins,
         as_of or "",
-        temp_tables.slot_key(),
+        temp_tables.plan_key(),
     )
     # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
     # statement as written: a kept plan outlives the window, and governance expands the view.
@@ -5343,6 +5374,12 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
+    # REQ-1921: a read of a draft is recorded as a draft preview, naming the drafts it read. Only
+    # the view a draft preview reads through names any (admin/table_read.py).
+    _previewed = getattr(state, "previewed_draft_ids", None)
+    if _audit is not None and _previewed is not None:
+        _enforced = _audit.enforced() if callable(_audit.enforced) else _audit.enforced
+        _audit.enforced = {**_enforced, "draft_preview": sorted(_previewed)}
 
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.

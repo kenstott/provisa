@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "Diagramm nicht verfügbar"
+    "unavailable": "Diagramm nicht verfügbar",
+    "fitWidth": "Breite einpassen",
+    "canvasLabel": "Abfrageplan-Diagramm"
   }
 }

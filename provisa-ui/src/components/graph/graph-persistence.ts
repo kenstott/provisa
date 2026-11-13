@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type Dispatch, type SetStateAction } from "react";
 import type { ResultRedirect } from "../../types/resultRedirect";
 import type { FrameData, FrameStatement, GNode, GEdge, SparqlForm } from "./graph-model";
 import type { SelectPairing, Triple } from "./sparql";
@@ -72,7 +72,7 @@ export interface GraphState {
 interface SerializedFrame {
   id: string;
   query: string;
-  status: "done" | "error";
+  status: "done" | "error" | "stopped";
   nodes: [string, GNode][];
   edges: [string, GEdge][];
   rows: Record<string, unknown>[];
@@ -184,6 +184,8 @@ export async function loadGraphState(language: GraphLanguage): Promise<GraphStat
 // Module-level, so each survives SPA navigation. Per scope, as everything saved is (REQ-2008).
 const states = new Map<string, GraphState>();
 const reads = new WeakMap<GraphState, Promise<void>>();
+/** A state's saved copy as read, until the page on screen has joined it to what it shows. */
+const readCopies = new WeakMap<GraphState, GraphState>();
 
 /** The language's state: at once and empty the first time, for the page's first render, and
  * filled in by `readGraphState`. */
@@ -209,6 +211,7 @@ export function readGraphState(state: GraphState): Promise<void> {
       if (state.currentQuery === DEFAULT_QUERY[state.language]) {
         state.currentQuery = saved.currentQuery;
       }
+      readCopies.set(state, saved);
       unread.delete(state);
       saveGraphState(state);
     });
@@ -217,11 +220,15 @@ export function readGraphState(state: GraphState): Promise<void> {
   return read;
 }
 
-/** Show the state's saved copy once it has been read: the frames, history and the query. */
+/** Show the state's saved copy once it has been read: the frames, history and the query.
+ *
+ * The saved frames and history are joined to what the page holds when React applies the change,
+ * not to a copy taken when the read lands: an answer the page has been handed but not yet shown
+ * (its update still queued) would be lost under that copy, and its frame would stay "Running…". */
 export function useSavedGraphState(
   state: GraphState,
-  setFrames: (frames: FrameData[]) => void,
-  setHistory: (history: string[]) => void,
+  setFrames: Dispatch<SetStateAction<FrameData[]>>,
+  setHistory: Dispatch<SetStateAction<string[]>>,
   setQuery: (query: string) => void,
 ): void {
   useEffect(() => {
@@ -229,8 +236,23 @@ export function useSavedGraphState(
     const shown = state.currentQuery;
     void readGraphState(state).then(() => {
       if (!live) return;
-      setFrames(state.frames);
-      setHistory(state.history);
+      const saved = readCopies.get(state);
+      readCopies.delete(state);
+      if (saved) {
+        setFrames((current) => {
+          const held = new Set(current.map((f) => f.id));
+          const next = [...current, ...saved.frames.filter((f) => !held.has(f.id))];
+          state.frames = next;
+          saveGraphState(state);
+          return next;
+        });
+        setHistory((current) => {
+          const next = [...new Set([...current, ...saved.history])];
+          state.history = next;
+          saveGraphState(state);
+          return next;
+        });
+      }
       if (state.currentQuery !== shown) setQuery(state.currentQuery);
     });
     return () => {

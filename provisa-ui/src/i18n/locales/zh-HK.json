@@ -3,6 +3,8 @@
     "loading": "載入中...",
     "cancel": "取消",
     "stop": "停止",
+    "stopped": "已停止",
+    "stopQuery": "停止查詢",
     "save": "儲存",
     "delete": "刪除",
     "confirm": "確認",

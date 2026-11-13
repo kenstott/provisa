@@ -36,6 +36,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs
 from provisa.core.schema_admin import superadmin_bootstrap
+from tests.helpers import create_pgvector
 
 # REQ-1266: the app serves the bootstrap org and is bound to it (the harness re-points then binds).
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("req1288")]
@@ -70,6 +71,7 @@ def _prepare_sync():
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ORG_SCHEMA} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {_ORG_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMA}"))
+        create_pgvector(conn)  # schema.sql has vector columns
         conn.execute(text(schema_sql))
         # REQ-2155: the standard roles are written by init_schema, not schema.sql.
         assert_standard_roles(conn, _ORG_SCHEMA)
@@ -78,10 +80,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def admin_plane(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_SCHEMA)
 

@@ -144,7 +144,7 @@ def check_table(table: str, columns: list[DeclaredColumn], children: dict[str, C
                 kind = parse(c.fake)
                 fake_reads[c.name] = _check_column(kind, c, types, children)
                 if c.stable:
-                    _check_stable(kind)
+                    check_stable(kind)
                 fakes[c.name] = kind
             if c.rule is not None:
                 try:
@@ -312,15 +312,15 @@ def model_cycle(reads: dict[tuple[str, str], frozenset[tuple[str, str]]]) -> lis
     return _cycle(reads)
 
 
-def _check_stable(kind: FakeKind) -> None:
+def check_stable(kind: FakeKind) -> None:
     """A stable fake is the same on every engine and in every region (REQ-1494, A STABLE FAKE):
     the portable definition's methods, with no arguments it does not take, and the kinds that are
     pure functions of their declaration -- never one that reads what is measured where it is read."""
     if isinstance(kind, Method):
         if kind.name not in STABLE_METHODS:
             raise FakeRefused(
-                f"{kind.name}() cannot be stable: a stable fake is the same on every engine, which "
-                f"only these methods are -- {', '.join(sorted(STABLE_METHODS))}"
+                f"{kind.name}() cannot be stable: a stable fake is the same on every engine, and "
+                f"only these methods are: {', '.join(sorted(STABLE_METHODS))}"
             )
         if kind.args:
             raise FakeRefused(

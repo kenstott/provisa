@@ -617,6 +617,13 @@
        }
       },
       {
+       "name": "draft",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "gqlNamingConvention",
        "type": {
         "kind": "SCALAR",

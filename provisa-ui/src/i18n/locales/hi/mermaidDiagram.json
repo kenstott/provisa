@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "आरेख उपलब्ध नहीं है"
+    "unavailable": "आरेख उपलब्ध नहीं है",
+    "fitWidth": "चौड़ाई में फ़िट करें",
+    "canvasLabel": "क्वेरी प्लान आरेख"
   }
 }

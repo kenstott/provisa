@@ -10,6 +10,8 @@
     "rest": "REST",
     "mcp": "MCP tool call",
     "copy": "Copy the {{what}}",
-    "close": "Close"
+    "close": "Close",
+    "draft": "Draft",
+    "draftNote": "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways."
   }
 }

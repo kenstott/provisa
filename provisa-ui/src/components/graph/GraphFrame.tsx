@@ -70,6 +70,7 @@ import {
   ExpandQueryIcon,
   PushPinIcon,
 } from "./GraphIcons";
+import { StopButton } from "../StopButton";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
 import {
@@ -77,6 +78,7 @@ import {
   FrameError,
   FrameQueryActions,
   FrameRunning,
+  FrameStopped,
   FrameStatementTabs,
 } from "./FrameParts";
 import { nodeAtPoint } from "./canvas/canvas-helpers";
@@ -90,6 +92,8 @@ interface GraphFrameProps {
   requestedView?: FrameView;
   onClose: (id: string) => void;
   onRerun: (id: string, query: string) => void;
+  /** Stop the frame's running query. */
+  onStop?: (id: string) => void;
   onTableDrop?: (frameId: string, compoundLabel: string) => void;
   onDomainDrop?: (frameId: string, domainLabel: string) => void;
   /** A vocabulary pill dropped on a SPARQL frame, on the node of its drawing it landed on, if any. */
@@ -150,6 +154,7 @@ export function GraphFrame({
   requestedView,
   onClose,
   onRerun,
+  onStop,
   onTableDrop,
   onDomainDrop,
   onSparqlDrop,
@@ -479,6 +484,16 @@ export function GraphFrame({
           <div className="gf-header-meta">
             {frame.status === "loading" && (
               <span className="gf-loading">{t("graphFrame.running")}</span>
+            )}
+            {frame.status === "loading" && onStop && (
+              <StopButton
+                onClick={() => onStop(frame.id)}
+                tip={t("common.stopQuery")}
+                testId="graph-frame-stop-btn"
+              />
+            )}
+            {frame.status === "stopped" && (
+              <span className="gf-meta-text">{t("common.stopped")}</span>
             )}
             {frame.status === "done" && (
               <span className="gf-meta-text">{frameMetaText(frame, t)}</span>
@@ -813,6 +828,7 @@ export function GraphFrame({
         {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
         <SparqlDrawControls draw={sparqlDraw} onDrawn={() => setView("graph")} />
         {frame.status === "loading" && <FrameRunning />}
+        {frame.status === "stopped" && <FrameStopped />}
         {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (
           <ResultRedirectNotice className="gf-redirect" redirect={frame.redirect} />

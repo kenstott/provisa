@@ -142,7 +142,11 @@
   border-radius: 20px;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #fff;
+  /* No label colour: the theme's tokens, as .graph-rel-badge. A label colour is set inline with
+     its text colour (labelTextColor). */
+  color: var(--text);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
   cursor: default;
   white-space: nowrap;
   max-width: 120px;
@@ -164,9 +168,8 @@
 }
 
 .graph-label-pill--highlight {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--text);
   outline-offset: 1px;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5);
 }
 
 /* A session label or type (no table behind it): an outline, not a fill. */
@@ -248,8 +251,8 @@
 }
 .graph-rel-badge:hover {
   background: var(--border);
-  border-color: #6366f1;
-  color: #a5b4fc;
+  border-color: var(--primary);
+  color: var(--text);
 }
 
 .graph-prop-key-list {
@@ -502,6 +505,14 @@
   background: var(--primary-hover);
 }
 
+/* Where Run stands, Stop stands while a frame's query runs. */
+.graph-stop-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-inline: 4px;
+}
+
 /* ── Frame stream ─────────────────────────────────────────────────────────────── */
 .graph-stream {
   flex: 1;
@@ -731,6 +742,19 @@
 .gf-header-meta {
   font-size: 0.72rem;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* A frame whose query was stopped: said where its answer would be, muted, as no error is. */
+.gf-stopped {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .gf-meta-text {
@@ -1191,7 +1215,7 @@
   font-size: 0.7rem;
   font-weight: 600;
   line-height: 1.4;
-  color: #fff;
+  color: var(--text);
   white-space: nowrap;
 }
 
@@ -1240,7 +1264,6 @@ button.gf-overview-chip {
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.4;
-  color: #fff;
 }
 
 .gf-inspector-endpoints {
