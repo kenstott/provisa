@@ -179,8 +179,9 @@ export interface TableDuplicate {
   draft: RegisteredTable;
 }
 
-/** The name a duplicate is offered under: editable, and refused on save if it exists. */
-export const duplicateName = (name: string) => `${name}-copy`;
+/** The name a duplicate is offered under: editable, and refused on save if it exists. A table's
+ * alias and a view's name are SQL names, which take no hyphen unquoted: `_copy`. */
+export const duplicateName = (name: string) => `${name}_copy`;
 
 /**
  * A table's Duplicate: the create form's table, filled with the table's settings and columns.

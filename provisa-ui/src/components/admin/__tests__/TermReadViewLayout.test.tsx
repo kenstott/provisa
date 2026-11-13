@@ -164,12 +164,14 @@ describe("a term's page fields", () => {
     ]);
   });
 
-  it("says beside Status and Grounding what a draft, ungrounded term lacks, in no banner", () => {
+  it("carries what a draft term lacks in the Draft badge's tip, with no paragraph under Status", async () => {
     render(view());
-    const status = screen.getByTestId("glossary-draft");
-    expect(status).toHaveTextContent(t("glossaryTab.draftDefined"));
-    expect(status).toHaveClass("form-read__hint");
-    expect(status.closest(".form-field")?.querySelector("dt")).toHaveTextContent("Status");
+    const badge = screen.getByTestId("glossary-detail-status");
+    expect(badge).toHaveTextContent("Draft");
+    expect(badge.closest(".form-field")?.querySelector(".form-read__hint")).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.mouseEnter(badge);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(t("glossaryTab.draftDefined"));
     const grounding = screen.getByTestId("glossary-ungrounded");
     expect(grounding).toHaveTextContent(t("glossaryTab.draftUngrounded"));
     expect(grounding).toHaveClass("form-read__hint");
@@ -177,9 +179,19 @@ describe("a term's page fields", () => {
     expect(document.querySelector(".mantine-Alert-root")).toBeNull();
   });
 
-  it("says a draft with no definition needs one", () => {
+  it("carries that a draft with no definition needs one in the badge's tip", async () => {
     render(view({ ...term, definition: null }));
-    expect(screen.getByTestId("glossary-draft")).toHaveTextContent(t("glossaryTab.draftUndefined"));
+    const badge = screen.getByTestId("glossary-detail-status");
+    expect(badge.closest(".form-field")?.querySelector(".form-read__hint")).toBeNull();
+    fireEvent.mouseEnter(badge);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(t("glossaryTab.draftUndefined"));
+  });
+
+  it("gives an approved term's badge no tip", () => {
+    render(view({ ...term, status: "approved", grounding: "grounded", ref_count: 1 }));
+    const badge = screen.getByTestId("glossary-detail-status");
+    fireEvent.mouseEnter(badge);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("says beside Grounding which drafts a term waits on", () => {
@@ -206,7 +218,6 @@ describe("a term's page fields", () => {
         ref_count: 1,
       }),
     );
-    expect(screen.queryByTestId("glossary-draft")).toBeNull();
     expect(screen.queryByTestId("glossary-ungrounded")).toBeNull();
     expect(screen.queryByTestId("glossary-pending-on")).toBeNull();
     expect(document.querySelector(".form-read__hint")).toBeNull();
