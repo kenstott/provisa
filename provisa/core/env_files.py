@@ -160,10 +160,17 @@ def dump(tree: dict[str, dict[str, Any]]) -> dict[str, str]:
     return {path: _emit(tree[path]) for path in sorted(tree)}
 
 
+#: How every file is rendered.
+_YAML: dict[str, Any] = {
+    "sort_keys": True,
+    "default_flow_style": False,
+    "allow_unicode": True,
+    "width": 100,
+}
+
+
 def _emit(entity: dict[str, Any]) -> str:
-    return yaml.safe_dump(
-        entity, sort_keys=True, default_flow_style=False, allow_unicode=True, width=100
-    )
+    return yaml.safe_dump(entity, **_YAML)
 
 
 def fingerprint(value: Any) -> Any:
@@ -190,21 +197,64 @@ Rendered = dict[str, tuple[Any, str]]
 
 
 def dump_reusing(
-    tree: dict[str, dict[str, Any]], last: Rendered
+    tree: dict[str, dict[str, Any]],
+    last: Rendered,
+    rebased: tuple[str, str] | None = None,
 ) -> tuple[dict[str, str], Rendered]:
     """:func:`dump`, re-rendering only the entities that differ from ``last``: a model change edits
     a few objects, and rendering every file of the model again for it was most of a write-through's
     time (REQ-1882). Returns the files -- the very text :func:`dump` gives -- and what to pass as
-    ``last`` next time."""
+    ``last`` next time.
+
+    ``rebased``: ``last`` was rendered from a model in schema ``source`` and ``tree`` is its copy
+    in schema ``target`` (an environment created from another, a sandbox cloned from its template:
+    REQ-2006). The copy rebased each row naming ``source`` onto ``target`` (env_copy._rebase), so
+    a built-in table's entity -- most of a model -- differs from the one rendered only in its
+    ``schema_name``. Such an entity's text is the one rendered with that one line naming
+    ``target``."""
+    plain = rebased is not None and all(_plain(schema) for schema in rebased)
     files: dict[str, str] = {}
     rendered: Rendered = {}
     for path in sorted(tree):
-        mark = fingerprint(tree[path])
+        entity = tree[path]
+        mark = fingerprint(entity)
         held = last.get(path)
-        text = held[1] if held is not None and held[0] == mark else _emit(tree[path])
+        if held is not None and held[0] == mark:
+            text = held[1]
+        elif held is not None and plain and _rebased_from(entity, held[0], rebased):
+            assert rebased is not None
+            text = _with_schema(held[1], *rebased)
+        else:
+            text = _emit(entity)
         files[path] = text
         rendered[path] = (mark, text)
     return files, rendered
+
+
+def _plain(schema: str) -> bool:
+    """Whether ``schema`` renders as the plain scalar it is, alone on its key's line."""
+    return yaml.safe_dump({_SCHEMA_KEY: schema}, **_YAML) == f"{_SCHEMA_KEY}: {schema}\n"
+
+
+#: The column a copy rebases (env_copy._SCHEMA_COLUMN).
+_SCHEMA_KEY = "schema_name"
+
+
+def _rebased_from(entity: dict[str, Any], held: Any, rebased: tuple[str, str] | None) -> bool:
+    """Whether ``entity`` is the entity fingerprinted ``held`` with its schema rebased."""
+    if rebased is None or entity.get(_SCHEMA_KEY) != rebased[1]:
+        return False
+    return fingerprint({**entity, _SCHEMA_KEY: rebased[0]}) == held
+
+
+def _with_schema(text: str, source: str, target: str) -> str:
+    """``text`` with its entity's own ``schema_name`` line naming ``target`` for ``source``: the
+    one line at the top level holding the key (a child's is indented under its list)."""
+    lines = text.split("\n")
+    at = [i for i, line in enumerate(lines) if line == f"{_SCHEMA_KEY}: {source}"]
+    assert len(at) == 1, f"an entity's text holds its {_SCHEMA_KEY} line once, not {len(at)} times"
+    lines[at[0]] = f"{_SCHEMA_KEY}: {target}"
+    return "\n".join(lines)
 
 
 def load(files: dict[str, str]) -> dict[str, dict[str, Any]]:

@@ -43,6 +43,10 @@ from provisa.gql.translator_helpers import (
 
 from provisa.gql.translator_types import CypherTranslateError
 
+#: The name a variable-length relationship's walk is held under when the pattern names no path
+#: (``MATCH (a)-[r*]->(b)``): one no statement can write, so it is never projected or shadowed.
+_WALK_OF = "__walk_of__"
+
 
 def _alternation_refused(rel: "RelPattern") -> CypherTranslateError:
     return CypherTranslateError(
@@ -1269,16 +1273,22 @@ class _RelJoinMixin:  # mixin for _Translator
                             "relationships in the same MATCH. Use a separate MATCH clause or "
                             "wrap the full pattern: MATCH p = allPaths((a)-[*..5]->(b)) RETURN p"
                         )
+                    # A relationship variable (``[r*]``) is the relationships of the path its
+                    # walk takes: with no path variable of its own the path is held under a name
+                    # no statement can write, so ``r`` reads its steps all the same.
+                    path_variable = clause.variable
+                    if rel.variable and not path_variable:
+                        path_variable = f"{_WALK_OF}{rel.variable}"
                     pf_clause = MatchClause(
                         pattern=PathFunction(
                             func_name="allpaths",
                             pattern=PathPattern(nodes=nodes, rels=rels),
                         ),
-                        variable=clause.variable,
+                        variable=path_variable,
                         optional=clause.optional,
                     )
-                    if rel.variable and clause.variable:
-                        self._varlen_rel_vars[rel.variable] = clause.variable
+                    if rel.variable and path_variable:
+                        self._varlen_rel_vars[rel.variable] = path_variable
                     pf_from, pf_joins = self._translate_path_function(pf_clause, joined)
                     if from_expr is None or from_expr is own_first:
                         # The path reads its own start (REQ-348): the end it walks from, which
