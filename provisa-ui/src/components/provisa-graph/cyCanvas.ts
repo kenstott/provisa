@@ -24,15 +24,18 @@ interface EndingCore {
 
 /** What of a cytoscape layout running it needs. */
 export interface RunningLayout {
-  one(event: "layoutstop", fn: () => void): unknown;
+  /** ``layoutstop``, or ``layoutfail`` (elkLayout's ``LAYOUT_FAIL``, with its error): a layout
+   * that failed after it started. */
+  one(event: "layoutstop" | "layoutfail", fn: (evt: unknown, error?: unknown) => void): unknown;
   run(): unknown;
 }
 
 export interface CyCanvas {
   /** The div the core is made in. */
   container: HTMLDivElement;
-  /** Runs ``layout``; ``then`` once it has placed the nodes, unless the core has ended. */
-  run(layout: RunningLayout, then?: () => void): void;
+  /** Runs ``layout``; ``then`` once it has placed the nodes, or ``failed`` with the error of
+   * one that fails after it started -- either unless the core has ended. */
+  run(layout: RunningLayout, then?: () => void, failed?: (error: Error) => void): void;
   /** The core's end: at once, or -- a layout pending -- when the last one ends. */
   end(cy: { destroy(): void }): void;
 }
@@ -46,13 +49,20 @@ export function cyCanvas(host: HTMLElement): CyCanvas {
   let ended: { destroy(): void } | null = null;
   return {
     container,
-    run(layout, then) {
+    run(layout, then, failed) {
       pending += 1;
-      layout.one("layoutstop", () => {
+      /** The layout's end, placed or failed: ``answer`` unless the core has ended. */
+      const done = (answer?: () => void) => {
         pending -= 1;
-        if (ended === null) then?.();
+        if (ended === null) answer?.();
         else if (pending === 0) ended.destroy();
-      });
+      };
+      // The failure's listener first, the end's last: a stand-in layout that keeps one listener
+      // (the views' tests) keeps the end's.
+      layout.one("layoutfail", (_evt, error) =>
+        done(failed && (() => failed(error instanceof Error ? error : new Error(String(error))))),
+      );
+      layout.one("layoutstop", () => done(then));
       layout.run();
     },
     end(cy) {

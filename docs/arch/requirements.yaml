@@ -95601,7 +95601,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     outside the exact cases it raises, with PostgreSQL''s error where the case can be detected, and never
     returns an approximate or rounded value; a refusal by name is for a function with no exact common case.
     The order for every function on every engine: the exact answer; an answer within a stated and enforced
-    bound; a refusal by name.'
+    bound; a refusal by name. (Amended 2026-11-13, THE GRID DECIDES BEFORE A TYPE IS REFUSED:) Maintainer
+    2026-11-13: a call whose argument type an engine does not hold (on ClickHouse: timestamptz, interval,
+    timetz, bit, varbit, tid, aclitem, xml) is refused by name only when no grid row answers that call on
+    that engine; a row that answers it is read first. A timestamptz on ClickHouse is held as DateTime64(6,
+    ''UTC''): exact from 1900-01-01 to 2299-12-31, raising outside, stated as the limitation on that engine''s
+    page.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
