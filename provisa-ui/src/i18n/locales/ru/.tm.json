@@ -10462,5 +10462,8 @@
   "ru/registerManyTables.json::registerManyTables.pickTables": "Select one table or more…",
   "ru/registerManyTables.json::registerManyTables.needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own.",
   "tagCitations.json::tagCitations.definitionLabel": "Why this tag exists",
-  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations."
+  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations.",
+  "ru/tagsTab.json::tagsTab.outsideTitle": "Assignments outside the allowed domains",
+  "ru/tagsTab.json::tagsTab.outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
+  "ru/tagsTab.json::tagsTab.outsideItem": "{{kind}} {{name}}, in {{domains}}"
 }

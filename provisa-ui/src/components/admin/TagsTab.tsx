@@ -14,10 +14,12 @@ import { useDetailParam } from "../list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Checkbox,
   Group,
+  List as MantineList,
   Pagination,
   SegmentedControl,
   Select,
@@ -48,6 +50,7 @@ import type {
   Tag,
   TagFieldPolicy,
   TagObjectType,
+  TagOutsideAssignment,
   TagParamPolicy,
 } from "../../types/admin";
 import { baseTagId } from "../../types/admin";
@@ -62,6 +65,10 @@ import { Tip } from "../Tip";
 import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { matchesQuery } from "../../lib/searchItems";
+import { MultiSelect } from "../MultiSelect";
+import { useDomains } from "../../hooks/useAdminQueries";
+import { useDomainFilter } from "../../context/DomainFilterContext";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 const PAGE_SIZE = 50;
 
@@ -104,6 +111,8 @@ export function TagsTab() {
   const { upsertTagParamValue } = useUpsertTagParamValue();
   const { deleteTagParamValue } = useDeleteTagParamValue();
   const { citeDefinition } = useTagCitations();
+  const { domains } = useDomains();
+  const { domainsEnabled } = useDomainFilter();
 
   const [rememberedScope, setRememberedScope] = useRememberedChoice<TagObjectType>(
     "filter.tags.scope",
@@ -135,6 +144,10 @@ export function TagsTab() {
   const [formParamPolicy, setFormParamPolicy] = useState<TagParamPolicy>("none");
   const [formRequiresCitation, setFormRequiresCitation] = useState(false);
   const [formRequired, setFormRequired] = useState(false);
+  // REQ-2208: the domains whose objects the tag is offered on, as a source's; none = every domain.
+  const [formDomains, setFormDomains] = useState<string[]>([]);
+  // The assignments the last save left outside the tag's domains: they stay, and are listed.
+  const [outside, setOutside] = useState<TagOutsideAssignment[]>([]);
   // The sections that say why the tag exists, edited here and saved with the tag.
   const [formCited, setFormCited] = useState<LibraryCitation[]>([]);
   // REQ-1467: which tag's value list is open, and the draft new value/description beneath it.
@@ -182,6 +195,8 @@ export function TagsTab() {
     setFormParamPolicy("none");
     setFormRequiresCitation(false);
     setFormRequired(false);
+    setFormDomains([]);
+    setOutside([]);
     setFormCited([]);
   };
 
@@ -206,6 +221,8 @@ export function TagsTab() {
     setFormParamPolicy(tag.paramPolicy);
     setFormRequiresCitation(tag.requiresCitation);
     setFormRequired(tag.required);
+    setFormDomains([...tag.allowedDomains]);
+    setOutside([]);
     setFormCited(tag.citations);
     setShowForm(true);
   };
@@ -256,14 +273,33 @@ export function TagsTab() {
         sectionHeading,
         sectionPage,
       })),
+      formDomains,
     );
     if (result.success) {
       notifications.show({ color: "green", message: t("tagsTab.saved", { id: formId.trim() }) });
+      // REQ-2208: a save that narrowed the tag's domains keeps the form open on the saved tag,
+      // listing the assignments now outside them; they stay.
+      const left = (result.params as { outside?: TagOutsideAssignment[] } | null)?.outside ?? [];
+      if (left.length > 0) {
+        setEditingId(formId.trim());
+        setOutside(left);
+        return;
+      }
       setShowForm(false);
       resetForm();
     } else {
       notifications.show({ color: "red", message: result.message });
     }
+  };
+
+  // An outside assignment as its object is known: a table's or column's address, else its id.
+  const outsideName = (o: TagOutsideAssignment) => {
+    const held = tagAssignments.find(
+      (a) => a.objectKey === o.objectKey && baseTagId(a.tagId) === baseTagId(o.tagId),
+    );
+    if (held?.tableRef)
+      return held.columnName ? `${held.tableRef}.${held.columnName}` : held.tableRef;
+    return o.objectKey.slice(o.objectKey.indexOf(":") + 1);
   };
 
   const toggleValues = (tagId: string) => {
@@ -386,6 +422,23 @@ export function TagsTab() {
               </Group>
             </Checkbox.Group>
           </FormField>
+          {domainsEnabled && (
+            <FormField
+              size="long"
+              hint={t("sourceFormFieldsExtended.allowedDomainsHint")}
+              data-testid="tags-allowed-domains"
+            >
+              <MultiSelect
+                label={t("sourceFormFieldsExtended.allowedDomains")}
+                options={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  id,
+                  label: id,
+                }))}
+                value={formDomains}
+                onChange={setFormDomains}
+              />
+            </FormField>
+          )}
           <FormField size="medium">
             <Select
               label={t("tagsTab.reasonPolicyLabel")}
@@ -445,6 +498,26 @@ export function TagsTab() {
               onConfirm={confirmInForm}
             />
           </FormField>
+          {outside.length > 0 && (
+            <FormField size="full" data-testid="tags-outside-assignments">
+              <Alert color="yellow" variant="light" title={t("tagsTab.outsideTitle")}>
+                <Stack gap="xs">
+                  <span>{t("tagsTab.outsideBody")}</span>
+                  <MantineList size="sm">
+                    {outside.map((o) => (
+                      <MantineList.Item key={o.objectKey}>
+                        {t("tagsTab.outsideItem", {
+                          kind: scopeLabel(o.objectType),
+                          name: outsideName(o),
+                          domains: o.domains.join(", "),
+                        })}
+                      </MantineList.Item>
+                    ))}
+                  </MantineList>
+                </Stack>
+              </Alert>
+            </FormField>
+          )}
           <FormFooter
             onSave={handleSubmit}
             onCancel={closeForm}

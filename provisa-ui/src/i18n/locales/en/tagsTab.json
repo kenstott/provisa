@@ -62,6 +62,9 @@
     "purposeTitle": "What tags are for",
     "purposeBody": "A tag is one org-wide label with fixed meaning, applied to sources, tables, columns, relationships, or commands. Tags change behavior: technical keeps a column out of the Data Product export, entity turns a column's values into retrieval vocabulary, deprecated tells consumers to migrate off.",
     "purposeAdd": "A tag that applies to several object types is one tag, so editing it in any of the scoped lists edits it in all of them.",
-    "purposeAria": "About tags"
+    "purposeAria": "About tags",
+    "outsideTitle": "Assignments outside the allowed domains",
+    "outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
   }
 }
