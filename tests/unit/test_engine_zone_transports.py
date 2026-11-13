@@ -127,12 +127,16 @@ def test_trino_refuses_what_could_depend_on_a_zone_it_cannot_read(on_zone):
 def test_clickhouse_is_told_in_the_requests_own_settings(on_zone):
     assert clickhouse_runtime._settings("q", "SELECT 1") == {
         "query_id": "q",
+        "max_query_size": str(clickhouse_runtime.MAX_QUERY_SIZE),
         "session_timezone": "Asia/Tokyo",
     }
 
 
 def test_clickhouse_on_utc_has_no_zone_setting():
-    assert clickhouse_runtime._settings("q", "SELECT 1") == {"query_id": "q"}
+    assert clickhouse_runtime._settings("q", "SELECT 1") == {
+        "query_id": "q",
+        "max_query_size": str(clickhouse_runtime.MAX_QUERY_SIZE),
+    }
 
 
 @pytest.mark.parametrize("on_zone", [_HALF], indirect=True)

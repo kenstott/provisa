@@ -374,3 +374,66 @@ from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- wh
 #: REQ-2167: ClickHouse has no inet type: an inet is held as its text there, as a cidr is
 #: (pg_held_types), and pgwire names the column by the statement's cast.
 ClickHouse.Generator.TYPE_MAPPING[exp.DataType.Type.INET] = "String"
+
+
+def _clickhouse_cast(self: Generator, expression: exp.Cast) -> str:
+    """A NULL cast to an array type as a bare NULL: ClickHouse has no NULL of an array (an Array is
+    never Nullable), and its multiIf takes a NULL beside an array (run 43410717058: a server
+    function's form of a NULL argument, pg_blocking_pids(NULL), failed on the cast)."""
+    if isinstance(expression.this, exp.Null) and expression.to.is_type(exp.DataType.Type.ARRAY):
+        return "NULL"
+    return self.cast_sql(expression)
+
+
+ClickHouse.Generator.TRANSFORMS[exp.Cast] = _clickhouse_cast
+
+
+def _null_literal(node: exp.Expr) -> bool:
+    """Whether ``node`` is NULL, through casts and parentheses."""
+    while isinstance(node, (exp.Cast, exp.Paren)):
+        node = node.this
+    return isinstance(node, exp.Null)
+
+
+def _decided(condition: exp.Expr) -> bool | None:
+    """What a condition is whatever the row, where the statement's NULLs decide it: ``x IS NULL``
+    of a NULL; None where a row decides it."""
+    if isinstance(condition, exp.Paren):
+        return _decided(condition.this)
+    if isinstance(condition, exp.Is) and isinstance(condition.expression, exp.Null):
+        return True if _null_literal(condition.this) else None
+    if isinstance(condition, exp.Boolean):
+        return bool(condition.this)
+    if isinstance(condition, exp.Not):
+        inner = _decided(condition.this)
+        return None if inner is None else not inner
+    if isinstance(condition, (exp.Or, exp.And)):
+        parts = [_decided(condition.this), _decided(condition.expression)]
+        if isinstance(condition, exp.Or):
+            return True if True in parts else (False if parts == [False, False] else None)
+        return False if False in parts else (True if parts == [True, True] else None)
+    return None
+
+
+def _clickhouse_case(self: Generator, expression: exp.Case) -> str:
+    """A CASE whose first conditions the statement's NULLs decide, as the branch they choose:
+    ClickHouse folds each branch's constants, a throw among them, whichever is chosen (run
+    43410717058: pg_ls_dir(NULL) raised its refusal of a path)."""
+    if expression.this is not None:
+        return self.case_sql(expression)
+    ifs = list(expression.args.get("ifs") or [])
+    for at, branch in enumerate(ifs):
+        decided = _decided(branch.this)
+        if decided is None:
+            if at == 0:
+                return self.case_sql(expression)
+            rest = expression.copy()
+            rest.set("ifs", [b.copy() for b in ifs[at:]])
+            return self.case_sql(rest)
+        if decided:
+            return self.sql(branch.args["true"])
+    default = expression.args.get("default")
+    return self.sql(default) if default is not None else "NULL"
+
+
+ClickHouse.Generator.TRANSFORMS[exp.Case] = _clickhouse_case

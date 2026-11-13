@@ -524,6 +524,42 @@ NTILE = Feature(
     ),
 )
 
+
+def _scale_of(value: str) -> str:
+    """The scale of ``value``'s Decimal type (0 for any other): ClickHouse holds a numeric's scale
+    in its type, and writes its text without trailing zeros."""
+    return f"toUInt8OrZero(extract(toTypeName({value}), 'Decimal\\\\(\\\\d+, (\\\\d+)\\\\)'))"
+
+
+#: numeric_mod: the remainder at 18 places, which keeps it exact, written at the larger scale of
+#: its operands (toDecimalString writes a scale of 0 with its point, trimmed) (the old table's form cut the text, which ClickHouse writes without trailing zeros:
+#: 1000 % 1000 answered '').
+_NUMERIC_MOD = (
+    "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) "
+    "WHEN $b = 0 THEN CAST(throwIf(1, 'postgresql-error 22012: division by zero"
+    "<end of postgresql-error>') AS Nullable(String)) "
+    "ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(38, 18))) % "
+    "CAST($b AS Nullable(Decimal(38, 18))), "
+    f"greatest({_scale_of('$a')}, {_scale_of('$b')})), '.') END"
+)
+
+NUMERIC_MOD = Feature(
+    "numeric_mod",
+    FAMILY,
+    "The remainder of one numeric divided by another, at the larger scale of the two.",
+    read=Side(
+        rules=(Rule("numeric_mod($a, $b)", {"clickhouse": _NUMERIC_MOD}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "The scale is each operand's type's: a column holds one scale for all its "
+                    "values, where PostgreSQL's numeric holds each value's own."
+                ),
+            )
+        },
+    ),
+)
+
 _SEARCH_PATH = (
     "Refused by name: ClickHouse's own currentSchemas answers its database, not PostgreSQL's "
     "search path."
@@ -559,5 +595,6 @@ FEATURES: tuple[Feature, ...] = (
     DATE,
     *WINDOW_FEATURES,
     NTILE,
+    NUMERIC_MOD,
     CURRENT_SCHEMAS,
 )

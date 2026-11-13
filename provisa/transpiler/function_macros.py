@@ -2752,7 +2752,10 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return _argument(values[part.name]).copy()
         return part
 
-    return sqlglot.parse_one(_EDGE_FORMS[key], read="postgres").transform(bound)
+    form = _EDGE_FORMS[key]
+    if dialect == "clickhouse":  # its length is unsigned, which no position mixes with a signed n
+        form = form.replace("LENGTH(v)", "CAST(LENGTH(v) AS BIGINT)")
+    return sqlglot.parse_one(form, read="postgres").transform(bound)
 
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
