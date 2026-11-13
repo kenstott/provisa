@@ -303,10 +303,13 @@ export function MermaidDiagram({
 
   // A node selected from outside (a row of the operator list) is brought into view: only a change
   // of selection moves the view; the reader's own moves are kept.
-  const [shown, setShown] = useState<string | null>(null);
-  if (selected !== shown && drawing && view && size) {
-    setShown(selected);
-    const at = selected ? drawing.nodes.get(selected) : undefined;
+  // The node last picked in the diagram itself: picked where the reader is looking, it moves no view.
+  const [pickedHere, setPickedHere] = useState<string | null>(null);
+  const [lastSelected, setLastSelected] = useState<string | null>(selected);
+  if (selected !== lastSelected && drawing && view && size) {
+    setLastSelected(selected);
+    setPickedHere(null);
+    const at = selected && selected !== pickedHere ? drawing.nodes.get(selected) : undefined;
     if (at) {
       const next = centredOn(view, at, size);
       if (next !== view) setView(next);
@@ -374,7 +377,7 @@ export function MermaidDiagram({
     const key = g ? NODE_ID.exec(g.id)?.[1] : undefined;
     if (!key) return;
     // Picked where the reader is looking: the view stays as it is.
-    setShown(key);
+    setPickedHere(key);
     onNodeClick(key);
   };
 
