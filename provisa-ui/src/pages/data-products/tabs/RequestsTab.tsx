@@ -104,9 +104,12 @@ function DeclineForm({
 export function RequestsTab({
   productId,
   datasets,
+  onLoaded,
 }: {
   productId: string;
   datasets: OfferDataset[];
+  /** Its bids each time they are read: the section's summary is computed from them. */
+  onLoaded?: (bids: Bid[]) => void;
 }) {
   const { t, i18n } = useTranslation();
   const [bids, setBids] = useState<Bid[] | null>(null);
@@ -117,12 +120,18 @@ export function RequestsTab({
   useEffect(() => {
     let live = true;
     fetchBids(productId).then(
-      (b) => live && (setBids(b), setError(null)),
+      (b) => {
+        if (!live) return;
+        setBids(b);
+        setError(null);
+        onLoaded?.(b);
+      },
       (e: unknown) => live && setError(message(e)),
     );
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again on these, not on a new callback.
   }, [productId, version]);
 
   return (

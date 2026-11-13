@@ -130,6 +130,23 @@ def scan_outcome(rows: list[dict]) -> str:
     return "pass" if all(r["outcome"] == "pass" for r in rows) else "fail"
 
 
+async def failing_checks(conn: Any, table_name: str, scan_id: str) -> list[dict]:
+    """The checks of checker table ``table_name``'s scan ``scan_id`` that did not pass (REQ-2180,
+    QUALITY IS STATUS AND COUNTS: a product's quality names them), each its check name, the column
+    it applies to (None for a table check) and its outcome, ordered by name and column."""
+    relation = results_sa_table(table_name)
+    rows = (
+        await conn.execute_core(
+            select(relation.c.check_name, relation.c.column_name, relation.c.outcome)
+            .where(relation.c.scan_id == scan_id, relation.c.outcome != "pass")
+            .order_by(relation.c.check_name, relation.c.column_name)
+        )
+    ).fetchall()
+    return [
+        {"name": r.check_name, "column": r.column_name or None, "outcome": r.outcome} for r in rows
+    ]
+
+
 async def record_latest_run(
     conn: Any, table_id: int, scan_id: str, scan_time: datetime, rows: list[dict]
 ) -> None:

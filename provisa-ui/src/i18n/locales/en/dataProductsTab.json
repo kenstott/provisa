@@ -308,6 +308,8 @@
         "history": "Version history"
       }
     },
-    "detailPanel": "Data product detail"
+    "detailPanel": "Data product detail",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filter by tag"
   }
 }

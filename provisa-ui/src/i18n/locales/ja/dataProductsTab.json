@@ -308,6 +308,8 @@
         "history": "バージョン履歴"
       }
     },
-    "detailPanel": "データプロダクトの詳細"
+    "detailPanel": "データプロダクトの詳細",
+    "tagFacetLabel": "タグ",
+    "tagFacetPlaceholder": "タグで絞り込む"
   }
 }
