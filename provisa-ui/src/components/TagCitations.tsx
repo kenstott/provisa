@@ -11,16 +11,27 @@
 // The reference library documents and sections a tag's definition cites, or one assignment of the
 // tag does: each listed with where it points, a mark when the section's text changed or is gone
 // (with Confirm, which cites the same place again), and a picker that adds one -- a library
-// document, then one of its sections or the whole of it.
+// document, then one of its sections or the whole of it. Given a label, it is a field of a form
+// (the assignment form), and reads as its list in that form's read view.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ActionIcon, Anchor, Badge, Button, Group, Select, Stack, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Input,
+  Select,
+  Stack,
+  Text,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, X } from "lucide-react";
 import { fetchLibrary, fetchLibraryDocument, type LibraryDocument } from "../api/referenceLibrary";
-import type { CitationPlace } from "../hooks/useTagQueries";
+import { citationKey, type CitationPlace } from "../hooks/useTagQueries";
 import type { LibraryCitation, MutationResult } from "../types/admin";
 import { detailHref } from "./list/useDetailParam";
 import { Tip } from "./Tip";
@@ -84,7 +95,7 @@ function AddCitation({
   onAdd,
   testId,
 }: {
-  onAdd: (place: CitationPlace) => Promise<MutationResult>;
+  onAdd: (place: CitationPlace, documentTitle: string) => Promise<MutationResult>;
   testId: string;
 }) {
   const { t } = useTranslation();
@@ -129,7 +140,8 @@ function AddCitation({
       sectionHeading: section.startsWith("h:") ? section.slice(2) : null,
       sectionPage: section.startsWith("p:") ? Number(section.slice(2)) : null,
     };
-    const result = await onAdd(place);
+    const title = documents.find((d) => d.id === place.documentId)?.title ?? "";
+    const result = await onAdd(place, title);
     if (!result.success) {
       notifications.show({ color: "red", message: result.message });
       return;
@@ -187,12 +199,16 @@ function AddCitation({
 
 interface TagCitationsProps {
   citations: LibraryCitation[];
-  onAdd: (place: CitationPlace) => Promise<MutationResult>;
+  /** Picked: the place, and its document's title as the picker lists it. */
+  onAdd: (place: CitationPlace, documentTitle: string) => Promise<MutationResult>;
   onRemove: (c: LibraryCitation) => Promise<MutationResult>;
   /** Cites the same place again, which records its text as it reads now. */
   onConfirm: (c: LibraryCitation) => Promise<MutationResult>;
   testId: string;
   readOnly?: boolean;
+  /** As a field of a form: its label, and the hint the form's field gives it. */
+  label?: ReactNode;
+  description?: ReactNode;
 }
 
 export function TagCitations({
@@ -202,13 +218,15 @@ export function TagCitations({
   onConfirm,
   testId,
   readOnly,
+  label,
+  description,
 }: TagCitationsProps) {
   const { t } = useTranslation();
   const run = async (action: Promise<MutationResult>) => {
     const result = await action;
     if (!result.success) notifications.show({ color: "red", message: result.message });
   };
-  return (
+  const list = (
     <Stack gap="0.25rem" data-testid={testId}>
       {citations.length === 0 && (
         <Text size="xs" c="dimmed">
@@ -216,9 +234,9 @@ export function TagCitations({
         </Text>
       )}
       {citations.map((c) => {
-        const key = `${c.documentId}-${sectionValue(c.sectionHeading, c.sectionPage)}`;
+        const key = citationKey(c);
         return (
-          <Group key={key} gap="0.25rem" wrap="nowrap" data-testid={`${testId}-row-${key}`}>
+          <Group key={key} gap="0.25rem" data-testid={`${testId}-row-${key}`}>
             <CitationLink c={c} />
             <CitationState c={c} />
             {!readOnly && c.needsReview && (
@@ -251,4 +269,15 @@ export function TagCitations({
       {!readOnly && <AddCitation onAdd={onAdd} testId={`${testId}-picker`} />}
     </Stack>
   );
+  if (label === undefined) return list;
+  return (
+    <Input.Wrapper label={label} description={description}>
+      {list}
+    </Input.Wrapper>
+  );
 }
+
+// In a form's read view the field reads as its list, with nothing to change.
+TagCitations.readValue = (props: Record<string, unknown>) => (
+  <TagCitations {...(props as unknown as TagCitationsProps)} label={undefined} readOnly />
+);

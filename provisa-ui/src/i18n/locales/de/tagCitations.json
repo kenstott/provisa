@@ -21,7 +21,6 @@
     "definedBy": "Definiert durch {{title}}",
     "definedByLabel": "Definiert durch",
     "definedByDesc": "Die Bibliotheksabschnitte, die diesen Tag definieren.",
-    "citedHere": "Für dieses Objekt zitiert",
     "requiresCitationLabel": "Zuweisungen erfordern ein Zitat",
     "requiresCitationDesc": "Eine Zuweisung dieses Tags ohne zitierten Bibliotheksabschnitt wird als Lücke markiert.",
     "requiresCitationBadge": "Zitat erforderlich",
@@ -29,6 +28,8 @@
     "citedByOn": "An",
     "citedByDefinition": "Seine Definition",
     "citedByGone": "Entfallen",
-    "citedByWholeDocument": "Gesamtes Dokument"
+    "citedByWholeDocument": "Gesamtes Dokument",
+    "citationsLabel": "Zitate",
+    "neededForCoverage": "Für die Abdeckung nötig"
   }
 }

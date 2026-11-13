@@ -145,6 +145,7 @@ describe.each(CASES)("the tag chip on $name", ({ props, target, own, other }) =>
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
     expect(assignSpy).toHaveBeenCalledWith(
       expect.objectContaining({ tagId: "reviewed", ...target }),
+      [],
     );
   });
 

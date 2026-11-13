@@ -20,6 +20,7 @@ it. System-tag immutability is enforced at the mutation layer.
 # Requirements: REQ-1373, REQ-1375, REQ-1377
 
 import datetime as _dt
+from collections.abc import Sequence
 
 from provisa.core import model_change
 from typing import TYPE_CHECKING
@@ -393,6 +394,32 @@ async def uncite_assignment(  # REQ-2208
     model_change.name("uncite", "tag", assignment.tag_id)  # REQ-1524
     base, key = await _require_assignment(conn, assignment)
     return await citations.uncite(conn, citations.TAG_ASSIGNMENT, base, key, place)
+
+
+async def replace_assignment_citations(  # REQ-2208
+    conn: "Connection",
+    assignment: TagAssignment,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """The assignment cites exactly ``places``: a place it does not cite yet is cited, one it cites
+    and ``places`` leaves out is uncited, and one it already cites is left as it is, with the text
+    hash and state it was recorded with (only citing it again, a confirmation, records it anew).
+    The caller holds the transaction that writes the assignment with them."""
+    model_change.name("cite", "tag", assignment.tag_id)  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    held = {
+        citations.citation_key(c)
+        for c in (await citations.of_citers(conn, citations.TAG_ASSIGNMENT, [base])).get(
+            (base, key), []
+        )
+    }
+    wanted = {p.key(): p for p in places}
+    for cite_key, place in wanted.items():
+        if cite_key not in held:
+            await citations.cite(conn, citations.TAG_ASSIGNMENT, base, key, place, cited_by)
+    for cite_key in held - wanted.keys():
+        await citations.uncite_key(conn, citations.TAG_ASSIGNMENT, base, key, cite_key)
 
 
 async def definition_citations(  # REQ-2208

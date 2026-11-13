@@ -21,7 +21,6 @@
     "definedBy": "Défini par {{title}}",
     "definedByLabel": "Défini par",
     "definedByDesc": "Les sections de la bibliothèque qui définissent ce tag.",
-    "citedHere": "Cité pour cet objet",
     "requiresCitationLabel": "Les affectations exigent une citation",
     "requiresCitationDesc": "Une affectation de ce tag sans section de la bibliothèque citée est signalée comme un manque.",
     "requiresCitationBadge": "Citation requise",
@@ -29,6 +28,8 @@
     "citedByOn": "Sur",
     "citedByDefinition": "Sa définition",
     "citedByGone": "Disparue",
-    "citedByWholeDocument": "Document entier"
+    "citedByWholeDocument": "Document entier",
+    "citationsLabel": "Citations",
+    "neededForCoverage": "Requise pour la couverture"
   }
 }
