@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 19, of which 2 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 24, of which 2 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-2 of the grid's 17 features are native on DuckDB and left out.
+5 of the grid's 25 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -60,6 +60,21 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NOT NULL OR $b IS NOT NULL THEN list_concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
+=&gt;
+($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
+=&gt;
+($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
+=&gt;
+CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s zones each read now: abbreviation, offset and daylight flag.</code></pre></td><td></td><td></td><td></td></tr>

@@ -98,6 +98,20 @@ titled the same way.
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
+- A graph's focus is the node it is about, given as `opensOn`. A term's graph has its term as
+  focus. A graph with a focus opens at the fit's zoom and is then moved so the focus is in view.
+  Reset view does the same. `showFocus` makes the move and `focusShift` is its rule (REQ-2239).
+  The rule works per axis and then on both together:
+  1. Along an axis on which the diagram fits the canvas, the diagram does not move. Along one it
+     runs past, it moves no further than it can scroll.
+  2. The move keeps the focus inside the canvas, with the fit's margin round it and below the
+     legend. A focus larger than the canvas is held at the canvas's start.
+  3. Among such moves, the chosen one shows the most nodes the focus joins directly. A node
+     counts only when it is shown whole, across and down.
+  4. Among those that tie, the chosen one is the least move from the fit.
+
+  A diagram that fits opens as fitted. So does a graph with no focus, or with a focus it does not
+  draw.
 - The fit control fits the entire image, below the legend, however small that makes it
   (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
 - A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the
@@ -145,9 +159,18 @@ titled the same way.
   sort, not a search (`sortLanes`): the first lane keeps its order; each lane after it by the mean
   place of what its nodes join on their left, nodes tied on that key (the tables of one product, or
   of none) next to the one reaching the most of the same nodes two lanes on (tables sharing terms),
-  ties in the order given. Those lanes stand side by side, each as wide as its widest node, each
-  spread over the height of the tallest of them (its first node at the top, its last at the
-  bottom, a lone node at the middle; `placeLanes`). The term lane is placed, not sorted
+  ties in the order given (the sort reads those lanes spread evenly over the tallest one's height).
+  Those lanes stand side by side, each as wide as its widest node (`placeLanes`). (Amended
+  2026-11-12, COLUMNS ARE FIXED; TABLES, PRODUCTS AND TERMS ALIGN TO THEM.) The lane just left of the
+  term lane (the columns) is placed first and is fixed: packed in its sorted order from the top,
+  `NODE_GAP` between rows, a table's columns one contiguous run. Every other lane is aligned to it, as
+  a rule of the preset and not of named lanes: a node sits at the midpoint of the top and bottom
+  node it reaches in the fixed lane through the lanes between (a table its columns, a folded table
+  its one more-columns node, a product its tables' columns). Nodes of one lane whose midpoints fall
+  closer than the node gap keep their order and move apart by the least (the summed square of the
+  moves). A node reaching nothing in the fixed lane pulls on nothing: it keeps its place in its
+  lane's order, a node gap below the node before it (above the node after it when it is first); a
+  lane where nothing reaches the fixed lane is packed from the top. The term lane is placed, not sorted
   (`placeRows`), scored by the angle of its lines to the columns (the lanes a fixed distance apart,
   the summed vertical run): a term bound to one column sits level with it; a term bound to several
   sits level with the median of them (two tied: fewer crossings, then the higher); the children of
