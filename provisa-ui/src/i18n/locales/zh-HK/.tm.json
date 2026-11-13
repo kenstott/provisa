@@ -10449,5 +10449,11 @@
   "zh-HK/tagCitations.json::tagCitations.requiresCitationLabel": "Assignments require a citation",
   "zh-HK/tagCitations.json::tagCitations.reviewHelp": "A citation on this tag needs review: its section changed or is gone.",
   "zh-HK/tagCitations.json::tagCitations.section": "Section",
-  "zh-HK/tagCitations.json::tagCitations.wholeDocument": "Whole document"
+  "zh-HK/tagCitations.json::tagCitations.wholeDocument": "Whole document",
+  "zh-HK/adminPage.json::adminPage.transport.sparql_http": "SPARQL over HTTP",
+  "zh-HK/settings.json::settings.limits.request_timeouts.keys.sparql_http": "SPARQL over HTTP",
+  "zh-HK/registerManyTables.json::registerManyTables.needsCacheTtl": "Needs input: its source needs a Cache TTL for each table. Register it on its own.",
+  "zh-HK/registerManyTables.json::registerManyTables.registerOne": "Register",
+  "zh-HK/registerManyTables.json::registerManyTables.registerOneLabel": "Register {{table}} on its own",
+  "zh-HK/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted."
 }

@@ -1208,7 +1208,9 @@ def _rank(name: str, args: list[exp.Expr]) -> exp.Expr:
         return exp.null()
     weights = _ranked_weights(args[0] if weighted else None)
     rest = args[1:] if weighted else args
-    vector, query = _vector(rest[0]), _query(rest[1])
+    held, query = _vector(rest[0]), _query(rest[1])
+    # a vector of a column read once, as _bound_search reads it: each row of a rank names it again
+    vector = exp.column(_BOUND) if held.find(exp.Column) is not None else held
     method = int(_text_of(rest[2], name).strip("()")) if len(rest) > 2 else 0
     terms = _rank_terms(query)
     if not terms:
@@ -1238,6 +1240,8 @@ def _rank(name: str, args: list[exp.Expr]) -> exp.Expr:
             written = exp.Anonymous(
                 this=f"ts_norm_{suffix}_{bit}", expressions=[written, vector.copy()]
             )
+    if vector is not held:
+        written = exp.Anonymous(this="ts_bound", expressions=[held, written])
     return exp.Cast(this=written, to=exp.DataType.build("float"))
 
 

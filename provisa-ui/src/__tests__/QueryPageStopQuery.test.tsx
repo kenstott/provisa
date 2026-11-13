@@ -220,6 +220,19 @@ describe("stopping a running GraphQL query", () => {
     expect(screen.queryByTestId("graphql-stop")).toBeNull();
   });
 
+  it("is the icon alone, in the toolbar's width, named by its tip and not a native title", async () => {
+    const held = await startRun();
+    const stop = await screen.findByTestId("graphql-stop");
+    // No label to widen it past GraphiQL's toolbar and over the editor's corner.
+    expect(stop).toHaveTextContent(/^$/);
+    expect(stop).toHaveAttribute("aria-label", "Stop");
+    expect(stop).not.toHaveAttribute("title");
+    expect(stop.querySelector("svg")).not.toBeNull();
+    fireEvent.mouseEnter(stop);
+    expect(await screen.findByText("Stop the query")).toBeInTheDocument();
+    await act(async () => held[0].answer(LATE()));
+  });
+
   it("aborts the request, and the response says Stopped, not an error and not running", async () => {
     const held = await startRun();
     fireEvent.click(await screen.findByTestId("graphql-stop"));

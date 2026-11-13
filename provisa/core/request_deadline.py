@@ -66,7 +66,7 @@ import time
 import traceback
 import weakref
 from collections.abc import AsyncGenerator, Callable, Generator
-from types import FrameType
+from types import FrameType, TracebackType
 
 log = logging.getLogger(__name__)
 
@@ -360,6 +360,12 @@ class Deadline:
         """Whether the budget was ended by :meth:`expire` rather than by the clock."""
         return self._ended is not None
 
+    @property
+    def client_left(self) -> bool:
+        """Whether the budget was ended because the client disconnected (:class:`ClientWatch`):
+        nobody is waiting for the answer, so the request ends without reporting a failure."""
+        return self._ended == CLIENT_DISCONNECTED
+
     def expire(self, reason: str) -> bool:
         """End this budget NOW for ``reason``: the statement in flight is cancelled through its
         driver and every later statement of the request is refused with ``reason``. False when
@@ -487,6 +493,44 @@ _live: weakref.WeakSet[Deadline] = weakref.WeakSet()
 _live_lock = threading.Lock()
 
 _SHUTTING_DOWN = "the server is shutting down"
+CLIENT_DISCONNECTED = "the client disconnected"
+
+
+class ClientWatch:
+    """The client of one HTTP request, as that request's deadline hears of it leaving.
+
+    The code that sees the client's ``http.disconnect`` (the request-thread middleware, on the
+    accepting loop) and the code that binds the request's deadline (the transport middleware, on
+    the request's own thread) meet here. When the client leaves while the request runs, the
+    deadline is ended for :data:`CLIENT_DISCONNECTED` (:meth:`Deadline.expire`): the statement
+    in flight is cancelled through its driver's registered cancel, exactly as at expiry, once.
+    A client that left before the deadline was bound ends it as soon as it is. A request that
+    has answered is not ended: the deadline has stopped by then, and ``expire`` does nothing."""
+
+    __slots__ = ("_deadline", "_gone", "_lock")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._deadline: Deadline | None = None
+        self._gone = False
+
+    def watch(self, dl: Deadline) -> None:
+        """``dl`` is the request's deadline."""
+        with self._lock:
+            self._deadline = dl
+            gone = self._gone
+        if gone:
+            dl.expire(CLIENT_DISCONNECTED)
+
+    def gone(self) -> bool:
+        """The client has disconnected. True when this ended a running request's deadline; once
+        only, whatever else reports the same disconnect."""
+        with self._lock:
+            if self._gone:
+                return False
+            self._gone = True
+            dl = self._deadline
+        return dl is not None and dl.expire(CLIENT_DISCONNECTED)
 
 
 def expire_all(reason: str) -> int:
@@ -621,7 +665,12 @@ class _Scope:
             raise
         return self._dl
 
-    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         self._end(exc)
         return False
 
