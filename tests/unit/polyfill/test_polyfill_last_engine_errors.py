@@ -12,8 +12,10 @@
 (REQ-2167, REQ-2236; polyfill grid).
 
 1. bool and numeric of a jsonb value on ClickHouse: pg_forms_json holds a json value as its text
-   there, and marks it with the type the statement said, so the grid's row reads it as jsonb and
-   refuses it by name, as on Trino (ClickHouse sent bool(...) and numeric(...), no function of its).
+   there, and marks it with the type the statement said, so the grid's row reads it as jsonb
+   (ClickHouse was sent bool(...) and numeric(...), no function of its). bool answers a JSON
+   boolean, numeric a JSON number's own digits; any other kind is PostgreSQL's error, and what has
+   no exact answer (a number with an exponent, text that is no JSON) raises: the row's limitation.
 2. spg_poly_quad_compress on ClickHouse: the grid's row. ClickHouse evaluates a lambda's CASE
    whole, so a refusal in a branch raised for every polygon; and its NULL was a CAST to a String,
    which holds none.
@@ -62,22 +64,114 @@ def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
 
 # --- 1. bool and numeric of a jsonb value on ClickHouse -----------------------------------------
 
+_BIG = "1234567890123456789012345678901234567890.123456789012345678901234567890"
+
 
 @pytest.mark.parametrize(
-    ("sql", "function"),
+    ("sql", "answer"),
     [
-        ('SELECT pg_catalog."bool"(NULL::jsonb) AS v', "bool"),
-        ('SELECT pg_catalog."numeric"(NULL::jsonb) AS v', "numeric"),
-        ("SELECT pg_catalog.bool('true'::jsonb) AS v", "bool"),
-        ("SELECT pg_catalog.numeric('1.5'::jsonb) AS v", "numeric"),
-        ("SELECT pg_catalog.numeric('1.5'::json) AS v", "numeric"),
-        ("SELECT pg_catalog.bool(c::jsonb) AS v FROM (VALUES ('true')) AS t(c)", "bool"),
+        ('SELECT pg_catalog."bool"(NULL::jsonb) AS v', None),
+        ("SELECT pg_catalog.bool('true'::jsonb) AS v", True),
+        ("SELECT pg_catalog.bool('false'::jsonb) AS v", False),
+        ("SELECT pg_catalog.bool(' true '::jsonb) AS v", True),
+        ("SELECT pg_catalog.bool(c::jsonb) AS v FROM (VALUES ('false')) AS t(c)", False),
+        ("SELECT pg_catalog.bool(c::jsonb) AS v FROM (VALUES (NULL::text)) AS t(c)", None),
     ],
 )
-def test_bool_and_numeric_of_a_json_value_are_refused_by_name_on_clickhouse(sql, function):
-    with pytest.raises(FunctionRefused) as refused:
+def test_bool_of_a_json_boolean_is_its_value_on_clickhouse(runtime, sql, answer):
+    assert _one(runtime, sql) is answer
+
+
+@pytest.mark.parametrize(
+    ("sql", "digits"),
+    [
+        ('SELECT pg_catalog."numeric"(NULL::jsonb) AS v', None),
+        ("SELECT pg_catalog.numeric('1.50'::jsonb) AS v", "1.50"),
+        ("SELECT pg_catalog.numeric('-7'::jsonb) AS v", "-7"),
+        ("SELECT pg_catalog.numeric('0.000001'::jsonb) AS v", "0.000001"),
+        ("SELECT pg_catalog.numeric('-0'::jsonb) AS v", "0"),
+        ("SELECT pg_catalog.numeric('-0.00'::jsonb) AS v", "0.00"),
+        (f"SELECT pg_catalog.numeric('{_BIG}'::jsonb) AS v", _BIG),
+        (f"SELECT pg_catalog.numeric('-{_BIG}'::jsonb) AS v", f"-{_BIG}"),
+        ("SELECT pg_catalog.numeric(c::jsonb) AS v FROM (VALUES (' 2.5 ')) AS t(c)", "2.5"),
+    ],
+)
+def test_numeric_of_a_json_number_is_its_digits_never_rounded_on_clickhouse(runtime, sql, digits):
+    """The number's own digits, which PostgreSQL's numeric holds exactly: no Decimal's precision
+    or scale bounds them, and none is rounded."""
+    assert _one(runtime, sql) == digits
+
+
+@pytest.mark.parametrize(
+    ("sql", "oid"),
+    [
+        ("SELECT pg_catalog.numeric('1.50'::jsonb) AS v", 1700),
+        ('SELECT pg_catalog."numeric"(NULL::jsonb) AS v', 1700),
+        ("SELECT pg_catalog.bool('true'::jsonb) AS v", 16),
+        ('SELECT pg_catalog."bool"(NULL::jsonb) AS v', 16),
+    ],
+)
+def test_a_jsonb_cast_is_described_as_its_type_on_clickhouse(runtime, sql, oid):
+    """The type ClickHouse serves the answer as (a NULL too), described as PostgreSQL's."""
+    from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype, _type_oid
+
+    ((served,),) = runtime.run_sync(
+        f"SELECT toTypeName(v) FROM ({transpile(sql, 'clickhouse')})"
+    ).iter_rows()
+    arrow = {"Nullable(String)": "string", "Nullable(Bool)": "bool"}[served]
+    types: list[Any] = [_sql_type_to_bvtype(arrow)]
+    oids: list[int | None] = [_type_oid(arrow)]
+    _describe_casts(sql, types, oids, [-1], [], [arrow])
+    assert oids == [oid]
+
+
+@pytest.mark.parametrize(
+    ("value", "function", "sqlstate", "message"),
+    [
+        ('"t"', "bool", "22023", "cannot cast jsonb string to type boolean"),
+        ("1", "bool", "22023", "cannot cast jsonb numeric to type boolean"),
+        (_BIG, "bool", "22023", "cannot cast jsonb numeric to type boolean"),
+        ("null", "bool", "22023", "cannot cast jsonb null to type boolean"),
+        ("[true]", "bool", "22023", "cannot cast jsonb array to type boolean"),
+        ('{"a": true}', "bool", "22023", "cannot cast jsonb object to type boolean"),
+        ('"1"', "numeric", "22023", "cannot cast jsonb string to type numeric"),
+        ("true", "numeric", "22023", "cannot cast jsonb boolean to type numeric"),
+        ("null", "numeric", "22023", "cannot cast jsonb null to type numeric"),
+        ("[1]", "numeric", "22023", "cannot cast jsonb array to type numeric"),
+        ("{}", "numeric", "22023", "cannot cast jsonb object to type numeric"),
+        # PostgreSQL's numeric of an exponent is its digits shifted: not written here.
+        ("1e3", "numeric", "0A000", "numeric does not read this value"),
+        ("1.5E-2", "numeric", "0A000", "numeric does not read this value"),
+        # Text a jsonb column holds unchecked: PostgreSQL would have refused it when stored.
+        ("tru", "bool", "22P02", "invalid input syntax for type json"),
+        ("01", "numeric", "22P02", "invalid input syntax for type json"),
+        ("1 2", "numeric", "22P02", "invalid input syntax for type json"),
+    ],
+)
+def test_what_is_no_exact_answer_raises_on_clickhouse(runtime, value, function, sqlstate, message):
+    error = _raised(
+        runtime,
+        f"SELECT pg_catalog.{function}(c::jsonb) AS v FROM (VALUES ('{value}')) AS t(c)",
+    )
+    assert (error.sqlstate, str(error)) == (sqlstate, message)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.numeric('1.5'::json) AS v",  # PostgreSQL casts no json to numeric
+        "SELECT pg_catalog.bool('true'::json) AS v",
+    ],
+)
+def test_bool_and_numeric_of_a_json_value_are_refused_by_name_on_clickhouse(sql):
+    with pytest.raises(FunctionRefused):
         transpile(sql, "clickhouse")
-    assert str(refused.value) == f"{function}() has no form on clickhouse"
+
+
+def test_the_clickhouse_limitation_states_what_differs():
+    feature = next(f for f in GRID.features if f.name == "numeric")
+    (stated,) = feature.read.limitations["clickhouse"]
+    assert "exponent" in stated.text and "invalid" in stated.text
 
 
 @pytest.mark.parametrize(
@@ -92,9 +186,10 @@ def test_what_is_no_json_value_answers_as_before_on_clickhouse(runtime, sql, ans
     assert _one(runtime, sql) == answer
 
 
-def test_trino_refuses_bool_of_a_jsonb_value_as_clickhouse_does():
+@pytest.mark.parametrize("function", ["bool", "numeric"])
+def test_trino_refuses_bool_and_numeric_of_a_jsonb_value(function):
     with pytest.raises(FunctionRefused):
-        transpile('SELECT pg_catalog."bool"(NULL::jsonb) AS v', "trino")
+        transpile(f'SELECT pg_catalog."{function}"(NULL::jsonb) AS v', "trino")
 
 
 # --- 2. spg_poly_quad_compress on ClickHouse ----------------------------------------------------

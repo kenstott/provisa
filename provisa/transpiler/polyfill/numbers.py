@@ -179,17 +179,79 @@ _CLICKHOUSE_TYPES = {
 }
 
 
+#: A JSON number, as RFC 8259 writes one, and the whitespace JSON allows around it. ClickHouse's
+#: isValidJSON refuses a number past a double's range, which PostgreSQL's jsonb holds exactly.
+_SPACE = "[[:space:]]*"
+_JSON_NUMBER = f"^{_SPACE}-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][-+]?[0-9]+)?{_SPACE}$"
+#: Each kind of JSON value ClickHouse's JSONType names, as PostgreSQL's error names it.
+_JSON_KINDS = {
+    "String": "string",
+    "Null": "null",
+    "Bool": "boolean",
+    "Array": "array",
+    "Object": "object",
+}
+#: PostgreSQL's type name of each function's result, as its error names it.
+_PG_NAMES = {"bool": "boolean", "numeric": "numeric"}
+
+
+def _ch_jsonb_cast(function: str) -> str:
+    """bool or numeric of a jsonb value ClickHouse holds as its text: NULL of NULL; bool of a JSON
+    boolean its value; numeric of a JSON number its own digits (PostgreSQL's numeric holds them
+    exactly, so no Decimal bounds them; a negative zero is zero). Every other kind raises
+    PostgreSQL's error (22023); a number with an exponent (PostgreSQL's digits shifted) raises
+    0A000; text that is no JSON raises 22P02, as PostgreSQL's input did. Each raise is a throwIf
+    beside the answer: ClickHouse evaluates every branch of a CASE."""
+    name = _PG_NAMES[function]
+    number = f"match($v, '{_JSON_NUMBER}')"
+    valid = "isValidJSON($v)"
+    raises = [
+        ch_fail("22P02", "invalid input syntax for type json").format(
+            condition=f"NOT {number} AND NOT {valid}"
+        )
+    ]
+    answered = "Bool" if function == "bool" else None
+    kinds = {k: v for k, v in _JSON_KINDS.items() if k != answered}
+    for kind, said in kinds.items():
+        raises.append(
+            ch_fail("22023", f"cannot cast jsonb {said} to type {name}").format(
+                condition=f"NOT {number} AND {valid} AND toString(JSONType($v)) = '{kind}'"
+            )
+        )
+    text = "replaceRegexpAll($v, '[[:space:]]', '')"
+    if function == "bool":
+        raises.append(
+            ch_fail("22023", f"cannot cast jsonb numeric to type {name}").format(condition=number)
+        )
+        answer = f"CAST({text} = 'true' AS Nullable(Bool))"
+    else:
+        raises.append(
+            ch_fail("0A000", "numeric does not read this value").format(
+                condition=f"{number} AND match($v, '[eE]')"
+            )
+        )
+        answer = f"if(match({text}, '^-0([.]0+)?$'), substring({text}, 2), {text})"
+    checked = " + ".join(raises)
+    typed = "Nullable(Bool)" if function == "bool" else "Nullable(String)"
+    nothing = f"CAST(NULL AS {typed})"  # a bare NULL is no type pgwire describes as the call's
+    return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
+
+
 def _cast_of(function: str, sources: frozenset[str], sql_type: str):
-    """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a json or
-    jsonb value, refused by name: Trino's and ClickHouse's casts read a JSON scalar PostgreSQL
-    refuses; of anything else, kept (an argument no statement says the type of is ClickHouse's
-    unknown function, an engine error)."""
+    """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a jsonb
+    value on ClickHouse, :func:`_ch_jsonb_cast`; of a json value there, and of either on Trino,
+    refused by name (Trino's cast reads a JSON scalar PostgreSQL refuses, and PostgreSQL casts no
+    json to these); of anything else, kept (an argument no statement says the type of is
+    ClickHouse's unknown function, an engine error)."""
 
     def cast(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
         if call is None or len(call[1]) != 1:
             return None
         type_said = trino.said(call[1][0])
+        if type_said == "jsonb" and dialect == "clickhouse":
+            form = _ch_jsonb_cast(function)
+            return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
         if type_said in _JSON:
             raise Refused(trino.no_form(function, dialect))
         if type_said not in sources:
@@ -219,12 +281,31 @@ def _cast_feature(function: str, summary: str, sources: frozenset[str], sql_type
                     },
                 ),
             ),
-            limitations=dict.fromkeys(
-                (*trino.TRINO, "clickhouse"),
-                (Limitation("Of a json or jsonb value, refused by name."),),
-            ),
+            limitations={
+                **dict.fromkeys(
+                    trino.TRINO, (Limitation("Of a json or jsonb value, refused by name."),)
+                ),
+                "clickhouse": (Limitation(_CLICKHOUSE_JSONB[function]),),
+            },
         ),
     )
+
+
+#: What differs from PostgreSQL on ClickHouse, where a jsonb value is held as its unchecked text.
+_UNCHECKED = (
+    "Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is "
+    "stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without "
+    "PostgreSQL's detail line."
+)
+_CLICKHOUSE_JSONB = {
+    "bool": "Of a jsonb value: a JSON true or false answers its value, NULL answers NULL, and any "
+    "other kind raises PostgreSQL's error (22023). " + _UNCHECKED + " Of a json value, refused by "
+    "name.",
+    "numeric": "Of a jsonb value: a JSON number answers its own digits, at any precision and "
+    "scale, never rounded; NULL answers NULL, and any other kind raises PostgreSQL's error "
+    "(22023). A number written with an exponent (1e3), which PostgreSQL answers with its digits "
+    "shifted (1000), is refused with 0A000. " + _UNCHECKED + " Of a json value, refused by name.",
+}
 
 
 NUMERIC = _cast_feature(
