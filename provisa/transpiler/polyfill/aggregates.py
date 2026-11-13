@@ -229,9 +229,11 @@ def _over_or_filtered(node: exp.Expr) -> bool:
 
 
 def exact_of_integers(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """avg, variance or stddev of an integer, at PostgreSQL's numeric digits; None for a call of
-    another type, which keeps what it had. Over a window or under a FILTER, refused by name:
-    ClickHouse would read the window or the filter of the form's outer call only."""
+    """avg, variance or stddev of an integer, at PostgreSQL's numeric digits.
+
+    None for a call of another type, which keeps what it had. Over a window or under a FILTER,
+    refused by name: ClickHouse would read the window or the filter of the form's outer call
+    only."""
     function = _function(node)
     argued = None if function is None else _integer_argument(node)
     if function is None or argued is None:

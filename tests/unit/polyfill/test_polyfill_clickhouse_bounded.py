@@ -344,7 +344,7 @@ def test_an_integers_digits_are_convert_to_bases_on_clickhouse(runtime, call, di
 @pytest.mark.parametrize(
     ("sql", "duckdb_form"),
     [
-        ('SELECT pg_catalog."to_hex"(42::integer) AS v', "FORMAT('{:x}'"),
+        ('SELECT pg_catalog."to_hex"(42::integer) AS v', "FORMAT('{:X}'"),
         ("SELECT pg_catalog.\"pg_snapshot_xmin\"('5:10:7'::pg_snapshot) AS v", "SPLIT_PART("),
         ('SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (1::integer)) AS t(c1)', "QUOTIENT("),
     ],
