@@ -86,6 +86,52 @@ XID8 = Feature(
     ),
 )
 
+_TSVECTOR_ROWS = (
+    "Of a tsvector: refused by name, as its rows are three columns (lexeme, positions, weights) "
+    "of a text the engine holds it as."
+)
+
+#: unnest of a range, multirange or tsvector on Trino, and of a tsvector on ClickHouse (whose
+#: ranges provisa.transpiler.pg_ranges writes as its own arrays before the grid runs).
+UNNEST = Feature(
+    "unnest",
+    FAMILY,
+    "The ranges of a multirange, or the lexemes of a tsvector, as rows.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    **trino.on_trino(
+                        trino.refusing(
+                            "unnest",
+                            "unnest of a range, multirange or tsvector: refused by name.",
+                            trino.of_said((*_RANGES, "tsvector")),
+                        )
+                    ),
+                    "clickhouse": trino.refusing(
+                        "unnest",
+                        "unnest of a tsvector: refused by name.",
+                        trino.of_said(("tsvector",)),
+                    ),
+                },
+            ),
+        ),
+        limitations={
+            **dict.fromkeys(
+                trino.TRINO,
+                (
+                    Limitation(
+                        "Of a range or multirange the statement says: refused by name, as Trino "
+                        f"has no such type. {_TSVECTOR_ROWS} Of anything else, Trino's own."
+                    ),
+                ),
+            ),
+            "clickhouse": (Limitation(f"{_TSVECTOR_ROWS} Of anything else, ClickHouse's own."),),
+        },
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     XID8,
     *(trino.by_name(name, FAMILY, summary, _XID8) for name, summary in _XID8_CALLS.items()),
@@ -102,16 +148,7 @@ FEATURES: tuple[Feature, ...] = (
         )
         for name, summary in _OF_A_RANGE.items()
     ),
-    trino.refused_feature(
-        "unnest",
-        FAMILY,
-        "The ranges of a multirange, or the lexemes of a tsvector, as rows.",
-        "Of a range or multirange the statement says: refused by name, as Trino has no such "
-        "type. Of a tsvector: refused by name, as its rows are three columns (lexeme, positions, "
-        "weights) of a text Trino holds it as. Of anything else, Trino's own.",
-        "unnest of a range, multirange or tsvector: refused by name, as Trino has no such type.",
-        trino.of_said((*_RANGES, "tsvector")),
-    ),
+    UNNEST,
     *(
         trino.refused_feature(
             name,

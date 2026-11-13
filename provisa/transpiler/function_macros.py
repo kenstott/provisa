@@ -2713,7 +2713,10 @@ def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None
     call = _call(target)
     if call is not None:
         return call
-    applied = polyfill.GRID.read(target, dialect)
+    try:
+        applied = polyfill.GRID.read(target, dialect)
+    except polyfill_notation.Refused:
+        return None  # a rewrite's refusal: _polyfilled raises it as the row's
     if applied is None or applied.rule.pattern is None:
         return None
     return applied.feature.name, [applied.bindings[p] for p in applied.rule.holes()]

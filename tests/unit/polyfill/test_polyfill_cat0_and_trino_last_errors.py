@@ -374,3 +374,17 @@ def test_an_odd_count_of_arguments_is_refused_as_postgresql_refuses_it():
 
 def test_unnest_of_a_tsvector_is_refused_by_name_on_trino():
     _refused('SELECT pg_catalog."unnest"(NULL::tsvector) AS v', "unnest")
+
+
+def test_unnest_of_a_tsvector_is_refused_by_name_on_clickhouse():
+    _refused('SELECT pg_catalog."unnest"(NULL::tsvector) AS v', "unnest", "clickhouse")
+
+
+def test_unnest_of_a_multirange_on_clickhouse_is_still_its_ranges():
+    assert "arrayJoin" in _sent("SELECT unnest('{[1,2)}'::int4multirange) AS v", "clickhouse")
+
+
+@pytest.mark.parametrize("value", ["'1'::text", "x::text", "x::varchar"])
+def test_json_agg_of_a_said_text_is_refused_by_name(value):
+    """Trino's form parses each value as JSON: the text '1' would be the number 1."""
+    _refused(f"SELECT json_agg({value}) AS v FROM t", "json_agg")

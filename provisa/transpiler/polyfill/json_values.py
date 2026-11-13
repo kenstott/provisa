@@ -13,7 +13,9 @@ run 43337203459, REQ-2171).
 
 json_agg: Trino's form of it (transpile._rewrite_json_arrayagg_for_trino, after the grid) parses
 each value as JSON text, which an integer is not. Of integers the statement says, it is Trino's
-array of them cast to JSON: each integer's digits, NULL as null, as to_json writes them.
+array of them cast to JSON: each integer's digits, NULL as null, as to_json writes them. Of a
+text the statement says, refused by name: that form would read '1' as the number 1, where
+PostgreSQL's answer is the string "1".
 
 json_build_object and jsonb_build_object: PostgreSQL casts each key to its text; Trino's
 JSON_OBJECT takes a text key only. A key of an integer or a boolean is cast to text, whose digits
@@ -56,7 +58,11 @@ def json_agg_of_integers(node: exp.Expr, dialect: str) -> exp.Expr | None:
         value = node.expressions[0]  # called by pg_catalog, quoted
     else:
         return None
-    if trino.said(value) not in _INTEGERS:
+    said = trino.said(value)
+    if said in _TEXTS - {"unknown"}:
+        # Trino's form parses a text as JSON: '1' would be the number 1, not the string "1".
+        raise Refused(trino.no_form("json_agg", dialect))
+    if said not in _INTEGERS:
         return None
     if isinstance(node.parent, exp.Filter) or not plain(value):
         raise Refused(trino.no_form("json_agg", dialect))
@@ -114,6 +120,10 @@ JSON_AGG = Feature(
             (
                 _PLAIN_ONLY,
                 Limitation("Of integers under a FILTER: refused by name."),
+                Limitation(
+                    "Of a value the statement says is text: refused by name, as Trino's form "
+                    "parses each value as JSON text."
+                ),
             ),
         ),
     ),
