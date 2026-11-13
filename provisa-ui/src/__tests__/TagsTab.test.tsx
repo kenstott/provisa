@@ -64,6 +64,7 @@ const SYSTEM_TAG: Tag = {
   expiresPolicy: "optional",
   paramPolicy: "none",
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -78,6 +79,7 @@ const USER_TAG: Tag = {
   expiresPolicy: "hidden",
   paramPolicy: "none",
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -93,6 +95,7 @@ const DERIVED_TAG: Tag = {
   expiresPolicy: "hidden",
   paramPolicy: "none",
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -108,6 +111,7 @@ const ENTITY_TAG: Tag = {
   expiresPolicy: "hidden",
   paramPolicy: "required",
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   paramValues: [
@@ -125,6 +129,7 @@ const COMMAND_TAG: Tag = {
   expiresPolicy: "optional",
   paramPolicy: "none",
   requiresCitation: false,
+  required: false,
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -254,6 +259,7 @@ describe("TagsTab", () => {
         "optional",
         "none",
         false,
+        false,
         [],
       ),
     );
@@ -270,6 +276,49 @@ describe("TagsTab", () => {
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(updateSpy.mock.calls[0][0]).toBe("finance");
     expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  describe("required", () => {
+    const edit = (id: string) =>
+      fireEvent.click(
+        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
+      );
+
+    it("shows the Required switch off for a new tag", () => {
+      render(<TagsTab />);
+      fireEvent.click(screen.getByTestId("tags-create-button"));
+      expect((screen.getByTestId("tags-required") as HTMLInputElement).checked).toBe(false);
+    });
+
+    it("sends required: true when the switch is on and the tag is saved", async () => {
+      render(<TagsTab />);
+      fireEvent.click(screen.getByTestId("tags-create-button"));
+      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+        target: { value: "owner" },
+      });
+      fireEvent.click(screen.getByTestId("tags-required"));
+      fireEvent.click(screen.getByTestId("tags-save"));
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
+      expect(upsertSpy.mock.calls[0][7]).toBe(true);
+    });
+
+    it("shows the switch on when editing a required tag", () => {
+      mockTags = [{ ...USER_TAG, required: true }];
+      render(<TagsTab />);
+      edit("finance");
+      expect((screen.getByTestId("tags-required") as HTMLInputElement).checked).toBe(true);
+    });
+
+    it("shows the Required badge only on required tags", () => {
+      mockTags = [USER_TAG, { ...USER_TAG, id: "steward", required: true }];
+      render(<TagsTab />);
+      expect(
+        within(screen.getByTestId("tags-row-steward")).getByTestId("tags-required-badge"),
+      ).toBeTruthy();
+      expect(
+        within(screen.getByTestId("tags-row-finance")).queryByTestId("tags-required-badge"),
+      ).toBeNull();
+    });
   });
 
   describe("citations", () => {
@@ -345,7 +394,7 @@ describe("TagsTab", () => {
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
       expect(upsertSpy.mock.calls[0][0]).toBe("gdpr");
-      expect(upsertSpy.mock.calls[0][7]).toEqual([place]);
+      expect(upsertSpy.mock.calls[0][8]).toEqual([place]);
       expect(updateSpy).not.toHaveBeenCalled();
       expect(citeSpy).not.toHaveBeenCalled();
     });
@@ -364,7 +413,7 @@ describe("TagsTab", () => {
       expect(unciteSpy).not.toHaveBeenCalled();
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-      expect(updateSpy.mock.calls[0][7]).toEqual([]);
+      expect(updateSpy.mock.calls[0][8]).toEqual([]);
       expect(unciteSpy).not.toHaveBeenCalled();
     });
 
@@ -374,7 +423,7 @@ describe("TagsTab", () => {
       edit("finance");
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-      expect(updateSpy.mock.calls[0][7]).toEqual([place]);
+      expect(updateSpy.mock.calls[0][8]).toEqual([place]);
     });
 
     it("confirms a changed citation in the form and keeps it in the saved set", async () => {
@@ -388,7 +437,7 @@ describe("TagsTab", () => {
       await waitFor(() => expect(within(list).queryByTestId("citation-state-drifted")).toBeNull());
       fireEvent.click(screen.getByTestId("tags-save"));
       await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-      expect(updateSpy.mock.calls[0][7]).toEqual([place]);
+      expect(updateSpy.mock.calls[0][8]).toEqual([place]);
     });
   });
 
@@ -409,6 +458,7 @@ describe("TagsTab", () => {
         "required",
         "hidden",
         "none",
+        false,
         false,
         [],
       ),
@@ -510,6 +560,7 @@ describe("TagsTab", () => {
         "optional",
         "optional",
         "required",
+        false,
         false,
         [],
       ),
