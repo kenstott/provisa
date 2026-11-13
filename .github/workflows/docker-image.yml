@@ -1,6 +1,6 @@
 name: Docker Image
 
-# The app image (Dockerfile) built on every push to main and to a release branch, without pushing it
+# The app image (Dockerfile) built on every push to main, and on dispatch for a release branch, without pushing it
 # anywhere: the release workflows build it only at release time, so a break in the Dockerfile reached
 # a release unseen. The
 # built image then draws render_graph's PNGs through its own node, renderer and fonts (REQ-1990),
@@ -8,7 +8,7 @@ name: Docker Image
 
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
