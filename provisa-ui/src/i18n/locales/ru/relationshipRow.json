@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Автоматически отслеживается по ограничению FK",
-    "fkBadge": "FK",
+    "fkBadge": "Из FK",
+    "fkBadgeTitle": "Создано из внешнего ключа в источнике",
     "yes": "Да",
     "no": "Нет",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Материализовать",
     "excludeFromCypher": "Исключить из Cypher",
     "sqlName": "Имя SQL",
-    "autoTracked": "Отслеживается автоматически",
     "cardinalityWarning": "Внимание: если это соединение возвращает более одной строки на родителя, будет использовано только первое значение.",
     "toggleDetails": "Показать/скрыть детали связи",
     "junctionBadge": "св-ва",

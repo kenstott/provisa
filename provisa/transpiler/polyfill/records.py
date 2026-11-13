@@ -15,13 +15,18 @@ record_eq and record_ne are a record's btree comparison: a NULL field equals a N
 ``record_eq(ROW(NULL, 'c'), ROW(NULL, 'c'))`` is true, where SQL's ``=`` of two rows is NULL. A
 record's image comparison takes a NULL field so too. Each is strict: a NULL record answers NULL.
 DuckDB's ``=`` of two structs already takes a NULL field as equal; Trino's ``IS NOT DISTINCT FROM``
-of two rows does. Every other dialect is sent the form it had (``=``)."""
+of two rows does. Every other dialect is sent the form it had (``=``).
+
+A record's order (record_lt and its kin, and their image forms) is refused by name on Trino: its
+comparison of two rows refuses a field that is NULL (run 43307392116), where PostgreSQL orders a
+NULL field after any value, and a text field orders by the database's collation there."""
 
 # Requirements: REQ-2236, REQ-2171
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Rule, Side
+from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 
 FAMILY = "records"
 
@@ -78,4 +83,48 @@ RECORD_IMAGE_NE = _compared(
     "IS DISTINCT FROM",
 )
 
-FEATURES: tuple[Feature, ...] = (RECORD_EQ, RECORD_NE, RECORD_IMAGE_EQ, RECORD_IMAGE_NE)
+_ORDER = {"lt": "<", "le": "<=", "gt": ">", "ge": ">="}
+_ORDER_WORDS = {
+    "lt": "before",
+    "le": "before or equal to",
+    "gt": "after",
+    "ge": "after or equal to",
+}
+_ORDER_LIMITATION = Limitation(
+    "Refused by name: Trino's comparison of two rows refuses a NULL field, which PostgreSQL orders "
+    "after any value, and orders a text field by its code points."
+)
+
+
+def _ordered(name: str, summary: str, operator: str) -> Feature:
+    """An order of two records: Trino refuses it by name, every other dialect the form it had."""
+    return Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(
+            rules=(
+                Rule(
+                    f"{name}($a, $b)",
+                    {
+                        **{d: f"($a) {operator} ($b)" for d in DIALECTS if d not in NATIVE},
+                        **trino.refused_on_trino(name),
+                    },
+                ),
+            ),
+            limitations=dict.fromkeys(_TRINO, (_ORDER_LIMITATION,)),
+        ),
+    )
+
+
+ORDERS: tuple[Feature, ...] = tuple(
+    _ordered(
+        f"{stem}{order}",
+        f"One record{' image' if stem == 'record_image_' else ''} {_ORDER_WORDS[order]} another.",
+        operator,
+    )
+    for stem in ("record_", "record_image_")
+    for order, operator in _ORDER.items()
+)
+
+FEATURES: tuple[Feature, ...] = (RECORD_EQ, RECORD_NE, RECORD_IMAGE_EQ, RECORD_IMAGE_NE, *ORDERS)

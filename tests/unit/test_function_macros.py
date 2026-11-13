@@ -31,6 +31,7 @@ from provisa.transpiler.function_macros import (
     inline,
     outcome,
 )
+from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -109,7 +110,13 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         # ClickHouse reads the Nth match's pattern as a constant, and refuses a column's by name.
         constant = dialect == "clickhouse" and name == "regexp_replace"
         said = [args[0], "'x'", *args[2:]] if constant else said
-        out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        try:
+            out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        except FunctionRefused:
+            # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
+            # no column of the grid, which refuses a call a row matches by name: no form is written.
+            assert name in {f.name for f in GRID.features}
+            continue
         tree = sqlglot.parse_one(out, read=dialect)
         # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
         tree.set("settings", None)

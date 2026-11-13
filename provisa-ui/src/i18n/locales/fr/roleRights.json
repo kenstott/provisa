@@ -35,6 +35,7 @@
     "scope_own-domain": "domaine propre",
     "write_insert": "insertion",
     "write_update": "mise à jour",
-    "write_delete": "suppression"
+    "write_delete": "suppression",
+    "draft": "Brouillon"
   }
 }

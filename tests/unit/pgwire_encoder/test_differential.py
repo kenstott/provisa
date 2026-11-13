@@ -1549,6 +1549,16 @@ COERCED_TEXTS = [
     "abcdefgh",
     "ab",
     "é日本",
+    # interval_out's text (cast_types.interval_of_text), and texts it is not
+    "1 day 02:03:04",
+    "1 year 2 mons -3 days +04:05:06.5",
+    "-1 days -00:00:01.000001",
+    "26:00:00",
+    "1 day",
+    "1 days 2",
+    "1:2:3",
+    "٣ days",
+    "",
 ]
 COERCER_POOL = (
     MATRIX
@@ -1598,6 +1608,7 @@ COERCIONS: list[tuple[Any, list[Any]]] = [
     (cast_types._clock_of, [T.TIME]),
     (cast_types._of_no_zone, [T.TIMESTAMP]),
     (cast_types._padded(5), [T.TEXT]),
+    (cast_types.interval_of_text, [T.INTERVAL]),
 ]
 COERCER_CASES = [(c, t) for c, types in COERCIONS for t in types]
 
