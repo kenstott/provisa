@@ -10456,5 +10456,7 @@
   "es/tagCitations.json::tagCitations.requiresCitationLabel": "Assignments require a citation",
   "es/tagCitations.json::tagCitations.reviewHelp": "A citation on this tag needs review: its section changed or is gone.",
   "es/tagCitations.json::tagCitations.section": "Section",
-  "es/tagCitations.json::tagCitations.wholeDocument": "Whole document"
+  "es/tagCitations.json::tagCitations.wholeDocument": "Whole document",
+  "tagCitations.json::tagCitations.citationsLabel": "Citations",
+  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage"
 }

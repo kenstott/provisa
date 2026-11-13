@@ -21,7 +21,6 @@
     "definedBy": "Defined by {{title}}",
     "definedByLabel": "Defined by",
     "definedByDesc": "The library sections that define this tag.",
-    "citedHere": "Cited for this object",
     "requiresCitationLabel": "Assignments require a citation",
     "requiresCitationDesc": "An assignment of this tag with no cited library section is marked as a gap.",
     "requiresCitationBadge": "Citation required",
@@ -29,6 +28,8 @@
     "citedByOn": "On",
     "citedByDefinition": "Its definition",
     "citedByGone": "Gone",
-    "citedByWholeDocument": "Whole document"
+    "citedByWholeDocument": "Whole document",
+    "citationsLabel": "Citations",
+    "neededForCoverage": "Needed for coverage"
   }
 }

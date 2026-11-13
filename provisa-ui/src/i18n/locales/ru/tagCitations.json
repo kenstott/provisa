@@ -21,7 +21,6 @@
     "definedBy": "Определён в {{title}}",
     "definedByLabel": "Определён в",
     "definedByDesc": "Разделы библиотеки, определяющие этот тег.",
-    "citedHere": "Процитировано для этого объекта",
     "requiresCitationLabel": "Назначения требуют цитаты",
     "requiresCitationDesc": "Назначение этого тега без процитированного раздела библиотеки отмечается как пробел.",
     "requiresCitationBadge": "Нужна цитата",
@@ -29,6 +28,8 @@
     "citedByOn": "На",
     "citedByDefinition": "Его определение",
     "citedByGone": "Удалён",
-    "citedByWholeDocument": "Документ целиком"
+    "citedByWholeDocument": "Документ целиком",
+    "citationsLabel": "Цитаты",
+    "neededForCoverage": "Нужна для покрытия"
   }
 }

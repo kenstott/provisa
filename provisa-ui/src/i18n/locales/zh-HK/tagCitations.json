@@ -21,7 +21,6 @@
     "definedBy": "定義於 {{title}}",
     "definedByLabel": "定義於",
     "definedByDesc": "定義此標籤的庫章節。",
-    "citedHere": "為此物件引用",
     "requiresCitationLabel": "指派須附引用",
     "requiresCitationDesc": "此標籤的指派若沒有引用庫章節，將標記為缺口。",
     "requiresCitationBadge": "須附引用",
@@ -29,6 +28,8 @@
     "citedByOn": "位於",
     "citedByDefinition": "其定義",
     "citedByGone": "已不存在",
-    "citedByWholeDocument": "整份文件"
+    "citedByWholeDocument": "整份文件",
+    "citationsLabel": "引用",
+    "neededForCoverage": "覆蓋所需"
   }
 }

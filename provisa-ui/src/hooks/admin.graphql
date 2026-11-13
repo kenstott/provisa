@@ -1220,8 +1220,8 @@ mutation DeleteTagParamValue($tagId: String!, $value: String!) {
   }
 }
 
-mutation AssignTag($input: TagAssignmentInput!) {
-  assignTag(input: $input) {
+mutation AssignTag($input: TagAssignmentInput!, $citations: [LibraryCitationInput!]) {
+  assignTag(input: $input, citations: $citations) {
     ...MutationResult
   }
 }
