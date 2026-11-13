@@ -119,6 +119,7 @@ from provisa.api.admin.types import (
     LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
+    TagTargetInput,
     TagType,
     UserSummaryType,
 )
@@ -1117,10 +1118,36 @@ class Query:  # REQ-021, REQ-042
                 sensitive=bool(r["sensitive"]),
                 requires_citation=bool(r["requires_citation"]),  # REQ-2208
                 required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
+                allowed_domains=list(r["allowed_domains"] or []),  # REQ-2208
                 citations=[citation_type(c) for c in cited.get(r["id"], [])],
                 needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def offered_tags(
+        self, info: StrawberryInfo, target: TagTargetInput
+    ) -> list[str]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+        """The ids of the tags the picker offers on ``target``: those that apply to its kind, are
+        not derived, and are offered in its domains -- or, for an object in no domain, in one the
+        caller acts in. assignTag refuses the same tags by the same rule."""
+        from provisa.api.admin.capabilities import allowed_domains_request
+        from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        acting = allowed_domains_request(info.context["request"])
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await tag_target_domains(cast("Connection", conn), target)
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            r["id"]
+            for r in rows
+            if target.object_type in (r["applies_to"] or [])
+            and not r["derived"]
+            and tag_offered(r["allowed_domains"] or [], domains, acting)
         ]
 
     @strawberry.field

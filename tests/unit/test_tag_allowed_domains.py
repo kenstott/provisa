@@ -31,7 +31,7 @@ from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api.admin import schema_mutation, schema_query
 from provisa.api.admin.types import TagAssignmentInput, TagInput, TagTargetInput
 from provisa.core.schema_org import registered_tables, roles, tag_assignments
-from tests.unit.test_admin_deletes_need_the_domain import _info, plane  # noqa: F401
+from tests.unit.test_admin_deletes_need_the_domain import _info, _served, plane  # noqa: F401
 
 TAGGERS = ["table_registration", "user_management", "source_registration"]
 ROLES = {

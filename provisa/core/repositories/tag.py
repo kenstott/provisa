@@ -68,6 +68,7 @@ def _code_tag_row(tag: Tag) -> dict:
         "sensitive": tag.sensitive,
         "requires_citation": tag.requires_citation,
         "required": tag.required,
+        "allowed_domains": list(tag.allowed_domains),
     }
 
 
@@ -93,6 +94,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "sensitive": tag.sensitive,
             "requires_citation": tag.requires_citation,  # REQ-2208
             "required": tag.required,  # REQ-2208 (THE TAGS REPORT)
+            "allowed_domains": list(tag.allowed_domains),  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
         },
         index_elements=["id"],
         update_columns=[
@@ -104,6 +106,7 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "sensitive",
             "requires_citation",
             "required",
+            "allowed_domains",
         ],
     )
 

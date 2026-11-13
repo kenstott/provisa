@@ -275,6 +275,9 @@ class TagType:  # REQ-1373, REQ-1375
     requires_citation: bool = False
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
     required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects it is offered on; none
+    # names every domain, as a source's allowed_domains does.
+    allowed_domains: list[str] = strawberry.field(default_factory=list)
     # REQ-2208: the sections that define the tag, and whether one of them changed or is gone.
     citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
     needs_review: bool = False
@@ -1170,6 +1173,9 @@ class TagInput:  # REQ-1373
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; the tags
     # report lists each object without it, nothing is refused.
     required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, none
+    # meaning every domain. Left out (None), a saved tag keeps the list it has; a new one names none.
+    allowed_domains: list[str] | None = None
 
 
 @strawberry.input
@@ -1225,6 +1231,27 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False
+
+
+@strawberry.input
+class TagTargetInput:  # REQ-2208
+    """An object a tag may be put on, named as a ``TagAssignmentInput`` names it, without a tag:
+    the tags offered on it are asked of the server, which knows the object's domains."""
+
+    object_type: str  # one of models.TAG_OBJECT_TYPES
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    command_name: str | None = None
+    term_id: int | None = None
+    product_id: str | None = None
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
 
 @strawberry.input
