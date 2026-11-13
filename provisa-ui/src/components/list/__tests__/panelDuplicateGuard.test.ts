@@ -16,15 +16,18 @@
 //    object, (edit it and cancel,) press "+ Object", and the form holds none of its values.
 // 2. Duplicating is ASKED FOR: a Duplicate action in the object's detail panel head, beside Edit
 //    and Delete (PanelDuplicate, for a caller who may create that kind of object). It opens the
-//    CREATE form prefilled from the object, under a new identity ("<id>-copy", editable; an id
-//    that exists is refused on save by the create's own validation). Nothing that depends on
+//    CREATE form prefilled from the object, under a new identity (editable; an id that exists is
+//    refused on save by the create's own validation): "<id>-copy" where the name takes a hyphen,
+//    "<id>_copy" where it is a SQL, GraphQL or metric identifier, "<id>copy" where it takes no
+//    separator at all (a region). Nothing that depends on
 //    the object is copied with it, and no secret value: a credential is carried as the same
 //    reference the object uses, or left empty with the form saying it must be entered.
 //
 // This guard reads the source: every detail panel that offers Edit in its head (a pencil in its
 // <PanelActions>, or beside the detail's PanelDelete) offers PanelDuplicate too, except the
-// panels listed below as not yet converted. A converted panel is taken off the list: the guard
-// fails on a listed panel that already offers Duplicate, or that no longer offers Edit.
+// panels listed below as not yet converted or as stated exceptions (with their reason). A panel
+// taken off a list: the guard fails on a listed panel that already offers Duplicate, or that no
+// longer offers Edit.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -32,18 +35,25 @@ import { describe, expect, it } from "vitest";
 
 const SRC = join(__dirname, "..", "..", "..");
 
-/** Panels that offer Edit in their head but not Duplicate yet, by file, with their page. */
-const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
-  "pages/SecurityPage.tsx": "Security › Roles",
-  "pages/security/DerivedRoles.tsx": "Security › Derived roles",
-  "pages/security/SecurityRlsPage.tsx": "Security › RLS rules",
-  "pages/data-products/DataProductDetailPanel.tsx": "Data Products",
-  "components/admin/GlossaryTab.tsx": "Glossary (Terms)",
-  "components/admin/ScheduledTasks.tsx": "Admin › Scheduled tasks",
-  "components/admin/RegionEngineTabs.tsx": "Admin › Federation regions",
-  "components/admin/PlatformRegionsTab.tsx": "Platform › Regions",
-  "components/admin/GrantEditor.tsx": "Admin › Region grants",
-  "components/admin/ontologyImport/ImportReviewPanel.tsx": "Ontology import review",
+/** Panels that offer Edit in their head but not Duplicate yet. Empty: every panel is converted or
+ * a stated exception below. */
+const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {};
+
+/**
+ * Panels whose Edit is not the Edit of an object a create form could copy, by file, with the
+ * reason. Each is left without Duplicate on purpose: inventing a create form for it would be a
+ * new feature, not the same action everywhere.
+ */
+const STATED_EXCEPTIONS: Readonly<Record<string, string>> = {
+  "components/admin/RegionEngineTabs.tsx":
+    "Admin › Federation regions: it edits the engine store of a region the licence grant already " +
+    "lists (one tab per granted region); regions are not created here, so there is no create " +
+    "form to open. Granted regions and stores are duplicated in Admin › Region grants " +
+    "(GrantEditor).",
+  "components/admin/ontologyImport/ImportReviewPanel.tsx":
+    "Ontology import review: the panel is an import's review (Apply, Discard); its pencil edits " +
+    "one proposed item of the import, an object that exists only inside the review. An import is " +
+    "made by uploading a file, not by a create form a copy could fill.",
 };
 
 function sources(dir: string): string[] {
@@ -115,6 +125,13 @@ describe("every detail panel that offers Edit in its head offers Duplicate", () 
 
   for (const { name, text } of editing) {
     it(name, () => {
+      if (name in STATED_EXCEPTIONS) {
+        expect(
+          offersDuplicate(text),
+          `${name} offers Duplicate: take it off STATED_EXCEPTIONS`,
+        ).toBe(false);
+        return;
+      }
       if (name in NOT_YET_CONVERTED) {
         expect(
           offersDuplicate(text),
@@ -129,10 +146,21 @@ describe("every detail panel that offers Edit in its head offers Duplicate", () 
     });
   }
 
-  it("lists as not yet converted only panels that offer Edit", () => {
-    const stale = Object.keys(NOT_YET_CONVERTED).filter(
+  it("lists as not yet converted or excepted only panels that offer Edit", () => {
+    const stale = [...Object.keys(NOT_YET_CONVERTED), ...Object.keys(STATED_EXCEPTIONS)].filter(
       (name) => !editing.some((f) => f.name === name),
     );
     expect(stale, "listed, but no longer offering Edit in a head: take them off").toEqual([]);
+  });
+});
+
+describe("the exceptions", () => {
+  it("give a reason each", () => {
+    for (const [name, reason] of Object.entries(STATED_EXCEPTIONS))
+      expect(reason.trim().length, `${name} is excepted without a reason`).toBeGreaterThan(40);
+  });
+
+  it("leave nothing not yet converted", () => {
+    expect(Object.keys(NOT_YET_CONVERTED)).toEqual([]);
   });
 });

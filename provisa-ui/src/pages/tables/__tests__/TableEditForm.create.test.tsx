@@ -192,4 +192,9 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
   it("sends no write grants when the form set none: they are governance of their own", () => {
     expect(registrationInput(draft, REGISTRATION, null)).not.toHaveProperty("writeGrants");
   });
+
+  it("registers a view under the name its form holds, not the one the create step named", () => {
+    const view = { ...draft, tableName: "trades_copy", viewSql: "SELECT 1 AS x" };
+    expect(registrationInput(view, REGISTRATION, null)).toMatchObject({ tableName: "trades_copy" });
+  });
 });

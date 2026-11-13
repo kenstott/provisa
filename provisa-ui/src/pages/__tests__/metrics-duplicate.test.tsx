@@ -85,7 +85,7 @@ describe("Duplicate, in a metric's panel head", () => {
     await userEvent.click(screen.getByTestId("metric-detail-duplicate-revenue"));
     expect(screen.getByTestId("metrics-split-title")).toHaveTextContent("New Metric");
     const form = within(screen.getByTestId("metric-create-card"));
-    expect(form.getByTestId("metric-name-input")).toHaveValue("revenue-copy");
+    expect(form.getByTestId("metric-name-input")).toHaveValue("revenue_copy");
     expect(form.getByTestId("metric-expression-input")).toHaveValue("SUM(orders.amount)");
   });
 
@@ -97,7 +97,7 @@ describe("Duplicate, in a metric's panel head", () => {
     await userEvent.click(screen.getByTestId("metric-save-button"));
     expect(upsertMetric).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "revenue-copy",
+        name: "revenue_copy",
         expression: "SUM(orders.amount)",
         datatype: "numeric",
         description: "Total revenue",

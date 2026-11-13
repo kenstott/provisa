@@ -52,6 +52,7 @@ import { useListSortGroup, type ListColumn } from "../../components/list/useList
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
 import { useDetailParam } from "../../components/list/useDetailParam";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -285,6 +286,16 @@ export function SecurityRlsPage() {
     }
     setEditingRuleInRow(rule.id);
     setError("");
+  };
+
+  // Duplicate, from a rule's panel head: the new-rule form filled with the rule's target, role,
+  // rights, filter and description. A rule has no name of its own (the server numbers it): the
+  // copy is told apart by what the form lets the caller change, and a rule that already exists
+  // is refused on save by the create.
+  const handleDuplicateRule = (rule: RLSRule) => {
+    startEditingRule(rule);
+    setEditingRuleInRow(null);
+    setShowRuleForm(true);
   };
 
   const filtered = rules.filter((r) => {
@@ -574,6 +585,11 @@ export function SecurityRlsPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
+                <PanelDuplicate
+                  name={t("securityPage.panelRule", { id: r.id })}
+                  onDuplicate={() => handleDuplicateRule(r)}
+                  testId={`duplicate-rule-${r.id}`}
+                />
                 <PanelDelete
                   itemKey={r.id}
                   title={t("securityPage.deleteRuleTitle")}
