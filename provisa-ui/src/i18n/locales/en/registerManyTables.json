@@ -22,6 +22,7 @@
     "refused": "{{table}} was not registered: {{message}}",
     "skip": "Skip registering tables",
     "domainRequired": "Choose the domain the tables are registered in.",
-    "pickTables": "Select one table or more…"
+    "pickTables": "Select one table or more…",
+    "needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own."
   }
 }

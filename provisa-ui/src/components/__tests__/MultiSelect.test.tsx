@@ -72,3 +72,58 @@ describe("an option that cannot be picked", () => {
     expect(screen.queryByTestId("option-not-held-a")).toBeNull();
   });
 });
+
+describe("an option's action", () => {
+  it("is a button beside the option in the open list, used without picking it", async () => {
+    const onChange = vi.fn();
+    const onRegister = vi.fn();
+    render(
+      <MultiSelect
+        label="Tables"
+        options={[
+          { id: "orders", label: "orders" },
+          {
+            id: "events",
+            label: "events",
+            disabled: true,
+            reason: "No column types found.",
+            action: {
+              label: "Register",
+              ariaLabel: "Register events on its own",
+              onClick: onRegister,
+            },
+          },
+        ]}
+        value={[]}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByRole("textbox", { name: "Tables" }));
+    const action = await screen.findByTestId("option-action-events");
+    expect(action).toHaveAccessibleName("Register events on its own");
+    expect(screen.queryByTestId("option-action-orders")).toBeNull();
+    await userEvent.click(action);
+    expect(onRegister).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("lists options under their group's heading", async () => {
+    render(
+      <MultiSelect
+        label="Tables"
+        options={[
+          { id: "a", label: "a", group: "Tables" },
+          { id: "b", label: "b", group: "Lookups" },
+        ]}
+        value={[]}
+        onChange={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("textbox", { name: "Tables" }));
+    await screen.findAllByRole("option", { hidden: true });
+    const headings = [...document.querySelectorAll(".mantine-MultiSelect-groupLabel")].map(
+      (g) => g.textContent,
+    );
+    expect(headings).toEqual(["Tables", "Lookups"]);
+  });
+});

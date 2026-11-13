@@ -119,8 +119,9 @@ describe("registering a dbt source's public models as data products", () => {
     expect(screen.queryByTestId("register-table-dbt-mode")).toBeNull();
     await user.selectOptions(screen.getByTestId("register-table-source-select"), "dbt-jaffle");
     expect(screen.getByTestId("register-table-dbt-mode")).toBeInTheDocument();
-    // Picking tables stays the default, as it is on every source.
-    expect(screen.getByTestId("register-table-submit")).toBeInTheDocument();
+    // Picking tables stays the default, as it is on every source: the Tables field registers them.
+    expect(screen.getByRole("textbox", { name: "Tables" })).toBeInTheDocument();
+    expect(screen.getByTestId("register-many-tables-submit")).toBeInTheDocument();
   });
 
   it("previews one product per group, with its models, and creates nothing", async () => {

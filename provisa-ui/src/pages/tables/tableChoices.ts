@@ -15,7 +15,7 @@
 
 import type { TFunction } from "i18next";
 import type { MultiSelectOption, OptionAction } from "../../components/MultiSelect";
-import { LOOKUP_GLYPH } from "./lookups";
+import { LOOKUP_GLYPH, lookupNeeds } from "./lookups";
 import { tableGroups } from "./tableGroups";
 import { blockedBy, type Reading } from "./useManyTables";
 
@@ -87,7 +87,14 @@ export function tableChoices<T extends Listed>({
           };
     return {
       id: tbl.name,
-      label: requiredOf(tbl).length > 0 ? `${LOOKUP_GLYPH} ${shown}` : shown,
+      // A lookup leads with its mark and names what it needs.
+      label:
+        requiredOf(tbl).length > 0
+          ? `${LOOKUP_GLYPH} ${t("registerTableForm.tableWithLabel", {
+              name: shown,
+              label: lookupNeeds(t, requiredOf(tbl)),
+            })}`
+          : shown,
       disabled: reason !== null,
       ...(reason !== null ? { reason } : {}),
       ...(action ? { action } : {}),

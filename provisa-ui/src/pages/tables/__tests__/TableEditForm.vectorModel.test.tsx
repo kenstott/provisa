@@ -162,7 +162,8 @@ describe("TableEditForm on a Qdrant collection: a vector's model (REQ-2000)", ()
     fireEvent.click(screen.getByTestId("table-section-columns"));
     // The Columns section asks for the models it offers.
     expect(useVectorModels).toHaveBeenLastCalledWith("vec", "docs", true);
-    fireEvent.click(screen.getByTestId("column-tab-type"));
+    // One editor for the vectors, above the column tabs.
+    expect(screen.getByTestId("register-table-vector-models")).toBeInTheDocument();
     expect(screen.queryByTestId("vector-model-title")).toBeNull();
     expect(screen.queryByTestId("vector-model-none-title")).toBeNull();
     expect(screen.getByTestId("vector-model-none-image")).toBeInTheDocument();
