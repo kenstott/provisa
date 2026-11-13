@@ -34,6 +34,7 @@ from provisa.transpiler.polyfill import (
     records,
     regex,
     server,
+    snapshots,
     textsearch,
     type_io,
     unheld,
@@ -76,6 +77,7 @@ GRID = Grid(
     + json_values.FEATURES
     + clickhouse.FEATURES
     + aggregates.FEATURES
+    + snapshots.FEATURES
 )
 
 __all__ = [

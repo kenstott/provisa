@@ -227,3 +227,127 @@ def test_duckdb_keeps_its_own_exact_form():
 
 def test_a_column_no_statement_types_keeps_the_engines_avg():
     assert "toInt256" not in transpile("SELECT avg(x) FROM t", "clickhouse")
+
+
+# --- xid8, snapshots and an integer's digits -----------------------------------------------------
+
+_MAX_XID8 = "18446744073709551615"
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        ('SELECT pg_catalog."xid8eq"(NULL::xid8, NULL::xid8) AS v', None),
+        (f"SELECT pg_catalog.\"xid8eq\"('{_MAX_XID8}'::xid8, '{_MAX_XID8}'::xid8) AS v", True),
+        (f"SELECT pg_catalog.\"xid8lt\"('3'::xid8, '{_MAX_XID8}'::xid8) AS v", True),
+        (f"SELECT pg_catalog.\"xid8gt\"('3'::xid8, '{_MAX_XID8}'::xid8) AS v", False),
+        ("SELECT pg_catalog.\"xid8ge\"('100'::xid8, '100'::xid8) AS v", True),
+        ("SELECT pg_catalog.\"xid8le\"('101'::xid8, '100'::xid8) AS v", False),
+        ("SELECT pg_catalog.\"xid8ne\"('3'::xid8, '3'::xid8) AS v", False),
+        ('SELECT pg_catalog."xid8send"(NULL::xid8) AS v', None),
+        ("SELECT pg_catalog.\"xid8send\"('100'::xid8) AS v", b"\x00\x00\x00\x00\x00\x00\x00d"),
+        (f"SELECT pg_catalog.\"xid8send\"('{_MAX_XID8}'::xid8) AS v", b"\xff" * 8),
+    ],
+)
+def test_xid8_orders_and_bytes_are_postgresqls_on_clickhouse(runtime, sql, answer):
+    got = _one(runtime, sql)
+    assert (got.encode("latin-1") if isinstance(got, str) else got) == answer
+
+
+def _snapshot(function: str, text: str, kind: str = "pg_snapshot") -> str:
+    return f"SELECT pg_catalog.\"{function}\"(c::{kind}) AS v FROM (VALUES ('{text}')) AS t(c)"
+
+
+@pytest.mark.parametrize(
+    ("sql", "rows"),
+    [
+        ('SELECT pg_catalog."pg_snapshot_xmin"(NULL::pg_snapshot) AS v', [(None,)]),
+        (_snapshot("pg_snapshot_xmin", "10:20:10,14,15"), [(10,)]),
+        (_snapshot("pg_snapshot_xmax", "10:20:10,14,15"), [(20,)]),
+        (_snapshot("pg_snapshot_xmax", f"5:{_MAX_XID8}:"), [(int(_MAX_XID8),)]),
+        (_snapshot("txid_snapshot_xmax", f"5:{_MAX_XID8}:", "txid_snapshot"), [(-1,)]),
+        (_snapshot("pg_snapshot_xip", "10:20:10,14,15"), [(10,), (14,), (15,)]),
+        (_snapshot("pg_snapshot_xip", "5:10:7,7,8"), [(7,), (8,)]),  # a duplicate is read once
+        (_snapshot("pg_snapshot_xip", "1:10:0,0,3"), [(3,)]),  # as is a leading 0: not at all
+        (_snapshot("txid_snapshot_xip", "1:1:", "txid_snapshot"), []),
+        ('SELECT pg_catalog."pg_snapshot_xip"(NULL::pg_snapshot) AS v', []),
+        (
+            "SELECT pg_catalog.\"pg_visible_in_snapshot\"('3'::xid8, '10:20:10,14,15'::pg_snapshot)"
+            " AS v",
+            [(True,)],
+        ),
+        (
+            "SELECT pg_catalog.\"pg_visible_in_snapshot\"('14'::xid8, '10:20:10,14,15'::pg_snapshot)"
+            " AS v",
+            [(False,)],
+        ),
+        (
+            "SELECT pg_catalog.\"pg_visible_in_snapshot\"('13'::xid8, '10:20:10,14,15'::pg_snapshot)"
+            " AS v",
+            [(True,)],
+        ),
+        (
+            "SELECT pg_catalog.\"txid_visible_in_snapshot\"((-7)::bigint, '1:1:'::txid_snapshot)"
+            " AS v",
+            [(False,)],
+        ),
+        (
+            'SELECT pg_catalog."pg_visible_in_snapshot"(NULL::xid8, NULL::pg_snapshot) AS v',
+            [(None,)],
+        ),
+    ],
+)
+def test_a_snapshot_is_read_as_postgresqls_input_reads_it_on_clickhouse(runtime, sql, rows):
+    assert _rows(runtime, sql) == rows
+
+
+def test_a_snapshots_bytes_are_pg_snapshot_send(runtime):
+    got = _one(runtime, _snapshot("pg_snapshot_send", "10:20:10,14,14,15"))
+    words = [(4, 3), (8, 10), (8, 20), (8, 10), (8, 14), (8, 15)]
+    assert got.encode("latin-1") == b"".join(v.to_bytes(n, "big") for n, v in words)
+
+
+@pytest.mark.parametrize(
+    "text", ["0:5:", "6:5:", "5:10:8,7", "5:10", "5:10:x", "5:99999999999999999999:"]
+)
+@pytest.mark.parametrize("function", ["pg_snapshot_xmin", "pg_snapshot_xip", "pg_snapshot_send"])
+def test_text_postgresqls_input_refuses_raises_its_error(runtime, function, text):
+    error = _raised(runtime, _snapshot(function, text))
+    assert (error.sqlstate, str(error)) == ("22P02", "invalid input syntax for type pg_snapshot")
+
+
+@pytest.mark.parametrize(
+    ("call", "digits"),
+    [
+        ("to_hex(NULL::integer)", None),
+        ("to_hex(42::integer)", "2a"),
+        ("to_hex((-7)::integer)", "fffffff9"),
+        ("to_hex((-7)::bigint)", "fffffffffffffff9"),
+        ("to_hex((-2147483648)::integer)", "80000000"),
+        ("to_hex((-9223372036854775808)::bigint)", "8000000000000000"),
+        ("to_hex(9223372036854775807::bigint)", "7fffffffffffffff"),
+        ("to_hex(5000000000::bigint)", "12a05f200"),
+        ("to_oct(0::integer)", "0"),
+        ("to_oct((-7)::bigint)", "1777777777777777777771"),
+        ("to_oct((-7)::integer)", "37777777771"),
+        ("to_oct(42::integer)", "52"),
+        ("to_bin(3::bigint)", "11"),
+        ("to_bin((-1)::smallint)", "1" * 32),  # promoted to an integer
+        ("to_bin((-7)::integer)", "11111111111111111111111111111001"),
+    ],
+)
+def test_an_integers_digits_are_convert_to_bases_on_clickhouse(runtime, call, digits):
+    name, rest = call.split("(", 1)
+    assert _one(runtime, f'SELECT pg_catalog."{name}"({rest} AS v') == digits
+
+
+@pytest.mark.parametrize(
+    ("sql", "duckdb_form"),
+    [
+        ('SELECT pg_catalog."to_hex"(42::integer) AS v', "FORMAT('{:x}'"),
+        ("SELECT pg_catalog.\"pg_snapshot_xmin\"('5:10:7'::pg_snapshot) AS v", "SPLIT_PART("),
+        ('SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (1::integer)) AS t(c1)', "QUOTIENT("),
+    ],
+)
+def test_duckdb_keeps_its_own_forms(sql, duckdb_form):
+    assert duckdb_form in transpile(sql, "duckdb").upper()
