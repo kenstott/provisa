@@ -315,7 +315,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         if trail is not None:
             # REQ-751: a session walk's path, every node and relationship of its trail.
             nodes, rels = trail
-            return exp.Anonymous(
+            path = exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
                     exp.Literal.string("nodes"),
@@ -324,6 +324,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     rels.copy(),
                 ],
             )
+            # An OPTIONAL MATCH's walk that found nothing is no row of it (its LEFT JOIN's
+            # nulls): the path is null, never a path of null nodes.
+            walked = [c for c in nodes.find_all(exp.Column) if c.name == "nodes"]
+            if not walked:
+                return path
+            absent = exp.or_(*(exp.Is(this=c.copy(), expression=exp.Null()) for c in walked))
+            return exp.Case(ifs=[exp.If(this=absent, true=exp.Null())], default=path)
         walk_ends = getattr(self, "_walk_paths", {}).get(path_var)
         if walk_ends is not None:
             # REQ-348: a session walk's path, from its start to its end, of its hops.
