@@ -4,12 +4,12 @@ name: Conformance (Cypher)
 # tck/features, Apache-2.0), fetched at a pinned tag by git, never vendored, and run by
 # scripts/conformance/cypher_tck.py against POST /data/cypher as org_admin.
 #
-# A failing scenario is data, written to the job summary and to the artifact conformance-cypher.json
-# (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md), never a job failure.
-# Each scenario is passed, skipped by design (a group of by_design/cypher.yaml citing its
-# requirement and decision) or failed (REQ-2167, amended 2026-10-28). The job fails only when the
-# Provisa instance did not start or the suite did not run, until Cypher is at its baseline
-# (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a failed scenario.
+# A failing scenario is written to the job summary and to the artifact conformance-cypher.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md). Each scenario is
+# passed, skipped by design (a group of by_design/cypher.yaml citing its requirement and decision)
+# or failed (REQ-2167, amended 2026-10-28). The job fails when the Provisa instance did not start
+# or the suite did not run, and, at its last step (scripts/conformance/baseline_gate.py), when a
+# scenario fails that scripts/conformance/expected/cypher.json does not list or a listed one passes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance): the embedded
 # PostgreSQL control plane and `uvicorn main:app` on the DuckDB engine, natively on the runner,
@@ -180,3 +180,11 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/cypher.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a filtered or partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases cypher "$RUNNER_TEMP/report/conformance-cypher.json"

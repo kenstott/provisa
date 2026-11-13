@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useQuery, useMutation } from "@apollo/client/react";
-import type { MutationResult, Tag, TagAssignment } from "../types/admin";
+import type { LibraryCitation, MutationResult, Tag, TagAssignment } from "../types/admin";
 import {
   TagsQuery as TAGS_QUERY,
   TagAssignmentsQuery as TAG_ASSIGNMENTS_QUERY,
@@ -20,6 +20,10 @@ import {
   UnassignTag as UNASSIGN_TAG_MUTATION,
   UpsertTagParamValue as UPSERT_TAG_PARAM_VALUE_MUTATION,
   DeleteTagParamValue as DELETE_TAG_PARAM_VALUE_MUTATION,
+  CiteTagDefinition as CITE_TAG_DEFINITION_MUTATION,
+  UnciteTagDefinition as UNCITE_TAG_DEFINITION_MUTATION,
+  CiteTagAssignment as CITE_TAG_ASSIGNMENT_MUTATION,
+  UnciteTagAssignment as UNCITE_TAG_ASSIGNMENT_MUTATION,
   DeleteTags,
 } from "./admin.graphql";
 import { useBulkDelete } from "./useBulkDelete";
@@ -70,7 +74,18 @@ export function useSaveTag() {
     reasonPolicy: string,
     expiresPolicy: string,
     paramPolicy: string, // REQ-1467
-  ) => ({ input: { id, description, appliesTo, reasonPolicy, expiresPolicy, paramPolicy } });
+    requiresCitation: boolean, // REQ-2208
+  ) => ({
+    input: {
+      id,
+      description,
+      appliesTo,
+      reasonPolicy,
+      expiresPolicy,
+      paramPolicy,
+      requiresCitation,
+    },
+  });
   return {
     createTag: async (...fields: Parameters<typeof input>) => {
       const result = await createTag({ variables: input(...fields) });
@@ -181,6 +196,59 @@ function toAssignmentInput(input: TagAssignment) {
     alsoTerm: input.alsoTerm ?? false,
     reason: input.reason ?? null,
     expiresOn: input.expiresOn ?? null,
+  };
+}
+
+/** The place a citation names: a document, or a section of it by heading, or by page without one. */
+export type CitationPlace = Pick<LibraryCitation, "documentId" | "sectionHeading" | "sectionPage">;
+
+function citationInput(place: CitationPlace) {
+  return {
+    documentId: place.documentId,
+    sectionHeading: place.sectionHeading,
+    sectionPage: place.sectionPage,
+  };
+}
+
+/** REQ-2208: the library places a tag's definition, and each assignment of it, cite. Citing a place
+ *  again records its text anew: how a reviewer confirms a citation flagged as changed. */
+export function useTagCitations() {
+  const again = { refetchQueries: [{ query: TAGS_QUERY }, { query: TAG_ASSIGNMENTS_QUERY }] };
+  const [cite] = useMutation<{ citeTagDefinition: MutationResult }>(
+    CITE_TAG_DEFINITION_MUTATION,
+    again,
+  );
+  const [uncite] = useMutation<{ unciteTagDefinition: MutationResult }>(
+    UNCITE_TAG_DEFINITION_MUTATION,
+    again,
+  );
+  const [citeAssignment] = useMutation<{ citeTagAssignment: MutationResult }>(
+    CITE_TAG_ASSIGNMENT_MUTATION,
+    again,
+  );
+  const [unciteAssignment] = useMutation<{ unciteTagAssignment: MutationResult }>(
+    UNCITE_TAG_ASSIGNMENT_MUTATION,
+    again,
+  );
+  return {
+    citeDefinition: async (tagId: string, place: CitationPlace) =>
+      (await cite({ variables: { tagId, citation: citationInput(place) } })).data
+        ?.citeTagDefinition as MutationResult,
+    unciteDefinition: async (tagId: string, place: CitationPlace) =>
+      (await uncite({ variables: { tagId, citation: citationInput(place) } })).data
+        ?.unciteTagDefinition as MutationResult,
+    citeAssignment: async (assignment: TagAssignment, place: CitationPlace) =>
+      (
+        await citeAssignment({
+          variables: { assignment: toAssignmentInput(assignment), citation: citationInput(place) },
+        })
+      ).data?.citeTagAssignment as MutationResult,
+    unciteAssignment: async (assignment: TagAssignment, place: CitationPlace) =>
+      (
+        await unciteAssignment({
+          variables: { assignment: toAssignmentInput(assignment), citation: citationInput(place) },
+        })
+      ).data?.unciteTagAssignment as MutationResult,
   };
 }
 

@@ -375,6 +375,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS federation_hints JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;  -- a source Provisa runs for itself
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS read_wait INTEGER;  -- REQ-2224
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
@@ -742,9 +743,13 @@ CREATE TABLE IF NOT EXISTS tags (
     -- reading available is a guessed entity type.
     param_policy   TEXT NOT NULL DEFAULT 'none' CHECK (param_policy IN ('none', 'required')),
     -- REQ-1943: the Sensitive data option: a column carrying this tag is a sensitive column.
-    sensitive      BOOLEAN NOT NULL DEFAULT FALSE
+    sensitive      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment of this tag must cite a library
+    -- document or section (reference_citations); one that does not is a gap, never refused.
+    requires_citation BOOLEAN NOT NULL DEFAULT FALSE
 );
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- REQ-1384: a row filter on a tag refers to the tag. No ON DELETE action: a tag that carries a
 -- filter is refused deletion (repositories.integrity), never taken with its filter.
@@ -2577,6 +2582,36 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
     evidence        JSONB,
     tenant_id       UUID,
     UNIQUE (base_tag_id, object_key)
+);
+
+-- REQ-2208: citations of reference library documents and their sections. One shape for whatever
+-- cites the library: a tag's definition (citer_kind 'tag', object_key ''), and each assignment of
+-- a tag (citer_kind 'tag_assignment', object_key the assignment's, in tag_assignments or
+-- reference_document_tags); a security item cites the same way under a kind of its own. tag_id is
+-- the BASE id. The cited section is named as a section tag names it, by heading or by page, and
+-- the whole document when neither is given; cite_key is that name ('document:<id>',
+-- 'section:<id>:heading:<h>', 'section:<id>:page:<n>'). text_sha256 is of the section's text when
+-- it was cited: a revised section no longer matches it and its citer is flagged for review. The
+-- document's title and source are kept, so a citation outlives the document. They are the
+-- environment's own, as the documents they cite are (env_classes). Mirrors
+-- schema_org.reference_citations.
+CREATE TABLE IF NOT EXISTS reference_citations (
+    id              SERIAL PRIMARY KEY,
+    citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
+                        CHECK (citer_kind IN ('tag', 'tag_assignment')),
+    tag_id          TEXT,
+    object_key      TEXT NOT NULL DEFAULT '',
+    document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
+    document_title  TEXT NOT NULL,
+    document_source TEXT NOT NULL,
+    section_heading TEXT,
+    section_page    INTEGER,
+    cite_key        TEXT NOT NULL,
+    text_sha256     TEXT NOT NULL,
+    cited_by        TEXT,
+    cited_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    tenant_id       UUID,
+    UNIQUE (citer_kind, tag_id, object_key, cite_key)
 );
 
 -- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by

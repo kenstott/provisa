@@ -1,0 +1,528 @@
+{
+  "engines": {
+    "clickhouse": {
+      "total": 3319,
+      "passed": 1496,
+      "differs_engine_error": 171,
+      "refused_by_name": 711
+    },
+    "duckdb": {
+      "total": 3319,
+      "passed": 2307,
+      "differs_engine_error": 0,
+      "refused_by_name": 145
+    },
+    "pg": {
+      "total": 3319,
+      "passed": 2478,
+      "differs_engine_error": 0,
+      "refused_by_name": 0
+    },
+    "trino": {
+      "total": 3319,
+      "passed": 1766,
+      "differs_engine_error": 1,
+      "refused_by_name": 689
+    }
+  },
+  "expected": [
+    {
+      "case": "clickhouse::anyarray_send(anyarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::anycompatiblearray_send(anycompatiblearray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::array_agg(anyarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [114], PostgreSQL [1007]"
+    },
+    {
+      "case": "clickhouse::array_agg(anynonarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "'{}', PostgreSQL '{NULL}'"
+    },
+    {
+      "case": "clickhouse::array_larger(anyarray, anyarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [1007]"
+    },
+    {
+      "case": "clickhouse::array_send(anyarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::array_smaller(anyarray, anyarray)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [1007]"
+    },
+    {
+      "case": "clickhouse::bit_send(bit)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::boolsend(boolean)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::box_send(box)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::bpcharsend(character)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::byteain(cstring)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::byteasend(bytea)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::charsend(\"char\")",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::cidr_send(cidr)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::cidsend(cid)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::circle_send(circle)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::cstring_send(cstring)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::current_schemas(boolean)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "'{default}', PostgreSQL None"
+    },
+    {
+      "case": "clickhouse::date_send(date)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::date_trunc(text, timestamp without time zone)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [1114]"
+    },
+    {
+      "case": "clickhouse::first_value(anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [23]"
+    },
+    {
+      "case": "clickhouse::float4_accum(double precision[], real)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::float4send(real)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::float8_accum(double precision[], double precision)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::float8_combine(double precision[], double precision[])",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::float8_regr_accum(double precision[], double precision, double precision)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::float8_regr_combine(double precision[], double precision[])",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::float8send(double precision)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::generate_subscripts(anyarray, integer)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "1 rows, PostgreSQL 0"
+    },
+    {
+      "case": "clickhouse::generate_subscripts(anyarray, integer, boolean)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "1 rows, PostgreSQL 0"
+    },
+    {
+      "case": "clickhouse::inet_send(inet)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::int2_avg_accum(bigint[], smallint)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1016]"
+    },
+    {
+      "case": "clickhouse::int2_avg_accum_inv(bigint[], smallint)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1016]"
+    },
+    {
+      "case": "clickhouse::int2send(smallint)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::int4_avg_accum(bigint[], integer)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1016]"
+    },
+    {
+      "case": "clickhouse::int4_avg_accum_inv(bigint[], integer)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1016]"
+    },
+    {
+      "case": "clickhouse::int4send(integer)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::int8send(bigint)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::interval_send(interval)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::json_send(json)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::jsonb_send(jsonb)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::jsonpath_send(jsonpath)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::lag(anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [23]"
+    },
+    {
+      "case": "clickhouse::last_value(anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [23]"
+    },
+    {
+      "case": "clickhouse::lead(anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [23]"
+    },
+    {
+      "case": "clickhouse::line_send(line)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::lseg_send(lseg)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::macaddr8_send(macaddr8)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::macaddr_send(macaddr)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::multirange_send(anymultirange)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::namesend(name)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::numeric_send(numeric)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::oidsend(oid)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::path_send(path)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::percentile_cont(double precision[] ORDER BY double precision)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [1022]"
+    },
+    {
+      "case": "clickhouse::percentile_disc(double precision ORDER BY anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [20], PostgreSQL [23]"
+    },
+    {
+      "case": "clickhouse::percentile_disc(double precision[] ORDER BY anyelement)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [1007]"
+    },
+    {
+      "case": "clickhouse::pg_input_error_info(value text, type_name text, OUT message text, OUT detail text, OUT hint text, OUT sql_error_code text)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "'(,,,)', PostgreSQL '(\"date/time field value out of range: \"\"2024-02-30\"\"\",,,22008)'"
+    },
+    {
+      "case": "clickhouse::pg_input_is_valid(text, text)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "'t', PostgreSQL 'f'"
+    },
+    {
+      "case": "clickhouse::pg_lsn_send(pg_lsn)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::pg_options_to_table(options_array text[], OUT option_name text, OUT option_value text)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "1 rows, PostgreSQL 0"
+    },
+    {
+      "case": "clickhouse::point_send(point)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::poly_send(polygon)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::range_send(anyrange)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::record_send(record)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::textsend(text)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::tidsend(tid)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::time_in(cstring, oid, integer)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [1083]"
+    },
+    {
+      "case": "clickhouse::time_send(time without time zone)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::timestamp_send(timestamp without time zone)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::timestamptz_send(timestamp with time zone)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::timetz_send(time with time zone)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::ts_lexize(regdictionary, text)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1009]"
+    },
+    {
+      "case": "clickhouse::tsquerysend(tsquery)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::tsvector_to_array(tsvector)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [17], PostgreSQL [1009]"
+    },
+    {
+      "case": "clickhouse::tsvectorsend(tsvector)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::unknownsend(unknown)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::uuid_send(uuid)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::varbit_send(bit varying)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::varcharsend(character varying)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::void_send(void)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    },
+    {
+      "case": "clickhouse::xidsend(xid)",
+      "job": "J1272",
+      "since": "2026-11-13",
+      "reason": "result type oids [25], PostgreSQL [17]"
+    }
+  ]
+}

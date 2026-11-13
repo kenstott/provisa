@@ -311,6 +311,17 @@ def _make_junction_joins(  # REQ-1586
                 else exp.EQ(this=discriminator, expression=exp.Literal.string(via.type_value))
             ),
         )
+    if via.hop_conditions:
+        # REQ-348: a walk's hop, filtered by the walk's inline property map.
+        src_cond = _and_all(
+            [
+                src_cond,
+                *(
+                    exp.EQ(this=via_column(via_alias, column), expression=value.copy())
+                    for column, value in via.hop_conditions
+                ),
+            ]
+        )
     tgt_cond = _and_all(
         [
             exp.EQ(

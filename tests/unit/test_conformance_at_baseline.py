@@ -112,20 +112,38 @@ def test_cypher_tck_fails_on_a_failure_only_at_baseline(tmp_path, at_baseline, m
     assert m.main(argv) == 1
 
 
-def test_the_graphql_gate_fails_on_a_failed_audit_only_at_baseline(tmp_path, at_baseline):
+def test_the_graphql_gate_fails_on_a_failed_audit_its_list_does_not_hold(tmp_path):
+    """GraphQL over HTTP's committed list (scripts/conformance/expected/graphql.json) is empty: a
+    failed audit fails the job, judged by baseline_gate.py as the workflow's last step."""
     m = _load("baseline_gate")
     report = tmp_path / "conformance-graphql.json"
+    failure = {"feature": "graphql-http", "scenario": "MUST x", "reason": "r"}
     report.write_text(
-        json.dumps({"surface": "graphql", "total": 60, "passed": 59, "by_design": 0, "failed": 1})
+        json.dumps(
+            {
+                "surface": "graphql",
+                "total": 60,
+                "passed": 59,
+                "by_design": 0,
+                "failed": 1,
+                "failures": [failure],
+            }
+        )
     )
-    at_baseline("graphql", False)
-    assert m.main(["graphql", str(report)]) == 0
-    at_baseline("graphql", True)
-    assert m.main(["graphql", str(report)]) == 1
+    assert m.main(["cases", "graphql", str(report)]) == 1
     report.write_text(
-        json.dumps({"surface": "graphql", "total": 60, "passed": 60, "by_design": 0, "failed": 0})
+        json.dumps(
+            {
+                "surface": "graphql",
+                "total": 60,
+                "passed": 60,
+                "by_design": 0,
+                "failed": 0,
+                "failures": [],
+            }
+        )
     )
-    assert m.main(["graphql", str(report)]) == 0
+    assert m.main(["cases", "graphql", str(report)]) == 0
 
 
 def test_a_summary_gives_three_counts_and_never_a_by_design_case_as_failed():

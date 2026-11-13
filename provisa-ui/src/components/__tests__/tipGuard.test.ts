@@ -89,7 +89,7 @@ describe("the tooltip rules fail what they are meant to fail", () => {
  */
 const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/GrantPicker.tsx": 1, // a column grant's "combine roles" popover
-  "components/TagControl.tsx": 1, // the tag picker's toggle
+  "components/TagControl.tsx": 2, // the tag picker's toggle; a chip, which opens its detail
   "pages/tables/profile3d/ExportMenu.tsx": 1, // every 3D view's Export (graph-export.cjs)
   "components/admin/GlossaryTab.tsx": 1, // the Ontology page's AI menu (ontology-page.cjs)
   "components/graph3d/OpenAsQuery.tsx": 1, // a graph view's Open as query (open-as-query.cjs)

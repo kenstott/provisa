@@ -1,0 +1,11 @@
+{
+  "total": 3674,
+  "expected": [
+    {
+      "case": "catalog function::pg_notify(text, text)",
+      "job": "J1278",
+      "since": "2026-11-13",
+      "reason": "not served: ERROR:  pg_notify() has no form on duckdb"
+    }
+  ]
+}

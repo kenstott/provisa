@@ -15,11 +15,11 @@ name: Conformance (Flight SQL)
 # requirement and decision) or failed (REQ-2167, amended 2026-10-28); a test whose client driver
 # never sends what it needs is skipped by design in its client group, citing the driver's
 # evidence, and any other test the suite skips is failed unless a by-design group names it. A
-# failing test is data, written to the job summary and to the artifact conformance-flight-sql.json
-# (read by scripts/conformance/fill_docs.py into docs/conformance/flight-sql.md), never a job
-# failure. The job fails only when the Provisa instance did not start or no test ran, until Flight
-# SQL is at its baseline (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a
-# failed test.
+# failing test is written to the job summary and to the artifact conformance-flight-sql.json (read
+# by scripts/conformance/fill_docs.py into docs/conformance/flight-sql.md). The job fails when the
+# Provisa instance did not start or no test ran, and, at its last step
+# (scripts/conformance/baseline_gate.py), when a test fails that
+# scripts/conformance/expected/flight-sql.json does not list or a listed one passes.
 
 on:
   # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
@@ -177,3 +177,11 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/flight-sql.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a filtered or partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases flight-sql "$RUNNER_TEMP/report/conformance-flight-sql.json"
