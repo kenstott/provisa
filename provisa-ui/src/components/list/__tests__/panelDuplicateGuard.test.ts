@@ -34,10 +34,6 @@ const SRC = join(__dirname, "..", "..", "..");
 
 /** Panels that offer Edit in their head but not Duplicate yet, by file, with their page. */
 const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
-  "pages/tables/TableReadView.tsx": "Tables (and Views, which is the Tables page)",
-  "components/relationships/RelationshipDetail.tsx": "Relationships",
-  "pages/metrics/MetricDetailPanel.tsx": "Metrics",
-  "pages/CommandsPage.tsx": "Commands",
   "pages/SecurityPage.tsx": "Security › Roles",
   "pages/security/DerivedRoles.tsx": "Security › Derived roles",
   "pages/security/SecurityRlsPage.tsx": "Security › RLS rules",
