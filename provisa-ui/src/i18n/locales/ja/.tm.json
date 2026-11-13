@@ -10414,5 +10414,7 @@
   "ja/roleRights.json::roleRights.draft": "Draft",
   "ja.json::common.stop": "Stop",
   "ja/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
-  "ja/findTerms.json::findTerms.stopTip": "Stop the scan"
+  "ja/findTerms.json::findTerms.stopTip": "Stop the scan",
+  "ja/mermaidDiagram.json::mermaidDiagram.fitWidth": "Fit width",
+  "ja/mermaidDiagram.json::mermaidDiagram.canvasLabel": "Query plan diagram"
 }
