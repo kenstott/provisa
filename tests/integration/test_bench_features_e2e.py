@@ -42,7 +42,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -517,14 +517,23 @@ def run_cell(
     *,
     role: str | None = None,
     masked: Mapping[str, list[str]] | None = None,
+    sent_as: set[str] | None = None,
+    read: set[str] | None = None,
 ) -> int:
-    """Send ``cell``'s requests and check each; returns how many were sent (0: none spellable)."""
+    """Send ``cell``'s requests and check each; returns how many were sent (0: none spellable).
+    ``sent_as`` / ``read``, when given, collect the roles the requests were sent as and the names
+    of the tables they read (the audit rows of these requests are theirs: ``_audit_since``)."""
     sent = 0
     for spec, query in specs(setup, transport, f"features/{cell}/{transport}"):
         if not spellable(query, transport):
             continue
         # the spec's role is already what it is sent as (RequestGenerator: request_role)
         as_role = role or spec.role
+        if sent_as is not None:
+            sent_as.add(as_role)
+        if read is not None:
+            read.add(spec.table)
+            read.update(step.child_table for step in spec.joins)
         columns, rows, _hit = send(stack, setup, transport, query, as_role, cell)
         if spec.joins:
             check_join(transport, setup, spec, rows, stack.oracle)
@@ -682,17 +691,36 @@ SURFACE = {
 
 
 def _audit_since(
-    stack: Stack, baseline: int, at_least: int, transport: str
+    stack: Stack,
+    baseline: int,
+    at_least: int,
+    transport: str,
+    *,
+    roles: Iterable[str],
+    table_ids: Iterable[str],
 ) -> list[dict[str, Any]]:
-    """The audit rows ``transport``'s surface wrote after ``baseline`` (the statement's role, route
-    and what was enforced on it), waiting for the writer (it inserts in batches) until there are
-    ``at_least``. Only that surface's: the harness's own lookups are audited too, and must not
-    stand in for the requests a test sent."""
+    """The audit rows of the requests a test sent over ``transport`` after ``baseline``: written
+    on its surface, as one of ``roles`` (the X-Provisa-Role values sent: a row of a meta-role
+    belongs when one of its members, or a role it acted as, is one of them), over one of
+    ``table_ids`` (the tables the requests read). Waits for the writer (it inserts in batches)
+    until there are ``at_least``. Every other row is another actor's -- a harness lookup, a
+    scheduled view build, an admin change -- and must not stand in for, or be judged as, the
+    requests a test sent."""
     import sqlalchemy as sa
+
+    from provisa.security.meta_role import members_of
+
+    sent_roles = {part for r in roles for part in r.split(",")}
+    read = {str(t) for t in table_ids}
+
+    def theirs(row: dict[str, Any]) -> bool:
+        acting = {row["role_id"], *members_of(row["role_id"])}
+        acting.update(_enforced(row).get("acting_roles", []))
+        return bool(acting & sent_roles) and bool({str(t) for t in row["table_ids"]} & read)
 
     engine = _audit_engine(stack)
     query = sa.text(
-        f"SELECT id, role_id, route, source, status_code, enforced "
+        f"SELECT id, user_id, role_id, route, source, status_code, table_ids, enforced "
         f"FROM org_{stack.server.org_id}.query_audit_log WHERE id > :b AND source = :s ORDER BY id"
     )
     deadline = time.monotonic() + 60
@@ -703,11 +731,43 @@ def _audit_since(
                     dict(r._mapping)
                     for r in conn.execute(query, {"b": baseline, "s": SURFACE[transport]})
                 ]
-            if len(rows) >= at_least or time.monotonic() > deadline:
-                return rows
+            mine = [r for r in rows if theirs(r)]
+            if len(mine) >= at_least or time.monotonic() > deadline:
+                return mine
             time.sleep(0.5)
     finally:
         engine.dispose()
+
+
+def _described(stack: Stack, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``rows`` as a failure names them: whose each is (user, role, surface), what it read, what
+    was enforced, and its statement (read back through the audit log's own read path: the text is
+    stored encrypted), trimmed to 300 characters."""
+    cred = stack.ep.credential
+    headers = {"X-Provisa-Role": stack.ep.role, **(cred.auth_header() if cred else {})}
+    out = []
+    with httpx.Client(base_url=stack.server.base_url, timeout=60) as client:
+        for r in rows:
+            resp = client.get(f"/admin/audit/queries/{r['id']}/text", headers=headers)
+            statement = (
+                resp.json()["query_text"][:300]
+                if resp.status_code == 200
+                else f"<unreadable: {resp.status_code} {resp.text[:200]}>"
+            )
+            out.append(
+                {
+                    "id": r["id"],
+                    "user_id": r["user_id"],
+                    "role_id": r["role_id"],
+                    "surface": r["source"],
+                    "status_code": r["status_code"],
+                    "route": r["route"],
+                    "table_ids": r["table_ids"],
+                    "enforced": _enforced(r),
+                    "statement": statement,
+                }
+            )
+    return out
 
 
 @pytest.mark.parametrize("transport", ("data_sql", "graphql", "cypher_http", "pgwire"))
@@ -721,12 +781,16 @@ def test_a_route_hint_answers_the_same_rows_and_is_the_route_taken(stack, transp
 
     setup = variant(stack, transport, knobs={"fields": 2}, raw_edit=route)
     baseline = _audit_baseline(stack)
-    sent = run_cell(stack, transport, f"route:{mode}", setup)
+    sent_as: set[str] = set()
+    read: set[str] = set()
+    sent = run_cell(stack, transport, f"route:{mode}", setup, sent_as=sent_as, read=read)
     assert sent > 0
-    routes = {
-        r["route"] for r in _audit_since(stack, baseline, sent, transport) if r["status_code"] < 400
-    }
-    assert routes == {"engine" if mode == "federated" else "direct"}, routes
+    ids = _table_ids(stack, setup)
+    rows = _audit_since(
+        stack, baseline, sent, transport, roles=sent_as, table_ids=[ids[t] for t in read]
+    )
+    routes = {r["route"] for r in rows if r["status_code"] < 400}
+    assert routes == {"engine" if mode == "federated" else "direct"}, _described(stack, rows)
 
 
 @pytest.mark.parametrize("transport", JOIN_TRANSPORTS)
@@ -835,6 +899,7 @@ def test_each_role_answers_and_the_audit_log_names_it(stack, reader, transport):
     setup = variant(stack, transport, knobs={"fields": 2}, raw_edit=roles)
     baseline = _audit_baseline(stack)
     sent_roles = []
+    read: set[str] = set()
     for spec, query in specs(setup, transport, f"features/roles/{transport}", n=6):
         if not spellable(query, transport):
             continue
@@ -842,9 +907,19 @@ def test_each_role_answers_and_the_audit_log_names_it(stack, reader, transport):
         columns, rows, _ = send(stack, setup, transport, query, spec.role, "deployment.roles")
         check_single(transport, table_of(setup, spec), spec, columns, rows, stack.oracle)
         sent_roles.append(spec.role)
+        read.add(spec.table)
     assert set(sent_roles) == {"org_admin", reader}, sent_roles
-    recorded = {r["role_id"] for r in _audit_since(stack, baseline, len(sent_roles), transport)}
-    assert {"org_admin", reader} <= recorded, recorded
+    ids = _table_ids(stack, setup)
+    audited = _audit_since(
+        stack,
+        baseline,
+        len(sent_roles),
+        transport,
+        roles=sent_roles,
+        table_ids=[ids[t] for t in read],
+    )
+    recorded = {r["role_id"] for r in audited}
+    assert {"org_admin", reader} <= recorded, _described(stack, audited)
 
 
 @pytest.mark.parametrize("mode", ["closed_loop", "open_loop"])
@@ -959,22 +1034,41 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
         names = {r["name"] for r in rules["org"]}
         assert {r["name"] for r in governance.BENCH_REDACTION_RULES} <= names, names
     baseline = _audit_baseline(stack)
-    sent = run_cell(stack, transport, f"governance.{governed.knob}", setup, masked=masked)
+    sent_as: set[str] = set()
+    read: set[str] = set()
+    sent = run_cell(
+        stack,
+        transport,
+        f"governance.{governed.knob}",
+        setup,
+        masked=masked,
+        sent_as=sent_as,
+        read=read,
+    )
     assert sent > 0
-    rows = [r for r in _audit_since(stack, baseline, sent, transport) if r["status_code"] < 400]
-    assert len(rows) >= sent, (sent, rows)
-    orders = _table_ids(stack, setup)["orders"]
+    ids = _table_ids(stack, setup)
+    audited = _audit_since(
+        stack, baseline, sent, transport, roles=sent_as, table_ids=[ids[t] for t in read]
+    )
+    rows = [r for r in audited if r["status_code"] < 400]
+    assert len(rows) >= sent, (sent, _described(stack, audited))
+    orders = ids["orders"]
     for row in rows:
         enforced = _enforced(row)
         if governed.knob == "row_rules":
             # the tag rules (``<base column> IS NOT NULL``, two ANDed) are what was enforced
             rule = enforced["row_filters"].get(orders, {}).get("filter", "")
-            assert rule.upper().count("IS NOT NULL") >= 2, (transport, rule)
+            assert rule.upper().count("IS NOT NULL") >= 2, (transport, _described(stack, [row]))
         elif governed.knob == "masks":
             assert masked.get("orders"), governed.report
-            assert set(masked["orders"]) <= set(enforced["masks"].get(orders, {})), enforced
+            assert set(masked["orders"]) <= set(enforced["masks"].get(orders, {})), _described(
+                stack, [row]
+            )
         elif governed.knob == "role_depth":
-            assert row["role_id"] == cm.chain_role(stack.ep.role, 3), (transport, row["role_id"])
+            assert row["role_id"] == cm.chain_role(stack.ep.role, 3), (
+                transport,
+                _described(stack, [row]),
+            )
         elif governed.knob == "derived_roles":
             attrs = [cm.derived_attribute(i) for i in (1, 2)]
             assert all(a in request_role for a in attrs), request_role
@@ -983,7 +1077,7 @@ def test_under_each_governance_knob_every_transport_answers_and_it_is_applied(
                 transport,
                 evaluated,
                 request_role,
-                [(r["id"], r["role_id"], _enforced(r).get("acting_roles")) for r in rows],
+                _described(stack, [row]),
             )
 
 
