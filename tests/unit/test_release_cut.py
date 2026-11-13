@@ -244,11 +244,11 @@ def test_the_release_body_is_the_tags_notes_page():
 _UI_LANES = ("ui-e2e-core.yml", "ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml")
 
 
-def test_every_ui_e2e_lane_runs_on_a_release_branch_and_on_request():
-    # A release branch's pushes run them; no tag and no push to main starts one (REQ-1989).
+def test_every_ui_e2e_lane_runs_on_dispatch_for_a_release_branch():
+    # A dispatch on a release branch runs them; no push, no tag starts one (REQ-1989).
     for name in _UI_LANES:
         on = _on(_load(name))
-        assert on["push"] == {"branches": ["release/**"]}, name
+        assert "push" not in on, name
         assert "workflow_dispatch" in on, name
 
 
@@ -260,15 +260,16 @@ def test_a_ui_lane_not_green_refuses_a_beta_or_production_cut_through_the_gate()
 # -- the release branch ---------------------------------------------------------------------------
 
 _VERSION = "v0.1.0-alpha.480"
-#: Every workflow a push to a release branch starts unconditionally, and the release build.
+#: The branches each workflow's push trigger names; a release branch's push starts only lint and
+#: requirements-ci, the rest run there on dispatch.
 _TRIGGERS = {
-    "cve-audit.yml": ["main", "release/**"],
-    "docker-image.yml": ["main", "release/**"],
+    "cve-audit.yml": ["main"],
+    "docker-image.yml": ["main"],
     "lint.yml": ["main", "release/**"],
     "requirements-ci.yml": ["main", "release/**"],
-    "ui-unit-tests.yml": ["main", "release/**"],
-    "unit-tests.yml": ["main", "release/**"],
-    "devcontainer-smoke.yml": ["main", "release/**", "ci/**"],
+    "ui-unit-tests.yml": ["main"],
+    "unit-tests.yml": ["main"],
+    "devcontainer-smoke.yml": ["main", "ci/**"],
     # Publishes a demo and gates no release.
     "demo-bundles.yml": ["main"],
 }

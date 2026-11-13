@@ -377,6 +377,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "base_tag_id", "tag"),
     # REQ-2208: and its assignments on library documents and their sections.
     _part("reference_document_tags", "base_tag_id", "tag"),
+    # REQ-2208: and the citations of its definition and of its assignments.
+    _part("reference_citations", "tag_id", "tag"),
     # REQ-1384: a row filter on the tag blocks it. Removing the filter with the tag would widen
     # what the filter's role reads; the operator removes the filter first, and says so.
     _dep("rls_rules", "tag_id", "tag", "row_filter", "id"),
@@ -392,6 +394,9 @@ REFERENCES: tuple[Reference, ...] = (
     _part("reference_document_tags", "document_id", "reference_document"),
     # REQ-2179: a scan keeps the document's title and source, so it outlives the document.
     _link("glossary_term_scans", "document_id", "reference_document"),
+    # REQ-2208: a citation keeps the document's title and source, so it outlives the document,
+    # shown as broken.
+    _link("reference_citations", "document_id", "reference_document"),
     # --- to a term scan, and the terms its drafts touch ----------------------------------------
     # REQ-2179: a scan's drafts go with it. A draft outlives a term it matched or became: an
     # accepted draft is the history of how the term came about, and a review record never blocks.

@@ -26,8 +26,6 @@ const THE_CONFIRM = "components/form/DestructiveConfirmButton.tsx";
 const EXCEPTIONS: Record<string, string> = {
   "components/relationships/CandidatesTable.tsx":
     "a row's Reject of a suggested relationship: it opens no confirm and deletes nothing",
-  "components/admin/MaintenanceTab.tsx":
-    "Stop all services: the control itself, in a Danger card, not the confirm of a dialog",
 };
 
 function componentFiles(dir: string): string[] {
