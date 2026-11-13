@@ -15,7 +15,8 @@ xid8 is a 64-bit unsigned number: sqlglot writes it as UBIGINT, a type Trino doe
 old table's forms of it (provisa.transpiler.function_macros) do not parse there. pg_lsn's position
 is a 64-bit unsigned number: the old table's forms of it (provisa.transpiler.pg_forms_types) add
 and compare it as a number past a bigint, which Trino reads as no literal. A range or a multirange
-the statement says of a NULL reaches Trino as a type it does not have. max and min of an inet, and
+the statement says of a NULL reaches Trino as a type it does not have; unnest of a tsvector, held as its text, is
+refused likewise (run 43337203459). max and min of an inet, and
 of an xid8, are refused likewise; every other max and min is Trino's own."""
 
 # Requirements: REQ-2236, REQ-2171
@@ -59,7 +60,6 @@ _RANGES = tuple(
 _OF_A_RANGE = {
     "lower": "The lower bound of a range or multirange.",
     "upper": "The upper bound of a range or multirange.",
-    "unnest": "The ranges of a multirange, as rows.",
 }
 _AGGREGATES = {
     "max": "The largest value of an aggregate.",
@@ -86,6 +86,52 @@ XID8 = Feature(
     ),
 )
 
+_TSVECTOR_ROWS = (
+    "Of a tsvector: refused by name, as its rows are three columns (lexeme, positions, weights) "
+    "of a text the engine holds it as."
+)
+
+#: unnest of a range, multirange or tsvector on Trino, and of a tsvector on ClickHouse (whose
+#: ranges provisa.transpiler.pg_ranges writes as its own arrays before the grid runs).
+UNNEST = Feature(
+    "unnest",
+    FAMILY,
+    "The ranges of a multirange, or the lexemes of a tsvector, as rows.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    **trino.on_trino(
+                        trino.refusing(
+                            "unnest",
+                            "unnest of a range, multirange or tsvector: refused by name.",
+                            trino.of_said((*_RANGES, "tsvector")),
+                        )
+                    ),
+                    "clickhouse": trino.refusing(
+                        "unnest",
+                        "unnest of a tsvector: refused by name.",
+                        trino.of_said(("tsvector",)),
+                    ),
+                },
+            ),
+        ),
+        limitations={
+            **dict.fromkeys(
+                trino.TRINO,
+                (
+                    Limitation(
+                        "Of a range or multirange the statement says: refused by name, as Trino "
+                        f"has no such type. {_TSVECTOR_ROWS} Of anything else, Trino's own."
+                    ),
+                ),
+            ),
+            "clickhouse": (Limitation(f"{_TSVECTOR_ROWS} Of anything else, ClickHouse's own."),),
+        },
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     XID8,
     *(trino.by_name(name, FAMILY, summary, _XID8) for name, summary in _XID8_CALLS.items()),
@@ -102,6 +148,7 @@ FEATURES: tuple[Feature, ...] = (
         )
         for name, summary in _OF_A_RANGE.items()
     ),
+    UNNEST,
     *(
         trino.refused_feature(
             name,

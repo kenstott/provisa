@@ -73,8 +73,9 @@ def said(node: exp.Expr) -> str | None:
     return function_types.argument_type(node)
 
 
-#: PostgreSQL's name of a call sqlglot reads as a node of another name.
-_PG_NAMES = {"exploding_generate_series": "generate_series"}
+#: PostgreSQL's name of a call sqlglot reads as a node of another name: unnest in a select list
+#: is sqlglot's Explode.
+_PG_NAMES = {"exploding_generate_series": "generate_series", "explode": "unnest"}
 
 
 def called(node: exp.Expr) -> tuple[frozenset[str], list[exp.Expr]] | None:
