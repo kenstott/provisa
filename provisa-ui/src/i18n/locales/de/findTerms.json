@@ -67,7 +67,7 @@
     "progressMerging": "Die Funde werden zu Begriffskandidaten zusammengeführt...",
     "progressModel": "Modell: {{model}}",
     "budgetLimited": "Das KI-Budget der Rolle hat einen Aufruf auf {{tokens}} Ausgabe-Token begrenzt, daher kann eine Antwort abgeschnitten sein.",
-    "cancel": "Scan abbrechen",
+    "stopTip": "Den Scan stoppen",
     "failed": "Der Scan wurde beendet: {{error}}",
     "summary": "{{passages}} Passagen gelesen, {{mentions}} Erwähnungen, {{candidates}} Begriffskandidaten.",
     "leftOut": "Ausgelassen: {{count}} keine Ontologiekonzepte (etwa namentlich genannte Personen oder Unternehmen), {{misquoted}} nicht aus ihrer Passage zitiert, {{unresolved}} keinem Begriff zugeordnet.",

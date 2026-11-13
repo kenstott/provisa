@@ -26,6 +26,7 @@ const ACCESS: Record<number, TableAccess> = {
     pgwire: "postgresql://data.example.com:5433/provisa?options=-csearch_path%3Dsales",
     rest: "GET https://data.example.com/data/rest/sales/orders?limit=20",
     mcp: '{\n  "tool": "run_sql"\n}',
+    draft: false,
   },
   12: {
     graphql: "query {\n  s__customers(limit: 10) {\n    id\n  }\n}",
@@ -33,6 +34,7 @@ const ACCESS: Record<number, TableAccess> = {
     pgwire: null,
     rest: null,
     mcp: '{\n  "tool": "run_sql"\n}',
+    draft: true,
   },
 };
 const asked: [number | null, string | null][] = [];
@@ -133,6 +135,16 @@ describe("Your data, right after registering", () => {
     await userEvent.click(screen.getByTestId("your-data-open-query"));
     await waitFor(() =>
       expect(screen.getByTestId("query-page")).toHaveTextContent("s__orders(limit: 10)"),
+    );
+  });
+
+  it("marks the ways to reach a draft as a draft's, and no other table's", async () => {
+    renderStep();
+    expect(screen.queryByTestId("your-data-draft")).toBeNull();
+    await userEvent.click(screen.getByTestId("your-data-tab-customers"));
+    expect(screen.getByTestId("your-data-draft")).toHaveTextContent("Draft");
+    expect(screen.getByTestId("your-data-draft-note")).toHaveTextContent(
+      "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways.",
     );
   });
 

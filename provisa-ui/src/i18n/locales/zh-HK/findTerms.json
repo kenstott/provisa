@@ -67,7 +67,7 @@
     "progressMerging": "正在將尋找結果合併為候選術語...",
     "progressModel": "模型：{{model}}",
     "budgetLimited": "角色的 AI 預算將一次呼叫限制為 {{tokens}} 個輸出權杖，因此回答可能不完整。",
-    "cancel": "取消掃描",
+    "stopTip": "停止掃描",
     "failed": "掃描已停止：{{error}}",
     "summary": "已讀取 {{passages}} 個段落，{{mentions}} 次提及，{{candidates}} 個候選術語。",
     "leftOut": "已排除：{{count}} 個不是本體概念（例如具名的個人或公司），{{misquoted}} 個未從其段落引用，{{unresolved}} 個未歸入術語。",

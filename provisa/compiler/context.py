@@ -753,6 +753,7 @@ def _register_draft_names(  # REQ-1921
             continue
         for said in _names_of_table(si, row, domain_alias_map):
             ctx.draft_names[said] = row["table_name"]
+            ctx.draft_ids[said] = row["id"]
 
 
 def _register_missing_capabilities(  # REQ-1132

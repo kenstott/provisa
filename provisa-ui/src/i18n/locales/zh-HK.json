@@ -2,6 +2,7 @@
   "common": {
     "loading": "載入中...",
     "cancel": "取消",
+    "stop": "停止",
     "save": "儲存",
     "delete": "刪除",
     "confirm": "確認",

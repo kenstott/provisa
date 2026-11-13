@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-31 of the grid's 31 features are native on PostgreSQL and left out.
+132 of the grid's 132 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-6 of the grid's 31 features are native on DuckDB and left out.
+72 of the grid's 132 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -64,7 +64,9 @@ list_transform(list_sort(list_transform($a, _x -&gt; {&#x27;k&#x27;: random(), &
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; len($a) THEN error(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || len($a)) ELSE $a[1:len($a) - $n] END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-unnest(CASE WHEN $reverse THEN range(CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER), 0, -1) ELSE range(1, CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER) + 1) END)</code></pre></td><td></td><td></td><td></td></tr>
+unnest(CASE WHEN $reverse THEN range(CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER), 0, -1) ELSE range(1, CAST(CASE WHEN $d BETWEEN 1 AND CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER) THEN json_array_length(to_json($a), &#x27;$&#x27; || repeat(&#x27;[0]&#x27;, CAST($d - 1 AS INTEGER))) END AS INTEGER) + 1) END)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -72,6 +74,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NOT NULL OR $b IS NOT NULL THEN list_concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 function provisa.transpiler.polyfill.zones.zone_names: The pinned release&#x27;s zones each read now: abbreviation, offset and daylight flag.</code></pre></td><td></td><td></td><td></td></tr>
@@ -90,6 +113,30 @@ function provisa.transpiler.polyfill.zones.posix_zone: A zone&#x27;s text Postgr
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || &#x27;$&#x27; || format(&#x27;{:,}&#x27;, abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) // 100) || &#x27;.&#x27; || printf(&#x27;%02d&#x27;, CAST(abs(CAST(CAST(round(($v) * 100, 0) AS BIGINT) AS HUGEINT)) % 100 AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
@@ -153,11 +200,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-3 of the grid's 31 features are native on Trino and left out.
+1 of the grid's 132 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -210,7 +317,19 @@ shuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; cardinality($a) THEN fail(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || CAST(cardinality($a) AS VARCHAR) || &#x27; &lt;end of postgresql-error&gt;&#x27;) ELSE slice($a, 1, cardinality($a) - $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on trino</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on trino</li><li>Refused: generate_subscripts($a::anyarray, $d::integer). <code>0A000</code> generate_subscripts() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_append($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_prepend($v::anycompatible, $a::anycompatiblearray)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -218,6 +337,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on trino</li></ul></td><td></td><td></td></tr>
@@ -233,6 +373,30 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_lt($a, $b). <code>0A000</code> record_lt() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_le($a, $b). <code>0A000</code> record_le() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_gt($a, $b). <code>0A000</code> record_gt() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_ge($a, $b). <code>0A000</code> record_ge() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_lt($a, $b). <code>0A000</code> record_image_lt() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_le($a, $b). <code>0A000</code> record_image_le() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_gt($a, $b). <code>0A000</code> record_image_gt() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_ge($a, $b). <code>0A000</code> record_image_ge() has no form on trino</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -313,14 +477,140 @@ function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreS
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_lt</strong><br>One text before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_lt: text_lt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_le</strong><br>One text before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_le: text_le: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_gt</strong><br>One text after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_gt: text_gt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_ge</strong><br>One text after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_ge: text_ge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_larger</strong><br>The later of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_larger: text_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_smaller</strong><br>The earlier of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_smaller: text_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharlt</strong><br>One character string before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharlt: bpcharlt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharle</strong><br>One character string before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharle: bpcharle: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchargt</strong><br>One character string after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchargt: bpchargt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharge</strong><br>One character string after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharge: bpcharge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharcmp</strong><br>btree&#x27;s comparison of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharcmp: bpcharcmp: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_larger</strong><br>The later of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_larger: bpchar_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_smaller</strong><br>The earlier of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_smaller: bpchar_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>inetand</strong><br>The bitwise AND of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetand: inetand: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>inetor</strong><br>The bitwise OR of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetor: inetor: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_cmp</strong><br>btree&#x27;s comparison of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_cmp: network_cmp: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_eq</strong><br>Two networks equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_eq: network_eq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ne</strong><br>Two networks not equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ne: network_ne: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_lt</strong><br>One network before another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_lt: network_lt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_le</strong><br>One network before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_le: network_le: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_gt</strong><br>One network after another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_gt: network_gt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ge</strong><br>One network after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ge: network_ge: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_larger</strong><br>The later of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_larger: network_larger: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_smaller</strong><br>The earlier of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_smaller: network_smaller: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_overlap</strong><br>Two networks that hold an address in common.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_overlap: network_overlap: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sub</strong><br>A network strictly within another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sub: network_sub: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_subeq</strong><br>A network within or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_subeq: network_subeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sup</strong><br>A network strictly holding another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sup: network_sup: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_supeq</strong><br>A network holding or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_supeq: network_supeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>broadcast</strong><br>The broadcast address of a network.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_broadcast: broadcast of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>family</strong><br>An address&#x27;s family: 4 or 6.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_family: family of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>host</strong><br>An address&#x27;s text, without its mask length.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_host: host of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network</strong><br>A network&#x27;s address, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network: network of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_or(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(bitwise_not(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 281474976710655), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_and</strong><br>The bitwise AND of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_and: macaddr8_and: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_or</strong><br>The bitwise OR of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_or: macaddr8_or: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_not</strong><br>The bitwise NOT of an EUI-64 MAC address.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_not: macaddr8_not: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_set7bit</strong><br>An EUI-64 MAC address with its 7th bit set.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_set7bit: macaddr8_set7bit: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8</strong><br>A value of type xid8.</td><td><pre><code>function provisa.transpiler.polyfill.unheld.xid8_value: A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid</strong><br>The 32-bit transaction ID of an xid8.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid: xid: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8cmp</strong><br>btree&#x27;s comparison of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8cmp: xid8cmp: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_larger</strong><br>The larger of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_larger: xid8_larger: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_smaller</strong><br>The smaller of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_smaller: xid8_smaller: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_xact_status</strong><br>A transaction&#x27;s commit status.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_xact_status: pg_xact_status: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_pli</strong><br>A WAL position moved forward by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_pli: pg_lsn_pli: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_mii</strong><br>A WAL position moved back by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_mii: pg_lsn_mii: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_pl_pg_lsn</strong><br>A number of bytes added to a WAL position.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_numeric_pl_pg_lsn: numeric_pl_pg_lsn: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_larger</strong><br>The later of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_larger: pg_lsn_larger: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_smaller</strong><br>The earlier of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_smaller: pg_lsn_smaller: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lower</strong><br>The lower bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lower: lower of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>upper</strong><br>The upper bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_upper: upper of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>unnest</strong><br>The ranges of a multirange, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_unnest: unnest of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max</strong><br>The largest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_max: max of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min</strong><br>The smallest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_min: min of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS SMALLINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER)) AS BIGINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) WHEN $n &lt; 0 THEN fail(&#x27;postgresql-error 22003: factorial of a negative number is undefined&lt;end of postgresql-error&gt;&#x27;) WHEN $n &gt; 33 THEN fail(&#x27;postgresql-error 0A000: factorial does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), (_s, _x) -&gt; _s * _x, _s -&gt; _s) END</code></pre></td><td><ul><li>Past 33, whose factorial a decimal of 38 digits does not hold, refused with 0A000, where PostgreSQL answers its exact digits.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.bool_of_an_integer: bool of an integer: its cast to BOOLEAN; of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003: OID out of range&lt;end of postgresql-error&gt;&#x27;) ELSE CAST($v AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y BETWEEN 1 AND 9999 AND $m BETWEEN 1 AND 12 THEN CASE WHEN $d BETWEEN 1 AND day_of_month(last_day_of_month(date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;)))) THEN date_add(&#x27;day&#x27;, $d - 1, date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;))) ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only a year from 1 to 9999 and a day the month has: any other is refused with 0A000, where PostgreSQL answers a year BC or past 9999, and refuses a day the month lacks with 22008.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-3 of the grid's 31 features are native on Presto and left out.
+1 of the grid's 132 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -373,7 +663,19 @@ shuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; cardinality($a) THEN fail(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || CAST(cardinality($a) AS VARCHAR) || &#x27; &lt;end of postgresql-error&gt;&#x27;) ELSE slice($a, 1, cardinality($a) - $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on presto</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on presto</li><li>Refused: generate_subscripts($a::anyarray, $d::integer). <code>0A000</code> generate_subscripts() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_append($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_prepend($v::anycompatible, $a::anycompatiblearray)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -381,6 +683,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on presto</li></ul></td><td></td><td></td></tr>
@@ -396,6 +719,30 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_lt($a, $b). <code>0A000</code> record_lt() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_le($a, $b). <code>0A000</code> record_le() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_gt($a, $b). <code>0A000</code> record_gt() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_ge($a, $b). <code>0A000</code> record_ge() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_lt($a, $b). <code>0A000</code> record_image_lt() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_le($a, $b). <code>0A000</code> record_image_le() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_gt($a, $b). <code>0A000</code> record_image_gt() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_ge($a, $b). <code>0A000</code> record_image_ge() has no form on presto</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -476,14 +823,140 @@ function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreS
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_lt</strong><br>One text before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_lt: text_lt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_le</strong><br>One text before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_le: text_le: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_gt</strong><br>One text after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_gt: text_gt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_ge</strong><br>One text after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_ge: text_ge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_larger</strong><br>The later of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_larger: text_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_smaller</strong><br>The earlier of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_smaller: text_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharlt</strong><br>One character string before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharlt: bpcharlt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharle</strong><br>One character string before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharle: bpcharle: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchargt</strong><br>One character string after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchargt: bpchargt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharge</strong><br>One character string after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharge: bpcharge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharcmp</strong><br>btree&#x27;s comparison of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharcmp: bpcharcmp: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_larger</strong><br>The later of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_larger: bpchar_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_smaller</strong><br>The earlier of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_smaller: bpchar_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>inetand</strong><br>The bitwise AND of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetand: inetand: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>inetor</strong><br>The bitwise OR of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetor: inetor: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_cmp</strong><br>btree&#x27;s comparison of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_cmp: network_cmp: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_eq</strong><br>Two networks equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_eq: network_eq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ne</strong><br>Two networks not equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ne: network_ne: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_lt</strong><br>One network before another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_lt: network_lt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_le</strong><br>One network before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_le: network_le: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_gt</strong><br>One network after another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_gt: network_gt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ge</strong><br>One network after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ge: network_ge: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_larger</strong><br>The later of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_larger: network_larger: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_smaller</strong><br>The earlier of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_smaller: network_smaller: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_overlap</strong><br>Two networks that hold an address in common.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_overlap: network_overlap: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sub</strong><br>A network strictly within another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sub: network_sub: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_subeq</strong><br>A network within or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_subeq: network_subeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sup</strong><br>A network strictly holding another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sup: network_sup: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_supeq</strong><br>A network holding or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_supeq: network_supeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>broadcast</strong><br>The broadcast address of a network.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_broadcast: broadcast of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>family</strong><br>An address&#x27;s family: 4 or 6.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_family: family of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>host</strong><br>An address&#x27;s text, without its mask length.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_host: host of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network</strong><br>A network&#x27;s address, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network: network of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_or(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(bitwise_not(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 281474976710655), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_and</strong><br>The bitwise AND of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_and: macaddr8_and: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_or</strong><br>The bitwise OR of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_or: macaddr8_or: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_not</strong><br>The bitwise NOT of an EUI-64 MAC address.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_not: macaddr8_not: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_set7bit</strong><br>An EUI-64 MAC address with its 7th bit set.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_set7bit: macaddr8_set7bit: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8</strong><br>A value of type xid8.</td><td><pre><code>function provisa.transpiler.polyfill.unheld.xid8_value: A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid</strong><br>The 32-bit transaction ID of an xid8.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid: xid: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8cmp</strong><br>btree&#x27;s comparison of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8cmp: xid8cmp: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_larger</strong><br>The larger of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_larger: xid8_larger: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_smaller</strong><br>The smaller of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_smaller: xid8_smaller: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_xact_status</strong><br>A transaction&#x27;s commit status.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_xact_status: pg_xact_status: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_pli</strong><br>A WAL position moved forward by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_pli: pg_lsn_pli: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_mii</strong><br>A WAL position moved back by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_mii: pg_lsn_mii: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_pl_pg_lsn</strong><br>A number of bytes added to a WAL position.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_numeric_pl_pg_lsn: numeric_pl_pg_lsn: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_larger</strong><br>The later of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_larger: pg_lsn_larger: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_smaller</strong><br>The earlier of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_smaller: pg_lsn_smaller: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lower</strong><br>The lower bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lower: lower of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>upper</strong><br>The upper bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_upper: upper of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>unnest</strong><br>The ranges of a multirange, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_unnest: unnest of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max</strong><br>The largest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_max: max of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min</strong><br>The smallest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_min: min of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS SMALLINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER)) AS BIGINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) WHEN $n &lt; 0 THEN fail(&#x27;postgresql-error 22003: factorial of a negative number is undefined&lt;end of postgresql-error&gt;&#x27;) WHEN $n &gt; 33 THEN fail(&#x27;postgresql-error 0A000: factorial does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), (_s, _x) -&gt; _s * _x, _s -&gt; _s) END</code></pre></td><td><ul><li>Past 33, whose factorial a decimal of 38 digits does not hold, refused with 0A000, where PostgreSQL answers its exact digits.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.bool_of_an_integer: bool of an integer: its cast to BOOLEAN; of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003: OID out of range&lt;end of postgresql-error&gt;&#x27;) ELSE CAST($v AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y BETWEEN 1 AND 9999 AND $m BETWEEN 1 AND 12 THEN CASE WHEN $d BETWEEN 1 AND day_of_month(last_day_of_month(date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;)))) THEN date_add(&#x27;day&#x27;, $d - 1, date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;))) ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only a year from 1 to 9999 and a day the month has: any other is refused with 0A000, where PostgreSQL answers a year BC or past 9999, and refuses a day the month lacks with 22008.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-3 of the grid's 31 features are native on Athena and left out.
+1 of the grid's 132 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -536,7 +1009,19 @@ shuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 CASE WHEN $a IS NULL OR $n IS NULL THEN NULL WHEN $n &lt; 0 OR $n &gt; cardinality($a) THEN fail(&#x27;postgresql-error 2202E: &#x27; || &#x27;number of elements to trim must be between 0 and &#x27; || CAST(cardinality($a) AS VARCHAR) || &#x27; &lt;end of postgresql-error&gt;&#x27;) ELSE slice($a, 1, cardinality($a) - $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on athena</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on athena</li><li>Refused: generate_subscripts($a::anyarray, $d::integer). <code>0A000</code> generate_subscripts() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_append($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
+=&gt;
+ARRAY[$v]</code></pre><pre><code>array_prepend($v::anycompatible, $a::anycompatiblearray)
+=&gt;
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -544,6 +1029,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on athena</li></ul></td><td></td><td></td></tr>
@@ -559,6 +1065,30 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DIS
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_lt($a, $b). <code>0A000</code> record_lt() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_le($a, $b). <code>0A000</code> record_le() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_gt($a, $b). <code>0A000</code> record_gt() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_ge($a, $b). <code>0A000</code> record_ge() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_lt($a, $b). <code>0A000</code> record_image_lt() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_le($a, $b). <code>0A000</code> record_image_le() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_gt($a, $b). <code>0A000</code> record_image_gt() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: record_image_ge($a, $b). <code>0A000</code> record_image_ge() has no form on athena</li><li>Refused by name: Trino&#x27;s comparison of two rows refuses a NULL field, which PostgreSQL orders after any value, and orders a text field by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 CASE WHEN $v IS NULL THEN CAST(NULL AS VARCHAR) ELSE CASE WHEN $v &lt; 0 THEN &#x27;-&#x27; ELSE &#x27;&#x27; END || format(&#x27;$%,.2f&#x27;, abs(CAST($v AS DECIMAL(19,2)))) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -639,14 +1169,140 @@ function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreS
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_lt</strong><br>One text before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_lt: text_lt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_le</strong><br>One text before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_le: text_le: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_gt</strong><br>One text after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_gt: text_gt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_ge</strong><br>One text after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_ge: text_ge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_larger</strong><br>The later of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_larger: text_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>text_smaller</strong><br>The earlier of two texts in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_text_smaller: text_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharlt</strong><br>One character string before another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharlt: bpcharlt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharle</strong><br>One character string before or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharle: bpcharle: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchargt</strong><br>One character string after another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchargt: bpchargt: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharge</strong><br>One character string after or equal to another in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharge: bpcharge: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpcharcmp</strong><br>btree&#x27;s comparison of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpcharcmp: bpcharcmp: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_larger</strong><br>The later of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_larger: bpchar_larger: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bpchar_smaller</strong><br>The earlier of two character strings in the database&#x27;s collation.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_bpchar_smaller: bpchar_smaller: Refused by name: Trino has no collation, and orders text by its code points.</code></pre></td><td><ul><li>Refused by name: Trino has no collation, and orders text by its code points.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_like($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_join(filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT coalesce(contains($x, replace(replace(coalesce(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;)), false)), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>inetand</strong><br>The bitwise AND of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetand: inetand: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>inetor</strong><br>The bitwise OR of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_inetor: inetor: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_cmp</strong><br>btree&#x27;s comparison of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_cmp: network_cmp: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_eq</strong><br>Two networks equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_eq: network_eq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ne</strong><br>Two networks not equal.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ne: network_ne: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_lt</strong><br>One network before another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_lt: network_lt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_le</strong><br>One network before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_le: network_le: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_gt</strong><br>One network after another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_gt: network_gt: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ge</strong><br>One network after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_ge: network_ge: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_larger</strong><br>The later of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_larger: network_larger: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_smaller</strong><br>The earlier of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_smaller: network_smaller: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_overlap</strong><br>Two networks that hold an address in common.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_overlap: network_overlap: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sub</strong><br>A network strictly within another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sub: network_sub: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_subeq</strong><br>A network within or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_subeq: network_subeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sup</strong><br>A network strictly holding another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_sup: network_sup: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_supeq</strong><br>A network holding or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network_supeq: network_supeq: Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form is a subquery Trino reads as correlated.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>broadcast</strong><br>The broadcast address of a network.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_broadcast: broadcast of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>family</strong><br>An address&#x27;s family: 4 or 6.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_family: family of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>host</strong><br>An address&#x27;s text, without its mask length.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_host: host of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network</strong><br>A network&#x27;s address, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network: network of an inet or cidr: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Refused by name: Trino has no inet type, and no form of the call.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_or(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16), from_base(lower(regexp_replace(CAST($b AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+regexp_replace(lpad(to_base(bitwise_and(bitwise_not(from_base(lower(regexp_replace(CAST($a AS VARCHAR), &#x27;[^0-9A-Fa-f]&#x27;, &#x27;&#x27;)), 16)), 281474976710655), 16), 12, &#x27;0&#x27;), &#x27;(..)(..)(..)(..)(..)(..)&#x27;, &#x27;$1:$2:$3:$4:$5:$6&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_and</strong><br>The bitwise AND of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_and: macaddr8_and: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_or</strong><br>The bitwise OR of two EUI-64 MAC addresses.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_or: macaddr8_or: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_not</strong><br>The bitwise NOT of an EUI-64 MAC address.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_not: macaddr8_not: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr8_set7bit</strong><br>An EUI-64 MAC address with its 7th bit set.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_set7bit: macaddr8_set7bit: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8</strong><br>A value of type xid8.</td><td><pre><code>function provisa.transpiler.polyfill.unheld.xid8_value: A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid</strong><br>The 32-bit transaction ID of an xid8.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid: xid: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8cmp</strong><br>btree&#x27;s comparison of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8cmp: xid8cmp: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_larger</strong><br>The larger of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_larger: xid8_larger: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>xid8_smaller</strong><br>The smaller of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8_smaller: xid8_smaller: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_xact_status</strong><br>A transaction&#x27;s commit status.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_xact_status: pg_xact_status: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_pli</strong><br>A WAL position moved forward by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_pli: pg_lsn_pli: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_mii</strong><br>A WAL position moved back by a number of bytes.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_mii: pg_lsn_mii: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_pl_pg_lsn</strong><br>A number of bytes added to a WAL position.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_numeric_pl_pg_lsn: numeric_pl_pg_lsn: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_larger</strong><br>The later of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_larger: pg_lsn_larger: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_lsn_smaller</strong><br>The earlier of two WAL positions.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_lsn_smaller: pg_lsn_smaller: Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</code></pre></td><td><ul><li>Refused by name: a pg_lsn&#x27;s position is a 64-bit unsigned number, past the literals and the integers Trino has.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lower</strong><br>The lower bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lower: lower of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>upper</strong><br>The upper bound of a range or multirange.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_upper: upper of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>unnest</strong><br>The ranges of a multirange, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_unnest: unnest of a range or multirange: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max</strong><br>The largest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_max: max of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min</strong><br>The smallest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_min: min of an inet, cidr or xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS SMALLINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS INTEGER), CAST(bitwise_and($b, 31) AS INTEGER)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+CAST(bitwise_right_shift_arithmetic(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER)) AS BIGINT)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) WHEN $n &lt; 0 THEN fail(&#x27;postgresql-error 22003: factorial of a negative number is undefined&lt;end of postgresql-error&gt;&#x27;) WHEN $n &gt; 33 THEN fail(&#x27;postgresql-error 0A000: factorial does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), (_s, _x) -&gt; _s * _x, _s -&gt; _s) END</code></pre></td><td><ul><li>Past 33, whose factorial a decimal of 38 digits does not hold, refused with 0A000, where PostgreSQL answers its exact digits.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.bool_of_an_integer: bool of an integer: its cast to BOOLEAN; of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003: OID out of range&lt;end of postgresql-error&gt;&#x27;) ELSE CAST($v AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) + CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y BETWEEN 1 AND 9999 AND $m BETWEEN 1 AND 12 THEN CASE WHEN $d BETWEEN 1 AND day_of_month(last_day_of_month(date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;)))) THEN date_add(&#x27;day&#x27;, $d - 1, date_add(&#x27;month&#x27;, $m - 1, date_add(&#x27;year&#x27;, $y - 1, DATE &#x27;0001-01-01&#x27;))) ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END ELSE fail(&#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) END</code></pre></td><td><ul><li>Only a year from 1 to 9999 and a day the month has: any other is refused with 0A000, where PostgreSQL answers a year BC or past 9999, and refuses a day the month lacks with 22008.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>string_agg</strong><br>The values of an aggregate joined by a delimiter.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_string_agg: string_agg of bytea or of a delimiter that is no constant: refused by name.</code></pre></td><td><ul><li>Of bytea, or of a delimiter that is no constant text, refused by name: Trino&#x27;s listagg takes a constant separator and no bytes.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>json_object</strong><br>A JSON object of arrays of keys and values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_json_object: json_object of arrays: refused by name.</code></pre></td><td><ul><li>Of arrays, refused by name: Trino builds an object of text keys only.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: Trino has no form of it.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-1 of the grid's 31 features are native on ClickHouse and left out.
+67 of the grid's 132 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -697,7 +1353,9 @@ arrayShuffle($a)</code></pre></td><td></td><td></td><td></td></tr>
 arraySlice($a, 1 + throwIf($n IS NULL OR $n &lt; 0 OR $n &gt; length($a), &#x27;postgresql-error 0A000: trim_array does not read this value &lt;end of postgresql-error&gt;&#x27;), length($a) - $n)</code></pre></td><td><ul><li>An out-of-range count is refused with 0A000, not PostgreSQL&#x27;s 2202E and its message. <code>0A000</code> trim_array does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
 =&gt;
 [$v]</code></pre></td><td><ul><li>Only a NULL array is written: ClickHouse has no array_append, so a call on an array that is not NULL fails with ClickHouse&#x27;s own error.</li></ul></td><td></td><td></td></tr>
@@ -711,6 +1369,27 @@ $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblea
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
@@ -726,6 +1405,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -809,11 +1512,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE if(throwIf(coalesce(NOT match($v, &#x27;\\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\\z&#x27;), false), &#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, arrayStringConcat(arrayFilter(_t -&gt; NOT has($x, replace(replace(extract(_t, &#x27;\\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\\\&#x27;, &#x27;\\&#x27;)), extractAll(ifNull($v, &#x27;&#x27;), &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;)), &#x27; &#x27;), NULL) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-5 of the grid's 31 features are native on Snowflake and left out.
+71 of the grid's 132 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -864,7 +1627,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -872,6 +1637,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on snowflake</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on snowflake</li></ul></td><td></td><td></td></tr>
@@ -887,6 +1673,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which snowflake neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -964,11 +1774,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-5 of the grid's 31 features are native on Databricks and left out.
+71 of the grid's 132 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1019,7 +1889,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on databricks</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on databricks</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on databricks</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1027,6 +1899,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on databricks</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on databricks</li></ul></td><td></td><td></td></tr>
@@ -1042,6 +1935,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which databricks neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1119,11 +2036,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-5 of the grid's 31 features are native on BigQuery and left out.
+71 of the grid's 132 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1174,7 +2151,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1182,6 +2161,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on bigquery</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on bigquery</li></ul></td><td></td><td></td></tr>
@@ -1197,6 +2197,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which bigquery neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1274,11 +2298,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-5 of the grid's 31 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+71 of the grid's 132 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1329,7 +2413,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on tsql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on tsql</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on tsql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1337,6 +2423,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on tsql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on tsql</li></ul></td><td></td><td></td></tr>
@@ -1352,6 +2459,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which tsql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1429,11 +2560,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-5 of the grid's 31 features are native on Redshift and left out.
+71 of the grid's 132 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1484,7 +2675,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on redshift</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1492,6 +2685,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on redshift</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on redshift</li></ul></td><td></td><td></td></tr>
@@ -1507,6 +2721,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which redshift neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1584,11 +2822,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-5 of the grid's 31 features are native on MySQL and left out.
+71 of the grid's 132 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1639,7 +2937,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on mysql</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1647,6 +2947,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -1662,6 +2983,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which mysql neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1739,11 +3084,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-5 of the grid's 31 features are native on SingleStore and left out.
+71 of the grid's 132 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1794,7 +3199,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1802,6 +3209,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on singlestore</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on singlestore</li></ul></td><td></td><td></td></tr>
@@ -1817,6 +3245,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which singlestore neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1894,11 +3346,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-5 of the grid's 31 features are native on SQLite and left out.
+71 of the grid's 132 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1949,7 +3461,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -1957,6 +3471,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on sqlite</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on sqlite</li></ul></td><td></td><td></td></tr>
@@ -1972,6 +3507,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which sqlite neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -2049,11 +3608,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-5 of the grid's 31 features are native on Oracle and left out.
+71 of the grid's 132 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2104,7 +3723,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on oracle</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on oracle</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on oracle</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -2112,6 +3733,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on oracle</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on oracle</li></ul></td><td></td><td></td></tr>
@@ -2127,6 +3769,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which oracle neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -2204,11 +3870,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-5 of the grid's 31 features are native on Hive and left out.
+71 of the grid's 132 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2259,7 +3985,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on hive</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on hive</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on hive</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -2267,6 +3995,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on hive</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on hive</li></ul></td><td></td><td></td></tr>
@@ -2282,6 +4031,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which hive neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -2359,11 +4132,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-5 of the grid's 31 features are native on Exasol and left out.
+71 of the grid's 132 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2414,7 +4247,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on exasol</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on exasol</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on exasol</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -2422,6 +4257,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on exasol</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on exasol</li></ul></td><td></td><td></td></tr>
@@ -2437,6 +4293,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which exasol neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -2514,11 +4394,71 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-5 of the grid's 31 features are native on Druid and left out.
+71 of the grid's 132 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2569,7 +4509,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: trim_array($a::anyarray, $n::integer). <code>0A000</code> trim_array() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_subscripts</strong><br>The subscripts of a dimension, as rows, in either order.</td><td><pre><code>generate_subscripts($a::anyarray, $d::integer, $reverse::boolean)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on druid</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -2577,6 +4519,27 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on druid</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
+=&gt;
+$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
+=&gt;
+$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
+=&gt;
+CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on druid</li></ul></td><td></td><td></td></tr>
@@ -2592,6 +4555,30 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
 ($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
+=&gt;
+($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
+=&gt;
+($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
+=&gt;
+($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
+=&gt;
+($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which druid neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -2669,4 +4656,64 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 &#x27;pg_c_utf8&#x27;</code></pre><pre><code>pg_collation_for($v COLLATE $c)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_or</strong><br>The bitwise OR of two MAC addresses.</td><td><pre><code>macaddr_or($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>macaddr_not</strong><br>The bitwise NOT of a MAC address.</td><td><pre><code>macaddr_not($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int4_sum($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4shr</strong><br>A integer shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int4shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8shr</strong><br>A bigint shifted right, its sign kept, its count taken modulo 64.</td><td><pre><code>int8shr($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
