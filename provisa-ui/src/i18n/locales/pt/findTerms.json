@@ -67,7 +67,7 @@
     "progressMerging": "Combinando o que foi encontrado em termos candidatos...",
     "progressModel": "Modelo: {{model}}",
     "budgetLimited": "O orçamento de IA do papel limitou uma chamada a {{tokens}} tokens de saída, portanto uma resposta pode estar incompleta.",
-    "cancel": "Cancelar análise",
+    "stopTip": "Parar a análise",
     "failed": "A análise parou: {{error}}",
     "summary": "{{passages}} trechos lidos, {{mentions}} menções, {{candidates}} termos candidatos.",
     "leftOut": "Deixados de fora: {{count}} que não são conceitos da ontologia (como pessoas ou empresas nomeadas), {{misquoted}} não citados do seu trecho, {{unresolved}} não resolvidos em um termo.",

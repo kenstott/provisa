@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "נעקב אוטומטית מאילוץ FK",
-    "fkBadge": "FK",
+    "fkBadge": "מ-FK",
+    "fkBadgeTitle": "נוצר ממפתח זר במקור",
     "yes": "כן",
     "no": "לא",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "מטריאליזציה",
     "excludeFromCypher": "החרגה מ-Cypher",
     "sqlName": "שם SQL",
-    "autoTracked": "מעקב אוטומטי",
     "cardinalityWarning": "אזהרה: אם ה-JOIN הזה מחזיר יותר משורה אחת לכל הורה, רק הערך הראשון ישמש.",
     "toggleDetails": "הצגה/הסתרה של פרטי הקשר",
     "junctionBadge": "מאפ'",

@@ -335,6 +335,17 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     if not request.query:
         raise ApiError(400, "data.query_required", "query is required")
 
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a query whose root fields name drafts served to
+    # its role (table registration in their domains) is read through the drafts' own view of the state, as a statement naming
+    # one is (admin/table_read): every step below reads that view -- its surface with the drafts
+    # in its context, their routes, caches that keep nothing.
+    from provisa.api.admin.table_read import drafts_a_document_reads, reading_drafts
+
+    _drafts = drafts_a_document_reads(state, request.query, role_id)
+    if _drafts:
+        state = await reading_drafts(state, role_id, _drafts)
+        surface = state.surfaces[role_id]
+
     # Legacy comment hints (kept for backwards compat)
     _legacy_hints = extract_graphql_hints(request.query)
 

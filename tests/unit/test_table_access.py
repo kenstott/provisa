@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.metadata_export.model import ServingEndpoints
+from provisa.api.role_surface import RoleSurface
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 
 _ORDERS = TableMeta(
@@ -53,7 +54,10 @@ def served(monkeypatch):
         }
 
     monkeypatch.setattr("provisa.api.mcp.tools.graphql_field_names", _names)
-    state = SimpleNamespace(contexts={"analyst": CompilationContext(tables={"s__orders": _ORDERS})})
+    ctx = CompilationContext(tables={"s__orders": _ORDERS})
+    state = SimpleNamespace(
+        contexts={"analyst": ctx}, surfaces={"analyst": RoleSurface(context=ctx)}
+    )
     return state, asked
 
 
@@ -75,6 +79,7 @@ async def test_each_access_method_names_the_table_as_the_role_is_served_it(serve
     access = await table_access(state, "analyst", 7, _endpoints())
 
     assert asked == [("analyst", "sales_ops", "orders")]
+    assert access.draft is False  # REQ-1921: a table in service
     assert access.graphql == "query {\n  s__orders(limit: 10) {\n    id\n    placedAt\n  }\n}"
     assert access.sql == 'SELECT * FROM "sales_ops"."orders" LIMIT 10'
     assert access.pgwire == (

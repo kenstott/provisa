@@ -38,6 +38,9 @@
     "classTerm": "Zeilen sind Instanzen von",
     "noClassTerm": "Kein Begriff",
     "classTermUnreadable": "Der Begriff konnte nicht gelesen werden: {{error}}",
+    "classTermNoModel": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können die Tabellen des Modells nicht lesen.",
+    "classTermNoEntry": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können den eigenen Eintrag dieser Tabelle im Modell nicht lesen.",
+    "classTermNoField": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können nicht lesen, von welchem Begriff die Zeilen einer Tabelle Instanzen sind.",
     "access": "Zugriff"
   }
 }
