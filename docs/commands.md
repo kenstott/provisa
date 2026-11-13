@@ -340,6 +340,14 @@ The command opens and commits its own transaction. A `BEGIN` or `COMMIT` a clien
 
 Provisa does not parse native SQL to decide what it does. The command is a query or a mutation because you declare it so, and the table it writes is the one you name in `writes_table`. After a call to a command that names one, Provisa treats the call as a write to that table, as it does for a [remote source's write operation](#writes-table). The table's cached responses are dropped and the materialized views over it are marked stale.
 
+### A query reads and a mutation writes
+
+A command declared as a query runs in a read-only transaction, so the database itself stops it from writing. If its text holds an `INSERT`, `UPDATE`, `DELETE` or any other write, PostgreSQL refuses it with `read_only_sql_transaction` (SQLSTATE 25006). The call fails with that error and nothing is committed. The read-only setting ends with the transaction, so the next call on the same connection starts read-write. A command declared as a mutation runs read-write.
+
+### A writing command is called on its own
+
+A native SQL command declared as a mutation cannot be composed in a larger SQL statement, such as a join or a subquery, or in the definition of a view or a materialized view. It would write each time the statement is read or the view is refreshed, so Provisa refuses the statement or the definition and names the command. Call it by itself, as in `SELECT * FROM add_pair(10, 11, 'north')`. A native SQL command declared as a query can still be composed.
+
 ### Governance
 
 The call is governed as a stored procedure call is. The role must hold `command_execution`, be assigned the command and reach its domain. With **Requires approval** on, the deployment's approval hook decides each call. Provisa does not check the statements one by one.

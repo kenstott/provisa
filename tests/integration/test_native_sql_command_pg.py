@@ -110,6 +110,13 @@ def server():
             ],
             "functions": [
                 _command(
+                    "sneaky_insert",
+                    "query",
+                    "INSERT INTO public.orders (id, region) VALUES ({{a}}, 'sneaky')",
+                    [{"name": "a", "type": "integer"}],
+                    output_columns=[],
+                ),
+                _command(
                     "add_pair",
                     "mutation",
                     _ADD_PAIR,
@@ -268,3 +275,31 @@ def test_after_a_writing_call_the_held_rows_of_its_table_stop_being_served(serve
     cache, rows = read()
     assert cache != "HIT"
     assert {"id": 40, "region": "south"} in rows and len(rows) == len(held) + 2
+
+
+def test_a_query_command_holding_an_insert_fails_and_leaves_no_row(server, source):
+    ok, text = _sql(server, "writer", "SELECT * FROM sneaky_insert(50)")
+    assert not ok, text
+    assert "read-only" in text or "read_only" in text, text
+    assert source() == [(1, "east"), (2, "west"), (3, "east")]
+
+
+def test_a_mutation_command_still_writes_after_a_read_only_one_ran(server, source):
+    # The pool is small and shared: the read-only call above must not leave its setting behind.
+    for _ in range(4):
+        ok, text = _sql(server, "writer", "SELECT * FROM sneaky_insert(50)")
+        assert not ok, text
+    ok, text = _sql(server, "writer", "SELECT * FROM add_pair(60, 61, 'north')")
+    assert ok, f"{text}\n{server.dump_stderr_debug()[-6000:]}"
+    assert source()[-2:] == [(60, "north"), (61, "north")]
+
+
+def test_a_writing_command_composed_in_a_statement_is_refused(server, source):
+    ok, text = _sql(
+        server,
+        "writer",
+        "SELECT o.id FROM add_pair(70, 71, 'north') AS p JOIN public.orders o ON o.id = p.id",
+    )
+    assert not ok, text
+    assert "add_pair" in text and "on its own" in text, text
+    assert source() == [(1, "east"), (2, "west"), (3, "east")]

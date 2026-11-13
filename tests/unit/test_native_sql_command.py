@@ -174,9 +174,11 @@ def test_check_on_source_names_the_command():
 class _Driver:
     def __init__(self) -> None:
         self.ran: list[tuple[str, dict]] = []
+        self.read_only: bool | None = None
 
-    async def execute_in_one_transaction(self, statements):
+    async def execute_in_one_transaction(self, statements, *, read_only=False):
         self.ran = statements
+        self.read_only = read_only
         return QueryResult(
             rows=[(7, "it's; DROP TABLE app.notes; --")],
             column_names=["id", "body"],
@@ -259,3 +261,61 @@ async def test_a_declared_output_the_rows_do_not_match_fails_the_call():
     with pytest.raises(HTTPException) as refused:
         await dispatch_function(fn, {"id": 7, "body": "x"}, _state(_Driver()), "editor")
     assert refused.value.status_code == 422
+
+
+async def test_a_query_runs_in_a_read_only_transaction_and_a_mutation_read_write():
+    from provisa.executor.function_dispatch import dispatch_function
+
+    reader = _Driver()
+    fn = _command(
+        kind="query",
+        binding={"sql": "SELECT id, body FROM app.notes WHERE id = {{id}}"},
+        arguments=[FunctionArgument(name="id", type="integer")],
+    ).model_dump()
+    await dispatch_function(fn, {"id": 1}, _state(reader), "editor")
+    assert reader.read_only is True
+
+    writer = _Driver()
+    await dispatch_function(
+        _command().model_dump(), {"id": 7, "body": "x"}, _state(writer), "editor"
+    )
+    assert writer.read_only is False
+
+
+# --- a writing native SQL command is called on its own -----------------------------------------
+
+
+def _commands(kind: str) -> dict:
+    return {"add_note": _command(kind=kind).model_dump()}
+
+
+def test_a_writing_native_sql_command_is_refused_inside_a_larger_statement():
+    import sqlglot
+
+    from provisa.pgwire._pipeline import _refuse_composed_mutators
+
+    tree = sqlglot.parse_one(
+        "SELECT n.id FROM add_note(1, 'x') AS n JOIN other o ON o.id = n.id", read="postgres"
+    )
+    with pytest.raises(PermissionError, match="add_note.*writes to its source"):
+        _refuse_composed_mutators(tree, _commands("mutation"))
+    _refuse_composed_mutators(tree, _commands("query"))
+
+
+def test_a_writing_native_sql_command_is_refused_in_a_view_definition():
+    from provisa.executor.source_operation import refuse_writes_in_definition
+
+    sql = "SELECT * FROM add_note(1, 'x') AS n"
+    with pytest.raises(ValueError, match="add_note.*writes to its source"):
+        refuse_writes_in_definition(sql, _commands("mutation"), "view 'v'")
+    refuse_writes_in_definition(sql, _commands("query"), "view 'v'")
+
+
+async def test_a_direct_call_of_a_writing_native_sql_command_still_runs():
+    from provisa.executor.function_dispatch import dispatch_function
+
+    driver = _Driver()
+    rows = await dispatch_function(
+        _command().model_dump(), {"id": 7, "body": "x"}, _state(driver), "editor"
+    )
+    assert rows and len(driver.ran) == 2

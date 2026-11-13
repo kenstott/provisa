@@ -14,8 +14,9 @@ The text, checked when the command was saved (:mod:`provisa.core.native_sql`), r
 source's direct connection, never through the engine or the semantic pipeline. A call converts each
 argument to its declared type and binds every occurrence as a driver parameter, so a value is never
 part of the text. The statements run in one native transaction: all commit or none does. The call
-answers the last statement's rows; it is governed at the call as a source procedure is
-(``api/data/action_exec.invoke_command``).
+answers the last statement's rows. A command declared as a query runs in a READ ONLY transaction,
+so the source refuses a write in its text; one declared as a mutation runs read-write. The call
+is governed as a source procedure is (``api/data/action_exec.invoke_command``).
 
 The run is written per source type: :data:`_RUNNERS` holds one entry per type whose direct driver
 runs the statements, beside its dialect in ``core.native_sql.DIALECTS``.
@@ -30,14 +31,16 @@ from typing import Any
 
 from provisa.api.errors import ApiError
 from provisa.core.native_sql import NativeStatement, check_on_source
+from provisa.security.mutation_authz import MutationKind, classify_kind
 
 
 async def _run_postgresql(
-    driver: Any, statements: list[NativeStatement], values: dict[str, Any]
+    driver: Any, statements: list[NativeStatement], values: dict[str, Any], read_only: bool
 ) -> Any:
     """The statements on a PostgreSQL source's direct connection, in one transaction. Each
     argument is a psycopg named parameter, sent to the server as a bound value; a ``%`` of the
-    text is doubled, as psycopg reads it."""
+    text is doubled, as psycopg reads it. A ``read_only`` run is a READ ONLY transaction: the
+    database refuses a write in it."""
     rendered: list[tuple[str, dict[str, Any]]] = []
     for statement in statements:
         pieces = [statement.texts[0].replace("%", "%%")]
@@ -46,12 +49,14 @@ async def _run_postgresql(
             pieces.append(text.replace("%", "%%"))
         params = {f"a_{argument}": values[argument] for argument in statement.names}
         rendered.append(("".join(pieces), params))
-    return await driver.execute_in_one_transaction(rendered)
+    return await driver.execute_in_one_transaction(rendered, read_only=read_only)
 
 
 # How native SQL runs on each source type: the statements in one transaction on the source's
 # direct driver, answering the last statement's result.
-_RUNNERS: dict[str, Callable[[Any, list[NativeStatement], dict[str, Any]], Awaitable[Any]]] = {
+_RUNNERS: dict[
+    str, Callable[[Any, list[NativeStatement], dict[str, Any], bool], Awaitable[Any]]
+] = {
     "postgresql": _run_postgresql,
 }
 
@@ -80,5 +85,10 @@ async def run(state: Any, fn: dict, args: dict) -> list[dict]:
         a["name"]: convert(args.get(a["name"]), a["type"], table=name, parameter=a["name"])
         for a in declared
     }
-    result = await _RUNNERS[source_type](state.source_pools.get(source_id), statements, values)
+    # A command declared as a query reads: its transaction is READ ONLY, so the source itself
+    # stops a write in its text. One declared as a mutation runs read-write.
+    reads = classify_kind(fn.get("kind")) is MutationKind.READ
+    result = await _RUNNERS[source_type](
+        state.source_pools.get(source_id), statements, values, reads
+    )
     return result_records(result)

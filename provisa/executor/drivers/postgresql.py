@@ -550,14 +550,20 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
 
     # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
     async def execute_in_one_transaction(
-        self, statements: list[tuple[str, dict[str, Any]]]
+        self, statements: list[tuple[str, dict[str, Any]]], *, read_only: bool = False
     ) -> QueryResult:  # REQ-1988
         """Each statement, in psycopg's named-parameter form with its bound values, in order in
         one transaction on one connection: all commit or, on any failure, none does. Answers the
-        last statement's result."""
+        last statement's result.
+
+        ``read_only`` makes the database itself refuse a write (SQLSTATE 25006): the transaction's
+        first statement is ``SET TRANSACTION READ ONLY``, which lasts to its end only, so the
+        pooled connection goes back read-write."""
         if not statements:
             raise ValueError("no statement to run")
         with self._borrow() as conn, conn.transaction():
+            if read_only:
+                conn.execute(_q("SET TRANSACTION READ ONLY"))
             if current_zone.get() is not None:
                 _tell_zone(conn, statements[0][0])
             with conn.cursor() as cur:
