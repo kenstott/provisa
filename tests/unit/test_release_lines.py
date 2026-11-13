@@ -619,25 +619,31 @@ def test_main_runs_the_fast_checks_and_publishes_the_demos_and_the_site():
     }
 
 
-_PUSH_CHECKS = {
-    "unit-tests.yml",
-    "ui-unit-tests.yml",
-    "lint.yml",
-    "requirements-ci.yml",
-    "cve-audit.yml",
-    "docker-image.yml",
-    "devcontainer-smoke.yml",
-}
+_PUSH_CHECKS = {"lint.yml", "requirements-ci.yml"}
+
+#: What a push to a release branch no longer starts: the lander runs the unit suites on the merged
+#: sha before it pushes, and the full suites a push started were superseded by the next landing.
+_DISPATCHED_FOR_A_RELEASE = (
+    _FULL_SUITES
+    | {"unit-tests.yml", "ui-unit-tests.yml", "cve-audit.yml", "docker-image.yml"}
+    | {"devcontainer-smoke.yml"}
+)
 
 
-def test_a_release_branch_runs_every_suite_that_gates_it():
-    # Integration, e2e and conformance, the unit suites, and what a release needs besides.
-    assert _pushed_on("release/**") == _PUSH_CHECKS | _FULL_SUITES
+def test_a_push_to_a_release_branch_runs_only_lint_and_the_requirements_check():
+    assert _pushed_on("release/**") == _PUSH_CHECKS
+
+
+@pytest.mark.parametrize("name", sorted(_DISPATCHED_FOR_A_RELEASE))
+def test_a_suite_runs_on_a_release_branch_only_when_dispatched(name):
+    triggers = _on(_load(name))
+    assert "release/**" not in ((triggers.get("push") or {}).get("branches") or []), name
+    assert "workflow_dispatch" in triggers, name
 
 
 @pytest.mark.parametrize("name", sorted(_FULL_SUITES))
 def test_a_full_suite_is_not_started_by_a_push_to_main(name):
-    assert _on(_load(name))["push"]["branches"] == ["release/**"]
+    assert "push" not in _on(_load(name))
 
 
 @pytest.mark.parametrize("name", ["demo-bundles.yml", "docs.yml"])
