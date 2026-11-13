@@ -54,7 +54,11 @@ function IconChip({
         role="img"
         aria-label={word}
         data-testid={testId}
-        style={{ display: "inline-flex", alignItems: "center", color: `var(--mantine-color-${colour}-6)` }}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          color: `var(--mantine-color-${colour}-6)`,
+        }}
         {...data}
       >
         <Icon size={ICON_SIZE} aria-hidden />
@@ -68,9 +72,13 @@ export function TermStatusBadge({
   status,
   testId,
   iconOnly = false,
+  draftHelp,
 }: {
   status: TermStatus;
   testId?: string;
+  /** What a draft's tip says in place of the general draft help (the term's panel: which test it
+   * still fails). */
+  draftHelp?: string;
   /** A draft as its icon alone (the term list); other statuses keep their word. */
   iconOnly?: boolean;
 }) {
@@ -90,7 +98,7 @@ export function TermStatusBadge({
     <StatusBadge
       status={status}
       label={t(`glossaryTab.status_${status}`)}
-      help={status === "draft" ? t("glossaryTab.draftHelp") : undefined}
+      help={status === "draft" ? (draftHelp ?? t("glossaryTab.draftHelp")) : undefined}
       testId={testId}
     />
   );
