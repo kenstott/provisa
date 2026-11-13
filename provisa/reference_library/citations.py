@@ -40,9 +40,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import ColumnElement, and_, case, delete, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 
 from provisa.core.schema_org import reference_citations as citations_t
+from provisa.core.schema_org import reference_passages as passages_t
 from provisa.reference_library import library, store
 
 if TYPE_CHECKING:
@@ -108,24 +110,48 @@ class Citation:
 
 
 def text_hash(text: str) -> str:
-    """The hash a citation keeps of a section's text, however its whitespace is laid out."""
+    """The hash a citation keeps of a section's text, however its whitespace is laid out, stated
+    over a Python string: :func:`section_sha256` states the same over the stored passages, and is
+    what a citation records and is read against."""
     return hashlib.sha256(" ".join(text.split()).encode()).hexdigest()
 
 
-def _section_text(
-    passages: Sequence[tuple[int, str | None, int | None, str]],
-    heading: str | None,
-    page: int | None,
-) -> str | None:
-    """The text of the section named by ``heading`` or ``page`` (the whole document when neither),
-    from the document's passages in order; None when the document holds no such section."""
-    if heading is not None:
-        held = [p[3] for p in passages if p[1] == heading]
-    elif page is not None:
-        held = [p[3] for p in passages if p[2] == page]
-    else:
-        held = [p[3] for p in passages]
-    return "\n".join(held) if held else None
+def section_sha256(
+    document_id: ColumnElement, heading: ColumnElement, page: ColumnElement
+) -> ColumnElement:
+    """The hash of the text of the section named by ``heading`` or ``page`` (the whole document
+    when neither), from the document's passages in order, its whitespace laid out as one space;
+    NULL when the document holds no such section. One SQL expression, so a citation is recorded
+    and read by the same statement wherever it is read: here, and in the tags report's relation
+    (provisa.api._meta_views)."""
+    p = passages_t.alias("cited_passage")
+    named = or_(
+        and_(heading.is_not(None), p.c.section == heading),
+        and_(heading.is_(None), page.is_not(None), p.c.page == page),
+        and_(heading.is_(None), page.is_(None)),
+    )
+    joined = func.string_agg(p.c.text, aggregate_order_by(literal(" "), p.c.ordinal))
+    laid_out = func.btrim(func.regexp_replace(joined, r"\s+", " ", "g"))
+    digest = func.encode(func.sha256(func.convert_to(laid_out, "UTF8")), "hex")
+    return select(digest).where(p.c.document_id == document_id, named).scalar_subquery()
+
+
+def citation_state(c) -> ColumnElement:  # noqa: ANN001 - a reference_citations table or alias
+    """A citation's state against its document's passages as held now: :data:`BROKEN` when the
+    document or the section is gone, :data:`DRIFTED` when the section's text changed since it was
+    cited, else :data:`CURRENT`."""
+    held = section_sha256(c.c.document_id, c.c.section_heading, c.c.section_page)
+    return case(
+        (c.c.document_id.is_(None), BROKEN),
+        (held.is_(None), BROKEN),
+        (held != c.c.text_sha256, DRIFTED),
+        else_=CURRENT,
+    )
+
+
+def citation_states():
+    """Every citation with its state (column ``state``): the one reading of a citation's state."""
+    return select(citations_t, citation_state(citations_t).label("state"))
 
 
 async def cite(
@@ -146,10 +172,18 @@ async def cite(
         library.require_ready(document)
     except library.LibraryRefused as exc:
         raise CitationRefused(str(exc)) from None
-    text = _section_text(
-        await store.passages(conn, place.document_id), place.section_heading, place.section_page
-    )
-    if text is None:
+    held = (
+        await conn.execute_core(
+            select(
+                section_sha256(
+                    literal(place.document_id),
+                    literal(place.section_heading, type_=passages_t.c.section.type),
+                    literal(place.section_page, type_=passages_t.c.page.type),
+                )
+            )
+        )
+    ).scalar_one()
+    if held is None:
         named = (
             f"heading {place.section_heading!r}"
             if place.section_heading is not None
@@ -162,7 +196,7 @@ async def cite(
         "document_source": document.source,
         "section_heading": place.section_heading,
         "section_page": place.section_page,
-        "text_sha256": text_hash(text),
+        "text_sha256": held,
         "cited_by": cited_by,
     }
     await conn.upsert(
@@ -215,40 +249,25 @@ async def uncite_all(
     )
 
 
-async def _with_state(conn: Connection, rows: Sequence) -> list[Citation]:
-    """Each citation row with its state, against its document's passages as held now."""
-    held: dict[int, Sequence[tuple[int, str | None, int | None, str]]] = {}
-    for document_id in {r.document_id for r in rows if r.document_id is not None}:
-        held[document_id] = await store.passages(conn, document_id)
-    out = []
-    for r in rows:
-        if r.document_id is None:
-            state = BROKEN
-        else:
-            text = _section_text(held[r.document_id], r.section_heading, r.section_page)
-            if text is None:
-                state = BROKEN
-            elif text_hash(text) != r.text_sha256:
-                state = DRIFTED
-            else:
-                state = CURRENT
-        out.append(
-            Citation(
-                citer_kind=r.citer_kind,
-                tag_id=r.tag_id,
-                object_key=r.object_key,
-                document_id=r.document_id,
-                document_title=r.document_title,
-                document_source=r.document_source,
-                section_heading=r.section_heading,
-                section_page=r.section_page,
-                text_sha256=r.text_sha256,
-                cited_by=r.cited_by,
-                cited_at=r.cited_at,
-                state=state,
-            )
+def _with_state(rows: Sequence) -> list[Citation]:
+    """Each citation row of :func:`citation_states`, its state read by that statement."""
+    return [
+        Citation(
+            citer_kind=r.citer_kind,
+            tag_id=r.tag_id,
+            object_key=r.object_key,
+            document_id=r.document_id,
+            document_title=r.document_title,
+            document_source=r.document_source,
+            section_heading=r.section_heading,
+            section_page=r.section_page,
+            text_sha256=r.text_sha256,
+            cited_by=r.cited_by,
+            cited_at=r.cited_at,
+            state=r.state,
         )
-    return out
+        for r in rows
+    ]
 
 
 _ORDER = (
@@ -269,10 +288,10 @@ async def of_citers(
     if tag_ids is not None:
         where.append(citations_t.c.tag_id.in_(sorted(tag_ids)))
     rows = (
-        await conn.execute_core(select(citations_t).where(and_(*where)).order_by(*_ORDER))
+        await conn.execute_core(citation_states().where(and_(*where)).order_by(*_ORDER))
     ).fetchall()
     out: dict[tuple[str | None, str], list[Citation]] = {}
-    for citation in await _with_state(conn, rows):
+    for citation in _with_state(rows):
         out.setdefault((citation.tag_id, citation.object_key), []).append(citation)
     return out
 
@@ -292,7 +311,7 @@ async def citing(
         where.append(citations_t.c.section_page == section_page)
     rows = (
         await conn.execute_core(
-            select(citations_t).where(and_(*where)).order_by(citations_t.c.citer_kind, *_ORDER)
+            citation_states().where(and_(*where)).order_by(citations_t.c.citer_kind, *_ORDER)
         )
     ).fetchall()
-    return await _with_state(conn, rows)
+    return _with_state(rows)
