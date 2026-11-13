@@ -20,7 +20,9 @@ A NULL array: ClickHouse has no NULL of an array (an Array is never Nullable), s
 answers NULL for its NULL array argument is that NULL, read before any rule's pattern: a function
 STRICT at its argument count, or one that tests its array for NULL first. A set-returning function
 answers no rows of a NULL argument, not one NULL: it is left to its own row (generate_subscripts'
-refuses it on ClickHouse).
+refuses it on ClickHouse), but unnest's, which is ClickHouse's arrayJoin of an empty array of the
+type. max and min of a NULL array answer NULL too: each skips a NULL. A call sqlglot reads as a
+typed node (array_to_string as ArrayToString) is read by the names that node answers to.
 
 date_trunc: ClickHouse's dateTrunc answers a DateTime (a Date for a month or a year), which reaches
 Arrow as its count of seconds and holds no day before 1970. Its start is a DateTime64(6) of the
@@ -56,7 +58,7 @@ import re
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
@@ -114,6 +116,9 @@ _NULL_OF_A_NULL_ARRAY = frozenset(
 #: The functions not STRICT in pg_proc that answer NULL where every argument is a NULL array:
 #: array_cat answers the other argument where one is not (array_userfuncs.c, and its grid row).
 _NULL_OF_NULL_ARRAYS = frozenset({"array_cat"})
+#: The aggregates not STRICT in pg_proc whose answer of a NULL array is NULL: each skips a NULL,
+#: and answers NULL of no value.
+_OF_NO_VALUE = frozenset({"max", "min"})
 
 
 @functools.cache
@@ -151,6 +156,14 @@ def _called(target: exp.Expr, dialect: str) -> tuple[str, list[exp.Expr]] | None
     call = call_of(target)
     if call is not None:
         return call
+    typed = trino.called(target) if isinstance(target, exp.Func) else None
+    if typed is not None:  # a typed node sqlglot reads the name as (ArrayToString)
+        names, args = typed
+        strict, sets = _arities()
+        known = _NULL_OF_A_NULL_ARRAY | _NULL_OF_NULL_ARRAYS | _OF_NO_VALUE
+        for name in sorted(names):
+            if name in known or (name, len(args)) in strict or (name, len(args)) in sets:
+                return name, args
     try:
         applied = GRID.read(target, dialect)
     except Refused:
@@ -168,12 +181,21 @@ def null_of_a_null_array(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     name, args = call
     strict, sets = _arities()
+    if name == "unnest" and len(args) == 1 and _is_null_array(args[0]):
+        # No rows: ClickHouse's arrayJoin of an empty array of the type.
+        held = args[0].unnest()
+        assert isinstance(held, exp.Cast)  # _is_null_array
+        empty = exp.Cast(this=exp.Array(expressions=[]), to=held.to.copy())
+        joined = exp.Anonymous(this="arrayJoin", expressions=[empty])
+        return exp.alias_(joined, name)
     if (name, len(args)) in sets:
         return None
     if name in _NULL_OF_A_NULL_ARRAY:
         nulled = bool(args) and _is_null_array(args[0])
     elif name in _NULL_OF_NULL_ARRAYS:
         nulled = bool(args) and all(_is_null_array(a) for a in args)
+    elif name in _OF_NO_VALUE:
+        nulled = len(args) == 1 and _is_null_array(args[0])
     else:
         nulled = (name, len(args)) in strict and any(_is_null_array(a) for a in args)
     return exp.alias_(exp.null(), name) if nulled else None
@@ -353,6 +375,19 @@ def _window_call(window: exp.Window) -> tuple[str, list[exp.Expr]] | None:
     return (next(iter(names)), named[1]) if len(names) == 1 else None
 
 
+def _is_null(value: exp.Expr) -> bool:
+    """Whether a value is NULL, or a cast of NULL."""
+    node = value.unnest()
+    while isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    return isinstance(node, exp.Null)
+
+
+def _null_of(value: exp.Expr) -> exp.Expr:
+    """A NULL of ``value``'s type: nullIf of the value and itself."""
+    return exp.Anonymous(this="nullIf", expressions=[_nullable(value), _nullable(value)])
+
+
 def _nullable(value: exp.Expr) -> exp.Expr:
     return exp.Anonymous(this="toNullable", expressions=[value.copy()])
 
@@ -372,6 +407,10 @@ def framed(function: str) -> Rewrite:
         if call is None or call[0] != function:
             return None
         name, args = call
+        if len(args) > 1 and _is_null(args[1]):
+            # PostgreSQL's offset or row number of NULL answers NULL (WinGetFuncArgCurrent's
+            # isnull), which ClickHouse takes as no integer: a NULL of the value's type.
+            return _null_of(args[0])
         if not args or not all(plain(arg) for arg in args):
             raise Refused(
                 Refusal(
@@ -413,6 +452,78 @@ WINDOW_FEATURES = tuple(
     for name in (*_RESPECTING, "nth_value")
 )
 
+
+def _constant_count(count: exp.Expr) -> int | None:
+    """The integer a count of buckets the statement writes is, through casts; None otherwise."""
+    node = count.unnest()
+    while isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    negated = isinstance(node, exp.Neg)
+    node = node.this.unnest() if negated else node
+    if isinstance(node, exp.Literal) and not node.is_string and node.this.isdigit():
+        return -int(node.this) if negated else int(node.this)
+    return None
+
+
+def bucketed(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """ntile over a window, as PostgreSQL's integer: every engine's is a bigint. On ClickHouse a
+    NULL count of buckets answers NULL, as PostgreSQL's does; a count below 1 is PostgreSQL's
+    error; any other constant count is ClickHouse's unsigned one over the whole partition (as
+    PostgreSQL's ignores the frame); a count that is no constant is refused by name, as ClickHouse
+    takes none."""
+    if not (isinstance(node, exp.Window) and isinstance(node.this, exp.Ntile)):
+        return None
+    count = node.this.this
+    if dialect != "clickhouse" or count is None:
+        return exp.cast(node, "INT")
+    if _is_null(count):
+        return exp.cast(exp.null(), "INT")
+    buckets = _constant_count(count)
+    if buckets is None:
+        raise Refused(
+            Refusal(
+                "0A000",
+                "ntile() of a count that is no constant has no form on clickhouse: "
+                "its ntile takes a constant",
+            )
+        )
+    if buckets < 1:
+        raise Refused(Refusal("22014", "argument of ntile must be greater than zero"))
+    window = node.copy()
+    window.this.set("this", exp.Literal.number(buckets))
+    window.set("spec", _WHOLE_PARTITION.copy())
+    if window.args.get("order") is None:  # ClickHouse's ntile reads a frame of an order only
+        unordered = exp.Ordered(this=exp.Anonymous(this="tuple", expressions=[]))
+        window.set("order", exp.Order(expressions=[unordered]))
+    return exp.cast(window, "INT")
+
+
+NTILE = Feature(
+    "ntile",
+    FAMILY,
+    "The bucket of a row in a window, as an integer.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    dialect: Rewrite(bucketed, mentions=r"\bntile\b")
+                    for dialect in DIALECTS
+                    if dialect not in NATIVE
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A count of buckets that is no constant is refused by name: ClickHouse's "
+                    "ntile takes a constant."
+                ),
+            )
+        },
+    ),
+)
+
 _SEARCH_PATH = (
     "Refused by name: ClickHouse's own currentSchemas answers its database, not PostgreSQL's "
     "search path."
@@ -447,5 +558,6 @@ FEATURES: tuple[Feature, ...] = (
     DATE_TRUNC,
     DATE,
     *WINDOW_FEATURES,
+    NTILE,
     CURRENT_SCHEMAS,
 )

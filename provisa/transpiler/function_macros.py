@@ -2842,8 +2842,6 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and dialect in _DUCKDB
         ):
             return _columns_of(node, rewrite)
-        if isinstance(node, exp.Window) and isinstance(node.this, exp.Ntile):
-            return exp.cast(node, "INT")  # PostgreSQL's is an integer, every engine's a bigint
         if isinstance(node, exp.RegexpReplace) and dialect in _FROM_THE_END:
             parts = (node.this, node.expression, node.args["replacement"])
             if any(_is_null(part) for part in parts):
