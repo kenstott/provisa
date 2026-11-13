@@ -192,6 +192,44 @@ _RETURNS_ITS_BASE = frozenset(
 )
 
 
+#: The window functions that return a value of their first argument (pg_proc's anyelement, which
+#: its list of overloads does not hold): lag and lead with a default return the common type of the
+#: value and the default.
+_OF_ITS_VALUE = frozenset({"first_value", "last_value", "nth_value", "lag", "lead"})
+
+
+def _value_type(name: str, args: list[exp.Expr]) -> str | None:
+    """A window function's value: its first argument's type, which a default must share."""
+    value = _arg_type(args[0], None, True)
+    if name in ("lag", "lead") and len(args) == 3 and _arg_type(args[2], None, True) != value:
+        return None
+    return value
+
+
+def _ordered_set_type(within: exp.WithinGroup) -> str | None:
+    """An ordered-set aggregate's result: percentile_disc and mode return the type they order
+    by, percentile_cont a double precision (an interval of intervals), each an array of it for
+    an array of fractions."""
+    call = _call(within.this)
+    order = within.expression
+    if call is None or not isinstance(order, exp.Order) or len(order.expressions) != 1:
+        return None
+    names, args = call
+    ordered = order.expressions[0]
+    by = _arg_type(ordered.this if isinstance(ordered, exp.Ordered) else ordered, None, True)
+    fractions = _arg_type(args[0], None, True) if args else None
+    of_array = "[]" if fractions is not None and fractions.endswith("[]") else ""
+    if by is None:
+        return None
+    if "mode" in names:
+        return by
+    if "percentile_disc" in names:
+        return by + of_array
+    if "percentile_cont" in names:
+        return ("interval" if by == "interval" else "double precision") + of_array
+    return None
+
+
 #: Each built-in type, as format_type names it. Any other name a statement casts to may be its enum.
 _BUILT_IN = frozenset(row[-1] for row in TYPES.values())
 
@@ -277,6 +315,10 @@ def call_result_type(expression: exp.Expr) -> str | None:
         expression = expression.expression
     if isinstance(expression, exp.Window):
         expression = expression.this
+    if isinstance(expression, exp.Column) and isinstance(expression.this, exp.WithinGroup):
+        expression = expression.this  # pg_catalog.f(...) WITHIN GROUP: sqlglot's column of it
+    if isinstance(expression, exp.WithinGroup):
+        return _ordered_set_type(expression)
     if isinstance(expression, XML_VALUES):
         return "xml"  # PostgreSQL's grammar has these, and pg_proc none
     call = _call(expression)
@@ -285,6 +327,8 @@ def call_result_type(expression: exp.Expr) -> str | None:
     names, args = call
     if names[0] in _RETURNS_ITS_BASE and args:
         return _arg_type(args[0], None, True)
+    if names[0] in _OF_ITS_VALUE and args:
+        return _value_type(names[0], args)
     if names[0] == "ntile":
         return "integer"  # a window function: pg_proc's list of overloads does not hold it
     if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:

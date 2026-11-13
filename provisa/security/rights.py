@@ -222,6 +222,11 @@ ORG_ADMIN_ROLE = "org_admin"
 META_PREFIX = "meta:"
 
 
+def is_meta_role_id(role_id: str | None) -> bool:
+    """Whether ``role_id`` names a meta-role (REQ-2188)."""
+    return bool(role_id) and str(role_id).startswith(META_PREFIX)
+
+
 def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
     """The roles ``role_id`` names: a meta-role's, from its id (meta_role.meta_role_id), else
     itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
@@ -797,6 +802,24 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_keys": ("table_id", "referenced_table_id"),
     # REQ-194: a name is read where the table it names (or the table holding it) is.
     "model_names_meta": ("table_id",),
+}
+#: REQ-2208 (THE TAGS REPORT): the relations of tags on objects, each (domain, relation). A row is
+#: read exactly when the tag admin reads that assignment (api.admin.schema_query.
+#: _readable_assignments): by the domains of its object and the right to read a row rule, a role's
+#: definition or a metric (compiler.stage2.tag_row_predicate), never by the table scope above.
+TAG_ROW_VIEWS: frozenset[tuple[str, str]] = frozenset(
+    {(META_DOMAIN_ID, "tag_instances"), (OPS_DOMAIN_ID, "tags_report")}
+)
+#: REQ-2208 (decision 2026-11-13): the relations connecting tags, library documents and sections,
+#: and objects, each (domain, relation) to whether its rows may name an object. A row is read where
+#: its document is, as a library document is (its ``read_document_domains``); a row naming an object
+#: (its ``object_key`` set) is read only where the tag on that object is too, by the tags report's
+#: rule (compiler.stage2.library_row_predicate).
+LIBRARY_ROW_VIEWS: dict[tuple[str, str], bool] = {
+    (META_DOMAIN_ID, "library_documents"): False,
+    (META_DOMAIN_ID, "tag_citations"): True,
+    (META_DOMAIN_ID, "section_tags"): False,
+    (META_DOMAIN_ID, "policy_coverage"): True,
 }
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).

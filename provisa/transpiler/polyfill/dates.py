@@ -14,7 +14,10 @@ Trino's difference of two dates is an interval, which it casts to no integer, an
 integer to a date: the old table's forms (provisa.transpiler.pg_forms_types) of date_mi, date_pli
 and date_mii count days so. Trino's forms count them with date_diff and date_add. time_mi_time's
 old form adds a time to a date, which Trino does not: it is refused by name there. make_date and
-transaction_timestamp have no Trino function of the name: each is Trino's form here."""
+transaction_timestamp have no Trino function of the name: each is Trino's form here. Nor has
+ClickHouse (run 43410717058): make_date is its makeDate32 of a year Date32 holds (1900 to 2299) and
+a day the month has, any other refused by name; transaction_timestamp is the statement's now64, as
+current_timestamp is there."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -79,6 +82,16 @@ TIME_MI_TIME = trino.by_name(
 #: PostgreSQL's are.
 _FIRST_OF_MONTH = "date_add('month', $m - 1, date_add('year', $y - 1, DATE '0001-01-01'))"
 
+#: ClickHouse's make_date: makeDate32 of a year Date32 holds and a day the month has.
+_CH_MAKE_DATE = (
+    "CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS Nullable(Date32)) "
+    "WHEN $y BETWEEN 1900 AND 2299 AND $m BETWEEN 1 AND 12 "
+    "AND $d BETWEEN 1 AND toDayOfMonth(toLastDayOfMonth(makeDate32($y, $m, 1))) "
+    "THEN makeDate32($y, $m, $d) "
+    "ELSE CAST(throwIf(1, 'postgresql-error 0A000: make_date does not read this value"
+    "<end of postgresql-error>') AS Nullable(Date32)) END"
+)
+
 MAKE_DATE = Feature(
     "make_date",
     FAMILY,
@@ -94,19 +107,28 @@ MAKE_DATE = Feature(
                     f" THEN date_add('day', $d - 1, {_FIRST_OF_MONTH}) "
                     f"ELSE {refused('make_date')} END "
                     f"ELSE {refused('make_date')} END"
-                ),
+                )
+                | {"clickhouse": _CH_MAKE_DATE},
             ),
         ),
-        limitations=dict.fromkeys(
-            trino.TRINO,
-            (
+        limitations={
+            **dict.fromkeys(
+                trino.TRINO,
+                (
+                    Limitation(
+                        "Only a year from 1 to 9999 and a day the month has: any other is refused "
+                        "with 0A000, where PostgreSQL answers a year BC or past 9999, and refuses a "
+                        "day the month lacks with 22008."
+                    ),
+                ),
+            ),
+            "clickhouse": (
                 Limitation(
-                    "Only a year from 1 to 9999 and a day the month has: any other is refused "
-                    "with 0A000, where PostgreSQL answers a year BC or past 9999, and refuses a "
-                    "day the month lacks with 22008."
+                    "Only a year from 1900 to 2299 (ClickHouse's Date32) and a day the month has: "
+                    "any other is refused with 0A000."
                 ),
             ),
-        ),
+        },
     ),
 )
 
@@ -115,7 +137,12 @@ TRANSACTION_TIMESTAMP = Feature(
     FAMILY,
     "The time the transaction began: now(), as Provisa answers it.",
     read=Side(
-        rules=(Rule("transaction_timestamp()", trino.trino_only("current_timestamp")),),
+        rules=(
+            Rule(
+                "transaction_timestamp()",
+                {**trino.trino_only("current_timestamp"), "clickhouse": "now64(6, 'UTC')"},
+            ),
+        ),
     ),
 )
 

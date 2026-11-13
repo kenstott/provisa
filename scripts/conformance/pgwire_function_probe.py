@@ -143,7 +143,9 @@ REFUSAL = re.compile(
     r"(?:ERROR:\s+)?(?:"
     + "|".join(
         (
-            r"\S+\(\) has no form (?:on \S+|over the meta domain)",
+            # A refusal may say what of the call it refuses: "array_agg() of an order has no
+            # form on clickhouse" (run 43410717058 counted it an engine error).
+            r"\S+\(\)(?: of [^\n]*?)? has no form (?:on \S+|over the meta domain)",
             r"\S+ needs XML, which \S+ has no SQL for",
             r".+ on a \w+ column needs \w+'s own semantics, which",
             r"\S+ does not read this value",

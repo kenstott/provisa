@@ -53,6 +53,7 @@ from typing import Any
 
 # A role id read without a runtime is pure and below the compiler (security/rights.py).
 from provisa.security.rights import META_PREFIX as META_PREFIX
+from provisa.security.rights import is_meta_role_id as is_meta_role_id
 from provisa.security.rights import members_of as members_of
 
 
@@ -94,10 +95,6 @@ class MetaRoleNamed(PermissionError):
 
 def meta_role_id(members: list[str] | tuple[str, ...]) -> str:
     return META_PREFIX + "+".join(sorted(set(members)))
-
-
-def is_meta_role_id(role_id: str | None) -> bool:
-    return bool(role_id) and str(role_id).startswith(META_PREFIX)
 
 
 def refuse_named_meta_role(requested: list[str]) -> None:

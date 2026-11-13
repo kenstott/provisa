@@ -81701,7 +81701,11 @@
     it may write (kind mutation, writes_table declared as for any writing command) or read; it returns the
     last statement''s rows against its declared output, or nothing when it declares none; it is governed
     at the call exactly as a source procedure is (assigned roles, command_execution, domain, approval),
-    not statement by statement. It spans one source and one call; a client''s BEGIN and COMMIT stay no-ops.'
+    not statement by statement. It spans one source and one call; a client''s BEGIN and COMMIT stay no-ops.
+    (Amended 2026-11-13, A QUERY RUNS READ ONLY; A WRITER IS CALLED ON ITS OWN:) Maintainer 2026-11-13:
+    a native SQL command declared as a query runs in a READ ONLY transaction on the source; a writing native
+    SQL command is refused when composed inside a larger statement or a view, and is called only on its
+    own.'
   use_case: 'A developer registers a search_facets command running $searchMeta with a facet over genre and year, its text a typed argument; a GraphQL client calls it with the text and receives the facet buckets as JSON, whose shape depends on the facets the pipeline asks for.'
   scenario: 'Given a MongoDB source and a query command search_facets whose binding runs $searchMeta over movies with the argument q (text)
 
@@ -90895,7 +90899,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     and refusal. (Amended 2026-11-13, A CONFORMANCE RUN FAILS ON A DROP:) 2026-11-13: each conformance workflow
     ends in a gate against a committed expected-failures list (its total and its cases); it fails on an
     unlisted failure, on a listed case that now passes, on a filtered or partial run, and on a missing report
-    or list. The drivers surface keeps its per-test list.'
+    or list. The drivers surface keeps its per-test list. (Amended 2026-11-13, AN ANSWER WITHIN A STATED
+    BOUND COMES BEFORE A REFUSAL:) Maintainer 2026-11-13: a pg_catalog function follows the order REQ-2236
+    states for every engine: the exact answer; an answer within a stated and enforced bound, raising outside
+    it; a refusal by name only where no common case is exact.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -93895,7 +93902,39 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     what the state was on a past date. Rows are governed by the object''s read rights and readable by Polly
     and MCP. Grouped by tag it is the tag quality report; by object or domain, what needs attention there;
     by principal, what each person owes; and anyone may define governed metrics over any subset of it (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-13, A TAG IS REQUIRED BY ITS FLAG; THE REPORT LANDS WITH WHAT EXISTS:)
+    Maintainer 2026-11-13: a tag has a Required flag, set in the tag editor; a required tag must be on every
+    object of the kinds in its Applies to, and an object without it is a missing row in the tags report.
+    The tags report covers assignments, inherited and derived tags, citations with their state and a needs-attention
+    status (an expired assignment counts); attestation, gate effect, principal metrics and the as-of date
+    are added by the jobs that build those features. (Amended 2026-11-13, A TAG IS OFFERED BY DOMAIN:) Maintainer
+    2026-11-13: a tag has allowed domains, as a source has (none selected means all domains): the tag is
+    offered for assignment, and may be assigned, only on objects of those domains; a required tag is required
+    only on objects of its allowed domains; the tag editor has the same Allowed Domains field as the source
+    form; narrowing a tag''s domains while assignments outside them exist says which, and removes none.
+    Changing it needs the right that widening a source''s allowed domains needs. An object that has no domain
+    (a role, a platform-level object) can still be tagged with a domain''s tag: a person acting in one of
+    the tag''s allowed domains may assign it there for that domain''s own purposes; the check is then on
+    the assigner''s domain, since the object has none. (Amended 2026-11-13, ONE ASSIGNMENT FORM:) Maintainer
+    2026-11-13: a tag assignment''s reason, expiry and citations are given in one form, when the tag is
+    picked and when its chip is opened, and saved together in one call; a tag that requires a citation still
+    applies without one (a gap, not a refusal). (Amended 2026-11-13, WHY A TAG EXISTS, AND WHY IT IS HERE:)
+    Maintainer 2026-11-13: a tag''s definition optionally cites the library document and section that say
+    why the tag exists, given in the tag form on create and on edit and saved with the tag; an assignment
+    optionally cites why the tag is on that object, given in the assignment form. (Amended 2026-11-13, TAGS,
+    DOCUMENTS AND OBJECTS ARE CONNECTED BY VIEWS:) Maintainer 2026-11-13: governed meta views beside the
+    tags report connect tags, library documents and sections, and objects: tag_citations (each citation
+    of a definition or an assignment, with its state), section_tags (each tag on a document or section),
+    policy_coverage (each path from a section to an object, by a shared tag or by a citation, saying which)
+    and library_documents (each library document, read where the document is read); relationships between
+    them, tags, sections, tables and columns let GraphQL and Cypher traverse them; each is governed as the
+    tags report is. Polly and MCP read them through the one pipeline; no separate read tool. (Amended 2026-11-13,
+    POLLY AND MCP UNDERSTAND TAGS ON A SCREEN:) Maintainer 2026-11-13: Polly''s page table and read_screen
+    report, for each object on screen, its tags, how each got there (assigned, inherited, derived), a missing
+    or review-needed citation, and the controls of the tag assignment form and the tag editor, so Polly
+    can evaluate the tags on a screen and edit them through the same forms; MCP has the same edits as tools
+    (assign, unassign, cite, uncite) through the existing calls with the caller''s rights. Polly proposes
+    an edit and the person confirms before it is written.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -95556,7 +95595,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     unreadable; it is fine to store the grid that way, not to show it. The summary page is one section per
     engine, each the same table as that engine''s own page: one row per feature that is not native there
     (feature, read polyfill, read limitations, write polyfill, write limitations), the native features counted,
-    not listed.'
+    not listed. (Amended 2026-11-13, AN ANSWER WITHIN A STATED BOUND COMES BEFORE A REFUSAL:) Maintainer
+    2026-11-13: on an engine where a function''s common case is exact, the function answers there and its
+    difference from PostgreSQL is a limitation written on its grid row and shown on that engine''s page;
+    outside the exact cases it raises, with PostgreSQL''s error where the case can be detected, and never
+    returns an approximate or rounded value; a refusal by name is for a function with no exact common case.
+    The order for every function on every engine: the exact answer; an answer within a stated and enforced
+    bound; a refusal by name.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.

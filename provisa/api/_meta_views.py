@@ -91,6 +91,461 @@ def _sensitive_assignments_sql() -> str:
     )
 
 
+def _citation_states_sql() -> str:
+    """REQ-2208: every library citation with its state, by the one statement that reads a
+    citation's state (provisa.reference_library.citations.citation_states)."""
+    from sqlalchemy.dialects import postgresql
+
+    from provisa.reference_library.citations import citation_states
+
+    return str(
+        citation_states().compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+
+
+def _tag_definitions_sql() -> str:
+    """REQ-2208 (THE TAGS REPORT): every tag, the code-defined ones from their constants and the
+    registry's from the tags table, with what the report reads of its definition."""
+    rows = []
+    for tag in SYSTEM_TAGS + DERIVED_TAGS:
+        desc = sql_literal(tag.description, "postgres")
+        applies = sql_literal(_json.dumps(tag.applies_to), "postgres")
+        rows.append(
+            f"SELECT '{tag.id}' AS id, {desc} AS description, CAST({applies} AS JSONB) AS "
+            f"applies_to, TRUE AS is_system, {'TRUE' if tag.requires_citation else 'FALSE'} "
+            f"AS requires_citation, {'TRUE' if tag.required else 'FALSE'} AS required"
+        )
+    rows.append(
+        "SELECT id, description, CAST(applies_to AS JSONB), is_system, requires_citation, "
+        "required FROM tags"
+    )
+    return "\n            UNION ALL\n            ".join(rows)
+
+
+def _term_domains_sql() -> str:
+    """REQ-1591: each term's domains by the one rule, as the ontology schema's _domains view
+    states it, read here as its query: the meta views are made before the ontology's."""
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
+
+    head, _, body = ONTOLOGY_TABLE_VIEWS["_domains"].partition(
+        "CREATE OR REPLACE VIEW _domains_ontology AS"
+    )
+    if head.strip() or not body:
+        raise ValueError("the ontology's _domains view is no longer one CREATE VIEW statement")
+    return body
+
+
+def _domains_of(rows: str) -> str:
+    """``rows`` (object_key, domain) as one |a|b| string per object, its empty domains left out
+    (an object with no domain is not restricted by one)."""
+    return f"""
+            SELECT object_key, '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM ({rows}) x
+            WHERE COALESCE(domain_id, '') <> ''
+            GROUP BY object_key"""
+
+
+#: REQ-2208: each library document's domains as one |a|b| string, read as a glossary term's are
+#: (compiler.stage2._readable_term_predicate): the rows about a document are read where it is.
+_DOCUMENT_DOMAINS_SQL = """
+            SELECT document_id,
+                   '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM reference_document_domains GROUP BY document_id"""
+
+
+def _output_columns(ddl: str) -> list[str]:
+    """The output columns of a CREATE VIEW statement, in select order."""
+    import sqlglot
+
+    select = sqlglot.parse_one(ddl, read="postgres").expression
+    return [e.output_name for e in select.expressions]
+
+
+def _tag_instances_sql() -> str:
+    """REQ-2208 (THE TAGS REPORT): one row per tag on an object -- assigned, inherited from a
+    glossary term, or derived from the object's registered state -- and one per required tag an
+    object of a kind it applies to does not carry. Each row's citation measures
+    and status are computed here, when it is read: nothing of them is stored.
+
+    Its read columns state who may read the row as the tag admin's read of an assignment does
+    (provisa.api.admin.schema_query._readable_assignments), for the compiler to apply
+    (provisa.compiler.stage2, TAG_ROW_VIEWS): ``read_all_domains``, every domain of which the
+    reader must reach (NULL: the object is not there); ``read_any_domains``, one of which it must
+    reach when any is named (a source's allowed domains); ``read_term_domains``, read as a glossary
+    term is (a term's, or a library document's, domains); ``read_roles``, the roles a metric is
+    granted to."""
+    all_domains = _domains_of(
+        """
+                SELECT 'table:' || CAST(id AS TEXT) AS object_key, domain_id
+                FROM registered_tables
+                UNION ALL
+                SELECT 'relationship:' || r.id, rt.domain_id
+                FROM relationships r
+                JOIN registered_tables rt ON rt.id IN (r.source_table_id, r.target_table_id)
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_functions
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_webhooks
+                UNION ALL
+                SELECT 'product:' || id, domain_id FROM data_products
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr JOIN registered_tables rt ON rt.id = rr.table_id
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(id AS TEXT), domain_id
+                FROM rls_rules WHERE table_id IS NULL AND domain_id IS NOT NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), c.domain_id
+                FROM rls_rules rr
+                JOIN (SELECT name, domain_id FROM tracked_functions
+                      UNION ALL SELECT name, domain_id FROM tracked_webhooks) c
+                  ON c.name = rr.action_name
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr
+                JOIN tag_assignments ta
+                  ON ta.object_type = 'table' AND ta.base_tag_id = rr.tag_id
+                JOIN registered_tables rt ON rt.id = ta.table_id
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL AND rr.action_name IS NULL"""
+    )
+    return f"""
+        CREATE OR REPLACE VIEW tag_instances AS
+        WITH defs AS (
+            {_tag_definitions_sql()}
+        ),
+        cited AS ({_citation_states_sql()}),
+        all_domains AS ({all_domains}
+        ),
+        term_domains AS ({_term_domains_sql()}
+        ),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        ),
+        objects AS (
+            SELECT 'source' AS object_kind, FALSE AS draft, 'source:' || s.id AS object_key, s.id AS object_id,
+                   CAST(NULL AS INTEGER) AS table_id, CAST(NULL AS TEXT) AS domain_id,
+                   CAST(NULL AS TEXT) AS owner,
+                   COALESCE((SELECT '|' || STRING_AGG(x, '|') || '|'
+                             FROM jsonb_array_elements_text(CAST(s.allowed_domains AS JSONB)) x),
+                            '|') AS read_any_domains,
+                   CAST(NULL AS TEXT) AS read_term_domains, CAST(NULL AS TEXT) AS read_roles
+            FROM sources s
+            UNION ALL
+            SELECT 'table', rt.draft, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM registered_tables rt
+            UNION ALL
+            SELECT 'column', rt.draft, 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
+                   CAST(tc.table_id AS TEXT) || ':' || tc.column_name, tc.table_id,
+                   rt.domain_id, CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+            UNION ALL
+            SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id, r.owner,
+                   '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
+            UNION ALL
+            SELECT 'command', FALSE, 'command:' || f.name, f.name, CAST(NULL AS INTEGER), f.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM tracked_functions f
+            UNION ALL
+            SELECT 'command', FALSE, 'command:' || w.name, w.name, CAST(NULL AS INTEGER), w.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM tracked_webhooks w
+            UNION ALL
+            SELECT 'product', FALSE, 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
+                   dp.owner_role, '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM data_products dp
+            UNION ALL
+            SELECT 'term', FALSE, 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|',
+                   (SELECT MAX(x.term_domains) FROM term_domains x WHERE x.term_id = gt.id),
+                   CAST(NULL AS TEXT)
+            FROM glossary_terms gt
+            UNION ALL
+            SELECT 'rls_rule', FALSE, 'rls_rule:' || CAST(rr.id AS TEXT), CAST(rr.id AS TEXT),
+                   CAST(NULL AS INTEGER), COALESCE(rr.domain_id, rrt.domain_id),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM rls_rules rr LEFT JOIN registered_tables rrt ON rrt.id = rr.table_id
+            UNION ALL
+            SELECT 'role', FALSE, 'role:' || ro.id, ro.id, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM roles ro
+            UNION ALL
+            SELECT 'metric', FALSE, 'metric:' || m.name, m.name, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT),
+                   (SELECT '|' || STRING_AGG(x, '|') || '|'
+                    FROM jsonb_array_elements_text(CAST(m.visible_to AS JSONB)) x)
+            FROM metrics m
+            UNION ALL
+            SELECT 'document', FALSE, 'document:' || CAST(d.id AS TEXT), CAST(d.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
+            FROM reference_documents d
+            LEFT JOIN document_domains dd ON dd.document_id = d.id
+            UNION ALL
+            SELECT DISTINCT 'section', FALSE, dt.object_key,
+                   SUBSTR(dt.object_key, LENGTH('section:') + 1), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
+            FROM reference_document_tags dt
+            LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+            WHERE dt.object_type = 'section'
+        ),
+        instances AS (
+            SELECT 'assigned' AS via, ta.object_type AS object_kind, ta.object_key,
+                   ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on, ta.purpose,
+                   ta.review_on, CAST(ta.evidence AS TEXT) AS evidence, ta.decided_by,
+                   ta.decided_at, ta.object_key AS assignment_key,
+                   CAST(NULL AS TEXT) AS term_key
+            FROM tag_assignments ta
+            UNION ALL
+            SELECT 'assigned', dt.object_type, dt.object_key, dt.tag_id, dt.base_tag_id,
+                   dt.reason, dt.expires_on, dt.purpose, dt.review_on,
+                   CAST(dt.evidence AS TEXT), dt.decided_by, dt.decided_at, dt.object_key,
+                   CAST(NULL AS TEXT)
+            FROM reference_document_tags dt
+            UNION ALL
+            SELECT 'inherited', 'column', 'column:' || CAST(e.table_id AS TEXT) || ':'
+                   || e.column_name, ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on,
+                   ta.purpose, ta.review_on, CAST(ta.evidence AS TEXT), ta.decided_by,
+                   ta.decided_at, ta.object_key, ta.object_key
+            FROM effective_column_tags e
+            JOIN tag_assignments ta
+              ON ta.object_type = 'term' AND ta.term_id = e.term_id
+             AND ta.base_tag_id = e.base_tag_id
+            WHERE e.via = 'term'
+            UNION ALL
+            SELECT 'derived', dg.object_type, dg.object_key, dg.tag_id, dg.tag_id,
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
+                   CAST(NULL AS TIMESTAMPTZ), CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM derived_tags dg
+        ),
+        missing AS (
+            SELECT 'missing' AS via, o.object_kind, o.object_key, d.id AS tag_id,
+                   d.id AS base_tag_id, CAST(NULL AS TEXT) AS reason,
+                   CAST(NULL AS TEXT) AS expires_on, CAST(NULL AS TEXT) AS purpose,
+                   CAST(NULL AS TEXT) AS review_on, CAST(NULL AS TEXT) AS evidence,
+                   CAST(NULL AS TEXT) AS decided_by, CAST(NULL AS TIMESTAMPTZ) AS decided_at,
+                   CAST(NULL AS TEXT) AS assignment_key, CAST(NULL AS TEXT) AS term_key
+            FROM defs d
+            JOIN objects o ON d.applies_to @> jsonb_build_array(o.object_kind)
+            WHERE d.required AND NOT o.draft
+              AND NOT EXISTS (
+                  SELECT 1 FROM instances i
+                  WHERE i.base_tag_id = d.id AND i.object_key = o.object_key
+              )
+        ),
+        tag_rows AS (
+            SELECT * FROM instances
+            UNION ALL
+            SELECT * FROM missing
+        ),
+        assignment_cites AS (
+            SELECT tag_id, object_key, COUNT(*) AS cited,
+                   SUM(CASE WHEN state = 'broken' THEN 1 ELSE 0 END) AS broken,
+                   SUM(CASE WHEN state = 'drifted' THEN 1 ELSE 0 END) AS drifted
+            FROM cited WHERE citer_kind = 'tag_assignment'
+            GROUP BY tag_id, object_key
+        ),
+        definition_cites AS (
+            SELECT tag_id, COUNT(*) AS cited,
+                   SUM(CASE WHEN state <> 'current' THEN 1 ELSE 0 END) AS needs_review
+            FROM cited WHERE citer_kind = 'tag'
+            GROUP BY tag_id
+        ),
+        measured AS (
+            SELECT i.*, o.object_id, o.table_id, o.domain_id, o.owner,
+                   d.description AS tag_description, d.is_system AS tag_is_system,
+                   d.required AS tag_required, d.requires_citation AS tag_requires_citation,
+                   COALESCE(dc.cited, 0) AS definition_citations,
+                   COALESCE(dc.needs_review, 0) AS definition_citations_needing_review,
+                   COALESCE(ac.cited, 0) AS citations,
+                   COALESCE(ac.broken, 0) AS citations_broken,
+                   COALESCE(ac.drifted, 0) AS citations_drifted,
+                   (i.via IN ('assigned', 'inherited') AND COALESCE(d.requires_citation, FALSE)
+                    AND COALESCE(ac.cited, 0) = 0) AS citation_missing,
+                   COALESCE(i.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+                   CASE WHEN o.object_key IS NULL THEN NULL
+                        ELSE COALESCE(ad.domains, '|') END AS read_all_domains,
+                   o.read_any_domains,
+                   CASE WHEN i.via = 'inherited' THEN t.read_term_domains
+                        ELSE o.read_term_domains END AS read_term_domains,
+                   o.read_roles
+            FROM tag_rows i
+            LEFT JOIN objects o ON o.object_key = i.object_key
+            LEFT JOIN all_domains ad
+              ON ad.object_key = CASE WHEN i.object_kind = 'column'
+                                      THEN 'table:' || CAST(o.table_id AS TEXT)
+                                      ELSE i.object_key END
+            LEFT JOIN objects t ON t.object_key = i.term_key
+            LEFT JOIN defs d ON d.id = i.base_tag_id
+            LEFT JOIN definition_cites dc ON dc.tag_id = i.base_tag_id
+            LEFT JOIN assignment_cites ac
+              ON ac.tag_id = i.base_tag_id AND ac.object_key = i.assignment_key
+        )
+        SELECT m.via || '|' || m.base_tag_id || '|' || m.object_key || '|'
+                   || COALESCE(m.assignment_key, '') AS id,
+               m.object_kind, m.object_key, m.object_id,
+               (SELECT MIN(mn.label) FROM model_names mn
+                WHERE mn.object_id = m.object_id
+                  AND (mn.object_kind = m.object_kind
+                       OR (m.object_kind = 'table' AND mn.object_kind = 'view'))) AS object_name,
+               m.domain_id, m.owner, m.table_id,
+               m.tag_id, m.base_tag_id,
+               CASE WHEN POSITION(':' IN m.tag_id) > 0
+                    THEN SUBSTR(m.tag_id, POSITION(':' IN m.tag_id) + 1) END AS parameter,
+               m.tag_description, m.tag_is_system, m.tag_required, m.tag_requires_citation,
+               m.definition_citations,
+               m.via, m.reason, m.expires_on, m.expired, m.purpose, m.review_on, m.evidence,
+               m.decided_by, m.decided_at,
+               m.citations, m.citations_broken, m.citations_drifted, m.citation_missing,
+               CASE WHEN m.via = 'missing' OR m.expired OR m.citations_broken > 0
+                         OR m.citations_drifted > 0 OR m.citation_missing
+                         OR m.definition_citations_needing_review > 0
+                    THEN 'needs attention' ELSE 'clean' END AS status,
+               NULLIF(CONCAT_WS('; ',
+                   CASE WHEN m.via = 'missing' THEN 'required tag missing' END,
+                   CASE WHEN m.expired THEN 'the assignment expired' END,
+                   CASE WHEN m.citation_missing THEN 'required citation missing' END,
+                   CASE WHEN m.citations_broken > 0
+                        THEN 'a cited section no longer resolves' END,
+                   CASE WHEN m.citations_drifted > 0
+                        THEN 'a cited section changed since it was cited' END,
+                   CASE WHEN m.definition_citations_needing_review > 0
+                        THEN 'the definition''s cited section needs review' END), '')
+                   AS status_reason,
+               m.read_all_domains, m.read_any_domains, m.read_term_domains, m.read_roles
+        FROM measured m
+    """
+
+
+#: REQ-2208 (decision 2026-11-13): what the library views read of a tag on an object, from
+#: tag_instances: the object as the tags report names it, and the columns its row is read by.
+_INSTANCE_COLUMNS = """i.id AS tag_instance_id, i.object_kind, i.object_key, i.object_id,
+               i.object_name, i.domain_id, i.table_id,
+               CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key"""
+_INSTANCE_READ_COLUMNS = "i.read_all_domains, i.read_any_domains, i.read_term_domains, i.read_roles"
+
+
+def _library_documents_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per library document, with its domains; read where
+    the document is (``read_document_domains``), as the rows about it are."""
+    return f"""
+        CREATE OR REPLACE VIEW library_documents AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT d.id, d.title, d.source, d.source_kind, d.status, d.added_by, d.added_at,
+               d.refreshed_at,
+               (SELECT STRING_AGG(x.domain_id, ', ' ORDER BY x.domain_id)
+                FROM reference_document_domains x WHERE x.document_id = d.id) AS domains,
+               dd.domains AS read_document_domains
+        FROM reference_documents d
+        LEFT JOIN document_domains dd ON dd.document_id = d.id
+    """
+
+
+def _tag_citations_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per citation of the library, a tag's definition's or
+    an assignment's, with its state as the one statement reads it (citation_states). An
+    assignment's row names its object as tag_instances does and carries that row's read columns;
+    ``read_document_domains`` is the cited document's, read as the document is
+    (compiler.stage2.library_row_predicate)."""
+    return f"""
+        CREATE OR REPLACE VIEW tag_citations AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT CAST(c.id AS TEXT) AS id,
+               CASE WHEN c.citer_kind = 'tag' THEN 'definition' ELSE 'assignment' END AS citer,
+               COALESCE(i.tag_id, c.tag_id) AS tag_id, c.tag_id AS base_tag_id,
+               i.id AS tag_instance_id, i.object_kind,
+               NULLIF(c.object_key, '') AS object_key, i.object_id, i.object_name, i.domain_id,
+               i.table_id, CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key,
+               c.document_id, c.document_title, c.document_source, c.cite_key AS place_key,
+               c.section_heading, c.section_page,
+               c.state, c.state <> 'current' AS needs_review, c.cited_by, c.cited_at,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM cited c
+        LEFT JOIN tag_instances i
+          ON c.citer_kind = 'tag_assignment' AND i.via = 'assigned'
+         AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+        LEFT JOIN document_domains dd ON dd.document_id = c.document_id
+    """
+
+
+def _section_tags_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per tag on a library document or on a section of
+    one, with the assignment's why; read where the document is (``read_document_domains``)."""
+    return f"""
+        CREATE OR REPLACE VIEW section_tags AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT dt.base_tag_id || '|' || dt.object_key AS id,
+               'assigned|' || dt.base_tag_id || '|' || dt.object_key || '|' || dt.object_key
+                   AS tag_instance_id,
+               dt.tag_id, dt.base_tag_id, dt.object_type AS place_kind, dt.object_key AS place_key,
+               dt.document_id, d.title AS document_title, dt.section_heading, dt.section_page,
+               dt.reason, dt.expires_on,
+               COALESCE(dt.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+               dt.purpose, dt.review_on, dt.decided_by, dt.decided_at,
+               dd.domains AS read_document_domains
+        FROM reference_document_tags dt
+        JOIN reference_documents d ON d.id = dt.document_id
+        LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+    """
+
+
+def _policy_coverage_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per path from a library section, or a whole
+    document, to an object, saying which: ``shared tag`` (the section carries the tag the object
+    carries), ``tag cites it`` (the definition of a tag the object carries cites the section) or
+    ``assignment cites it`` (the object's assignment of the tag cites the section). The object is
+    named as tag_instances names it, its row read as that one is and where the document is."""
+    return f"""
+        CREATE OR REPLACE VIEW policy_coverage AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        ),
+        carried AS (
+            SELECT * FROM tag_instances
+            WHERE via <> 'missing' AND object_kind NOT IN ('document', 'section')
+        ),
+        paths AS (
+            SELECT 'shared tag' AS link, dt.document_id, d.title AS document_title,
+                   dt.object_key AS place_key, dt.section_heading, dt.section_page,
+                   CAST(NULL AS TEXT) AS citation_state, i.id AS instance_id
+            FROM reference_document_tags dt
+            JOIN reference_documents d ON d.id = dt.document_id
+            JOIN carried i ON i.tag_id = dt.tag_id
+            UNION ALL
+            SELECT 'tag cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i ON i.base_tag_id = c.tag_id
+            WHERE c.citer_kind = 'tag'
+            UNION ALL
+            SELECT 'assignment cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i
+              ON i.via = 'assigned' AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+            WHERE c.citer_kind = 'tag_assignment'
+        )
+        SELECT p.link || '|' || p.place_key || '|' || p.instance_id AS id,
+               p.document_id, p.document_title, p.place_key, p.section_heading, p.section_page,
+               i.tag_id, i.base_tag_id, p.link, p.citation_state,
+               {_INSTANCE_COLUMNS},
+               i.via,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM paths p
+        JOIN carried i ON i.id = p.instance_id
+        LEFT JOIN document_domains dd ON dd.document_id = p.document_id
+    """
+
+
 def _sql_names(names: tuple[str, ...]) -> str:
     return ", ".join(f"'{n}'" for n in names)
 
@@ -781,6 +1236,18 @@ _META_TABLE_VIEWS: dict[str, str] = {
           -- only a defined, in-service term governs its columns (provisa.core.term_tags.governs)
           AND COALESCE(TRIM(gt.definition), '') <> '' AND NOT gt.retired
     """,
+    # REQ-2208 (THE TAGS REPORT): every tag on every object, and every required tag missing from
+    # one, with its citation measures and status. A row is read where the table it is about is
+    # (META_ROW_SCOPED_VIEWS). After effective_column_tags and derived_tags, which it reads.
+    "tag_instances": _tag_instances_sql(),
+    # REQ-2208 (decision 2026-11-13): tags, library documents and sections, and objects, connected:
+    # each citation with its state, each tag on a document or section, and each path from a section
+    # to an object. Read as the tags report is and where the document is (LIBRARY_ROW_VIEWS).
+    # After tag_instances, which they read.
+    "library_documents": _library_documents_sql(),
+    "tag_citations": _tag_citations_sql(),
+    "section_tags": _section_tags_sql(),
+    "policy_coverage": _policy_coverage_sql(),
     # REQ-1375: the management report — every assignment with a planned end date, with its
     # state derived at query time. expires_on is an ISO date string, so lexicographic
     # comparison with CURRENT_DATE (cast to text) is correct on every dialect.
@@ -1392,6 +1859,14 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
                c.holder AS physical_name, c.newcomer AS label, '' AS domain_id,
                CAST(NULL AS INTEGER) AS table_id, 'refused' AS status, c.message AS problems
         FROM model_name_clashes c
+    """,
+    # REQ-2208 (THE TAGS REPORT): the meta table tag_instances as a standard report, its rows read
+    # where the table each is about is (OPS_ROW_SCOPED_VIEWS). Grouped by tag it is the tag quality
+    # report; by object or domain, what needs attention there.
+    "tags_report": f"""
+        CREATE OR REPLACE VIEW tags_report AS
+        SELECT {", ".join(_output_columns(_tag_instances_sql()))}
+        FROM tag_instances
     """,
     "sensitive_column_coverage": """
         CREATE OR REPLACE VIEW sensitive_column_coverage AS

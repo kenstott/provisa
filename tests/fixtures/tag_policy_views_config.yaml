@@ -1,0 +1,59 @@
+# REQ-2208 (decision 2026-11-13): two domains, a table in each, the tag personal on a column of
+# each table, the tag checked on a column of the sales table, and a role reading sales alone. A
+# privacy policy, its Personal data section tagged personal and cited by the checked assignment, is
+# added to the library once the server is up; the columns relevant to it are read through SQL.
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: tps
+    description: Sales
+  - id: tph
+    description: People
+sources:
+  - id: tp-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: tp-pg
+    domain_id: tps
+    schema: tp_e2e
+    table: orders
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin, sales_reader]}
+      - {name: email, data_type: varchar, visible_to: [org_admin, sales_reader]}
+  - source_id: tp-pg
+    domain_id: tph
+    schema: tp_e2e
+    table: staff
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: name, data_type: varchar, visible_to: [org_admin]}
+tags:
+  - id: personal
+    description: Personal data, as the privacy policy defines it
+    applies_to: [column, section]
+  - id: checked
+    description: Checked against the privacy policy
+    applies_to: [column]
+tag_assignments:
+  - {tag_id: personal, object_type: column, table_ref: tp-pg.tp_e2e.orders, column_name: email}
+  - {tag_id: personal, object_type: column, table_ref: tp-pg.tp_e2e.staff, column_name: name}
+  - {tag_id: checked, object_type: column, table_ref: tp-pg.tp_e2e.orders, column_name: id}
+roles:
+  - id: sales_reader
+    description: Reads the sales domain and its catalog.
+    capabilities: [catalog_read]
+    domain_access: [tps]

@@ -1116,6 +1116,7 @@ class Query:  # REQ-021, REQ-042
                 param_values=by_tag.get(r["id"], []),
                 sensitive=bool(r["sensitive"]),
                 requires_citation=bool(r["requires_citation"]),  # REQ-2208
+                required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
                 citations=[citation_type(c) for c in cited.get(r["id"], [])],
                 needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )

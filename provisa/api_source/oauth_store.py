@@ -117,6 +117,7 @@ class _RefreshLock:
         self._name = name
         self._engine: Any = None
         self._conn: Any = None
+        self._held = False
 
     def try_acquire(self) -> bool:
         if self._conn is None:
@@ -127,12 +128,14 @@ class _RefreshLock:
                 shield.settle()
                 self._engine = control_plane_lock_engine(self._url)
                 self._conn = self._engine.connect().execution_options(isolation_level="AUTOCOMMIT")
-        return bool(
+        taken = bool(
             self._conn.execute(
                 text("SELECT pg_try_advisory_lock(:cls, hashtext(:name))"),
                 {"cls": _REFRESH_LOCK_CLASS, "name": self._name},
             ).scalar()
         )
+        self._held = self._held or taken
+        return taken
 
     def acquire(self, wait_seconds: float) -> bool:
         """Take the lock, trying for at most ``wait_seconds``. Blocking: run off the event loop."""
@@ -147,7 +150,16 @@ class _RefreshLock:
     def close(self) -> None:
         """Release the lock and what it was held on."""
         if self._conn is not None:
-            self._conn.close()  # ends the session, and with it the lock
+            if self._held and not self._conn.closed:  # a session that has ended holds no lock
+                # Released by name before the session ends: PostgreSQL frees a session's locks only
+                # once its backend has exited, which is after close() returns, so the next taker
+                # could be refused a lock nobody holds.
+                self._conn.execute(
+                    text("SELECT pg_advisory_unlock(:cls, hashtext(:name))"),
+                    {"cls": _REFRESH_LOCK_CLASS, "name": self._name},
+                )
+                self._held = False
+            self._conn.close()
             self._conn = None
         if self._engine is not None:
             self._engine.dispose()
