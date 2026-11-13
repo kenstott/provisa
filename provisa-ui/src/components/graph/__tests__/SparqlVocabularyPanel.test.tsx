@@ -469,6 +469,8 @@ describe("a property pill", () => {
         checkedDomains={new Set()}
       />,
     );
-    expect(screen.getByTestId("sparql-class-hr:employees")).toHaveStyle({ color: "#000" });
+    const style = screen.getByTestId("sparql-class-hr:employees").style;
+    expect(style.background).not.toBe("");
+    expect(style.color).toBe("rgb(0, 0, 0)");
   });
 });

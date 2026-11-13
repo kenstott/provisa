@@ -14,8 +14,9 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const css = readFileSync(new URL("../../../pages/GraphPage.css", import.meta.url), "utf8");
+const css = readFileSync(resolve(__dirname, "../../../pages/GraphPage.css"), "utf8");
 
 function rule(selector: string): string {
   const at = css.indexOf(`\n${selector} {`);
