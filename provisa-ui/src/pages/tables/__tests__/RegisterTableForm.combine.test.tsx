@@ -96,9 +96,11 @@ const PICKED: FileGlobPreview = {
 beforeEach(() => {
   listedSchemas.schemas = ["default"];
   readColumns.mockReset().mockImplementation(async () => [col("id", "integer"), col("amount")]);
-  registerTables.mockReset().mockResolvedValue([
-    { tableName: "complaints", result: { success: true, message: "", params: { id: 7 } } },
-  ]);
+  registerTables
+    .mockReset()
+    .mockResolvedValue([
+      { tableName: "complaints", result: { success: true, message: "", params: { id: 7 } } },
+    ]);
   previewOf.mockReset().mockImplementation((glob: string | null) =>
     glob
       ? {
@@ -241,9 +243,7 @@ describe("Combine into one table", () => {
     renderForm();
     const glob = await screen.findByTestId("register-tables-file-glob");
     await user.type(glob, "complaints_2025_*.csv");
-    await waitFor(() =>
-      expect(screen.getByText("No file matches this glob.")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("No file matches this glob.")).toBeInTheDocument());
     // A typed glob offers the choice; combined, nothing can be registered.
     await user.click(screen.getByText("Combine into one table"));
     expect(submit()).toBeDisabled();

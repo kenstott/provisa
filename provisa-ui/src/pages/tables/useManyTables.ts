@@ -124,10 +124,7 @@ export function useManyTables(choice: ManyTablesChoice) {
 
   /** One read table as a registration with the defaults it takes when registered alone; or,
    * `combined`, one table of its own name over the files of a glob, with this table's columns. */
-  const registrationOfTable = async (
-    name: string,
-    combined?: Combined,
-  ): Promise<Registration> => {
+  const registrationOfTable = async (name: string, combined?: Combined): Promise<Registration> => {
     const tbl: TableMetadata | undefined = offered.find((o) => o.name === name);
     const reading = readings[name];
     // A combined table's columns are a listed file's; one registered already was not read here.
