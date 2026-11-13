@@ -10,8 +10,8 @@
 
 // REQ-2234: from connecting a source to querying it, in the source's own detail panel. Once a
 // source is saved, the panel opens on Register tables: Register Table with the source already
-// chosen, its tables listed and those that need no input ticked, so one action registers them
-// all. Once they are registered, the panel shows Your data. Skipping a step closes it.
+// chosen, the same form as the Tables page's, its tables that need no input already picked, so
+// one action registers them all. Once they are registered, the panel shows Your data. Skipping a step closes it.
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +19,6 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import {
-  useAvailableColumnsMetadataLazy,
   useDomains,
   useRoles,
   useSources,
@@ -40,7 +39,6 @@ export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClos
   const { domains } = useDomains();
   const { roles } = useRoles();
   const { tables } = useTableDetails();
-  const columns = useAvailableColumnsMetadataLazy();
   const { suggestTableAlias } = useSuggestTableAlias();
   const [error, setError] = useState<string | null>(null);
   const [registered, setRegistered] = useState<Registered | null>(null);
@@ -66,15 +64,12 @@ export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClos
         domainsEnabled={domainsEnabled}
         tables={tables}
         roles={roles}
-        getAvailableColumnsMetadata={columns.fetchColumns}
-        lateColumns={columns.late}
-        columnsStarting={columns.starting}
-        columnsStartingTimedOut={columns.startingTimedOut}
         suggestTableAlias={suggestTableAlias}
         initialSourceId={sourceId}
-        severalFirst
+        pickReady
         onRegisteredMany={(outcomes) => setRegistered(registeredOf(outcomes))}
-        // One table picked: its settings follow in the table editor, as on the Tables page.
+        // A table registered on its own: its settings follow in the table editor, as on the
+        // Tables page.
         onContinue={(registration) => navigate("/tables", { state: { createTable: registration } })}
         onCancel={onClose}
         onProductsRegistered={() => navigate("/data-products")}

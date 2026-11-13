@@ -40,6 +40,7 @@ import { TableLoadSection } from "./TableLoadSection";
 import { TableQuerySection } from "./TableQuerySection";
 import { TableQualitySection } from "./TableQualitySection";
 import { TableColumnsSection } from "./TableColumnsSection";
+import { DeclaredDraftColumns } from "./DeclaredDraftColumns";
 import type { CacheTtlEdit, UpdateEditCol } from "./tableEditTypes";
 
 interface TableEditFormProps {
@@ -79,6 +80,9 @@ interface TableEditFormProps {
   /** The section in view, kept by the page across the read view and the edit form. */
   section?: TableSection;
   onSectionChange?: (section: TableSection) => void;
+  /** REQ-1924: the table being created is an OpenAPI table whose operation declares no response
+   * schema: its columns are declared in the Columns section before it is registered. */
+  declaresColumns?: boolean;
 }
 
 export function TableEditForm({
@@ -105,6 +109,7 @@ export function TableEditForm({
   relationships,
   section: sectionIn,
   onSectionChange,
+  declaresColumns = false,
 }: TableEditFormProps) {
   const { t } = useTranslation();
   const [section, setSection] = useTableSection(sectionIn, onSectionChange);
@@ -238,6 +243,13 @@ export function TableEditForm({
             tableId={creating ? undefined : editingTable.id}
           />
         ))}
+      {section === "columns" && creating && declaresColumns && (
+        <DeclaredDraftColumns
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          visibleTo={roles.map((r) => r.id)}
+        />
+      )}
       {section === "columns" && (
         <TableColumnsSection
           editingTable={editingTable}

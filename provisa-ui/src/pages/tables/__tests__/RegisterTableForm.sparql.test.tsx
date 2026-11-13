@@ -53,7 +53,6 @@ describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
         domainsEnabled
         tables={[]}
         roles={[{ id: "org_admin" } as never]}
-        getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}

@@ -157,12 +157,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
-  const {
-    fetchColumns: getAvailableColumnsMetadata,
-    late: lateColumns,
-    starting: columnsStarting,
-    startingTimedOut: columnsStartingTimedOut,
-  } = useAvailableColumnsMetadataLazy();
+  const { fetchColumns: getAvailableColumnsMetadata, late: lateColumns } =
+    useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
   const getColumnDependents = useColumnDependents();
@@ -888,6 +884,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         relationships={relationships}
         section={section}
         onSectionChange={setSection}
+        // REQ-1924: a table registered on its own whose columns its source does not describe.
+        declaresColumns={saved === null && newRegistration?.declaresColumns === true}
       />
     </ReplicaBuildsContext.Provider>
   );
@@ -945,10 +943,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         domainsEnabled={domainsEnabled}
         tables={tables}
         roles={roles}
-        getAvailableColumnsMetadata={getAvailableColumnsMetadata}
-        lateColumns={lateColumns}
-        columnsStarting={columnsStarting}
-        columnsStartingTimedOut={columnsStartingTimedOut}
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}

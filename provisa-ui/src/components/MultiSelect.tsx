@@ -8,10 +8,42 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { MultiSelect as MantineMultiSelect } from "@mantine/core";
+import { Button, Group, MultiSelect as MantineMultiSelect } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Tip } from "./Tip";
+
+/** A button beside an option in the open list. */
+export interface OptionAction {
+  label: string;
+  ariaLabel: string;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}
+
+export interface MultiSelectOption {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  reason?: string;
+  action?: OptionAction;
+  group?: string;
+}
+
+/** Mantine's grouped data: options without a group first, then each group in order of appearance. */
+function mantineData(options: MultiSelectOption[]) {
+  const item = (o: MultiSelectOption) => ({ value: o.id, label: o.label, disabled: o.disabled });
+  if (!options.some((o) => o.group)) return options.map(item);
+  const groups = new Map<string, MultiSelectOption[]>();
+  for (const o of options.filter((x) => x.group)) {
+    groups.set(o.group as string, [...(groups.get(o.group as string) ?? []), o]);
+  }
+  return [
+    ...options.filter((o) => !o.group).map(item),
+    ...[...groups].map(([group, items]) => ({ group, items: items.map(item) })),
+  ];
+}
 
 /** Multi-value picker backed by Mantine MultiSelect — provides the ARIA
  *  combobox pattern, keyboard navigation, and searchable options that the
@@ -35,8 +67,10 @@ export function MultiSelect({
   "aria-description": ariaDescription,
 }: {
   /** An option `disabled` is shown and cannot be picked; its `reason` says why, else
-   * `disabledHint`, the reason shared by every option that has none of its own. */
-  options: { id: string; label: string; disabled?: boolean; reason?: string }[];
+   * `disabledHint`, the reason shared by every option that has none of its own. Its `action`, if
+   * any, is a button beside it in the list: what can be done with it instead of picking it. An
+   * option's `group` lists it under that heading. */
+  options: MultiSelectOption[];
   disabledHint?: string;
   value: string[];
   onChange: (selected: string[]) => void;
@@ -60,21 +94,49 @@ export function MultiSelect({
       return why ? [[o.id, why] as const] : [];
     }),
   );
+  const actions = new Map(options.flatMap((o) => (o.action ? [[o.id, o.action] as const] : [])));
+  // An option's own content: its label, with its reason on hover when it cannot be picked.
+  const labelOf = (value: string, label: string) => {
+    const why = reasons.get(value);
+    return why ? (
+      <Tip text={why}>
+        <span data-testid={`option-not-held-${value}`}>{label}</span>
+      </Tip>
+    ) : (
+      label
+    );
+  };
   return (
     <MantineMultiSelect
       className={className}
       style={style}
-      data={options.map((o) => ({ value: o.id, label: o.label, disabled: o.disabled }))}
+      data={mantineData(options)}
       renderOption={
-        reasons.size > 0
+        reasons.size > 0 || actions.size > 0
           ? ({ option }) => {
-              const why = reasons.get(option.value);
-              return why ? (
-                <Tip text={why}>
-                  <span data-testid={`option-not-held-${option.value}`}>{option.label}</span>
-                </Tip>
-              ) : (
-                option.label
+              const action = actions.get(option.value);
+              if (!action) return labelOf(option.value, option.label);
+              // The list dims an option that cannot be picked; its action is not dimmed with it.
+              return (
+                <Group justify="space-between" wrap="nowrap" gap="xs" w="100%">
+                  <span className={option.disabled ? "multi-select-option-held" : undefined}>
+                    {labelOf(option.value, option.label)}
+                  </span>
+                  <Button
+                    variant="light"
+                    size="compact-xs"
+                    loading={action.loading}
+                    disabled={action.disabled}
+                    aria-label={action.ariaLabel}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      action.onClick();
+                    }}
+                    data-testid={`option-action-${option.value}`}
+                  >
+                    {action.label}
+                  </Button>
+                </Group>
               );
             }
           : undefined

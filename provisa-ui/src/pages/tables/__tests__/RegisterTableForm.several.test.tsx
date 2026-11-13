@@ -115,7 +115,6 @@ function renderForm(over: { severalFirst?: boolean; registered?: string[] } = {}
         (name, i) => ({ id: i + 1, sourceId: "pg", tableName: name, columns: [] }) as never,
       )}
       roles={[{ id: "admin" } as never, { id: "analyst" } as never]}
-      getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
       suggestTableAlias={suggestTableAlias}
       onContinue={vi.fn()}
       onCancel={() => {}}

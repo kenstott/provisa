@@ -31,7 +31,7 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 // A schemaless source: discovery types what it can and leaves `payload` untyped.
-const COLUMNS = [
+const _COLUMNS = [
   { name: "id", dataType: "integer" },
   { name: "payload", dataType: "" },
 ];
@@ -48,7 +48,6 @@ function renderForm() {
       domainsEnabled={false}
       tables={[]}
       roles={[{ id: "admin" } as never]}
-      getAvailableColumnsMetadata={vi.fn().mockResolvedValue(COLUMNS)}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
       onContinue={onContinue}
       onCancel={() => {}}

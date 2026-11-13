@@ -53,7 +53,6 @@ function renderForm() {
       domainsEnabled={false}
       tables={[]}
       roles={[{ id: "admin" } as never]}
-      getAvailableColumnsMetadata={vi.fn().mockResolvedValue([{ name: "id", dataType: "integer" }])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
       onContinue={onContinue}
       onCancel={() => {}}

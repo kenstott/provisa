@@ -45,7 +45,6 @@ describe("RegisterTableForm source picker", () => {
         domainsEnabled
         tables={[]}
         roles={[]}
-        getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("x")}
         onContinue={vi.fn()}
         onCancel={() => {}}

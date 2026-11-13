@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2234: several tables of a schema picked at once and registered in one action, each with the
-// defaults its registration alone would take. Discovery decides, table by table, whether a table
-// needs input from the person: one that does is listed, unticked, saying why, and is registered
-// on its own. A table registered already is listed, and cannot be picked again.
+// REQ-2234: one table or several of a schema picked in the standard multi-select and registered in
+// one action, each with the defaults its registration alone would take. Discovery decides, table
+// by table, whether a table needs input from the person: one that does is offered, cannot be
+// picked, says why, and is registered on its own. A table registered already is not offered.
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,6 +54,8 @@ export interface ManyTablesChoice {
   /** REQ-1907: each table of the source needs its own Cache TTL to be registered (it lands, and
    * the source states none for its ttl signal): none is registered with the others. */
   needsCacheTtl?: boolean;
+  /** Every table that needs no input starts picked (a source just saved); else none does. */
+  pickReady?: boolean;
 }
 
 /** What keeps a listed table from being registered with the others; null when nothing does. */
@@ -72,8 +74,8 @@ export function useManyTables(choice: ManyTablesChoice) {
   const { registerTables } = useRegisterTables();
   const { sourceId, schemaName, offered, isRegistered } = choice;
   const [readings, setReadings] = useState<Record<string, Reading>>({});
-  // A table discovery says needs no input is ticked once it is read; the person may untick it.
-  const [unticked, setUnticked] = useState<Set<string>>(new Set());
+  // What the person picked; null until they pick, while `pickReady` decides what starts picked.
+  const [picked, setPicked] = useState<string[] | null>(null);
   const [registering, setRegistering] = useState(false);
   // The table being opened to be registered on its own, while its defaults are gathered.
   const [opening, setOpening] = useState<string | null>(null);
@@ -89,7 +91,7 @@ export function useManyTables(choice: ManyTablesChoice) {
     let live = true;
     const queue = listed.current.filter((tbl) => pickableKey.split("\n").includes(tbl.name));
     setReadings(Object.fromEntries(queue.map((tbl) => [tbl.name, { state: "reading" }])));
-    setUnticked(new Set());
+    setPicked(null);
     const readNext = async (): Promise<void> => {
       const tbl = queue.shift();
       if (!tbl || !live) return;
@@ -114,9 +116,10 @@ export function useManyTables(choice: ManyTablesChoice) {
   const needsCacheTtl = choice.needsCacheTtl === true;
   const ready = (name: string) =>
     readings[name]?.state === "read" && blockedBy(readings[name], needsCacheTtl) === null;
-  const ticked = pickable.map((tbl) => tbl.name).filter((n) => ready(n) && !unticked.has(n));
-  const setTicked = (names: string[]) =>
-    setUnticked(new Set(pickable.map((tbl) => tbl.name).filter((n) => !names.includes(n))));
+  const ticked = pickable
+    .map((tbl) => tbl.name)
+    .filter((n) => ready(n) && (picked === null ? choice.pickReady === true : picked.includes(n)));
+  const setTicked = (names: string[]) => setPicked(names);
 
   /** One read table as a registration with the defaults it takes when registered alone. */
   const registrationOfTable = async (name: string): Promise<Registration> => {
@@ -212,7 +215,10 @@ export function useManyTables(choice: ManyTablesChoice) {
     if (readings[tableName]?.state !== "read") return;
     setOpening(tableName);
     try {
-      open(await registrationOfTable(tableName));
+      const registration = await registrationOfTable(tableName);
+      // An OpenAPI table with no response schema: its columns are declared in the panel.
+      const declared = blockedBy(readings[tableName], needsCacheTtl)?.kind === "declared";
+      open(declared ? { ...registration, declaresColumns: true } : registration);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
