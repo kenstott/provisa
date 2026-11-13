@@ -701,7 +701,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         Built on the lazy ``query_arrow_stream`` terminal (``run_arrow_stream``) so the pgwire ENGINE
         route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
         schema, batches = self.run_arrow_stream(sql, params)
-        return stream_rows_from_arrow(schema, batches)
+        return stream_rows_from_arrow(schema, (bytes_where_not_text(b) for b in batches))
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         return await run_async_materialized(self.run_sync, sql, params)
@@ -736,6 +736,38 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     def close(self) -> None:
         self._backend.close()
+
+
+def _utf8(column: pa.Array) -> bool:
+    """Whether a utf8 column's bytes are UTF-8: Arrow's own full validation of it."""
+    import pyarrow as pa
+
+    try:
+        column.validate(full=True)
+    except pa.ArrowInvalid:
+        return False
+    return True
+
+
+def bytes_where_not_text(batch: pa.RecordBatch) -> pa.RecordBatch:
+    """``batch`` with each String column whose bytes are not UTF-8 read as the bytes it is
+    (REQ-2167). A ClickHouse String is bytes, which chdb and the server write to Arrow as utf8
+    (output_format_arrow_string_as_string), whatever they are: a send function's answer
+    (int4send(255) is 00 00 00 ff) holds no text. The setting stays on, as a String written as
+    binary is a bare NULL's type (Nothing) too. Every other column is as it came."""
+    import pyarrow as pa
+
+    columns = list(batch.columns)
+    held = [
+        i
+        for i, column in enumerate(columns)
+        if pa.types.is_string(column.type) and not _utf8(column)
+    ]
+    if not held:
+        return batch
+    for i in held:
+        columns[i] = columns[i].view(pa.binary())
+    return pa.RecordBatch.from_arrays(columns, names=batch.schema.names)
 
 
 def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:

@@ -159,6 +159,7 @@ def _to_float(value: Any) -> Any:
 
 
 _INTEGERS = frozenset({BVType.SMALLINT, BVType.INTEGER, BVType.BIGINT})
+_INTEGER_ARRAYS = frozenset({BVType.SMALLINTARRAY, BVType.INTEGERARRAY, BVType.BIGINTARRAY})
 _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
 
 #: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
@@ -312,8 +313,10 @@ _RETURNED: dict[str, CastType] = {
     "bytea": CastType(
         17, -1, BVType.BYTES, frozenset({BVType.BYTES, BVType.TEXT}), of_text=bytes_of_text
     ),
-    "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, frozenset({BVType.INTEGERARRAY})),
-    "bigint[]": CastType(1016, -1, BVType.BIGINTARRAY, frozenset({BVType.BIGINTARRAY})),
+    # An array of integers an engine names by none of its widths (arrow_type_name's INTEGER[] of
+    # ClickHouse's Int64): the call's own type describes it.
+    "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, _INTEGER_ARRAYS),
+    "bigint[]": CastType(1016, -1, BVType.BIGINTARRAY, _INTEGER_ARRAYS),
     "double precision[]": CastType(1022, -1, BVType.FLOATARRAY, frozenset({BVType.FLOATARRAY})),
     "text[]": CastType(1009, -1, BVType.STRINGARRAY, frozenset({BVType.STRINGARRAY})),
     # ClickHouse's time is its Time64, or the text a form writes of it (pg_forms_type_io).

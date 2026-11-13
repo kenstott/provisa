@@ -13,7 +13,8 @@ run 43361055823, REQ-2171).
 
 array_agg: ClickHouse's groupArray skips a NULL, and answers an empty array of no rows, where
 PostgreSQL keeps each NULL and answers NULL of no rows. Its form aggregates each value in a tuple,
-which groupArray keeps whatever it holds, and answers NULL where the aggregate counted no row.
+which groupArray keeps whatever it holds, and answers NULL where the aggregate counted no row. Of an
+order (array_agg(x ORDER BY y)) it is refused by name: ClickHouse takes no ORDER BY in a call.
 
 A NULL array: ClickHouse has no NULL of an array (an Array is never Nullable), so a call PostgreSQL
 answers NULL for its NULL array argument is that NULL, read before any rule's pattern: a function
@@ -75,7 +76,14 @@ def _aggregated(node: exp.Expr) -> exp.Expr | None:
         value = node.expressions[0] if len(node.expressions) == 1 else None
     else:
         return None
-    if value is None or isinstance(value, (exp.Order, exp.Distinct)):
+    if isinstance(value, exp.Order):
+        raise Refused(
+            Refusal(
+                "0A000",
+                "array_agg() of an order has no form on clickhouse: its aggregate takes none",
+            )
+        )
+    if value is None or isinstance(value, exp.Distinct):
         return None
     outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
     if isinstance(outer, (exp.Filter, exp.Window)):
