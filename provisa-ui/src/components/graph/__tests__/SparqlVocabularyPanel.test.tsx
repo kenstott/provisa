@@ -443,3 +443,32 @@ describe("a pill dragged to a frame", () => {
     expect(dragged(term.dataset.testid as string)).toEqual(["text/x-provisa-property", HIRE_DATE]);
   });
 });
+
+describe("a property pill", () => {
+  it("carries no inline colour: its ground and text come from the theme tokens", () => {
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={vocabulary}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    const pill = screen.getByTestId(/^sparql-predicate-/);
+    expect(pill.getAttribute("style") ?? "").not.toMatch(/background|color/);
+  });
+
+  it("a coloured class pill draws the text colour its ground asks for", () => {
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={two}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{ "hr:employees": "#FFC454" }}
+        checkedDomains={new Set()}
+      />,
+    );
+    expect(screen.getByTestId("sparql-class-hr:employees")).toHaveStyle({ color: "#000" });
+  });
+});
