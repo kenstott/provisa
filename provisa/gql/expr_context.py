@@ -178,6 +178,36 @@ def graph_identity(t: "_Translator", var: str) -> exp.Expression | None:
     return None
 
 
+def _cut_refused(inner: exp.Expression) -> None:  # REQ-348
+    """An embedded statement's walk with no upper bound, as one value of the outer row: its
+    depth-limit column (CUT_COLUMN) is no value of the list it gives. A walk that reached the
+    limit and could go on fails by name there instead, as the statement's own walk does
+    (assembler.take_overrun), never answered cut short."""
+    from provisa.core import settings_registry
+    from provisa.gql.translator_types import CUT_COLUMN, PathDepthExceeded
+
+    if not isinstance(inner, exp.Select):
+        return
+    cut = [e for e in inner.expressions if e.alias_or_name == CUT_COLUMN]
+    if not cut:
+        return
+    kept = [e for e in inner.expressions if e.alias_or_name != CUT_COLUMN]
+    reached = exp.EQ(this=cut[0].unalias().copy(), expression=exp.Literal.number(1))
+    refused = refused_when_read(
+        str(PathDepthExceeded(settings_registry.value("graph.depth_limit"))), "JSON"
+    )
+    guarded = [
+        exp.alias_(
+            exp.Case(ifs=[exp.If(this=reached.copy(), true=refused.copy())], default=e.unalias()),
+            e.alias_or_name,
+        )
+        if isinstance(e, exp.Alias)
+        else e
+        for e in kept
+    ]
+    inner.set("expressions", guarded)
+
+
 def _rename_variables(node: object, names: dict[str, str]) -> None:
     """Each node variable of ``node`` (an IR tree) that ``names`` holds named its new name, in its
     patterns and its expressions alike."""
@@ -1630,6 +1660,7 @@ class TranslatorExprContext:
             limit=None,
         )
         inner, kinds = self._translate_embedded_kinds(body, "COLLECT")
+        _cut_refused(inner)
         rows = inner if isinstance(inner, exp.Select) and not inner.args.get("with_") else None
         if rows is not None and len(rows.expressions) == 1:
             (row,) = rows.expressions
