@@ -20,7 +20,6 @@
     "gapHelp": "תג זה דורש ציטוט, ולשיוך הזה אין אף אחד.",
     "definedBy": "מוגדר ב-{{title}}",
     "definedByLabel": "מוגדר ב",
-    "definedByDesc": "סעיפי הספרייה שמגדירים תג זה.",
     "requiresCitationLabel": "שיוכים דורשים ציטוט",
     "requiresCitationDesc": "שיוך של תג זה ללא סעיף מצוטט מהספרייה מסומן ככשל חסר.",
     "requiresCitationBadge": "נדרש ציטוט",
@@ -29,7 +28,9 @@
     "citedByDefinition": "ההגדרה שלו",
     "citedByGone": "נמחק",
     "citedByWholeDocument": "המסמך כולו",
-    "citationsLabel": "ציטוטים",
-    "neededForCoverage": "נדרש לכיסוי"
+    "citationsLabel": "מדוע התגית על האובייקט הזה",
+    "neededForCoverage": "נדרש לכיסוי",
+    "definitionLabel": "מדוע התגית הזו קיימת",
+    "definitionDesc": "המסמך והסעיף שמסבירים מדוע התגית הזו קיימת. מדוע היא מוצמדת לאובייקט מסוים נכתב בציטוטים של אותו אובייקט."
   }
 }

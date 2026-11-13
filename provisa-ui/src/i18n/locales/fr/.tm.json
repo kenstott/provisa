@@ -10459,8 +10459,10 @@
   "fr/registerManyTables.json::registerManyTables.registerOne": "Register",
   "fr/registerManyTables.json::registerManyTables.registerOneLabel": "Register {{table}} on its own",
   "fr/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted.",
-  "tagCitations.json::tagCitations.citationsLabel": "Citations",
+  "tagCitations.json::tagCitations.citationsLabel": "Why it is on this object",
   "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage",
   "fr/registerManyTables.json::registerManyTables.pickTables": "Select one table or more…",
-  "fr/registerManyTables.json::registerManyTables.needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own."
+  "fr/registerManyTables.json::registerManyTables.needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own.",
+  "tagCitations.json::tagCitations.definitionLabel": "Why this tag exists",
+  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations."
 }
