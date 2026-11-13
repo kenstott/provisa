@@ -348,3 +348,126 @@ async def test_saving_citations_with_an_assignment_asks_only_the_assignments_rig
         found = await tag_repo.assignment_citations(conn)
     key = ("approved", f"section:{ids['sales']}:heading:{SCOPE}")
     assert [c.document_title for c in found[key]] == ["sales policy"]
+
+
+# One tag form: the tag and its definition citations saved by one createTag / updateTag call.
+
+NEW_TAG = TagInput(id="fresh", applies_to=["source"])
+
+
+async def _cited_on_tag(db, tag: str) -> list[citations.Citation]:
+    async with db.acquire() as conn:
+        found = await tag_repo.definition_citations(conn)
+    return found.get(tag, [])
+
+
+async def _tag_ids(db) -> set[str]:
+    async with db.acquire() as conn:
+        return {t["id"] for t in await tag_repo.list_all(conn)}
+
+
+async def test_a_tag_created_with_two_citations_stores_all(library, monkeypatch):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    done = await Mutation().create_tag(
+        editor, NEW_TAG, citations=[_cite(ids["sales"]), _whole(ids["hr"])]
+    )
+    assert done.success, done.message
+    held = await _cited_on_tag(db, "fresh")
+    assert sorted((c.document_title, c.section_heading) for c in held) == [
+        ("hr policy", None),
+        ("sales policy", SCOPE),
+    ]
+    assert {c.state for c in held} == {"current"}
+
+
+async def test_a_tag_citation_the_library_refuses_stores_nothing_not_even_the_tag(
+    library, monkeypatch
+):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    no_section = LibraryCitationInput(document_id=ids["sales"], section_heading="Nowhere")
+    refused = await Mutation().create_tag(editor, NEW_TAG, citations=[_cite(ids["hr"]), no_section])
+    assert (refused.success, refused.code) == (False, "reference_library.citation_invalid")
+    assert "fresh" not in await _tag_ids(db) and await _cited_on_tag(db, "fresh") == []
+    no_document = await Mutation().create_tag(
+        editor, NEW_TAG, citations=[_cite(ids["hr"]), _whole(987654)]
+    )
+    assert (no_document.success, no_document.code) == (False, "reference_library.not_found")
+    assert "fresh" not in await _tag_ids(db) and await _cited_on_tag(db, "fresh") == []
+    # An update that is refused leaves the tag as it was.
+    refused = await Mutation().update_tag(
+        editor,
+        TagInput(id="approved", description="Changed", applies_to=["source"]),
+        citations=[no_section],
+    )
+    assert refused.code == "reference_library.citation_invalid"
+    async with db.acquire() as conn:
+        assert (await tag_repo.get(conn, "approved"))["description"] == "Approved"
+
+
+async def test_a_tag_edit_replaces_the_set_and_keeps_an_unchanged_citations_record(
+    library, monkeypatch
+):
+    db, ids = library
+    editor, _ = _scoped(monkeypatch, ["*"], "table_registration")
+    first = await Mutation().update_tag(
+        editor,
+        TagInput(id="approved", applies_to=["source"]),
+        citations=[_cite(ids["sales"]), _cite(ids["hr"])],
+    )
+    assert first.success, first.message
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            update(reference_citations)
+            .where(reference_citations.c.document_id == ids["sales"])
+            .values(text_sha256="0" * 64)
+        )
+    edited = await Mutation().update_tag(
+        editor,
+        TagInput(id="approved", description="Reviewed", applies_to=["source"]),
+        citations=[_cite(ids["sales"]), _whole(ids["hr"])],
+    )
+    assert edited.success, edited.message
+    by_place = {
+        (c.document_title, c.section_heading): c for c in await _cited_on_tag(db, "approved")
+    }
+    assert set(by_place) == {("sales policy", SCOPE), ("hr policy", None)}
+    kept = by_place[("sales policy", SCOPE)]
+    assert (kept.text_sha256, kept.state) == ("0" * 64, "drifted")
+    async with db.acquire() as conn:
+        assert (await tag_repo.get(conn, "approved"))["description"] == "Reviewed"
+    # Leaving the list out leaves the citations as they are; an empty list takes them all off.
+    untouched = await Mutation().update_tag(editor, TagInput(id="approved", applies_to=["source"]))
+    assert untouched.success, untouched.message
+    assert len(await _cited_on_tag(db, "approved")) == 2
+    cleared = await Mutation().update_tag(
+        editor, TagInput(id="approved", applies_to=["source"]), citations=[]
+    )
+    assert cleared.success, cleared.message
+    assert await _cited_on_tag(db, "approved") == []
+
+
+async def test_saving_citations_with_a_tag_asks_the_rights_that_edit_the_tag(library, monkeypatch):
+    db, ids = library
+    reader, _ = _scoped(monkeypatch, ["*"], "glossary_read")
+    with pytest.raises(PermissionError):
+        await Mutation().create_tag(reader, NEW_TAG, citations=[_cite(ids["sales"])])
+    assert "fresh" not in await _tag_ids(db)
+    # A sensitive tag's definition: a table editor as before; a sensitive_data holder in every domain.
+    async with db.acquire() as conn:
+        await tag_repo.upsert(conn, Tag(id="secret", applies_to=["column"], sensitive=True))
+    secret = TagInput(id="secret", applies_to=["column"], sensitive=True)
+    scoped, _ = _scoped(monkeypatch, ["sales"], "sensitive_data", "glossary_read")
+    with pytest.raises(PermissionError):
+        await Mutation().update_tag(scoped, secret, citations=[_cite(ids["sales"])])
+    assert await _cited_on_tag(db, "secret") == []
+    everywhere, _ = _scoped(monkeypatch, ["*"], "sensitive_data", "glossary_read")
+    done = await Mutation().update_tag(everywhere, secret, citations=[_cite(ids["sales"])])
+    assert done.success, done.message
+    assert len(await _cited_on_tag(db, "secret")) == 1
+    # A document the caller does not read is one the library does not hold.
+    curator, _ = _scoped(monkeypatch, ["sales"], "table_registration", "glossary_read")
+    hidden = await Mutation().create_tag(curator, NEW_TAG, citations=[_cite(ids["hr"])])
+    assert (hidden.success, hidden.code) == (False, "reference_library.not_found")
+    assert "fresh" not in await _tag_ids(db)

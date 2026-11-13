@@ -75,7 +75,10 @@ export function useSaveTag() {
     expiresPolicy: string,
     paramPolicy: string, // REQ-1467
     requiresCitation: boolean, // REQ-2208
+    // The whole set of the definition's citations, saved with the tag; left out, they stay.
+    citations?: CitationPlace[],
   ) => ({
+    citations: citations === undefined ? null : citations.map(citationInput),
     input: {
       id,
       description,
@@ -218,6 +221,20 @@ export const citationKey = (c: CitationPlace) =>
         ? `p:${c.sectionPage}`
         : ""
   }`;
+
+/** A citation picked in a form and not yet saved: its document's title and where it points. */
+export function pickedCitation(place: CitationPlace, documentTitle: string): LibraryCitation {
+  return {
+    ...place,
+    documentTitle,
+    documentSource: "",
+    textSha256: "",
+    citedBy: null,
+    citedAt: "",
+    state: "current",
+    needsReview: false,
+  };
+}
 
 function citationInput(place: CitationPlace) {
   return {

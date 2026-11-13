@@ -10437,7 +10437,6 @@
   "pt/tagCitations.json::tagCitations.citedHere": "Cited for this object",
   "pt/tagCitations.json::tagCitations.confirm": "Confirm",
   "pt/tagCitations.json::tagCitations.definedBy": "Defined by {{title}}",
-  "pt/tagCitations.json::tagCitations.definedByDesc": "The library sections that define this tag.",
   "pt/tagCitations.json::tagCitations.definedByLabel": "Defined by",
   "pt/tagCitations.json::tagCitations.definitionReviewHelp": "A section that defines this tag changed or is gone. Review its citation.",
   "pt/tagCitations.json::tagCitations.document": "Library document",
@@ -10456,6 +10455,8 @@
   "pt/tagCitations.json::tagCitations.reviewHelp": "A citation on this tag needs review: its section changed or is gone.",
   "pt/tagCitations.json::tagCitations.section": "Section",
   "pt/tagCitations.json::tagCitations.wholeDocument": "Whole document",
-  "tagCitations.json::tagCitations.citationsLabel": "Citations",
-  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage"
+  "tagCitations.json::tagCitations.citationsLabel": "Why it is on this object",
+  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage",
+  "tagCitations.json::tagCitations.definitionLabel": "Why this tag exists",
+  "tagCitations.json::tagCitations.definitionDesc": "The document and section that say why this tag exists. Why it is on one object goes in that object's own citations."
 }

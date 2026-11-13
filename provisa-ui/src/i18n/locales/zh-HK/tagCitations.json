@@ -20,7 +20,6 @@
     "gapHelp": "此標籤要求引用，而此指派沒有。",
     "definedBy": "定義於 {{title}}",
     "definedByLabel": "定義於",
-    "definedByDesc": "定義此標籤的庫章節。",
     "requiresCitationLabel": "指派須附引用",
     "requiresCitationDesc": "此標籤的指派若沒有引用庫章節，將標記為缺口。",
     "requiresCitationBadge": "須附引用",
@@ -29,7 +28,9 @@
     "citedByDefinition": "其定義",
     "citedByGone": "已不存在",
     "citedByWholeDocument": "整份文件",
-    "citationsLabel": "引用",
-    "neededForCoverage": "覆蓋所需"
+    "citationsLabel": "為何用於此物件",
+    "neededForCoverage": "覆蓋所需",
+    "definitionLabel": "此標籤為何存在",
+    "definitionDesc": "說明此標籤為何存在的文件和章節。它為何用於某個物件,請寫在該物件自己的引用中。"
   }
 }
