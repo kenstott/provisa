@@ -904,3 +904,20 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     )
     marks = addopts[addopts.index("-m") + 1]
     assert "not leak" in marks.split(" and "), marks
+
+
+def test_the_smoke_check_runs_in_the_smoke_workflow_and_in_no_suite_lane():
+    # REQ-1989: tests/smoke needs the UI's node modules and Chromium, which smoke.yml installs and
+    # no suite lane does (release 509: the isolated lane failed every run with "Cannot find package
+    # '@playwright/test'"). The lane selects by marker and directory: the smoke module's `isolated`
+    # marker must not pull it into the isolated lane.
+    runner = _runner()
+    path = "tests/smoke/test_main_is_startable.py"
+    assert "isolated" in (REPO / path).read_text()  # still marked: the module is not softened
+    assert not runner._in_lane("isolated", path)
+    assert runner._in_lane("smoke", path)
+    assert "smoke" not in runner.SUITE
+    assert "smoke" in runner.ELSEWHERE
+    workflow = (REPO / ".github" / "workflows" / "smoke.yml").read_text()
+    assert "pytest -m isolated tests/smoke/test_main_is_startable.py" in " ".join(workflow.split())
+    assert "playwright: chromium" in workflow

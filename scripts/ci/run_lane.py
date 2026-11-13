@@ -80,7 +80,11 @@ LANES: dict[str, Lane] = {
     "datastores": Lane(_SUITE, f"{_BASE} and ({_DATASTORE}) and not ({_KAFKA} or requires_neo4j)"),
     # Every directory but tests/e2e, as test-all runs it: the isolated tests under tests/unit are
     # deselected by unit-tests.yml's addopts and run only here.
-    "isolated": Lane(("tests",), "isolated", clear_addopts=True, ignore=("tests/e2e",)),
+    # tests/smoke is the Smoke workflow's (REQ-1989): it needs the UI toolchain and a browser, which
+    # no suite lane installs, and its own run keeps main startable.
+    "isolated": Lane(
+        ("tests",), "isolated", clear_addopts=True, ignore=("tests/e2e", "tests/smoke")
+    ),
     "e2e": Lane(("tests/e2e",), "e2e and not cluster", clear_addopts=True),
     # REQ-2016: the tests that embed with a local sentence-transformers model (the vector extra,
     # with CPU-only torch): their own job installs it (scripts/ci/lanes/suite-prepare.sh vector), so no
@@ -134,6 +138,8 @@ LANES: dict[str, Lane] = {
         clear_addopts=True,
         bound=DEMO_WALK_TIMEOUT_S,
     ),
+    # REQ-1989: the smoke check, run by smoke.yml on the branch a landing carries.
+    "smoke": Lane(("tests/smoke",), "isolated", clear_addopts=True),
     # REQ-2012: Polly's model bake-off asks paid models real questions; on demand only, its own
     # workflow (polly-bakeoff.yml).
     "polly_bakeoff": Lane(
@@ -173,6 +179,7 @@ LIVE = ("warehouse", "salesforce", "athena", "servicenow")
 ELSEWHERE = {
     "demo_walk": "demo-bundles.yml, against the demo bundle it has just built",
     "polly_bakeoff": "polly-bakeoff.yml",
+    "smoke": "smoke.yml, where the UI toolchain and the browser are installed",
 }
 
 
