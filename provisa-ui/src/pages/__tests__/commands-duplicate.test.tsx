@@ -142,7 +142,7 @@ describe("Duplicate, in a command's panel head", () => {
     await userEvent.click(await screen.findByTestId("commands-fn-row-refund_order"));
     await userEvent.click(within(panel()).getByRole("button", { name: "Duplicate" }));
     expect(screen.getByTestId("commands-split-title")).toHaveTextContent("New command");
-    expect(within(panel()).getByLabelText(/^Name/)).toHaveValue("refund_order-copy");
+    expect(within(panel()).getByLabelText(/^Name/)).toHaveValue("refund_order_copy");
     expect(within(panel()).getByLabelText(/^Function Name/)).toHaveValue("refund_order");
   });
 
@@ -155,7 +155,7 @@ describe("Duplicate, in a command's panel head", () => {
     const [saved, existing] = vi.mocked(saveFunction).mock.calls[0];
     expect(existing).toBeNull(); // a create: the server refuses a name that exists
     expect(saved).toMatchObject({
-      name: "refund_order-copy",
+      name: "refund_order_copy",
       sourceId: "sales-pg",
       functionName: "refund_order",
       description: "Refunds one order",
@@ -172,6 +172,6 @@ describe("Duplicate, in a command's panel head", () => {
     await vi.waitFor(() => expect(saveWebhook).toHaveBeenCalledTimes(1));
     const [saved, existing] = saveWebhook.mock.calls[0];
     expect(existing).toBeNull();
-    expect(saved).toMatchObject({ name: "notify_ops-copy", url: "https://hooks.example.com/ops" });
+    expect(saved).toMatchObject({ name: "notify_ops_copy", url: "https://hooks.example.com/ops" });
   });
 });

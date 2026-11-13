@@ -233,7 +233,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 import { TablesPage } from "../TablesPage";
 import { expectHoldsNoneOf } from "../../test-utils/createForm";
 
-const ORDERS_VALUES = ["orders", "ord", "Customer orders ledger", "email", "ord-copy"];
+const ORDERS_VALUES = ["orders", "ord", "Customer orders ledger", "email", "ord_copy"];
 
 async function select(name: string) {
   const list = await screen.findByTestId("tables-list");
@@ -286,7 +286,7 @@ describe("Duplicate, in a table's panel head", () => {
     await userEvent.click(await screen.findByTestId("table-read-view-duplicate"));
     const form = await within(panel()).findByTestId("table-section-identity-panel");
     expect(within(form).getByTestId("table-edit-table")).toHaveValue("orders");
-    expect(within(form).getByDisplayValue("ord-copy")).toBeInTheDocument();
+    expect(within(form).getByDisplayValue("ord_copy")).toBeInTheDocument();
     expect(within(form).getByDisplayValue("Customer orders ledger")).toBeInTheDocument();
     // It is the create form: nothing is registered until it is saved, and it is not the saved table.
     expect(within(panel()).getByTestId("table-edit-save")).toBeInTheDocument();
@@ -298,7 +298,27 @@ describe("Duplicate, in a table's panel head", () => {
     await select("order_totals");
     await userEvent.click(await screen.findByTestId("table-read-view-duplicate"));
     const form = await within(panel()).findByTestId("table-section-identity-panel");
-    expect(within(form).getByTestId("table-edit-table")).toHaveValue("order_totals-copy");
+    expect(within(form).getByTestId("table-edit-table")).toHaveValue("order_totals_copy");
     expect(within(form).getByDisplayValue("Totals view")).toBeInTheDocument();
+  });
+
+  it("lets a view's copy be renamed: its name field is editable", async () => {
+    render(<TablesPage />);
+    await select("order_totals");
+    await userEvent.click(await screen.findByTestId("table-read-view-duplicate"));
+    const form = await within(panel()).findByTestId("table-section-identity-panel");
+    const field = within(form).getByTestId("table-edit-table");
+    expect(field).not.toHaveAttribute("readonly");
+    await userEvent.clear(field);
+    await userEvent.type(field, "order_totals_eu");
+    expect(field).toHaveValue("order_totals_eu");
+  });
+
+  it("keeps a table's copy's table field read-only: it is the source's table, told apart by its alias", async () => {
+    render(<TablesPage />);
+    await select("ord");
+    await userEvent.click(await screen.findByTestId("table-read-view-duplicate"));
+    const form = await within(panel()).findByTestId("table-section-identity-panel");
+    expect(within(form).getByTestId("table-edit-table")).toHaveAttribute("readonly");
   });
 });
