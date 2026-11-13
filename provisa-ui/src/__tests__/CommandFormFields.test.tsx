@@ -448,8 +448,18 @@ describe("CommandFormFields — lists laid out as the shared form lays out a lis
 // and its SQL; its kind, written table and output are declared as for any command.
 describe("CommandFormFields — native SQL on a relational source (REQ-1988)", () => {
   it("offers the relational sources it runs on and asks for the SQL", () => {
-    render(<RemoteHarness initial={{ actionType: "function", implKind: "source_query" }} />);
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_query",
+          arguments: [{ name: "id", type: "Int" }],
+        }}
+      />,
+    );
     expect(screen.getByTestId("command-binding-native-sql")).toBeInTheDocument();
+    // An argument is a value bound as a parameter: it takes no relation.
+    expect(screen.queryByTestId("command-arg-kind-0")).not.toBeInTheDocument();
     expect(screen.getByTestId("command-writes-table-select")).toBeInTheDocument();
     expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
     expect(screen.getByText("Kind")).toBeInTheDocument();

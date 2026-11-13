@@ -760,7 +760,8 @@ export function CommandFormFields({
                       </FormField>
                       {form.actionType === "function" &&
                         form.implKind !== "source_procedure" &&
-                        !declaresItsShape && (
+                        !declaresItsShape &&
+                        !nativeSql && (
                           <FormField size="medium">
                             <Select
                               aria-label={t("commandFormFields.argKind")}
