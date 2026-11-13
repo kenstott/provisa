@@ -78,10 +78,7 @@ def _prepare_sync(*, org_rows: list[dict]):
 
 
 def _planes(monkeypatch, *org_rows: dict):
-    try:
-        sync_engine = _prepare_sync(org_rows=list(org_rows))
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync(org_rows=list(org_rows))
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(
