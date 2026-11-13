@@ -190,17 +190,21 @@ describe("what the reader sets on the graph, after a reload", () => {
     await waitFor(() => expect(s.setRotate).toHaveBeenLastCalledWith(true));
   });
 
-  it("keeps Grid off", async () => {
-    const view = render(explorer());
+  it("keeps Grid on, then off again", async () => {
+    const first = render(explorer());
     await scene();
-    fireEvent.click(screen.getByRole("button", { name: "Grid", hidden: true }));
-    reload(view);
+    const grid = () => screen.getByRole("button", { name: "Grid", hidden: true });
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(grid());
+    const second = reload(first);
     const s = await scene();
-    expect(screen.getByRole("button", { name: "Grid", hidden: true })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    await waitFor(() => expect(s.setGrid).toHaveBeenLastCalledWith(false));
+    expect(grid()).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(s.setGrid).toHaveBeenLastCalledWith(true));
+    fireEvent.click(grid());
+    reload(second);
+    const t = await scene();
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => expect(t.setGrid).toHaveBeenLastCalledWith(false));
   });
 
   it("keeps the tightness slider", async () => {
@@ -327,6 +331,8 @@ describe("the term graph's opening", () => {
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "2D" }));
     await screen.findByTestId("x-lanes");
-    expect(JSON.parse(getStored("graph3d.ontology-snippet.term:1") as string)).toEqual({ flat: false });
+    expect(JSON.parse(getStored("graph3d.ontology-snippet.term:1") as string)).toEqual({
+      flat: false,
+    });
   });
 });
