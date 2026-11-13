@@ -2267,9 +2267,10 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere
 # else its three-argument form already replaces every match, and a fourth argument is something
-# other than flags (Trino's is a function, Snowflake's and MySQL's a position).
+# other than flags (Snowflake's and MySQL's a position).
 _REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
-_FIRST_MATCH_WRITTEN = frozenset({"trino", "presto", "athena", "clickhouse"})
+#: Where the polyfill grid's regexp_replace row reads the flags (provisa.transpiler.polyfill.regex).
+_FLAGS_IN_THE_GRID = frozenset({"trino", "presto", "athena", "clickhouse"})
 
 
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
@@ -2279,26 +2280,38 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
         return pg_sql
     if target_dialect == "duckdb":
         return _flag_past_n(pg_sql)
+    if target_dialect in _FLAGS_IN_THE_GRID:
+        return _no_flags_said(pg_sql)
     if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    replaces = list(tree.find_all(exp.RegexpReplace))
     flagged = [
         node
-        for node in replaces
+        for node in tree.find_all(exp.RegexpReplace)
         if isinstance(node.args.get("modifiers"), exp.Literal)
         and node.args["modifiers"].this == "g"
     ]
-    first_only = target_dialect in _FIRST_MATCH_WRITTEN
-    if not flagged and not first_only:
+    if not flagged:
         return pg_sql
     for node in flagged:
         node.set("modifiers", None)
-    if first_only:  # PostgreSQL replaces the first match unless the 'g' flag says every one
-        for node in replaces:
-            positioned = node.args.get("position") is not None  # its row reads the start and N
-            if node not in flagged and node.args.get("modifiers") is None and not positioned:
-                node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
+    return tree.sql(dialect="postgres")
+
+
+def _no_flags_said(pg_sql: str) -> str:
+    """``pg_sql`` with each REGEXP_REPLACE the statement gives no flags given none (''), which
+    PostgreSQL reads as the same call: the grid's row reads a call's flags, and a call of three
+    arguments a rewrite writes (a regex mask's) is every match, as sqlglot writes one."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    unflagged = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("modifiers") is None and node.args.get("position") is None
+    ]
+    if not unflagged:
+        return pg_sql
+    for node in unflagged:
+        node.set("modifiers", exp.Literal.string(""))
     return tree.sql(dialect="postgres")
 
 

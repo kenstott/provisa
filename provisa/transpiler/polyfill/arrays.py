@@ -587,6 +587,74 @@ ARRAY_CAT = Feature(
     ),
 )
 
+
+def _equality(name: str, summary: str, operator: str, trino_test: str) -> Feature:
+    """array_eq or array_ne: an array's btree comparison, a NULL element equal to a NULL element
+    (arrayfuncs.c compares two NULL elements as equal), strict in its arrays. DuckDB's and
+    ClickHouse's own comparison of two lists takes a NULL element so, and every other dialect is
+    sent the form it had; Trino's ``=`` of two arrays is NULL where an element is, and its
+    ``IS NOT DISTINCT FROM`` compares them element by element as PostgreSQL does."""
+    return Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(
+            rules=(
+                Rule(
+                    f"{name}($a::anyarray, $b::anyarray)",
+                    {
+                        **{d: f"$a {operator} $b" for d in DIALECTS if d not in NATIVE},
+                        **_on_trino(
+                            "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) "
+                            f"ELSE $a {trino_test} $b END"
+                        ),
+                    },
+                ),
+            )
+        ),
+    )
+
+
+ARRAY_EQ = _equality(
+    "array_eq", "Two arrays equal, a NULL element equal to a NULL element.", "=",
+    "IS NOT DISTINCT FROM",
+)  # fmt: skip
+ARRAY_NE = _equality(
+    "array_ne", "Two arrays not equal, a NULL element equal to a NULL element.", "<>",
+    "IS DISTINCT FROM",
+)  # fmt: skip
+
+ARRAY_POSITION = Feature(
+    "array_position",
+    FAMILY,
+    "The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.",
+    read=Side(
+        rules=(
+            # Trino's array_position answers 0 for a value it does not find, and NULL for a NULL
+            # value: PostgreSQL answers NULL, and finds a NULL. Its sequence takes no empty range.
+            Rule(
+                "array_position($a::anycompatiblearray, $v::anycompatible)",
+                _on_trino(
+                    "CAST(CASE WHEN cardinality($a) > 0 THEN element_at(filter(sequence(1, "
+                    "cardinality($a)), _i -> $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)"
+                ),
+            ),
+            # From a start (sqlglot reads it as ArrayPosition's zero_based): DuckDB's from its
+            # slice; any other dialect refuses it by name.
+            Rule(
+                "array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)",
+                {
+                    **_no_form_on(
+                        "array_position", tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb"})
+                    ),
+                    "duckdb": "list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1",
+                },
+            ),
+        )
+    ),
+)
+
+
 FEATURES: tuple[Feature, ...] = (
     ARRAY_NDIMS,
     ARRAY_DIMS,
@@ -594,6 +662,9 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_UPPER,
     ARRAY_LENGTH,
     ARRAY_FILL,
+    ARRAY_EQ,
+    ARRAY_NE,
+    ARRAY_POSITION,
     ARRAY_POSITIONS,
     ARRAY_REPLACE,
     ARRAY_SAMPLE,

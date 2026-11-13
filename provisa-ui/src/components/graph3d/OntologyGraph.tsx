@@ -30,6 +30,7 @@ import type { LayerId } from "./graphModel";
 import {
   PRODUCT_GRAPH_LAYERS,
   PRODUCT_MAP,
+  PRODUCT_MAP_LAYERS,
   WHOLE,
   productGraph,
   scopeOf,
@@ -44,8 +45,6 @@ import { Tip } from "../Tip";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
-/** The Product map's layers: the ontology's, with every product (the Data layer). */
-const PRODUCT_MAP_LAYERS: LayerId[] = ["ontology", "domains", "columns", "data"];
 const PRODUCT_MAP_SETTINGS: GraphKey = { kind: "product-map", subject: null };
 /** Every product's expanded graph: one set of remembered settings, apart from the Product map's. */
 const PRODUCT_GRAPH_SETTINGS: GraphKey = { kind: "product-graph", subject: null };
@@ -141,7 +140,7 @@ function WholeOntology({
     <GraphExplorer
       data={drawn}
       query={query(read.all)}
-      scope={scopeOf(preset)}
+      scope={scopeOf(home ?? preset)}
       preset="ontology"
       focus={home?.focus ?? null}
       home={home?.focus}
@@ -300,7 +299,10 @@ export function OntologySnippet({
   );
 }
 
-/** The Data Products page's entry point: the whole ontology, every product among it. */
+/** The Data Products page's entry point: the Product map, opened on every product, its member
+ * tables and the links between products (REQ-2174, amended 2026-11-12, THE PRODUCT MAP OPENS ON
+ * PRODUCTS); columns and terms are layers the reader turns on, unless their saved settings say
+ * otherwise. */
 export function ProductMapButton() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);

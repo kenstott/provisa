@@ -25,12 +25,13 @@ from __future__ import annotations
 import datetime
 import decimal
 import functools
+import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from buenavista.core import BVType
 
-from provisa.core.ir_types import interval_parts
+from provisa.core.ir_types import interval_parts, interval_value
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.catalog_pg17 import TYPES
@@ -54,13 +55,15 @@ XML_ARRAY: Any = "xml[]"
 @dataclass(frozen=True)
 class CastType:
     """How a cast's result column is described: its OID, typmod and wire type; ``served_as`` the
-    engine wire types whose value has this type's form; ``coerce`` brings the value to it."""
+    engine wire types whose value has this type's form; ``coerce`` brings the value to it, and
+    ``of_text`` a value the engine serves as text."""
 
     oid: int
     typmod: int
     bvtype: BVType
     served_as: frozenset[BVType]
     coerce: Callable[[Any], Any] | None = None
+    of_text: Callable[[Any], Any] | None = None
 
 
 def _length(data_type: Any) -> int | None:
@@ -176,6 +179,42 @@ def _clock_of(value: Any) -> Any:
     return (datetime.datetime.min + datetime.timedelta(microseconds=count)).time()
 
 
+#: interval_out's text (IntervalStyle postgres): an amount and its unit, or the clock.
+_INTERVAL_AMOUNT = re.compile(r"[+-]?\d+", re.ASCII)
+_INTERVAL_UNITS = {"year": (12, 0), "years": (12, 0), "mon": (1, 0), "mons": (1, 0)} | {
+    "day": (0, 1),
+    "days": (0, 1),
+}
+_INTERVAL_CLOCK = re.compile(r"([+-]?)(\d+):(\d{2}):(\d{2})(?:\.(\d{1,6}))?", re.ASCII)
+
+
+def interval_of_text(value: Any) -> Any:
+    """An interval an engine serves as interval_out's text (interval_in's answer, folded to the
+    text it reads as: provisa.transpiler.pg_forms_type_io) as the interval it is."""
+    if not isinstance(value, str):
+        return value
+    words = value.split(" ")
+    months = days = micros = 0
+    at = 0
+    while at < len(words) and value:
+        clock = _INTERVAL_CLOCK.fullmatch(words[at])
+        if clock is not None:
+            sign = -1 if clock[1] == "-" else 1
+            seconds = int(clock[2]) * 3600 + int(clock[3]) * 60 + int(clock[4])
+            micros += sign * (seconds * 1_000_000 + int((clock[5] or "").ljust(6, "0")))
+            at += 1
+            continue
+        unit = _INTERVAL_UNITS.get(words[at + 1]) if at + 1 < len(words) else None
+        if unit is None or _INTERVAL_AMOUNT.fullmatch(words[at]) is None:
+            raise ValueError(f'invalid input syntax for type interval: "{value}"')
+        months += int(words[at]) * unit[0]
+        days += int(words[at]) * unit[1]
+        at += 2
+    if not value:
+        raise ValueError('invalid input syntax for type interval: ""')
+    return interval_value(months, days, micros)
+
+
 def _record_field(value: Any) -> str:
     """One field as record_out writes it: nothing for NULL, quoted where it must be."""
     if value is None:
@@ -232,7 +271,10 @@ _RETURNED: dict[str, CastType] = {
     "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
     **_RANGE_TYPES,
     "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
-    "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB}), jsonb_out),
+    # An engine's json text (Trino's json_object is a varchar): jsonb_out writes it as jsonb's.
+    "jsonb": CastType(
+        3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB, BVType.TEXT}), jsonb_out
+    ),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "inet": CastType(869, -1, BVType.INET, frozenset({BVType.INET, BVType.TEXT})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET, BVType.TEXT})),
@@ -364,7 +406,16 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     ):
         return _BOOLEAN  # << and >> of a range: on anything else, a shift
     returned = call_result_type(expression)
+    if returned == "interval":
+        return _CALLED_INTERVAL
     return None if returned is None else _RETURNED.get(returned) or _row_type(returned)
+
+
+#: A call's interval, which an engine with no interval of PostgreSQL's may hold as its text: the
+#: text pg_forms_type_io folds interval_in to, on Trino.
+_CALLED_INTERVAL = CastType(
+    1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL, BVType.TEXT}), of_text=interval_of_text
+)
 
 
 def _row_type(name: str) -> CastType | None:

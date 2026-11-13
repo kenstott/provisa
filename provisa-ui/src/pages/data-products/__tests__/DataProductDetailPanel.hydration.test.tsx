@@ -22,7 +22,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { lifecycleProps } from "./lifecycleProps";
-import { openTab } from "./panelTabs";
+import { openSection } from "./panelSections";
 import type { ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -181,7 +181,7 @@ function panelFromMetaAlone() {
 const part = (id: string) => screen.getByTestId(`${id}-pet_health`);
 
 describe("a data product's panel hydrates from the meta query", () => {
-  it("shows every value of the header and the Related tab from the one meta read", () => {
+  it("shows every value of the header and the Related section from the one meta read", () => {
     panelFromMetaAlone();
     expect(part("data-product-read")).toHaveTextContent("Pet Health");
     expect(part("data-product-read")).toHaveTextContent("2.1.0");
@@ -194,10 +194,11 @@ describe("a data product's panel hydrates from the meta query", () => {
     // The relationships between members' Cypher click-through, from the core too.
     expect(outputs).toHaveTextContent("BELONGS_TO_VET");
     // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, nothing listed.
-    openTab("quality", "pet_health");
+    openSection("quality", "pet_health");
     expect(screen.queryByTestId("data-product-card-dataQuality-pet_health")).toBeNull();
-    openTab("related", "pet_health");
-    expect(part("data-product-detail-tags")).toHaveTextContent("pii");
+    // Its tags are the header's, drawn by the tag chip from the tag assignments it reads
+    // (TagChipMounts.test).
+    openSection("related", "pet_health");
     expect(part("data-product-detail-commands")).toHaveTextContent("add_pet");
     expect(part("data-product-detail-related-terms")).toHaveTextContent("Customer");
     expect(part("data-product-detail-related-tables")).toHaveTextContent("pet-store.owners");
@@ -218,12 +219,12 @@ describe("a data product's panel hydrates from the meta query", () => {
 
   it("reads inside its own parts only where named", () => {
     const source = readFileSync(resolve(__dirname, "../DataProductDetailPanel.tsx"), "utf8");
-    // A type import reads nothing; nor do the tab list and the Lineage tab, which draws the
+    // A type import reads nothing; nor do the section list and the Lineage section, which draws the
     // lineage it is given.
     const readers = [...source.matchAll(/^import (?!type ).* from "([^"]+)";$/gm)]
       .map((m) => m[1])
       .filter((from) =>
-        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|ProductContracts|offers\/|tabs\/(?!productTabs|LineageTab)|api\/|hooks\//.test(
+        /OwnerResolution|DqRulesModal|graph3d|lineage\/LineageDag|ProductContracts|offers\/|tabs\/(?!LineageTab)|api\/|hooks\//.test(
           from,
         ),
       )

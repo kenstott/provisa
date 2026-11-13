@@ -20,7 +20,13 @@
 
 import { NEIGHBOURHOOD } from "./neighbourhood";
 import { productNode, termNode } from "./ontologyData";
-import { ONTOLOGY_SCOPE, PRODUCT_MAP_SCOPE, type GraphScope, type LayerId } from "./graphModel";
+import {
+  ONTOLOGY_SCOPE,
+  PRODUCT_MAP_SCOPE,
+  PRODUCT_MAP_WHOLE_SCOPE,
+  type GraphScope,
+  type LayerId,
+} from "./graphModel";
 
 /** A snippet of the ontology: the term or product it is focused on (its node id) and how many
  * hops around it are drawn; a null focus is the whole ontology. ``products``: read and drawn by
@@ -39,8 +45,13 @@ export type SnippetPreset = OntologyPreset & { focus: string };
 /** The whole ontology, as the Ontology page shows it. */
 export const WHOLE: OntologyPreset = { focus: null, depth: NEIGHBOURHOOD.depth, products: false };
 
-/** The whole ontology with every product among it, as the Product map shows it. */
+/** The Product map: every product, by the Product map's rules. (Amended 2026-11-12, THE PRODUCT
+ * MAP OPENS ON PRODUCTS:) it opens on PRODUCT_MAP_LAYERS, the rest on asking. */
 export const PRODUCT_MAP: OntologyPreset = { ...WHOLE, products: true };
+
+/** The Product map's opening layers: every product with its member tables (Data) and the links
+ * between products (Product links); columns and terms off until the reader turns them on. */
+export const PRODUCT_MAP_LAYERS: LayerId[] = ["data", "productLinks"];
 
 /** A term's graph opens at what the term touches, its hops raised from there. */
 export const TERM_GRAPH_DEPTH = 1;
@@ -88,9 +99,10 @@ export const productGraph = (p: SnippetPreset): SnippetPreset => ({
  * related table; the Layers menu adds them. */
 export const PRODUCT_GRAPH_LAYERS: LayerId[] = ["ontology", "columns", "data"];
 
-/** The graph scope a preset's rules draw with. */
-export const scopeOf = (p: Pick<OntologyPreset, "products">): GraphScope =>
-  p.products ? PRODUCT_MAP_SCOPE : ONTOLOGY_SCOPE;
+/** The graph scope a preset's rules draw with: the whole Product map's reads its terms and
+ * columns on asking. */
+export const scopeOf = (p: Pick<OntologyPreset, "products" | "focus">): GraphScope =>
+  !p.products ? ONTOLOGY_SCOPE : p.focus === null ? PRODUCT_MAP_WHOLE_SCOPE : PRODUCT_MAP_SCOPE;
 
 /** A snippet's layers: the terms, the columns they bind, those columns' tables and the products
  * holding them; under the Product map's rules the tables related to the tables drawn too
