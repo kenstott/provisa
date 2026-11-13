@@ -147,6 +147,14 @@ def _domains_of(rows: str) -> str:
             GROUP BY object_key"""
 
 
+#: REQ-2208: each library document's domains as one |a|b| string, read as a glossary term's are
+#: (compiler.stage2._readable_term_predicate): the rows about a document are read where it is.
+_DOCUMENT_DOMAINS_SQL = """
+            SELECT document_id,
+                   '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM reference_document_domains GROUP BY document_id"""
+
+
 def _output_columns(ddl: str) -> list[str]:
     """The output columns of a CREATE VIEW statement, in select order."""
     import sqlglot
@@ -213,10 +221,7 @@ def _tag_instances_sql() -> str:
         ),
         term_domains AS ({_term_domains_sql()}
         ),
-        document_domains AS (
-            SELECT document_id,
-                   '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
-            FROM reference_document_domains GROUP BY document_id
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
         ),
         objects AS (
             SELECT 'source' AS object_kind, FALSE AS draft, 'source:' || s.id AS object_key, s.id AS object_id,
@@ -412,6 +417,115 @@ def _tag_instances_sql() -> str:
                    AS status_reason,
                m.read_all_domains, m.read_any_domains, m.read_term_domains, m.read_roles
         FROM measured m
+    """
+
+
+#: REQ-2208 (decision 2026-11-13): what the library views read of a tag on an object, from
+#: tag_instances: the object as the tags report names it, and the columns its row is read by.
+_INSTANCE_COLUMNS = """i.id AS tag_instance_id, i.object_kind, i.object_key, i.object_id,
+               i.object_name, i.domain_id, i.table_id,
+               CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key"""
+_INSTANCE_READ_COLUMNS = "i.read_all_domains, i.read_any_domains, i.read_term_domains, i.read_roles"
+
+
+def _tag_citations_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per citation of the library, a tag's definition's or
+    an assignment's, with its state as the one statement reads it (citation_states). An
+    assignment's row names its object as tag_instances does and carries that row's read columns;
+    ``read_document_domains`` is the cited document's, read as the document is
+    (compiler.stage2.library_row_predicate)."""
+    return f"""
+        CREATE OR REPLACE VIEW tag_citations AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT CAST(c.id AS TEXT) AS id,
+               CASE WHEN c.citer_kind = 'tag' THEN 'definition' ELSE 'assignment' END AS citer,
+               COALESCE(i.tag_id, c.tag_id) AS tag_id, c.tag_id AS base_tag_id,
+               i.id AS tag_instance_id, i.object_kind,
+               NULLIF(c.object_key, '') AS object_key, i.object_id, i.object_name, i.domain_id,
+               i.table_id, CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key,
+               c.document_id, c.document_title, c.document_source, c.cite_key AS place_key,
+               c.section_heading, c.section_page,
+               c.state, c.state <> 'current' AS needs_review, c.cited_by, c.cited_at,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM cited c
+        LEFT JOIN tag_instances i
+          ON c.citer_kind = 'tag_assignment' AND i.via = 'assigned'
+         AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+        LEFT JOIN document_domains dd ON dd.document_id = c.document_id
+    """
+
+
+def _section_tags_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per tag on a library document or on a section of
+    one, with the assignment's why; read where the document is (``read_document_domains``)."""
+    return f"""
+        CREATE OR REPLACE VIEW section_tags AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT dt.base_tag_id || '|' || dt.object_key AS id,
+               'assigned|' || dt.base_tag_id || '|' || dt.object_key || '|' || dt.object_key
+                   AS tag_instance_id,
+               dt.tag_id, dt.base_tag_id, dt.object_type AS place_kind, dt.object_key AS place_key,
+               dt.document_id, d.title AS document_title, dt.section_heading, dt.section_page,
+               dt.reason, dt.expires_on,
+               COALESCE(dt.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+               dt.purpose, dt.review_on, dt.decided_by, dt.decided_at,
+               dd.domains AS read_document_domains
+        FROM reference_document_tags dt
+        JOIN reference_documents d ON d.id = dt.document_id
+        LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+    """
+
+
+def _policy_coverage_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per path from a library section, or a whole
+    document, to an object, saying which: ``shared tag`` (the section carries the tag the object
+    carries), ``tag cites it`` (the definition of a tag the object carries cites the section) or
+    ``assignment cites it`` (the object's assignment of the tag cites the section). The object is
+    named as tag_instances names it, its row read as that one is and where the document is."""
+    return f"""
+        CREATE OR REPLACE VIEW policy_coverage AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        ),
+        carried AS (
+            SELECT * FROM tag_instances
+            WHERE via <> 'missing' AND object_kind NOT IN ('document', 'section')
+        ),
+        paths AS (
+            SELECT 'shared tag' AS link, dt.document_id, d.title AS document_title,
+                   dt.object_key AS place_key, dt.section_heading, dt.section_page,
+                   CAST(NULL AS TEXT) AS citation_state, i.id AS instance_id
+            FROM reference_document_tags dt
+            JOIN reference_documents d ON d.id = dt.document_id
+            JOIN carried i ON i.tag_id = dt.tag_id
+            UNION ALL
+            SELECT 'tag cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i ON i.base_tag_id = c.tag_id
+            WHERE c.citer_kind = 'tag'
+            UNION ALL
+            SELECT 'assignment cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i
+              ON i.via = 'assigned' AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+            WHERE c.citer_kind = 'tag_assignment'
+        )
+        SELECT p.link || '|' || p.place_key || '|' || p.instance_id AS id,
+               p.document_id, p.document_title, p.place_key, p.section_heading, p.section_page,
+               i.tag_id, i.base_tag_id, p.link, p.citation_state,
+               {_INSTANCE_COLUMNS},
+               i.via,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM paths p
+        JOIN carried i ON i.id = p.instance_id
+        LEFT JOIN document_domains dd ON dd.document_id = p.document_id
     """
 
 
@@ -1109,6 +1223,13 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # one, with its citation measures and status. A row is read where the table it is about is
     # (META_ROW_SCOPED_VIEWS). After effective_column_tags and derived_tags, which it reads.
     "tag_instances": _tag_instances_sql(),
+    # REQ-2208 (decision 2026-11-13): tags, library documents and sections, and objects, connected:
+    # each citation with its state, each tag on a document or section, and each path from a section
+    # to an object. Read as the tags report is and where the document is (LIBRARY_ROW_VIEWS).
+    # After tag_instances, which they read.
+    "tag_citations": _tag_citations_sql(),
+    "section_tags": _section_tags_sql(),
+    "policy_coverage": _policy_coverage_sql(),
     # REQ-1375: the management report — every assignment with a planned end date, with its
     # state derived at query time. expires_on is an ISO date string, so lexicographic
     # comparison with CURRENT_DATE (cast to text) is correct on every dialect.

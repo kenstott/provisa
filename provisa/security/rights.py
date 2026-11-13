@@ -810,6 +810,16 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
 TAG_ROW_VIEWS: frozenset[tuple[str, str]] = frozenset(
     {(META_DOMAIN_ID, "tag_instances"), (OPS_DOMAIN_ID, "tags_report")}
 )
+#: REQ-2208 (decision 2026-11-13): the relations connecting tags, library documents and sections,
+#: and objects, each (domain, relation) to whether its rows may name an object. A row is read where
+#: its document is, as a library document is (its ``read_document_domains``); a row naming an object
+#: (its ``object_key`` set) is read only where the tag on that object is too, by the tags report's
+#: rule (compiler.stage2.library_row_predicate).
+LIBRARY_ROW_VIEWS: dict[tuple[str, str], bool] = {
+    (META_DOMAIN_ID, "tag_citations"): True,
+    (META_DOMAIN_ID, "section_tags"): False,
+    (META_DOMAIN_ID, "policy_coverage"): True,
+}
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).
 META_CATALOG_ROW_SCOPES = CATALOG_ROW_SCOPES

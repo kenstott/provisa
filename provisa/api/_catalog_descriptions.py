@@ -83,6 +83,15 @@ _META: dict[str, str] = {
     # REQ-2208
     "tag_instances": "Every tag on every object, assigned, inherited from a glossary term or "
     "derived, and every required tag an object lacks, with its citations and status",
+    # REQ-2208 (decision 2026-11-13)
+    "tag_citations": "Every citation of a library document or section, by a tag's definition or "
+    "by an assignment of a tag to an object, with whether the cited text is current, changed or "
+    "gone",
+    "section_tags": "Every tag on a library document or on a section of one, with why it is there",
+    "policy_coverage": "Every path from a library document or section to an object of the model: "
+    "the section carries a tag the object carries, or a tag's definition or assignment cites the "
+    "section. Filter by document_id and object_kind = 'column' for the columns relevant to a "
+    "document",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -241,6 +250,82 @@ _TAG_INSTANCE_COLUMNS: dict[str, str] = {
     "read_term_domains": "The domains the row is read in as a glossary term is (a term's, or a "
     "library document's)",
     "read_roles": "The roles a metric is granted to, whose tags they read",
+}
+
+# REQ-2208 (decision 2026-11-13): the library views. What each says of the object it names is
+# tag_instances's; of the place cited or tagged, the library's.
+_LIBRARY_OBJECT_COLUMNS: dict[str, str] = {
+    "tag_instance_id": "The row of tag_instances for the tag on the object",
+    "object_kind": _TAG_INSTANCE_COLUMNS["object_kind"],
+    "object_key": _TAG_INSTANCE_COLUMNS["object_key"],
+    "object_id": _TAG_INSTANCE_COLUMNS["object_id"],
+    "object_name": _TAG_INSTANCE_COLUMNS["object_name"],
+    "domain_id": _TAG_INSTANCE_COLUMNS["domain_id"],
+    "table_id": _TAG_INSTANCE_COLUMNS["table_id"],
+    "column_key": "The column, as table id:column name, when the object is a column",
+    "read_all_domains": _TAG_INSTANCE_COLUMNS["read_all_domains"],
+    "read_any_domains": _TAG_INSTANCE_COLUMNS["read_any_domains"],
+    "read_term_domains": _TAG_INSTANCE_COLUMNS["read_term_domains"],
+    "read_roles": _TAG_INSTANCE_COLUMNS["read_roles"],
+}
+_LIBRARY_PLACE_COLUMNS: dict[str, str] = {
+    "document_id": "The library document",
+    "document_title": "The document's title",
+    "place_key": "The document or section: document:id, or section:id:heading:name or "
+    "section:id:page:number",
+    "section_heading": "The section's heading; empty for a whole document or a section named by "
+    "its page",
+    "section_page": "The section's page, for a document whose sections have no headings; empty "
+    "otherwise",
+    "read_document_domains": "The domains the document is read in (|a|b|), as a glossary term's "
+    "are: a reader sees the row only where it reads the document",
+}
+_TAG_CITATION_COLUMNS: dict[str, str] = {
+    "id": "Identity of the citation",
+    "citer": "definition (the tag's definition cites the place) or assignment (the tag's "
+    "assignment to an object cites it)",
+    "tag_id": "Tag, with its parameter when an assignment carries one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    **_LIBRARY_OBJECT_COLUMNS,
+    "object_key": "The object the cited assignment is on (kind:id); empty for a definition's "
+    "citation",
+    **_LIBRARY_PLACE_COLUMNS,
+    "document_title": "The document's title when it was cited, kept after the document is removed",
+    "document_source": "The document's file name or URL when it was cited",
+    "state": "current, drifted (the section's text changed since it was cited) or broken (the "
+    "section or document is gone)",
+    "needs_review": "Whether the state is other than current",
+    "cited_by": "Who made the citation",
+    "cited_at": "When the citation was made",
+}
+_SECTION_TAG_COLUMNS: dict[str, str] = {
+    "id": "Identity of the row: the tag and the document or section",
+    "tag_instance_id": "The row of tag_instances for this tag",
+    "tag_id": "Tag, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "place_kind": "document (the tag is on the whole document) or section",
+    **_LIBRARY_PLACE_COLUMNS,
+    "reason": "Why the tag is on the document or section, as recorded with the assignment",
+    "expires_on": "Date the assignment stops being intended",
+    "expired": "Whether that date has passed",
+    "purpose": "What the assignment is for",
+    "review_on": "Date the assignment is to be reviewed by",
+    "decided_by": "Who assigned the tag",
+    "decided_at": "When the tag was assigned",
+}
+_POLICY_COVERAGE_COLUMNS: dict[str, str] = {
+    "id": "Identity of the path: how it links, the document or section, and the tag on the object",
+    **_LIBRARY_PLACE_COLUMNS,
+    "tag_id": "The tag on the object, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "link": "shared tag (the section carries the tag the object carries), tag cites it (the "
+    "tag's definition cites the section) or assignment cites it (the object's assignment of the "
+    "tag cites the section)",
+    "citation_state": "For a citation's path, the citation's state: current, drifted or broken; "
+    "empty for a shared tag",
+    **_LIBRARY_OBJECT_COLUMNS,
+    "via": "How the tag got onto the object: assigned, inherited (from the column's glossary "
+    "term) or derived (from the object's registered state)",
 }
 
 TABLE_DESCRIPTIONS: dict[str, str] = {
@@ -573,6 +658,10 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     # REQ-2208
     "tag_instances": _TAG_INSTANCE_COLUMNS,
     "tags_report": _TAG_INSTANCE_COLUMNS,
+    # REQ-2208 (decision 2026-11-13)
+    "tag_citations": _TAG_CITATION_COLUMNS,
+    "section_tags": _SECTION_TAG_COLUMNS,
+    "policy_coverage": _POLICY_COVERAGE_COLUMNS,
     # REQ-2145
     "effective_column_tags": {
         "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",
