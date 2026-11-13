@@ -670,8 +670,6 @@ tags = Table(
     # REQ-2208: each assignment must cite a library document or section; one that does not is a
     # gap, never refused.
     Column("requires_citation", Boolean, nullable=False, server_default=false()),
-    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
-    Column("required", Boolean, nullable=False, server_default=false()),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",

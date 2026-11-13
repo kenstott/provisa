@@ -111,17 +111,22 @@ def _tag_definitions_sql() -> str:
     rows = []
     for tag in SYSTEM_TAGS + DERIVED_TAGS:
         desc = sql_literal(tag.description, "postgres")
-        applies = sql_literal(_json.dumps(tag.applies_to), "postgres")
         rows.append(
-            f"SELECT '{tag.id}' AS id, {desc} AS description, CAST({applies} AS JSONB) AS "
-            f"applies_to, TRUE AS is_system, {'TRUE' if tag.requires_citation else 'FALSE'} "
-            f"AS requires_citation, {'TRUE' if tag.required else 'FALSE'} AS required"
+            f"SELECT '{tag.id}' AS id, {desc} AS description, TRUE AS is_system, "
+            f"{'TRUE' if tag.requires_citation else 'FALSE'} AS requires_citation"
         )
-    rows.append(
-        "SELECT id, description, CAST(applies_to AS JSONB), is_system, requires_citation, "
-        "required FROM tags"
-    )
+    rows.append("SELECT id, description, is_system, requires_citation FROM tags")
     return "\n            UNION ALL\n            ".join(rows)
+
+
+def _domains_of(rows: str) -> str:
+    """``rows`` (object_key, domain) as one |a|b| string per object, its empty domains left out
+    (an object with no domain is not restricted by one)."""
+    return f"""
+            SELECT object_key, '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM ({rows}) x
+            WHERE COALESCE(domain_id, '') <> ''
+            GROUP BY object_key"""
 
 
 def _output_columns(ddl: str) -> list[str]:
@@ -134,84 +139,150 @@ def _output_columns(ddl: str) -> list[str]:
 
 def _tag_instances_sql() -> str:
     """REQ-2208 (THE TAGS REPORT): one row per tag on an object -- assigned, inherited from a
-    glossary term, or derived from the object's registered state -- and one per required tag an
-    object of a kind it applies to does not carry. Each row's citation measures and status are
-    computed here, when it is read: nothing of them is stored."""
+    glossary term, or derived from the object's registered state. Each row's citation measures
+    and status are computed here, when it is read: nothing of them is stored.
+
+    Its read columns state who may read the row as the tag admin's read of an assignment does
+    (provisa.api.admin.schema_query._readable_assignments), for the compiler to apply
+    (provisa.compiler.stage2, TAG_ROW_VIEWS): ``read_all_domains``, every domain of which the
+    reader must reach (NULL: the object is not there); ``read_any_domains``, one of which it must
+    reach when any is named (a source's allowed domains); ``read_term_domains``, read as a glossary
+    term is (a term's, or a library document's, domains); ``read_roles``, the roles a metric is
+    granted to."""
+    all_domains = _domains_of(
+        """
+                SELECT 'table:' || CAST(id AS TEXT) AS object_key, domain_id
+                FROM registered_tables
+                UNION ALL
+                SELECT 'relationship:' || r.id, rt.domain_id
+                FROM relationships r
+                JOIN registered_tables rt ON rt.id IN (r.source_table_id, r.target_table_id)
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_functions
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_webhooks
+                UNION ALL
+                SELECT 'product:' || id, domain_id FROM data_products
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr JOIN registered_tables rt ON rt.id = rr.table_id
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(id AS TEXT), domain_id
+                FROM rls_rules WHERE table_id IS NULL AND domain_id IS NOT NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), c.domain_id
+                FROM rls_rules rr
+                JOIN (SELECT name, domain_id FROM tracked_functions
+                      UNION ALL SELECT name, domain_id FROM tracked_webhooks) c
+                  ON c.name = rr.action_name
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr
+                JOIN tag_assignments ta
+                  ON ta.object_type = 'table' AND ta.base_tag_id = rr.tag_id
+                JOIN registered_tables rt ON rt.id = ta.table_id
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL AND rr.action_name IS NULL"""
+    )
     return f"""
         CREATE OR REPLACE VIEW tag_instances AS
         WITH defs AS (
             {_tag_definitions_sql()}
         ),
         cited AS ({_citation_states_sql()}),
+        all_domains AS ({all_domains}
+        ),
+        document_domains AS (
+            SELECT document_id,
+                   '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM reference_document_domains GROUP BY document_id
+        ),
         objects AS (
-            SELECT 'source' AS object_kind, 'source:' || s.id AS object_key, s.id AS object_id,
+            SELECT 'source:' || s.id AS object_key, s.id AS object_id,
                    CAST(NULL AS INTEGER) AS table_id, CAST(NULL AS TEXT) AS domain_id,
-                   CAST(NULL AS TEXT) AS owner
+                   CAST(NULL AS TEXT) AS owner,
+                   COALESCE((SELECT '|' || STRING_AGG(x, '|') || '|'
+                             FROM jsonb_array_elements_text(CAST(s.allowed_domains AS JSONB)) x),
+                            '|') AS read_any_domains,
+                   CAST(NULL AS TEXT) AS read_term_domains, CAST(NULL AS TEXT) AS read_roles
             FROM sources s
             UNION ALL
-            SELECT 'table', 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id,
-                   rt.domain_id, CAST(NULL AS TEXT)
-            FROM registered_tables rt WHERE NOT rt.draft
+            SELECT 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM registered_tables rt
             UNION ALL
-            SELECT 'column', 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
+            SELECT 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
                    CAST(tc.table_id AS TEXT) || ':' || tc.column_name, tc.table_id,
-                   rt.domain_id, CAST(NULL AS TEXT)
+                   rt.domain_id, CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
-            WHERE NOT rt.draft
             UNION ALL
-            SELECT 'relationship', 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER),
-                   rt.domain_id, r.owner
+            SELECT 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id, r.owner,
+                   '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
             UNION ALL
-            SELECT 'command', 'command:' || f.name, f.name, CAST(NULL AS INTEGER),
-                   f.domain_id, CAST(NULL AS TEXT)
+            SELECT 'command:' || f.name, f.name, CAST(NULL AS INTEGER), f.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM tracked_functions f
             UNION ALL
-            SELECT 'command', 'command:' || w.name, w.name, CAST(NULL AS INTEGER),
-                   w.domain_id, CAST(NULL AS TEXT)
+            SELECT 'command:' || w.name, w.name, CAST(NULL AS INTEGER), w.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM tracked_webhooks w
             UNION ALL
-            SELECT 'product', 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
-                   dp.owner_role
+            SELECT 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
+                   dp.owner_role, '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM data_products dp
             UNION ALL
-            SELECT 'term', 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT),
-                   CAST(NULL AS INTEGER), CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            SELECT 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|',
+                   (SELECT MAX(x.term_domains) FROM _domains_ontology x WHERE x.term_id = gt.id),
+                   CAST(NULL AS TEXT)
             FROM glossary_terms gt
             UNION ALL
-            SELECT 'rls_rule', 'rls_rule:' || CAST(rr.id AS TEXT), CAST(rr.id AS TEXT),
+            SELECT 'rls_rule:' || CAST(rr.id AS TEXT), CAST(rr.id AS TEXT),
                    CAST(NULL AS INTEGER), COALESCE(rr.domain_id, rrt.domain_id),
-                   CAST(NULL AS TEXT)
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM rls_rules rr LEFT JOIN registered_tables rrt ON rrt.id = rr.table_id
             UNION ALL
-            SELECT 'role', 'role:' || ro.id, ro.id, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
-                   CAST(NULL AS TEXT)
+            SELECT 'role:' || ro.id, ro.id, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM roles ro
             UNION ALL
-            SELECT 'metric', 'metric:' || m.name, m.name, CAST(NULL AS INTEGER),
-                   CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            SELECT 'metric:' || m.name, m.name, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT),
+                   (SELECT '|' || STRING_AGG(x, '|') || '|'
+                    FROM jsonb_array_elements_text(CAST(m.visible_to AS JSONB)) x)
             FROM metrics m
             UNION ALL
-            SELECT 'document', 'document:' || CAST(d.id AS TEXT), CAST(d.id AS TEXT),
-                   CAST(NULL AS INTEGER), CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            SELECT 'document:' || CAST(d.id AS TEXT), CAST(d.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
             FROM reference_documents d
+            LEFT JOIN document_domains dd ON dd.document_id = d.id
+            UNION ALL
+            SELECT DISTINCT dt.object_key,
+                   SUBSTR(dt.object_key, LENGTH('section:') + 1), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
+            FROM reference_document_tags dt
+            LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+            WHERE dt.object_type = 'section'
         ),
         instances AS (
             SELECT 'assigned' AS via, ta.object_type AS object_kind, ta.object_key,
                    ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on, ta.purpose,
                    ta.review_on, CAST(ta.evidence AS TEXT) AS evidence, ta.decided_by,
-                   ta.decided_at, ta.object_key AS assignment_key
+                   ta.decided_at, ta.object_key AS assignment_key,
+                   CAST(NULL AS TEXT) AS term_key
             FROM tag_assignments ta
             UNION ALL
             SELECT 'assigned', dt.object_type, dt.object_key, dt.tag_id, dt.base_tag_id,
                    dt.reason, dt.expires_on, dt.purpose, dt.review_on,
-                   CAST(dt.evidence AS TEXT), dt.decided_by, dt.decided_at, dt.object_key
+                   CAST(dt.evidence AS TEXT), dt.decided_by, dt.decided_at, dt.object_key,
+                   CAST(NULL AS TEXT)
             FROM reference_document_tags dt
             UNION ALL
             SELECT 'inherited', 'column', 'column:' || CAST(e.table_id AS TEXT) || ':'
                    || e.column_name, ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on,
                    ta.purpose, ta.review_on, CAST(ta.evidence AS TEXT), ta.decided_by,
-                   ta.decided_at, ta.object_key
+                   ta.decided_at, ta.object_key, ta.object_key
             FROM effective_column_tags e
             JOIN tag_assignments ta
               ON ta.object_type = 'term' AND ta.term_id = e.term_id
@@ -221,28 +292,8 @@ def _tag_instances_sql() -> str:
             SELECT 'derived', dg.object_type, dg.object_key, dg.tag_id, dg.tag_id,
                    CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
                    CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
-                   CAST(NULL AS TIMESTAMPTZ), CAST(NULL AS TEXT)
+                   CAST(NULL AS TIMESTAMPTZ), CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM derived_tags dg
-        ),
-        missing AS (
-            SELECT 'missing' AS via, o.object_kind, o.object_key, d.id AS tag_id,
-                   d.id AS base_tag_id, CAST(NULL AS TEXT) AS reason,
-                   CAST(NULL AS TEXT) AS expires_on, CAST(NULL AS TEXT) AS purpose,
-                   CAST(NULL AS TEXT) AS review_on, CAST(NULL AS TEXT) AS evidence,
-                   CAST(NULL AS TEXT) AS decided_by, CAST(NULL AS TIMESTAMPTZ) AS decided_at,
-                   CAST(NULL AS TEXT) AS assignment_key
-            FROM defs d
-            JOIN objects o ON d.applies_to @> jsonb_build_array(o.object_kind)
-            WHERE d.required
-              AND NOT EXISTS (
-                  SELECT 1 FROM instances i
-                  WHERE i.base_tag_id = d.id AND i.object_key = o.object_key
-              )
-        ),
-        rows_ AS (
-            SELECT * FROM instances
-            UNION ALL
-            SELECT * FROM missing
         ),
         assignment_cites AS (
             SELECT tag_id, object_key, COUNT(*) AS cited,
@@ -258,22 +309,34 @@ def _tag_instances_sql() -> str:
             GROUP BY tag_id
         ),
         measured AS (
-            SELECT r.*, o.object_id, o.table_id, o.domain_id, o.owner,
+            SELECT i.*, o.object_id, o.table_id, o.domain_id, o.owner,
                    d.description AS tag_description, d.is_system AS tag_is_system,
-                   d.required AS tag_required, d.requires_citation AS tag_requires_citation,
+                   d.requires_citation AS tag_requires_citation,
                    COALESCE(dc.cited, 0) AS definition_citations,
                    COALESCE(dc.needs_review, 0) AS definition_citations_needing_review,
                    COALESCE(ac.cited, 0) AS citations,
                    COALESCE(ac.broken, 0) AS citations_broken,
                    COALESCE(ac.drifted, 0) AS citations_drifted,
-                   (r.via IN ('assigned', 'inherited') AND d.requires_citation
-                    AND COALESCE(ac.cited, 0) = 0) AS citation_missing
-            FROM rows_ r
-            LEFT JOIN objects o ON o.object_key = r.object_key
-            LEFT JOIN defs d ON d.id = r.base_tag_id
-            LEFT JOIN definition_cites dc ON dc.tag_id = r.base_tag_id
+                   (i.via <> 'derived' AND COALESCE(d.requires_citation, FALSE)
+                    AND COALESCE(ac.cited, 0) = 0) AS citation_missing,
+                   COALESCE(i.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+                   CASE WHEN o.object_key IS NULL THEN NULL
+                        ELSE COALESCE(ad.domains, '|') END AS read_all_domains,
+                   o.read_any_domains,
+                   CASE WHEN i.via = 'inherited' THEN t.read_term_domains
+                        ELSE o.read_term_domains END AS read_term_domains,
+                   o.read_roles
+            FROM instances i
+            LEFT JOIN objects o ON o.object_key = i.object_key
+            LEFT JOIN all_domains ad
+              ON ad.object_key = CASE WHEN i.object_kind = 'column'
+                                      THEN 'table:' || CAST(o.table_id AS TEXT)
+                                      ELSE i.object_key END
+            LEFT JOIN objects t ON t.object_key = i.term_key
+            LEFT JOIN defs d ON d.id = i.base_tag_id
+            LEFT JOIN definition_cites dc ON dc.tag_id = i.base_tag_id
             LEFT JOIN assignment_cites ac
-              ON ac.tag_id = r.base_tag_id AND ac.object_key = r.assignment_key
+              ON ac.tag_id = i.base_tag_id AND ac.object_key = i.assignment_key
         )
         SELECT m.via || '|' || m.base_tag_id || '|' || m.object_key || '|'
                    || COALESCE(m.assignment_key, '') AS id,
@@ -286,17 +349,17 @@ def _tag_instances_sql() -> str:
                m.tag_id, m.base_tag_id,
                CASE WHEN POSITION(':' IN m.tag_id) > 0
                     THEN SUBSTR(m.tag_id, POSITION(':' IN m.tag_id) + 1) END AS parameter,
-               m.tag_description, m.tag_is_system, m.tag_required, m.tag_requires_citation,
+               m.tag_description, m.tag_is_system, m.tag_requires_citation,
                m.definition_citations,
-               m.via, m.reason, m.expires_on, m.purpose, m.review_on, m.evidence,
+               m.via, m.reason, m.expires_on, m.expired, m.purpose, m.review_on, m.evidence,
                m.decided_by, m.decided_at,
                m.citations, m.citations_broken, m.citations_drifted, m.citation_missing,
-               CASE WHEN m.via = 'missing' OR m.citations_broken > 0
+               CASE WHEN m.expired OR m.citations_broken > 0
                          OR m.citations_drifted > 0 OR m.citation_missing
                          OR m.definition_citations_needing_review > 0
                     THEN 'needs attention' ELSE 'clean' END AS status,
                NULLIF(CONCAT_WS('; ',
-                   CASE WHEN m.via = 'missing' THEN 'required tag missing' END,
+                   CASE WHEN m.expired THEN 'the assignment expired' END,
                    CASE WHEN m.citation_missing THEN 'required citation missing' END,
                    CASE WHEN m.citations_broken > 0
                         THEN 'a cited section no longer resolves' END,
@@ -304,7 +367,8 @@ def _tag_instances_sql() -> str:
                         THEN 'a cited section changed since it was cited' END,
                    CASE WHEN m.definition_citations_needing_review > 0
                         THEN 'the definition''s cited section needs review' END), '')
-                   AS status_reason
+                   AS status_reason,
+               m.read_all_domains, m.read_any_domains, m.read_term_domains, m.read_roles
         FROM measured m
     """
 

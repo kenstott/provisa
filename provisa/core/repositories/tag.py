@@ -66,7 +66,6 @@ def _code_tag_row(tag: Tag) -> dict:
         "param_policy": tag.param_policy,
         "sensitive": tag.sensitive,
         "requires_citation": tag.requires_citation,
-        "required": tag.required,
     }
 
 
@@ -91,7 +90,6 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "param_policy": tag.param_policy,
             "sensitive": tag.sensitive,
             "requires_citation": tag.requires_citation,  # REQ-2208
-            "required": tag.required,  # REQ-2208 (THE TAGS REPORT)
         },
         index_elements=["id"],
         update_columns=[
@@ -102,7 +100,6 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "param_policy",
             "sensitive",
             "requires_citation",
-            "required",
         ],
     )
 

@@ -82,7 +82,7 @@ _META: dict[str, str] = {
     "products it reaches through relationships — one row per product, target and kind",
     # REQ-2208
     "tag_instances": "Every tag on every object, assigned, inherited from a glossary term or "
-    "derived, and every required tag an object lacks, with its citations and status",
+    "derived, with its citations and status",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -182,8 +182,8 @@ _OPS: dict[str, str] = {
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
     "fake covers it, and the reason when none does",
-    "tags_report": "Tags: every tag on every object and every required tag an object lacks, "
-    "with the object, the tag, how the tag got there, its citations and whether it needs attention",
+    "tags_report": "Tags: every tag on every object, with the object, the tag, how the tag got "
+    "there, its citations and whether it needs attention",
     "names_report": "Names: every model object with its name on each surface and the naming "
     "problems found in it, and every name clash the last model build refused, naming both objects",
 }
@@ -216,13 +216,13 @@ _TAG_INSTANCE_COLUMNS: dict[str, str] = {
     "parameter": "The assignment's parameter value, when the tag takes one",
     "tag_description": "The tag's definition",
     "tag_is_system": "Whether the tag is code-defined rather than the registry's",
-    "tag_required": "Whether every object of the kinds the tag applies to must carry it",
     "tag_requires_citation": "Whether each assignment of the tag must cite a library section",
     "definition_citations": "How many library sections the tag's definition cites",
-    "via": "assigned, inherited (from the column's glossary term), derived (from the object's "
-    "registered state) or missing (a required tag the object does not carry)",
+    "via": "assigned, inherited (from the column's glossary term) or derived (from the object's "
+    "registered state)",
     "reason": "Why the tag is on the object, as recorded with the assignment",
     "expires_on": "Date the assignment stops being intended",
+    "expired": "Whether that date has passed",
     "purpose": "What the assignment is for",
     "review_on": "Date the assignment is to be reviewed by",
     "evidence": "The profile evidence recorded when the assignment was decided",
@@ -234,6 +234,12 @@ _TAG_INSTANCE_COLUMNS: dict[str, str] = {
     "citation_missing": "The tag requires each assignment to cite a section, and this one cites none",
     "status": "clean, or needs attention",
     "status_reason": "What needs attention, each reason separated by a semicolon",
+    "read_all_domains": "The domains a reader must reach, every one, to read the row (|a|b|)",
+    "read_any_domains": "The domains of which a reader must reach one, when any is named (a "
+    "source's allowed domains)",
+    "read_term_domains": "The domains the row is read in as a glossary term is (a term's, or a "
+    "library document's)",
+    "read_roles": "The roles a metric is granted to, whose tags they read",
 }
 
 TABLE_DESCRIPTIONS: dict[str, str] = {
