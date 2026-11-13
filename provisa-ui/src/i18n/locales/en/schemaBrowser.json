@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "Collapse schema panel",
-    "expandPanel": "Expand schema panel",
+    "collapsePanel": "Hide schema panel",
+    "expandPanel": "Show schema panel",
     "heading": "Schema",
     "groupMetrics": "Metrics",
     "groupFacts": "Facts",

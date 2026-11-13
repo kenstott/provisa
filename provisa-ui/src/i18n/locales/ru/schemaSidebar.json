@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "Схема",
-    "collapse": "Свернуть панель схемы",
-    "expand": "Развернуть панель схемы",
+    "collapse": "Скрыть панель схемы",
+    "expand": "Показать панель схемы",
     "dragToCanvas": "Перетащите на холст",
     "doubleClickToInsert": "Двойной щелчок вставляет полное имя",
     "insertTableReference": "Вставить ссылку на таблицу в редактор SQL",

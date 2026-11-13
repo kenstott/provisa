@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "Esquema",
-    "collapse": "Contraer panel de esquema",
-    "expand": "Expandir panel de esquema",
+    "collapse": "Ocultar panel de esquema",
+    "expand": "Mostrar panel de esquema",
     "dragToCanvas": "Arrastrar al lienzo",
     "doubleClickToInsert": "Hacer doble clic para insertar el nombre calificado",
     "insertTableReference": "Insertar referencia de tabla en el editor SQL",

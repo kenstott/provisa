@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "स्कीमा पैनल संक्षिप्त करें",
-    "expandPanel": "स्कीमा पैनल विस्तृत करें",
+    "collapsePanel": "स्कीमा पैनल छिपाएँ",
+    "expandPanel": "स्कीमा पैनल दिखाएँ",
     "heading": "स्कीमा",
     "groupMetrics": "मेट्रिक्स",
     "groupFacts": "फ़ैक्ट्स",

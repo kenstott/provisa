@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "כיווץ חלונית הסכמה",
-    "expandPanel": "הרחבת חלונית הסכמה",
+    "collapsePanel": "הסתרת חלונית הסכמה",
+    "expandPanel": "הצגת חלונית הסכמה",
     "heading": "סכמה",
     "groupMetrics": "מדדים",
     "groupFacts": "עובדות",

@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "Schema",
-    "collapse": "Schemapaneel samenvouwen",
-    "expand": "Schemapaneel uitvouwen",
+    "collapse": "Schemapaneel verbergen",
+    "expand": "Schemapaneel tonen",
     "dragToCanvas": "Naar canvas slepen",
     "doubleClickToInsert": "Dubbelklik om de gekwalificeerde naam in te voegen",
     "insertTableReference": "Tabelverwijzing invoegen in de SQL-editor",

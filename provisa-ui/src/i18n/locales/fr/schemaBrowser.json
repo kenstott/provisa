@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "Réduire le panneau de schéma",
-    "expandPanel": "Développer le panneau de schéma",
+    "collapsePanel": "Masquer le panneau de schéma",
+    "expandPanel": "Afficher le panneau de schéma",
     "heading": "Schéma",
     "groupMetrics": "Métriques",
     "groupFacts": "Faits",
