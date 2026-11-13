@@ -1312,7 +1312,9 @@ class _RelJoinMixin:  # mixin for _Translator
                     # walk takes: with no path variable of its own the path is held under a name
                     # no statement can write, so ``r`` reads its steps all the same.
                     path_variable = clause.variable
-                    if rel.variable and not path_variable:
+                    # A list of relationships a WITH carries is read as carried (REQ-348).
+                    carried = self._walks_carried_list(rel)  # type: ignore[attr-defined]
+                    if rel.variable and not path_variable and not carried:
                         path_variable = f"{_WALK_OF}{rel.variable}"
                     pf_clause = MatchClause(
                         pattern=PathFunction(
@@ -1322,7 +1324,7 @@ class _RelJoinMixin:  # mixin for _Translator
                         variable=path_variable,
                         optional=clause.optional,
                     )
-                    if rel.variable and path_variable:
+                    if rel.variable and path_variable and not carried:
                         self._varlen_rel_vars[rel.variable] = path_variable
                     pf_from, pf_joins = self._translate_path_function(pf_clause, joined)
                     if from_expr is None or from_expr is own_first:
