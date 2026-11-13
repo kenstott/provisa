@@ -6,7 +6,10 @@ name: Integration suite lanes
 #
 # Lanes are scripts/test-all's (scripts/ci/run_lane.py holds them): each groups the tests whose
 # session-provisioned services fit one Docker host together. The two largest lanes are cut into
-# file shards so each job fits a runner. One test session per runner, so the harness's stack slot
+# file shards so each job fits a runner: core's from each file's measured time
+# (scripts/ci/lane_file_seconds.json; run_lane.py plans them, lane_durations.py folds a run's junit
+# back in), so no shard holds more than 30 minutes of tests, and core_long runs the core files
+# that alone hold more. One test session per runner, so the harness's stack slot
 # (acquire_stack_slot) always admits it; the first step of every job prints the slot count.
 #
 # The salesforce lane uses a live Salesforce org with a daily API allowance: it runs only when a

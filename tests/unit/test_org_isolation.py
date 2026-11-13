@@ -23,6 +23,13 @@ def _conn_with_advisory_lock() -> AsyncMock:
         __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
     )
     conn.advisory_lock = MagicMock(return_value=lock_cm)
+    # The org's view store is created in a transaction of its own (core.schema_create).
+    conn.transaction = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
+        )
+    )
+    conn.capabilities = MagicMock(schemas=True, dialect="postgresql")
 
     def _answer(statement, *_args, **_kwargs):
         if "pg_extension" in str(statement):

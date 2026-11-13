@@ -118,9 +118,12 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
     # glossary_read is read access to the org's term definitions — reading, which is what the role
     # is for; it authors nothing (glossary_rw and org_glossary_rw stay out). data_product_read
     # (REQ-1638) mirrors glossary_read for data products — read-only; data_product_rw stays out.
+    # command_execution (REQ-870): a command assigned to the role, reaching its domain, may be
+    # called by it; developer, data_steward, org_admin and the sandbox hold it through analyst.
     assert set(seeded["analyst"]) == {
         "usage",
         "query_development",
+        "command_execution",
         "glossary_read",
         "data_product_read",
     }
