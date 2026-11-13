@@ -32,6 +32,16 @@ import { tipPlacement } from "../../provisa-graph/tipPlacement";
 import { NODE_GAP } from "../../provisa-graph/lanes";
 import { SIZE } from "../../provisa-graph/tokens";
 import { placedDiagram } from "./crossingFixtures";
+import { pickLights } from "../graphScene";
+import {
+  ASSOCIATION_CHAIN,
+  BREED_NAME,
+  KIN,
+  KIN2,
+  TEST,
+  TEST2,
+  TEST3,
+} from "./associationChain";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
@@ -507,6 +517,138 @@ describe("what a focused node brings forward", () => {
     const drawnIds = new Set([...d.links, ...d.arcs].map((k) => k.id));
     expect(links.size).toBeGreaterThan(0);
     for (const id of links) expect(drawnIds.has(id)).toBe(true);
+  });
+});
+
+// REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS) and REQ-2239: a term selected in
+// 2D lights everything it reaches by any drawn link within the hops shown -- its ranking paths and
+// its associations, each term so reached with its columns, their tables and the products holding
+// them -- as the 3D view lights every edge of the picked node whatever its type (J1230).
+describe("what a selected term lights, associations included", () => {
+  /** test3's graph at ``depth`` hops, as the 2D view lays it out. */
+  const at = (depth: number) =>
+    laneDiagram(focusedBy(ASSOCIATION_CHAIN, TEST3, depth), ASSOCIATION_CHAIN, new Set());
+  const sorted = (s: Iterable<string>) => [...s].sort();
+  const drawnLines = (d: ReturnType<typeof laneDiagram>) => [...d.links, ...d.arcs];
+  /** The drawn line between ``a`` and ``b``, either way round. */
+  const lineOf = (d: ReturnType<typeof laneDiagram>, a: string, b: string) => {
+    const k = drawnLines(d).find(
+      (x) => (x.from === a && x.to === b) || (x.from === b && x.to === a),
+    );
+    if (!k) throw new Error(`no line drawn between ${a} and ${b}`);
+    return k.id;
+  };
+
+  it("lights a term reached only by RELATED_TO, its link, its column, table and product", () => {
+    const d = at(1);
+    const { nodes, links } = connectedTo(d, TEST3);
+    for (const id of [KIN, "c:203:kin", "t:203", "p:kin"]) expect(nodes.has(id)).toBe(true);
+    expect(links.has(lineOf(d, TEST3, KIN))).toBe(true);
+    expect(links.has(lineOf(d, KIN, "c:203:kin"))).toBe(true);
+    expect(links.has(lineOf(d, "c:203:kin", "t:203"))).toBe(true);
+    expect(links.has(lineOf(d, "t:203", "p:kin"))).toBe(true);
+  });
+
+  it("does not draw a term two association steps away at 1 hop, and lights nothing of it", () => {
+    const d = at(1);
+    expect(d.lane.has(KIN2)).toBe(false);
+    const { nodes } = connectedTo(d, TEST3);
+    for (const id of [KIN2, "c:204:kin2", "t:204", "p:kin2"]) expect(nodes.has(id)).toBe(false);
+  });
+
+  it("lights a term two association steps away, with its column, table and product, at 2 hops", () => {
+    const d = at(2);
+    expect(d.lane.get(KIN2)).toBe("term");
+    const { nodes, links } = connectedTo(d, TEST3);
+    for (const id of [KIN2, "c:204:kin2", "t:204", "p:kin2"]) expect(nodes.has(id)).toBe(true);
+    expect(links.has(lineOf(d, KIN, KIN2))).toBe(true);
+  });
+
+  it("lights animal breed name, reached through test's association, with its grounding at 3 hops", () => {
+    const d = at(3);
+    const { nodes, links } = connectedTo(d, TEST3);
+    expect(sorted(nodes)).toEqual(
+      sorted([
+        TEST3,
+        TEST2,
+        TEST,
+        BREED_NAME,
+        KIN,
+        KIN2,
+        "c:202:label",
+        "t:202",
+        "p:kn",
+        "c:201:breed_name",
+        "t:201",
+        "p:ph",
+        "c:203:kin",
+        "t:203",
+        "p:kin",
+        "c:204:kin2",
+        "t:204",
+        "p:kin2",
+      ]),
+    );
+    expect(links.has(lineOf(d, TEST, BREED_NAME))).toBe(true);
+    const drawnIds = new Set(drawnLines(d).map((k) => k.id));
+    for (const id of links) expect(drawnIds.has(id)).toBe(true);
+  });
+
+  it("lights for a column, as before: its table and product, its term and that term's ranking path", () => {
+    const { nodes } = connectedTo(at(3), "c:202:label");
+    expect(sorted(nodes)).toEqual(sorted(["c:202:label", "t:202", "p:kn", TEST3, TEST2, TEST]));
+  });
+
+  it("lights for a table, as before: its product, its columns drawn, their terms and ranking paths", () => {
+    const { nodes } = connectedTo(at(3), "t:202");
+    expect(sorted(nodes)).toEqual(sorted(["t:202", "p:kn", "c:202:label", TEST3, TEST2, TEST]));
+  });
+
+  it("lights for a product, as before: its tables, their columns drawn, terms and ranking paths", () => {
+    const { nodes } = connectedTo(at(3), "p:kn");
+    expect(sorted(nodes)).toEqual(sorted(["p:kn", "t:202", "c:202:label", TEST3, TEST2, TEST]));
+  });
+
+  it("agrees with 3D: what the 3D pick lights is lit in 2D, and 2D lights only what 3D draws joined to the pick", () => {
+    for (const depth of [1, 2, 3]) {
+      const shown = focusedBy(ASSOCIATION_CHAIN, TEST3, depth);
+      const d = laneDiagram(shown, ASSOCIATION_CHAIN, new Set());
+      const lit2d = connectedTo(d, TEST3);
+      // 3D draws ``shown`` (a table's columns folded into it); its pick of test3 lights these.
+      const lit3d = shown.edges.filter((e) => pickLights(e, TEST3));
+      expect(lit3d.map((e) => e.id).sort()).toEqual([
+        `term_binding:${TEST3}>t:202`,
+        `term_edge:${TEST3}>${TEST2}:PART_OF`,
+        `term_edge:${TEST3}>${KIN}:RELATED_TO`,
+      ]);
+      for (const e of lit3d) {
+        expect(lit2d.nodes.has(e.a)).toBe(true);
+        expect(lit2d.nodes.has(e.b)).toBe(true);
+      }
+      // The term links as one line each; the binding folded to its table in 3D runs through the
+      // column in 2D, each line of it lit.
+      expect(lit2d.links.has(lineOf(d, TEST3, TEST2))).toBe(true);
+      expect(lit2d.links.has(lineOf(d, TEST3, KIN))).toBe(true);
+      expect(lit2d.links.has(lineOf(d, TEST3, "c:202:label"))).toBe(true);
+      expect(lit2d.links.has(lineOf(d, "c:202:label", "t:202"))).toBe(true);
+      // Each node 2D lights is drawn in 3D (a column as its table), joined to the pick there.
+      const in3d = (id: string) =>
+        ASSOCIATION_CHAIN.nodes.find((n) => n.id === id && n.type === "column")?.parent ?? id;
+      const joined = new Set([TEST3]);
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const e of shown.edges)
+          for (const [x, y] of [
+            [e.a, e.b],
+            [e.b, e.a],
+          ])
+            if (joined.has(x) && !joined.has(y)) {
+              joined.add(y);
+              grew = true;
+            }
+      }
+      for (const id of lit2d.nodes) expect(joined.has(in3d(id)), id).toBe(true);
+    }
   });
 });
 

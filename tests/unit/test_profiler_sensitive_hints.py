@@ -308,7 +308,7 @@ async def test_a_scan_that_cannot_read_fails_saying_why(control_plane, monkeypat
     from provisa.api.admin import table_read
 
     monkeypatch.setattr(table_read, "_in_service", lambda state, tid: None)
-    monkeypatch.setattr(table_read, "_draft", lambda state, tid: None)
+    monkeypatch.setattr(table_read, "draft_table", lambda state, tid: None)
     db = control_plane.org()
     try:
         async with db.acquire() as conn:

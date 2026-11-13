@@ -239,12 +239,17 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             domain = await _follow(conn, "meta:data_products:domains", key)
             assert [d["id"] for d in domain] == ["sales"]
 
-            # Both member tables, the checker told apart by its contract; the draft member is in
-            # no catalog and the table in no product is reached by nothing.
+            # Every member table, the checker told apart by its contract and the draft by its
+            # flag; the table in no product is reached by nothing. REQ-1921: the draft's row is
+            # the model's; a statement's governance reads it to a role holding org_admin only
+            # (test_draft_served_to_org_admin.py).
             members = await _follow_via(conn, "meta:data_products:member_tables", key)
-            assert {m["table_name"]: m["dq_contract"] is not None for m in members} == {
-                "customers": False,
-                "customers_checks": True,
+            assert {
+                m["table_name"]: (m["dq_contract"] is not None, m["draft"]) for m in members
+            } == {
+                "customers": (False, False),
+                "customers_checks": (True, False),
+                "draft_member": (False, True),
             }
             member_ids = [m["id"] for m in members]
 

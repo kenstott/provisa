@@ -902,10 +902,12 @@ def build_snapshot(
     # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
     # products it is a member of (REQ-1634: any number, declared on each product).
     product_ids = product_memberships(config)
+    # REQ-1921: a draft is in no catalog publish until it is released -- nor, through it, in a
+    # product's members or contracts. The model report lists it: its steward reviews it there.
     exported = [
         table
         for table in config.tables
-        if product_ids.get(table_ref(table).parts) or not data_products_only
+        if not data_products_only or (product_ids.get(table_ref(table).parts) and not table.draft)
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}

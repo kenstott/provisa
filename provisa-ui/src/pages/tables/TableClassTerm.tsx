@@ -26,6 +26,15 @@ interface ClassTerm {
   name: string;
 }
 
+/** Why a table's term could not be read, as its reader is told it: an i18n key. */
+class Unreadable extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(reason);
+    this.reason = reason;
+  }
+}
+
 /** ``tableId``'s class term (null: none), or why it could not be read. */
 async function readClassTerm(role: string, tableId: number): Promise<ClassTerm | null> {
   const m = await metaReader(role);
@@ -39,13 +48,15 @@ async function readClassTerm(role: string, tableId: number): Promise<ClassTerm |
     },
     { id: { eq: tableId } },
   );
-  if (query === null) throw new Error("registered_tables");
+  // The acting roles read no table of the model.
+  if (query === null) throw new Unreadable("tableSections.classTermNoModel");
   const { registered_tables: rows } = await dataGraphql<{
     registered_tables: { id: number; classTerm?: ClassTerm | null }[];
   }>(query, {}, role);
-  if (rows.length !== 1) throw new Error(`registered_tables ${tableId}`);
+  // The acting roles read the model's tables, but not this table's own entry in them.
+  if (rows.length !== 1) throw new Unreadable("tableSections.classTermNoEntry");
   // undefined: the role's schema has no classTerm to read, which is not "none".
-  if (rows[0].classTerm === undefined) throw new Error("classTerm");
+  if (rows[0].classTerm === undefined) throw new Unreadable("tableSections.classTermNoField");
   return rows[0].classTerm;
 }
 
@@ -60,7 +71,13 @@ export function TableClassTerm({ tableId }: { tableId: number }) {
     let live = true;
     readClassTerm(actingRoles, tableId).then(
       (term) => live && setRead({ tableId, term }),
-      (e: Error) => live && setError(t("tableSections.classTermUnreadable", { error: e.message })),
+      (e: Error) =>
+        live &&
+        setError(
+          e instanceof Unreadable
+            ? t(e.reason)
+            : t("tableSections.classTermUnreadable", { error: e.message }),
+        ),
     );
     return () => {
       live = false;
