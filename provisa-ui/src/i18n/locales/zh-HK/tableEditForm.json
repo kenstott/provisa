@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "當掃描此視圖某個輸入的檢查表最近一次執行失敗時，中止重新整理並保留上一份副本。在上方的預檢之前執行；兩者都必須通過才會繼續。",
     "holdOnFailingChecksShowCode": "顯示程式碼",
     "holdOnFailingChecksHideCode": "隱藏程式碼",
-    "holdOnFailingChecksCodeHelp": "此選項套用的檢查。如要修改，請將其複製到上方的預檢中。"
+    "holdOnFailingChecksCodeHelp": "此選項套用的檢查。如要修改，請將其複製到上方的預檢中。",
+    "discoverHint": "儲存時會讀取即時資料來源的欄位，並加入此表缺少的欄位；現有欄位保持不變。新增的欄位在授予之前對任何角色都不可見。"
   }
 }

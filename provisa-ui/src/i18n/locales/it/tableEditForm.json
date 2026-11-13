@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Annulla un aggiornamento, mantenendo la copia precedente, quando l'ultima esecuzione di una tabella di controllo che analizza uno degli input di questa vista è fallita. Viene eseguito prima del controllo preliminare qui sopra; entrambi devono proseguire.",
     "holdOnFailingChecksShowCode": "Mostra il codice",
     "holdOnFailingChecksHideCode": "Nascondi il codice",
-    "holdOnFailingChecksCodeHelp": "Il controllo applicato da questa opzione. Copialo nel controllo preliminare qui sopra per modificarlo."
+    "holdOnFailingChecksCodeHelp": "Il controllo applicato da questa opzione. Copialo nel controllo preliminare qui sopra per modificarlo.",
+    "discoverHint": "Il salvataggio legge le colonne della sorgente live e aggiunge quelle che mancano a questa tabella; le sue colonne restano invariate. Una colonna aggiunta non è visibile ad alcun ruolo finché non viene concessa."
   }
 }

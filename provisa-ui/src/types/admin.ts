@@ -512,6 +512,10 @@ export interface RegisteredTable {
   landingFilter?: string | null; // REQ-2062: the predicate its replica's rows pass
   readWait?: number | null; // REQ-2224: seconds a read waits with nothing landed; 0 answers no rows
   sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path
+  importSet?: string | null; // REQ-1954: a ServiceNow table's import set; null: inserts go direct
+  /** REQ-252: staged in its form, not stored: its next save reads the columns the live source
+   * has and adds those the table lacks, as registration with discovery does. */
+  discover?: boolean;
   materialize: boolean;
   mvRefreshInterval: number;
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
