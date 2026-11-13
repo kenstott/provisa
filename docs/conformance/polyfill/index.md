@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-218 of the grid's 218 features are native on PostgreSQL and left out.
+223 of the grid's 223 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-89 of the grid's 218 features are native on DuckDB and left out.
+92 of the grid's 223 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -459,11 +459,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-8 of the grid's 218 features are native on Trino and left out.
+11 of the grid's 223 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1014,11 +1020,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-8 of the grid's 218 features are native on Presto and left out.
+11 of the grid's 223 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1569,11 +1581,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-8 of the grid's 218 features are native on Athena and left out.
+11 of the grid's 223 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2124,11 +2142,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-37 of the grid's 218 features are native on ClickHouse and left out.
+37 of the grid's 223 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2449,7 +2473,7 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t)
 =&gt;
-function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. A value</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre></td><td><ul><li>Of a timestamp with time zone: held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31; a literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_trunc() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). On a session off UTC it is refused by name (date_trunc() has no form on clickhouse): the start of a unit is the session zone&#x27;s. Of an interval, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>first_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_first_value: first_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>last_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_last_value: last_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
@@ -2648,11 +2672,20 @@ function provisa.transpiler.polyfill.instants.compared_timestamp_ge_timestamptz:
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.instants.compared_timestamp_cmp_timestamptz: timestamp_cmp_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_cmp_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_cmp_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max(timestamptz)</strong><br>The latest of a group&#x27;s instants.</td><td><pre><code>function provisa.transpiler.polyfill.instants.max_of_an_instant: max of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (max() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (max() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min(timestamptz)</strong><br>The earliest of a group&#x27;s instants.</td><td><pre><code>function provisa.transpiler.polyfill.instants.min_of_an_instant: min of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (min() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (min() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.instants.isfinite_of_an_instant: isfinite of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;): exact, as its answer reads only that a value is there (ClickHouse holds no infinity). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (isfinite() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date(timestamptz)</strong><br>An instant&#x27;s day in the session&#x27;s zone.</td><td><pre><code>function provisa.transpiler.polyfill.instants.date_of_an_instant: date of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC it is refused by name (date() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.instants.timestamp_of_an_instant: timestamp of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC it is refused by name (timestamp() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-88 of the grid's 218 features are native on Snowflake and left out.
+91 of the grid's 223 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3109,11 +3142,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-88 of the grid's 218 features are native on Databricks and left out.
+91 of the grid's 223 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3570,11 +3609,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-88 of the grid's 218 features are native on BigQuery and left out.
+91 of the grid's 223 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4031,11 +4076,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-88 of the grid's 218 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+91 of the grid's 223 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4492,11 +4543,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-88 of the grid's 218 features are native on Redshift and left out.
+91 of the grid's 223 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4953,11 +5010,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-88 of the grid's 218 features are native on MySQL and left out.
+91 of the grid's 223 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5414,11 +5477,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-88 of the grid's 218 features are native on SingleStore and left out.
+91 of the grid's 223 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5875,11 +5944,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-88 of the grid's 218 features are native on SQLite and left out.
+91 of the grid's 223 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6336,11 +6411,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-88 of the grid's 218 features are native on Oracle and left out.
+91 of the grid's 223 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6797,11 +6878,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-88 of the grid's 218 features are native on Hive and left out.
+91 of the grid's 223 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7258,11 +7345,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-88 of the grid's 218 features are native on Exasol and left out.
+91 of the grid's 223 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7719,11 +7812,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-88 of the grid's 218 features are native on Druid and left out.
+91 of the grid's 223 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8178,6 +8277,12 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

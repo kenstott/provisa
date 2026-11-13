@@ -57,7 +57,7 @@ import re
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
@@ -269,16 +269,30 @@ def _unit_said(unit: exp.Expr | None) -> str | None:
     return None
 
 
-#: What a statement may say of date_trunc's value that this row does not truncate.
-_NOT_A_TIMESTAMP = frozenset({"interval", "timestamptz", "timestamp with time zone"})
+#: What a statement says of an instant.
+_INSTANTS = frozenset({"timestamptz", "timestamp with time zone"})
 
 
 def started(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """date_trunc of a timestamp: its start as DateTime64(6, 'UTC'), whatever the unit. A value
-    the statement says is an interval or a timestamp with time zone is not this row's: it keeps
-    its refusal by name (provisa.transpiler.engine_refusals)."""
-    if not isinstance(node, exp.TimestampTrunc) or trino.said(node.this) in _NOT_A_TIMESTAMP:
+    """date_trunc of a timestamp: its start as DateTime64(6, 'UTC'), whatever the unit. Of a
+    timestamp with time zone, on a session on UTC, the same (polyfill.instants: held as
+    DateTime64(6, 'UTC') in its bound). An interval is not this row's: it keeps its refusal by
+    name (provisa.transpiler.engine_refusals)."""
+    if not isinstance(node, exp.TimestampTrunc):
         return None
+    said = trino.said(node.this)
+    if said == "interval":
+        return None
+    if said in _INSTANTS:
+        if node.args.get("zone") is not None:
+            return None  # the start of a unit in the zone it names: refused by name
+        answers, raised = instants.zoned_instant(
+            node.this, "date_trunc", dialect, "date_trunc($u, $t)"
+        )
+        if not answers:
+            return None
+        if raised is not None:
+            return raised
     unit = _unit_said(node.args.get("unit"))
     return None if unit is None else truncated(unit, node.this)
 
@@ -288,7 +302,19 @@ DATE_TRUNC = Feature(
     FAMILY,
     "The start of a unit of a timestamp.",
     read=Side(
-        rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),)
+        rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of a timestamp with time zone: held as DateTime64(6, 'UTC'), exact from "
+                    "1900-01-01 to 2299-12-31; a literal outside "
+                    f"{instants.BOUND} raises 0A000 ({instants.out_of_bound('date_trunc')}). On "
+                    "a session off UTC it is refused by name (date_trunc() has no form on "
+                    "clickhouse): the start of a unit is the session zone's. Of an interval, "
+                    "refused by name."
+                ),
+            )
+        },
     ),
 )
 

@@ -29,7 +29,7 @@ import sqlglot
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
-from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID, instants, trino
 from provisa.transpiler.transpile import transpile
 
@@ -73,7 +73,6 @@ def test_a_call_a_row_answers_is_read_before_its_type_is_refused():
     [
         ('SELECT pg_catalog."age"(NULL::timestamp with time zone) AS v', "age"),
         ('SELECT pg_catalog."timestamptz_mi"(NULL::timestamp with time zone, NULL::timestamp with time zone) AS v', "timestamptz_mi"),
-        ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::timestamp with time zone) AS v', "date_trunc"),
         ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::interval) AS v', "date_trunc"),
         ('SELECT pg_catalog."avg"(NULL::numeric) AS v', "avg"),
     ],
@@ -134,10 +133,11 @@ def test_comparisons_of_an_instant_answer_postgresql_on_clickhouse(runtime, sql,
 def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
     call = sqlglot.parse_one(sql, read="postgres").selects[0].this.expression  # past pg_catalog
-    assert len(instants.FEATURES) == 37
+    assert len(instants.FEATURES) == 37 + 5
     for feature in instants.FEATURES:
         (rule,) = feature.read.rules
-        assert rule.forms[dialect] is trino.KEPT
+        # A row of no pattern (max, min, date: other rows read those names) writes ClickHouse only.
+        assert rule.forms[dialect] is trino.KEPT if rule.pattern else dialect not in rule.forms
     applied = GRID.read(call, dialect)
     assert applied is not None and applied.form is trino.KEPT
 
@@ -167,7 +167,6 @@ def test_a_value_at_the_bound_answers(runtime, sql, answer):
         ("timestamptz_eq", _call("timestamptz_eq", "'1900-01-01 01:00:00+02'", "'2024-06-15 12:30:45+00'")),
         ("timestamptz_cmp", _call("timestamptz_cmp", "'2024-06-15 12:30:45+00'", "'2300-01-01 00:00:00+00'")),
         ("timestamptz_larger", _call("timestamptz_larger", "'2299-12-31 23:00:00-05'", "'2024-06-15 12:30:45+00'")),
-        ("date_lt_timestamptz", _call("date_lt_timestamptz", "'1899-12-31'", "'2024-06-15 12:30:45+00'", "date", _TZ)),
         ("timestamp_ne_timestamptz", _call("timestamp_ne_timestamptz", "'2300-01-01 00:00:00'",
                                            "'2024-06-15 12:30:45+00'", "timestamp without time zone", _TZ)),
     ],
@@ -175,6 +174,15 @@ def test_a_value_at_the_bound_answers(runtime, sql, answer):
 def test_a_value_past_the_bound_raises(runtime, function, sql):
     error = _raised(runtime, sql)
     assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+def test_a_date_past_the_bound_is_refused_by_the_row_of_its_literal():
+    # date_in's row reads a date literal first, and raises 0A000 for one ClickHouse holds none of.
+    sql = _call("date_lt_timestamptz", "'1899-12-31'", "'2024-06-15 12:30:45+00'", "date", _TZ)
+    with pytest.raises(RowRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert refused.value.sqlstate == "0A000"
+    assert str(refused.value).startswith('date_in() of "1899-12-31" has no form on clickhouse')
 
 
 def test_a_null_beside_a_value_past_the_bound_is_null(runtime):
@@ -210,3 +218,144 @@ def off_utc():
 def test_off_utc_a_value_read_in_the_session_zone_is_refused_by_name(off_utc, sql):
     with pytest.raises(FunctionRefused):
         transpile(sql, "clickhouse")
+
+
+# --- a function of one instant, and date_trunc of one --------------------------------------------
+
+_SAMPLES = ("'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'", "'2000-02-29 00:00:00-05'")
+
+
+def _of(function: str, value: str) -> str:
+    return f'SELECT pg_catalog."{function}"({value}::{_TZ}) AS v'
+
+
+def _aggregate(function: str, *values: str) -> str:
+    rows = ", ".join(f"({v}::{_TZ})" for v in values)
+    return f'SELECT pg_catalog."{function}"(c1) AS v FROM (VALUES {rows}) AS t(c1)'
+
+
+def _trunc(unit: str, value: str) -> str:
+    return f"SELECT pg_catalog.\"date_trunc\"('{unit}'::text, {value}::{_TZ}) AS v"
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # The run's statements (an aggregate reads its values from a VALUES list), PostgreSQL 17's answers.
+        (_aggregate("max", *_SAMPLES), datetime.datetime(2024, 6, 15, 12, 30, 45, tzinfo=_UTC)),
+        (_aggregate("min", *_SAMPLES), datetime.datetime(1999, 12, 31, 21, 59, 59, tzinfo=_UTC)),
+        (_aggregate("max", "NULL", "'2000-02-29 00:00:00-05'"), datetime.datetime(2000, 2, 29, 5, tzinfo=_UTC)),
+        (_aggregate("min", "NULL", "NULL"), None),
+        (_of("isfinite", _SAMPLES[0]), True),
+        (_of("isfinite", "NULL"), None),
+        (_of("date", _SAMPLES[0]), datetime.date(2024, 6, 15)),
+        (_of("date", _SAMPLES[1]), datetime.date(1999, 12, 31)),
+        (_of("date", _SAMPLES[2]), datetime.date(2000, 2, 29)),
+        (_of("date", "NULL"), None),
+        (_trunc("day", _SAMPLES[1]), datetime.datetime(1999, 12, 31, tzinfo=_UTC)),
+        (_trunc("hour", _SAMPLES[2]), datetime.datetime(2000, 2, 29, 5, tzinfo=_UTC)),
+        (_trunc("month", _SAMPLES[0]), datetime.datetime(2024, 6, 1, tzinfo=_UTC)),
+        ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::timestamp with time zone) AS v', None),
+    ],
+)  # fmt: skip
+def test_a_function_of_one_instant_answers_postgresql_on_clickhouse(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize(
+    ("value", "wall"),
+    [
+        (_SAMPLES[1], datetime.datetime(1999, 12, 31, 21, 59, 59)),
+        ("'2024-06-15 12:30:45.000001+00'", datetime.datetime(2024, 6, 15, 12, 30, 45, 1)),
+    ],
+)
+def test_timestamp_of_an_instant_is_its_wall_time_in_utc(runtime, value, wall):
+    # PostgreSQL's timestamp holds no zone: ClickHouse's DateTime64(6, 'UTC') holds the same wall time.
+    assert _one(runtime, _of("timestamp", value)).replace(tzinfo=None) == wall
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        (_of("date", "'2299-12-31 23:59:59.999999+00'"), datetime.date(2299, 12, 31)),
+        # An offset moves the instant inside the bound: 23:00 at -02 is 01:00 of 1900-01-01 in UTC.
+        (_of("date", "'1899-12-31 23:00:00-02'"), datetime.date(1900, 1, 1)),
+        (_aggregate("min", "'1900-01-01 00:00:00+00'", "'2299-12-31 23:59:59.999999+00'"),
+         datetime.datetime(1900, 1, 1, tzinfo=_UTC)),
+        (_trunc("year", "'2299-12-31 23:59:59.999999+00'"), datetime.datetime(2299, 1, 1, tzinfo=_UTC)),
+    ],
+)  # fmt: skip
+def test_a_function_of_one_instant_at_the_bound_answers(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize(
+    ("function", "sql"),
+    [
+        ("date", _of("date", "'1900-01-01 01:00:00+02'")),
+        ("timestamp", _of("timestamp", "'2300-01-01 00:00:00+00'")),
+        # One row of a VALUES list past the bound raises the aggregate, whatever the others hold.
+        ("max", _aggregate("max", "'2024-06-15 12:30:45+00'", "'2300-01-01 00:00:00+00'")),
+        ("min", _aggregate("min", "NULL", "'1899-12-31 23:59:59.999999+00'")),
+        ("date_trunc", _trunc("day", "'1899-12-31 12:00:00+00'")),
+    ],
+)  # fmt: skip
+def test_a_function_of_one_instant_past_the_bound_raises(runtime, function, sql):
+    error = _raised(runtime, sql)
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+def test_isfinite_reads_only_that_a_value_is_there(runtime):
+    # PostgreSQL: every instant it holds but infinity is finite; past the bound too.
+    assert _one(runtime, _of("isfinite", "'1850-01-01 00:00:00+00'")) is True
+
+
+@pytest.mark.parametrize(
+    ("sql", "function"),
+    [
+        (_of("date", "'infinity'"), "date"),
+        (_aggregate("max", "'2024-06-15 12:30:45+00'", "'infinity'"), "max"),
+        # A row of another type: PostgreSQL's coercion of it to an instant is not read here.
+        ('SELECT pg_catalog."max"(c1) AS v FROM (VALUES (\'2024-06-15 12:30:45+00\'::timestamp with time zone), '
+         "('2024-06-15'::date)) AS t(c1)", "max"),
+        # The start of a unit in the zone the call names.
+        ("SELECT pg_catalog.\"date_trunc\"('day'::text, '1999-12-31 23:59:59+02'::timestamp with time zone, "
+         "'Asia/Tokyo'::text) AS v", "date_trunc"),
+    ],
+)  # fmt: skip
+def test_a_function_of_one_instant_the_row_does_not_read_is_refused_by_name(sql, function):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert type(refused.value) is FunctionRefused
+    assert str(refused.value) == f"{function}() has no form on clickhouse"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        _of("date", _SAMPLES[0]),
+        _of("timestamp", _SAMPLES[0]),
+        _trunc("day", _SAMPLES[0]),
+        _aggregate("max", *_SAMPLES),
+        _of("isfinite", _SAMPLES[0]),
+    ],
+)
+def test_off_utc_a_function_of_one_instant_read_in_the_session_zone_is_refused(off_utc, sql):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
+
+
+def test_each_function_of_one_instant_states_its_bound():
+    for name in (
+        "max(timestamptz)",
+        "min(timestamptz)",
+        "date(timestamptz)",
+        "timestamp(timestamptz)",
+        "date_trunc",
+    ):
+        feature = next(f for f in GRID.features if f.name == name)
+        (stated,) = feature.read.limitations["clickhouse"]
+        assert instants.BOUND in stated.text and "{" not in stated.text
+    isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
+    (stated,) = isfinite.read.limitations["clickhouse"]
+    assert "{" not in stated.text and "infinity" in stated.text
