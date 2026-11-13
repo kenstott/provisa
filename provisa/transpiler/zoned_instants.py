@@ -41,7 +41,6 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill.clickhouse import SUBMINUTE, truncated
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import (
@@ -187,16 +186,22 @@ class _Engine:
 def _clickhouse_trunc(_v: str, local: str, unit: str, zone: str) -> str:
     """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): the grid's
     builder (polyfill.clickhouse.truncated) of the wall clock in ``zone``."""
-    start = truncated(unit, sqlglot.parse_one(local, read="clickhouse"), zone)
+    from provisa.transpiler.polyfill import clickhouse  # read when called, as semantic_dialect's
+
+    start = clickhouse.truncated(unit, sqlglot.parse_one(local, read="clickhouse"), zone)
     return f"toTimeZone({start.sql(dialect='clickhouse')}, 'UTC')"
 
 
 def _clickhouse_plain_trunc(v: str, unit: str) -> str | None:
     """The start of sub-minute ``unit`` of a plain timestamp (or a date), by the grid's builder,
     its fraction kept. None for a longer unit, whose dateTrunc the same builder writes."""
-    if unit.lower() not in SUBMINUTE:
+    from provisa.transpiler.polyfill import clickhouse  # read when called, as semantic_dialect's
+
+    if unit.lower() not in clickhouse.SUBMINUTE:
         return None
-    return truncated(unit, sqlglot.parse_one(v, read="clickhouse")).sql(dialect="clickhouse")
+    return clickhouse.truncated(unit, sqlglot.parse_one(v, read="clickhouse")).sql(
+        dialect="clickhouse"
+    )
 
 
 _ENGINES = {

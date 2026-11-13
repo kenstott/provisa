@@ -140,16 +140,19 @@ def test_a_try_cast_of_a_day_that_exists_reads_it():
     assert "toDate32('2024-02-29')" in written
 
 
-def test_pg_input_is_valid_as_pgwire_writes_it_is_no_longer_true():
-    """pgwire's check reaches the translator as a plain CAST (sqlglot 30 writes PostgreSQL's
-    TryCast as CAST): the day that does not exist is PostgreSQL's error, never ClickHouse's next
-    day, which answered true (run 43361055823)."""
+@pytest.mark.parametrize(("text", "valid"), [("2024-02-30", False), ("2024-02-29", True)])
+def test_pg_input_is_valid_as_pgwire_writes_it(text, valid):
+    """pgwire's check (catalog_server_answers.input_check), written as the semantic SQL keeps it
+    (TRY_CAST): false of a day that does not exist, where ClickHouse's next day answered true
+    (run 43361055823)."""
     from provisa.pgwire.catalog_server_answers import input_check
 
-    check = input_check(exp.Literal.string("2024-02-30"), exp.Literal.string("date"))
-    with pytest.raises(RowRefused) as refused:
-        _clickhouse(f"SELECT {check.sql('postgres')} AS v")
-    assert refused.value.sqlstate == "22008"
+    check = input_check(exp.Literal.string(text), exp.Literal.string("date"))
+    written = _clickhouse(f"SELECT {check.sql('postgres')} AS v")
+    if valid:
+        assert f"toDate32('{text}')" in written
+    else:
+        assert text not in written and "CAST(NULL AS Nullable(DATE))" in written
 
 
 def test_a_cast_of_a_column_to_a_date_is_unchanged():
@@ -215,12 +218,24 @@ def test_date_trunc_of_a_second_is_the_same_builders():
     assert "Nullable(DateTime)" not in written
 
 
-def test_one_builder():
-    from provisa.transpiler import semantic_dialect, zoned_instants
+def test_one_builder(monkeypatch):
+    """The grid's row, sqlglot's generator (the semantic layer's path) and zoned_instants (an
+    instant's start, and a plain one of a second) each call the grid's one builder."""
     from provisa.transpiler.polyfill import clickhouse
 
-    assert semantic_dialect.truncated is clickhouse.truncated
-    assert zoned_instants.truncated is clickhouse.truncated
+    built = clickhouse.truncated
+    calls: list[str] = []
+
+    def counted(unit: str, value: exp.Expr, zone: str = "UTC") -> exp.Expr:
+        calls.append(unit.lower())
+        return built(unit, value, zone)
+
+    monkeypatch.setattr(clickhouse, "truncated", counted)
+    _clickhouse("SELECT date_trunc('year', '1960-05-05'::timestamp) AS v")
+    exp.TimestampTrunc(this=exp.column("c"), unit=exp.var("MONTH")).sql(dialect="clickhouse")
+    _clickhouse("SELECT date_trunc('hour', '1960-05-05 00:00:00+00'::timestamptz) AS v")
+    _clickhouse("SELECT date_trunc('second', '1960-05-05 10:00:01.5'::timestamp) AS v")
+    assert {"year", "month", "hour", "second"} <= set(calls)
 
 
 # --- 4. a window function's default -------------------------------------------------------------
